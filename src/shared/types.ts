@@ -107,6 +107,8 @@ export interface Session {
   error?: string;
   prUrl?: string;
   removeAfterMerge: boolean;
+  /** Delete the branch, here and on GitHub, once merged. Sessions saved before this existed follow `removeAfterMerge`. */
+  deleteBranchAfterMerge?: boolean;
   /** When it was archived. Archived sessions are hidden from the left tree and Overview, and kept. */
   archivedAt?: number;
   /** Archived by the idle timer rather than by hand. */
@@ -159,6 +161,8 @@ export interface Settings {
   cloneRoot: string;
   branchPrefix: string;
   removeAfterMerge: boolean;
+  /** Delete the branch after a merge, locally and on GitHub. git will not delete a checked-out branch, so the worktree goes with it. */
+  deleteBranchAfterMerge: boolean;
   /** Files from your checkout to copy into each new worktree, as gitignore patterns, one per line (`.env`, `config/*.local.json`, `!keep.env`, `# comment`). Only files git does not track are copied. */
   copyFiles: string;
   weeklyLimit: number;
@@ -461,11 +465,33 @@ export interface CreatePrInput {
   body: string;
   draft: boolean;
   removeAfterMerge: boolean;
+  deleteBranchAfterMerge: boolean;
   files: string[];
   message?: string;
 }
 
 export type MergeMethod = 'merge' | 'squash' | 'rebase';
+
+export interface PushTarget {
+  /** A session id, or `@checkout` for the branch checked out in the repository's own folder. */
+  id: string;
+  kind: 'session' | 'checkout';
+  repoId: string;
+  branch: string;
+  /** Commits that are not on GitHub. */
+  ahead: number;
+  /** Uncommitted files, which a push does not include. */
+  dirty: number;
+  /** The branch exists on GitHub already. */
+  onRemote: boolean;
+}
+
+export interface PushResult {
+  pushed: string[];
+  failed: { id: string; error: string }[];
+  /** Targets with uncommitted changes that were left out. */
+  uncommitted: number;
+}
 
 export interface MergeInput {
   sessionId: string;
@@ -475,6 +501,7 @@ export interface MergeInput {
   message: string;
   files: string[];
   removeAfterMerge: boolean;
+  deleteBranchAfterMerge: boolean;
 }
 
 export interface MergeResult {
@@ -578,7 +605,10 @@ export interface HelmApi {
   mergeDirect(input: MergeInput): Promise<MergeResult>;
   commitOnly(sessionId: string, files: string[], message: string): Promise<void>;
   /** Pushes every session branch that has commits GitHub does not. Uncommitted changes are left alone. */
-  pushAll(): Promise<{ pushed: string[]; failed: { id: string; error: string }[]; uncommitted: number }>;
+  /** What could be pushed: each session's branch, and the branch checked out in each repository's own folder, with how many commits GitHub lacks. */
+  pushStatus(repoId?: string): Promise<PushTarget[]>;
+  /** Pushes the branches with commits GitHub lacks: one target (a session id, or `@checkout`), or every target of a repository, or of all of them. */
+  push(opts: { repoId?: string; target?: string }): Promise<PushResult>;
   requestChanges(sessionId: string, comments: ReviewComment[]): Promise<void>;
   openInEditor(sessionId: string, path?: string): Promise<void>;
   openExternal(url: string): Promise<void>;

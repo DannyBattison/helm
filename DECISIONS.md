@@ -255,3 +255,15 @@ Why: user report of a 404.
 ## D-060 · 2026-10-23 · Allow everything permission mode
 A fourth permission mode, "Allow everything", in Settings, the new-session dialog and each session's composer. It maps to the SDK's `bypassPermissions`, so no command or edit asks for approval. Every session is started with `allowDangerouslySkipPermissions` so a running conversation can be switched into it from the composer; that flag alone does not change the mode. Budgets, plan-usage pauses and the subagent limits still apply, because they do not depend on the approval prompt. The setting says plainly that the worktree protects your checkout but not the network or files outside it.
 Why: user request.
+
+## D-061 · 2026-10-23 · Delete branch after merge is its own option
+Settings has "Delete branch after merge" beside "Remove worktree after merge" (default on, as before), and the Changes tab and the merge-pull-request dialog carry the same choice per session. It deletes the session branch on your computer and on GitHub. git will not delete a checked-out branch, so choosing it also removes the worktree, and the worktree option shows as on and locked. Sessions saved before this existed follow their old worktree setting.
+Why: user request.
+
+## D-062 · 2026-10-23 · Push buttons per session, per repository and overall
+Push status lists every branch that has commits GitHub lacks: each session's branch and the branch checked out in each repository's own folder (that folder is not a session, so its commits had nowhere to be pushed from). A Push button with the commit count appears in a session's header when it has unpushed commits, "Push all" in each repository's header pushes that repository's sessions and checkout, and "Push all" on Overview pushes everything. They are disabled when everything is on GitHub, and the tooltip lists what would be pushed. Uncommitted files are reported, never pushed. Replaces the earlier Push all, which looked only at sessions and so was disabled with none.
+Why: user could not find where to push.
+
+## D-063 · 2026-10-23 · Lifetime tokens are visible everywhere they apply
+The lifetime token total per repository was only on the repository page and on Overview rows for repositories that had sessions, so with no sessions it was nowhere. It now also shows beside each repository in the left tree, and Overview has a "Tokens by repository" section listing every repository, with or without sessions, with a bar, the total, and cost when billing is by API.
+Why: user report that it could not be seen.

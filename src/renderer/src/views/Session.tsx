@@ -8,6 +8,7 @@ import { go, loadTranscript, setUI, toast, useApp, useMoney, useTranscript } fro
 import { Avatar, Badge, BranchTag, Button, DiffStat, Grip, IconButton, Meter, Select, StatusDot, Tabs, usePaneWidth } from '../ui';
 import { Changes } from './Changes';
 import { TranscriptList } from './TranscriptList';
+import { usePush } from './push';
 import { CodeView } from './CodeView';
 
 const guard = (p: Promise<any>) => p.catch((e: any) => toast({ tone: 'error', title: 'That did not work', description: String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '') }));
@@ -22,6 +23,7 @@ function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string
   const sub = useApp().settings.billing === 'subscription';
   const running = s.status === 'working' || s.status === 'attention';
   const deliverMerge = useApp().settings.deliver === 'merge';
+  const push = usePush(s.repoId, s.id);
   return (
     <div style={{ flex: 'none', padding: '14px 20px 0', display: 'flex', flexDirection: 'column', gap: 12, borderBottom: '1px solid var(--border)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
@@ -40,6 +42,7 @@ function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string
         {s.status === 'idle' && /^Stopped/.test(s.step) ? <Button variant="secondary" icon="play" onClick={() => guard(api.resumeSession(s.id))}>Resume</Button> : null}
         {s.status === 'working' ? <Button variant="ghost" icon="pause" onClick={() => guard(api.interrupt(s.id))}>Pause</Button> : null}
         {running ? <Button variant="ghost" icon="stop" onClick={() => guard(api.stopSession(s.id))}>Stop</Button> : null}
+        {push.commits && !s.worktreeGone ? <span title={push.tip}><Button variant="secondary" icon="cloud-arrow-up" loading={push.busy} onClick={push.push}>Push · {push.commits}</Button></span> : null}
         <Button variant="secondary" icon="arrow-square-out" onClick={() => guard(api.openInEditor(s.id))}>Open in editor</Button>
         {s.mergedAt ? <Badge tone="ready">Merged into {s.mergedInto}</Badge> : s.prUrl ? <><Button variant="ghost" icon="git-pull-request" onClick={() => api.openExternal(s.prUrl!)}>View pull request</Button>{prNumber(s.prUrl) ? <Button variant="primary" icon="git-merge" onClick={() => setUI({ mergingPr: { repoId: s.repoId, number: prNumber(s.prUrl)!, sessionId: s.id } })}>Merge pull request</Button> : null}</>
           : s.status === 'ready' ? <Button variant="primary" icon={deliverMerge ? 'git-merge' : 'git-pull-request'} onClick={() => setTab('changes')}>{deliverMerge ? 'Merge changes' : 'Create pull request'}</Button>
@@ -490,7 +493,7 @@ function UsagePanel({ s }: { s: S }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <span style={label}>Worktree</span>
         <span className="selectable" style={{ font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-2)', wordBreak: 'break-all' }}>{tilde(s.worktree, app.home)}</span>
-        <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>Isolated from your main checkout.{s.removeAfterMerge ? ' Removed after the PR merges.' : ''}</span>
+        <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>Isolated from your main checkout.{s.removeAfterMerge || (s.deleteBranchAfterMerge ?? false) ? ' Removed after the PR merges.' : ''}</span>
         <div style={{ display: 'flex', gap: 6 }}>
           <Button size="sm" variant="ghost" icon={s.archivedAt ? 'arrow-counter-clockwise' : 'archive'} disabled={!s.archivedAt && (s.status === 'working' || s.status === 'attention')} onClick={() => guard(api.archiveSession(s.id, !s.archivedAt))}>{s.archivedAt ? 'Restore' : 'Archive'}</Button>
           <Button size="sm" variant="ghost" icon="trash" onClick={() => setUI({ deleting: s.id })}>Delete session…</Button>

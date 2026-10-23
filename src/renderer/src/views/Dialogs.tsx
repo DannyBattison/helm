@@ -262,7 +262,7 @@ export function MergePr({ target, onClose }: { target: { repoId: string; number:
   const session = app.sessions.find((x) => x.id === target.sessionId);
   const [pr, setPr] = React.useState<PullRequest | null>(null);
   const [method, setMethod] = React.useState<MergeMethod>(app.settings.mergeMethod);
-  const [del, setDel] = React.useState(!!session?.removeAfterMerge);
+  const [del, setDel] = React.useState(!!(session ? session.deleteBranchAfterMerge ?? session.removeAfterMerge : false));
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState('');
   React.useEffect(() => { api.repoPulls(target.repoId).then((l) => setPr(l.find((p) => p.number === target.number) || null)).catch((e) => setErr(errText(e))); }, []);
@@ -293,8 +293,8 @@ export function MergePr({ target, onClose }: { target: { repoId: string; number:
           <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>{METHOD_HELP[method]}</span>
         </div>
         <Checkbox checked={del} onChange={setDel} label={<span>Delete the branch on GitHub{pr ? <> <code style={{ font: 'var(--type-data)' }}>{pr.branch}</code></> : null}</span>}
-          description="Your local branch and worktree follow the Remove worktree setting." />
-        {session ? <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>{session.removeAfterMerge ? 'The worktree is removed afterwards, ' : 'The worktree is kept, '}and the session is {app.settings.afterMerge === 'archive' ? 'archived' : app.settings.afterMerge === 'delete' ? 'deleted' : 'left as it is'}.</span> : null}
+          description="Also deletes your local branch, which removes the worktree too. Leave it off to keep both." />
+        {session ? <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>{session.removeAfterMerge || del ? 'The worktree is removed afterwards, ' : 'The worktree is kept, '}and the session is {app.settings.afterMerge === 'archive' ? 'archived' : app.settings.afterMerge === 'delete' ? 'deleted' : 'left as it is'}.</span> : null}
       </div>
     </Dialog>
   );

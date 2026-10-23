@@ -21,6 +21,7 @@ export const defaultSettings = (): Settings => ({
   cloneRoot: join(home, 'code'),
   branchPrefix: 'agent/',
   removeAfterMerge: true,
+  deleteBranchAfterMerge: true,
   deliver: 'pr',
   mergeMethod: 'merge',
   afterMerge: 'archive',

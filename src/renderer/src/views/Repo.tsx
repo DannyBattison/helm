@@ -9,6 +9,7 @@ import { langFromPath } from '../highlight';
 import { DiffLine, SplitRows } from './Changes';
 import { TranscriptItem } from './Session';
 import { RepoMemory } from './Memory';
+import { usePush } from './push';
 import { TranscriptList } from './TranscriptList';
 
 const ROW = 36;
@@ -411,6 +412,7 @@ export function Repo({ id, themeKey, tab: firstTab }: { id: string; themeKey: 'd
   const [sel, setSel] = React.useState(0);
   const [history, setHistory] = React.useState<HistoryCommit[] | null>(null);
   const [wts, setWts] = React.useState<WorktreeInfo[] | null>(null);
+  const pushes = usePush(id);
   const [prs, setPrs] = React.useState<PullRequest[] | null>(null);
   const [files, setFiles] = React.useState<FileChange[] | null>(null);
   const [diff, setDiff] = React.useState<{ path?: string } | null>(null);
@@ -468,6 +470,7 @@ export function Repo({ id, themeKey, tab: firstTab }: { id: string; themeKey: 'd
             return <span title={tip} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, height: 20, padding: '0 7px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-raised)', boxShadow: 'inset 0 0 0 1px var(--border)', font: '400 11.5px/1 var(--font-mono)', color: 'var(--text-2)', whiteSpace: 'nowrap' }}><i className="ph ph-coins" style={{ fontSize: 12, color: 'var(--text-3)' }} />{fmtTokens(n)} tokens lifetime</span>;
           })()}
           <span style={{ flex: 1 }} />
+          <span title={pushes.tip}><Button variant="ghost" icon="cloud-arrow-up" loading={pushes.busy} disabled={pushes.ahead.length === 0} onClick={pushes.push}>{pushes.commits ? `Push all · ${pushes.commits}` : 'Push all'}</Button></span>
           <Button variant="ghost" icon="arrows-clockwise" loading={fetching} onClick={fetchNow}>Fetch</Button>
           <Button variant="ghost" iconRight="arrow-square-out" onClick={() => api.openExternal(`https://github.com/${repo.id}`)}>GitHub</Button>
           <Button variant="primary" icon="plus" kbd={platform() === 'darwin' ? '⌘N' : 'Ctrl+N'} onClick={() => setUI({ newSession: { repoId: repo.id } })}>New session</Button>

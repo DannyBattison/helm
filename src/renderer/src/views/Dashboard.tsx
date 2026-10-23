@@ -1,4 +1,5 @@
 import React from 'react';
+import { usePush } from './push';
 import { sessionTitle, type ExternalSession, type Session } from '@shared/types';
 import { api, platform } from '../api';
 import { ago, clock, fmtTokens, lifetimeTokens, laneAxis, laneData, LANE_MIN, livePlan, repoOf, reposWithSessions, runningSubagents, sessionTokens, totals, untilReset } from '../lib';
@@ -138,17 +139,7 @@ function FirstRun() {
 export function Dashboard({ filter: initial }: { filter?: string }) {
   const app = useApp();
   const [filter, setFilter] = React.useState(initial || 'all');
-  const [pushing, setPushing] = React.useState(false);
-  const pushAll = async () => {
-    setPushing(true);
-    try {
-      const r = await api.pushAll();
-      const dirty = r.uncommitted ? ` ${r.uncommitted} ${r.uncommitted === 1 ? 'session has' : 'sessions have'} uncommitted changes, which were not pushed.` : '';
-      if (r.failed.length) toast({ tone: 'error', title: `Pushed ${r.pushed.length}, ${r.failed.length} failed`, description: r.failed.map((f) => `${f.id}: ${f.error}`).join('\n') + dirty });
-      else toast({ tone: 'ready', title: r.pushed.length ? `Pushed ${r.pushed.length} ${r.pushed.length === 1 ? 'branch' : 'branches'}` : 'Nothing to push', description: dirty.trim() || undefined });
-    } catch (e: any) { toast({ tone: 'error', title: 'Push failed', description: String(e?.message || e) }); }
-    setPushing(false);
-  };
+  const pushes = usePush();
   const [now, setNow] = React.useState(Date.now());
   React.useEffect(() => { const i = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(i); }, []);
   const t = totals(app);
@@ -181,7 +172,7 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
             <h1 style={{ margin: 0, font: '600 20px/1.2 var(--font-sans)', letterSpacing: 'var(--tracking-tight)' }}>{filter === 'attention' ? 'Needs you' : 'Overview'}</h1>
             <span style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>{date} · {liveSessions} {liveSessions === 1 ? 'session' : 'sessions'} across {withSessions} {withSessions === 1 ? 'repository' : 'repositories'}{totalExt ? ` · ${totalExt} external, read-only` : ''}</span>
           </div>
-          <Button variant="ghost" icon="cloud-arrow-up" loading={pushing} disabled={app.sessions.length === 0} onClick={pushAll}>Push all</Button>
+          <span title={pushes.tip}><Button variant="ghost" icon="cloud-arrow-up" loading={pushes.busy} disabled={pushes.ahead.length === 0} onClick={pushes.push}>{pushes.commits ? `Push all · ${pushes.commits}` : 'Push all'}</Button></span>
           <Button variant="ghost" icon="book-bookmark" onClick={() => setUI({ adding: true })}>Add repository</Button>
           <Button variant="primary" icon="plus" kbd={platform() === 'darwin' ? '⌘N' : 'Ctrl+N'} disabled={app.repos.length === 0} onClick={() => setUI({ newSession: {} })}>New session</Button>
         </div>
@@ -262,8 +253,39 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
             ))}
           </section>
         ) : null}
+        <LifetimeByRepo />
       </div>
     </div>
+  );
+}
+
+/** Tokens used per repository over its whole life, deleted sessions included. Shown for every repository, with or without sessions. */
+function LifetimeByRepo() {
+  const app = useApp();
+  const { fmt } = useMoney();
+  const api = app.settings.billing === 'api';
+  const rows = app.repos.map((r) => ({ r, l: app.lifetime[r.id], n: lifetimeTokens(app.lifetime[r.id]) })).sort((a, b) => b.n - a.n);
+  const max = Math.max(1, ...rows.map((x) => x.n));
+  const total = rows.reduce((n, x) => n + x.n, 0);
+  if (!rows.length) return null;
+  return (
+    <section style={{ borderRadius: 'var(--radius-lg)', background: 'var(--bg-panel)', boxShadow: 'inset 0 0 0 1px var(--border)', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px' }}>
+        <span style={{ font: '600 13px/1 var(--font-sans)' }}>Tokens by repository</span>
+        <span style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>Lifetime, including deleted sessions</span>
+        <span style={{ flex: 1 }} />
+        <span style={{ font: '500 12px/1 var(--font-mono)', color: 'var(--text-2)' }}>{fmtTokens(total)} total</span>
+      </div>
+      {rows.map(({ r, l, n }) => (
+        <div key={r.id} onClick={() => go({ screen: 'repo', id: r.id })} className="helm-row-hover" title={l ? `Input ${fmtTokens(l.input)} · Output ${fmtTokens(l.output)} · Cache read ${fmtTokens(l.cacheRead)}` : 'No usage yet'}
+          style={{ display: 'grid', gridTemplateColumns: 'minmax(160px, 260px) 1fr 80px' + (api ? ' 80px' : ''), gap: 14, alignItems: 'center', minHeight: 38, padding: '0 16px', borderTop: '1px solid var(--border-subtle)', cursor: 'pointer' }}>
+          <span style={{ font: '500 12.5px/1 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><span style={{ fontWeight: 400, color: 'var(--text-3)' }}>{r.owner}/</span>{r.name}</span>
+          <span style={{ height: 6, borderRadius: 3, background: 'var(--bg-raised)', overflow: 'hidden' }}><span style={{ display: 'block', height: '100%', width: (n / max) * 100 + '%', borderRadius: 3, background: 'var(--accent)' }} /></span>
+          <span style={{ font: '500 12px/1 var(--font-mono)', textAlign: 'right' }}>{n ? fmtTokens(n) : '0'}</span>
+          {api ? <span style={{ font: '400 12px/1 var(--font-mono)', color: 'var(--text-3)', textAlign: 'right' }}>{l ? fmt(l.cost) : ''}</span> : null}
+        </div>
+      ))}
+    </section>
   );
 }
 

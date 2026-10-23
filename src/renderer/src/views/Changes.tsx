@@ -109,6 +109,7 @@ export function Changes({ s }: { s: Session }) {
   const [body, setBody] = React.useState('');
   const [draft, setDraft] = React.useState(false);
   const [rm, setRm] = React.useState(s.removeAfterMerge);
+  const [delBranch, setDelBranch] = React.useState(s.deleteBranchAfterMerge ?? s.removeAfterMerge);
   const [deliver, setDeliver] = React.useState<'pr' | 'merge'>(app.settings.deliver);
   const [armed, setArmed] = React.useState(false);
   React.useEffect(() => setArmed(false), [deliver, base, title]);
@@ -163,12 +164,12 @@ export function Changes({ s }: { s: Session }) {
   };
   const filesToStage = checked.map((f) => f.path).filter(pickable);
   const createPr = () => run('pr', async () => {
-    const r = await api.createPr({ sessionId: s.id, base, title, body, draft, removeAfterMerge: rm, files: filesToStage, message: title });
+    const r = await api.createPr({ sessionId: s.id, base, title, body, draft, removeAfterMerge: rm, deleteBranchAfterMerge: delBranch, files: filesToStage, message: title });
     toast({ tone: 'ready', title: 'Pull request opened', description: r.url || undefined });
     if (r.url) void api.openExternal(r.url);
   });
   const merge = () => run('merge', async () => {
-    const r = await api.mergeDirect({ sessionId: s.id, base, message: title || s.task, files: filesToStage, removeAfterMerge: rm });
+    const r = await api.mergeDirect({ sessionId: s.id, base, message: title || s.task, files: filesToStage, removeAfterMerge: rm || delBranch, deleteBranchAfterMerge: delBranch });
     setArmed(false);
     toast({ tone: 'ready', title: `Merged into ${base}`, description: [`${r.sha} is on GitHub`, r.localUpdated ? `local ${base} updated` : r.localNote].filter(Boolean).join(' · ') });
     if (rm && app.settings.afterMerge === 'delete') go({ screen: 'overview' });
@@ -291,7 +292,8 @@ export function Changes({ s }: { s: Session }) {
             {deliver === 'pr' ? <textarea rows={8} value={body} onChange={(e) => { bodyEdited.current = true; setBody(e.target.value); }}
               style={{ resize: 'vertical', border: 'none', outline: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border)', color: 'var(--text-1)', font: '400 12px/1.55 var(--font-mono)', padding: '8px 10px' }} /> : null}
             {deliver === 'pr' ? <Checkbox checked={draft} onChange={setDraft} label="Open as draft" /> : null}
-            <Checkbox checked={rm} onChange={setRm} label={deliver === 'pr' ? 'Remove worktree after merge' : 'Remove worktree and branch after merging'} description={s.worktree} />
+            <Checkbox checked={rm || delBranch} disabled={delBranch} onChange={setRm} label="Remove worktree after merge" description={delBranch ? 'Needed to delete the branch' : s.worktree} />
+            <Checkbox checked={delBranch} onChange={setDelBranch} label={<span>Delete the branch after merge <code style={{ font: 'var(--type-data)' }}>{s.branch}</code></span>} description="Here and on GitHub" />
           </div>
         </div>
         <div style={{ flex: 'none', padding: 12, borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 8 }}>

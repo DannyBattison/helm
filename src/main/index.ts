@@ -376,19 +376,21 @@ const api: HelmApi = {
     const s = w.sessionId ? sessions.get(w.sessionId) : undefined;
     if (s) await sessions.refreshStats(s);
   },
-  async pushAll() {
+  async pushStatus(repoId) { return pushTargets(repoId); },
+  async push({ repoId, target }) {
     const pushed: string[] = [], failed: { id: string; error: string }[] = [];
     let uncommitted = 0;
-    for (const s of [...sessions.sessions]) {
-      if (s.archivedAt || s.worktreeGone || !(await G.fileExists(s.worktree))) continue;
+    const list = (await pushTargets(repoId)).filter((t) => (!target || t.id === `${t.repoId}${t.kind === 'checkout' ? '' : ''}` || t.id === target || (target === '@checkout' && t.kind === 'checkout')) && t.ahead > 0);
+    for (const t of list) {
+      const key = t.kind === 'checkout' ? `${t.repoId} (${t.branch})` : t.id;
       try {
-        const info = await sessions.deleteInfo(s.id);
-        uncommitted += info.dirty > 0 ? 1 : 0;
-        if (info.unpushed === 0) continue;
-        await G.git(s.worktree, 'push', '-u', 'origin', s.branch);
-        pushed.push(s.id);
-      } catch (e: any) { failed.push({ id: s.id, error: String(e?.message || e).split('\n').slice(-2).join(' ').trim() }); }
+        const cwd = t.kind === 'checkout' ? repos.must(t.repoId).localPath : sess(t.id).worktree;
+        if (t.dirty) uncommitted++;
+        await G.git(cwd, 'push', '-u', 'origin', t.branch);
+        pushed.push(key);
+      } catch (e: any) { failed.push({ id: key, error: String(e?.message || e).split('\n').slice(-2).join(' ').trim() }); }
     }
+    emitState();
     return { pushed, failed, uncommitted };
   },
   async createPr(input) {
@@ -399,6 +401,7 @@ const api: HelmApi = {
     const url = await GH.createPull(repo.id, { head: s.branch, base: input.base, title: input.title, body: input.body, draft: input.draft });
     s.prUrl = url;
     s.removeAfterMerge = input.removeAfterMerge;
+    s.deleteBranchAfterMerge = input.deleteBranchAfterMerge;
     store.data.activity.unshift({ id: Math.random().toString(36).slice(2), t: Date.now(), kind: 'ready', who: s.id, what: `opened a pull request`, repo: repo.name, sessionId: s.id });
     store.save();
     emitState();
@@ -410,6 +413,8 @@ const api: HelmApi = {
     if (pr.state !== 'open') throw new Error(`#${number} is already ${pr.state}.`);
     if (pr.draft) throw new Error(`#${number} is a draft. Mark it ready for review on GitHub first.`);
     mergingHere.add(`${repoId}#${number}`);
+    const mine = sessions.sessions.find((x) => x.prUrl === pr.url);
+    if (mine) { mine.deleteBranchAfterMerge = opts.deleteBranch; store.save(); }
     try { await GH.mergePull(repoId, number, opts.method); }
     catch (e: any) { mergingHere.delete(`${repoId}#${number}`); throw new Error(String(e?.message || e).replace(/^GitHub:\s*/, '').replace(/\s*\(\d{3}\)$/, '') || 'GitHub would not merge it.'); }
     if (opts.deleteBranch) await GH.deleteBranch(repoId, pr.branch).catch(() => undefined);
@@ -453,7 +458,9 @@ const api: HelmApi = {
     store.data.activity.unshift({ id: Math.random().toString(36).slice(2), t: Date.now(), kind: 'merge', who: store.data.user?.login || 'you', human: true, what: `merged ${s.branch} into ${base}`, repo: repo.name, sessionId: s.id });
     store.save();
     emitState();
-    await sessions.finishMerged(s.id, { into: base, at: s.mergedAt }, { worktree: input.removeAfterMerge, branch: input.removeAfterMerge });
+    // A branch cannot be deleted while it is checked out, so deleting it takes the worktree with it.
+    if (input.deleteBranchAfterMerge) await G.gitOk(s.worktree, 'push', 'origin', '--delete', s.branch);
+    await sessions.finishMerged(s.id, { into: base, at: s.mergedAt }, { worktree: input.removeAfterMerge || input.deleteBranchAfterMerge, branch: input.deleteBranchAfterMerge });
     return { sha, localUpdated, localNote };
   },
   async requestChanges(id, comments) {
@@ -564,6 +571,32 @@ async function refreshRates() {
   } catch { /* the built-in rates cover it */ }
 }
 
+// ------------------------------------------------------------------ pushing
+/** Commits on `branch` that no remote has: against origin/<branch> when GitHub has the branch, otherwise against everything on origin. */
+async function aheadOf(cwd: string, branch: string): Promise<{ ahead: number; onRemote: boolean }> {
+  const onRemote = await G.gitOk(cwd, 'rev-parse', '--verify', '--quiet', `refs/remotes/origin/${branch}`);
+  const args = onRemote ? ['rev-list', '--count', `origin/${branch}..${branch}`] : ['rev-list', '--count', branch, '--not', '--remotes=origin'];
+  return { ahead: +(await G.git(cwd, ...args).catch(() => '0')).trim() || 0, onRemote };
+}
+
+/** Every branch helm knows of that could be pushed: its sessions' branches, and the branch checked out in each repository's own folder. */
+async function pushTargets(repoId?: string): Promise<import('../shared/types').PushTarget[]> {
+  const out: import('../shared/types').PushTarget[] = [];
+  for (const r of store.data.repos.filter((x) => !repoId || x.id === repoId)) {
+    const cur = (await G.git(r.localPath, 'symbolic-ref', '--short', '-q', 'HEAD').catch(() => '')).trim();
+    if (cur) {
+      const dirty = (await G.git(r.localPath, 'status', '--porcelain', '--untracked-files=no').catch(() => '')).split('\n').filter(Boolean).length;
+      out.push({ id: '@checkout', kind: 'checkout', repoId: r.id, branch: cur, dirty, ...(await aheadOf(r.localPath, cur)) });
+    }
+    for (const s of sessions.sessions.filter((x) => x.repoId === r.id && !x.worktreeGone && !x.archivedAt)) {
+      if (!(await G.fileExists(s.worktree))) continue;
+      const dirty = (await G.git(s.worktree, 'status', '--porcelain').catch(() => '')).split('\n').filter(Boolean).length;
+      out.push({ id: s.id, kind: 'session', repoId: r.id, branch: s.branch, dirty, ...(await aheadOf(s.worktree, s.branch)) });
+    }
+  }
+  return out;
+}
+
 // ------------------------------------------------------------------ merged PR cleanup
 const mergingHere = new Set<string>();
 async function pollMerges() {
@@ -576,7 +609,8 @@ async function pollMerges() {
       for (const s of list) {
         const pr = prs.find((p) => p.url === s.prUrl);
         if (pr?.state === 'merged') {
-          await sessions.finishMerged(s.id, { into: pr.base }, { worktree: s.removeAfterMerge, branch: s.removeAfterMerge });
+          const delBranch = s.deleteBranchAfterMerge ?? s.removeAfterMerge;
+          await sessions.finishMerged(s.id, { into: pr.base }, { worktree: s.removeAfterMerge || delBranch, branch: delBranch });
           if (!mergingHere.has(`${repoId}#${pr.number}`)) store.data.activity.unshift({ id: Math.random().toString(36).slice(2), t: Date.now(), kind: 'merge', who: store.data.user?.login || 'you', human: true, what: `merged PR #${pr.number} “${pr.title}”`, repo: repoId.split('/')[1] });
         }
       }
