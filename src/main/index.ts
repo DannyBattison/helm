@@ -11,6 +11,7 @@ import { SessionManager } from './sessions';
 import { Store } from './store';
 import { Terminals } from './terminal';
 import { expandHome, home, run } from './util';
+import { CURRENCIES, currencyForRegion } from '../shared/money';
 
 let win: BrowserWindow | null = null;
 let claudeVersion: string | null = null;
@@ -33,6 +34,8 @@ function buildState(): AppState {
     weekSpend: store.weekSpend(),
     tokensToday: store.tokensToday(),
     claudeVersion,
+    plan: store.data.plan,
+    rates: store.data.fx.rates,
     platform: process.platform,
     home
   };
@@ -115,6 +118,7 @@ const api: HelmApi = {
   async updateSettings(patch: Partial<Settings>) {
     Object.assign(store.data.settings, patch);
     if ('theme' in patch) applyTheme();
+    if ('planPause5h' in patch || 'planPauseWeek' in patch || 'billing' in patch) void sessions.enforcePlan();
     if ('claudePath' in patch) claudeVersion = await detectClaude(store.data.settings.claudePath);
     store.save();
     emitState();
@@ -181,6 +185,8 @@ const api: HelmApi = {
   deleteSession: (id, rm) => sessions.remove(id, rm),
   setSessionModel: (id, m) => sessions.setModel(id, m),
   setSessionPermMode: (id, m) => sessions.setPermMode(id, m),
+  async setSessionMaxSubagents(id, max) { sess(id).maxSubagents = max ?? undefined; store.save(); emitState(); },
+  async setRepoMaxSubagents(id, max) { repos.must(id).maxSubagents = max ?? undefined; store.save(); emitState(); },
   resolveAsk: (id, askId, answer) => sessions.resolveAsk(id, askId, answer),
   getTranscript: (id) => store.transcript(id),
 
@@ -280,6 +286,33 @@ async function commitFiles(wt: string, files: string[], message: string) {
   if (staged) await G.git(wt, 'commit', '-m', message);
 }
 
+// ------------------------------------------------------------------ currency
+/** First launch only: pick a display currency from the IP address, falling back to the OS locale. */
+async function detectCurrency() {
+  const st = store.data.settings;
+  if (st.currencyDetected) return;
+  let cur: string | null = null;
+  try {
+    const j: any = await (await fetch('https://ipapi.co/json/', { signal: AbortSignal.timeout(4000), headers: { 'User-Agent': 'helm' } })).json();
+    if (j?.currency && (CURRENCIES as readonly string[]).includes(j.currency)) cur = j.currency;
+  } catch { /* offline or blocked */ }
+  cur ||= currencyForRegion(app.getLocale().split('-')[1]);
+  if (!cur) return;
+  st.currency = cur;
+  st.currencyDetected = true;
+  store.save();
+  emitState();
+}
+
+async function refreshRates() {
+  const fx = store.data.fx;
+  if (Date.now() - fx.at < 12 * 3600_000 && Object.keys(fx.rates).length) return;
+  try {
+    const j: any = await (await fetch('https://api.frankfurter.dev/v1/latest?base=USD', { signal: AbortSignal.timeout(5000) })).json();
+    if (j?.rates) { store.data.fx = { rates: { USD: 1, ...j.rates }, at: Date.now() }; store.save(); emitState(); }
+  } catch { /* the built-in rates cover it */ }
+}
+
 // ------------------------------------------------------------------ merged PR cleanup
 async function pollMerges() {
   const open = store.data.sessions.filter((s) => s.prUrl && s.removeAfterMerge);
@@ -335,6 +368,8 @@ else {
     nativeTheme.themeSource = store.data.settings.theme;
     createWindow();
     setInterval(pollMerges, 120_000);
+    void detectCurrency().then(refreshRates);
+    setInterval(refreshRates, 6 * 3600_000);
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
   });
   app.on('before-quit', async (e) => {

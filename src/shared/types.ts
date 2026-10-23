@@ -17,6 +17,8 @@ export interface Repo {
   /** Weekly spend cap for this repository, USD. */
   cap: number;
   addedAt: number;
+  /** Overrides the default limit on subagents running at once across this repository. */
+  maxSubagents?: number;
 }
 
 export interface AskQuestion {
@@ -38,6 +40,24 @@ export interface PendingAsk {
   /** Pattern offered by "Always allow", e.g. `pnpm test *`. */
   pattern?: string;
   questions?: AskQuestion[];
+  /** Which limit paused the session, for budget asks. */
+  scope?: 'session' | 'repo' | 'plan';
+}
+
+export interface Subagent {
+  /** The Agent tool call that started it. */
+  id: string;
+  /** The subagent whose transcript made the call, or null when the session itself did. */
+  parentId: string | null;
+  description: string;
+  agentType: string;
+  status: 'working' | 'done' | 'failed' | 'stopped';
+  startedAt: number;
+  endedAt?: number;
+  tools: number;
+  tokens: number;
+  summary?: string;
+  background?: boolean;
 }
 
 export interface Session {
@@ -71,10 +91,14 @@ export interface Session {
   error?: string;
   prUrl?: string;
   removeAfterMerge: boolean;
+  subagents: Subagent[];
+  /** Overrides the default limit on subagents running at once in this session. */
+  maxSubagents?: number;
 }
 
 export type TranscriptEvent =
-  | { k: 'user'; t: number; text: string }
+  | { k: 'user'; t: number; text: string; from?: string }
+  | { k: 'subagent'; id: string; description: string; agentType: string; status: Subagent['status']; summary?: string }
   | { k: 'agent'; text: string; list?: string[] }
   | { k: 'tools'; items: [string, string, string][] }
   | { k: 'edit'; file: string; add: number; del: number; lines: [string, string][] }
@@ -111,6 +135,22 @@ export interface Settings {
   weeklyLimit: number;
   sessionBudget: number;
   warnAt: number;
+  /** Most subagents one session may run at once. 0 turns subagents off. */
+  maxSubagentsSession: number;
+  /** Most subagents that may run at once across all sessions of a repository. */
+  maxSubagentsRepo: number;
+  /** subscription: Claude Max/Pro login, limited by plan usage windows. api: pay per token, limited by dollar budgets. */
+  billing: 'subscription' | 'api';
+  /** True once billing has been chosen or detected from the first session. */
+  billingDetected: boolean;
+  /** Display currency. Amounts are stored in USD. */
+  currency: string;
+  /** True once the currency has been chosen or detected, so detection only runs on first launch. */
+  currencyDetected: boolean;
+  /** Pause agents at this percentage of the 5-hour subscription window. 0 is off. */
+  planPause5h: number;
+  /** Pause agents at this percentage of the weekly subscription limit. 0 is off. */
+  planPauseWeek: number;
   notifyAttention: { desktop: boolean; sound: boolean };
   notifyReady: { desktop: boolean; sound: boolean };
   notifyFailed: { desktop: boolean; sound: boolean };
@@ -129,6 +169,21 @@ export interface User {
   orgs: string[];
 }
 
+export interface PlanWindow {
+  /** Fraction used, 0 to 1. */
+  util: number;
+  /** Epoch seconds. */
+  resetsAt: number;
+}
+
+/** Claude subscription usage as reported by Claude Code's rate-limit events. */
+export interface PlanUsage {
+  fiveHour?: PlanWindow;
+  weekly?: PlanWindow;
+  /** When the numbers were last reported, epoch ms. */
+  at: number;
+}
+
 export interface AppState {
   ready: boolean;
   user: User | null;
@@ -140,6 +195,9 @@ export interface AppState {
   weekSpend: Record<string, number>;
   tokensToday: number;
   claudeVersion: string | null;
+  plan: PlanUsage;
+  /** USD to other currencies. */
+  rates: Record<string, number>;
   platform: string;
   home: string;
 }
@@ -286,6 +344,8 @@ export interface HelmApi {
   deleteSession(sessionId: string, removeWorktree: boolean): Promise<void>;
   setSessionModel(sessionId: string, model: ModelAlias): Promise<void>;
   setSessionPermMode(sessionId: string, mode: PermMode): Promise<void>;
+  setSessionMaxSubagents(sessionId: string, max: number | null): Promise<void>;
+  setRepoMaxSubagents(repoId: string, max: number | null): Promise<void>;
   resolveAsk(sessionId: string, askId: string, answer: { decision: 'approve' | 'always' | 'deny'; text?: string } | { answers: Record<string, string> } | { addBudget: number }): Promise<void>;
   getTranscript(sessionId: string): Promise<TranscriptEvent[]>;
 

@@ -1,7 +1,8 @@
 import { query, type Query, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { copyFile, mkdir, readFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import type { ActivityEvent, ModelAlias, NewSessionInput, PendingAsk, PermMode, Session, Status, TranscriptEvent } from '../shared/types';
+import { fmtMoney } from '../shared/money';
+import type { ActivityEvent, ModelAlias, NewSessionInput, PendingAsk, PermMode, Session, Status, Subagent, TranscriptEvent } from '../shared/types';
 import * as G from './git';
 import type { Store } from './store';
 import { commandPattern, expandHome, globMatch, hasShellControl, uid } from './util';
@@ -43,7 +44,8 @@ class InputQueue implements AsyncIterable<SDKUserMessage> {
 
 interface AskWaiter {
   ask: PendingAsk;
-  scope: 'session' | 'repo' | 'tool';
+  scope: 'session' | 'repo' | 'plan' | 'tool';
+  planKey?: 'fiveHour' | 'weekly';
   resolve(r: any): void;
   input?: Record<string, unknown>;
   tool?: string;
@@ -58,9 +60,14 @@ interface Runtime {
   baseCost: number;
   interrupted: boolean;
   budgetPaused: boolean;
-  toolStart: Map<string, { t: number; idx: number; kind: string; input: any }>;
+  toolStart: Map<string, { t: number; idx: number; kind: string; input: any; tkey: string }>;
   statsTimer?: NodeJS.Timeout;
-  lastTools?: number;
+  /** Index of the open tools group in each transcript, so consecutive reads share one box. */
+  lastTools: Map<string, number>;
+  /** Where each subagent's card sits in its parent transcript. */
+  subEvent: Map<string, { tkey: string; idx: number }>;
+  /** Subagents the limit hook let start, so a parallel batch is counted one by one. */
+  admitted: Set<string>;
 }
 
 // Rough list prices, USD per million tokens. Only used between result messages; the SDK's total replaces it.
@@ -86,9 +93,13 @@ export const MODEL_ALIAS: Record<ModelAlias, string> = { sonnet: 'sonnet', opus:
 
 export class SessionManager {
   private rt = new Map<string, Runtime>();
+  /** Plan windows the user chose to continue past, keyed to the window's reset time so it lapses on reset. */
+  private planOverride: Partial<Record<'fiveHour' | 'weekly', number>> = {};
   constructor(private store: Store, private hooks: Hooks) {}
 
   get sessions() { return this.store.data.sessions; }
+  private usd = (v: number, whole = false) => fmtMoney(v, this.store.data.settings.currency, this.store.data.fx.rates, { whole });
+  private get billing() { return this.store.data.settings.billing; }
   get = (id: string) => this.sessions.find((s) => s.id === id);
   repoOf = (s: Session) => this.store.data.repos.find((r) => r.id === s.repoId)!;
   private touch() { this.store.save(); this.hooks.emitState(); }
@@ -96,6 +107,8 @@ export class SessionManager {
   /** Called once at startup: nothing is running, so nothing should claim to be. */
   recover() {
     for (const s of this.sessions) {
+      s.subagents ||= [];
+      for (const a of s.subagents) if (a.status === 'working') { a.status = 'stopped'; a.endedAt = a.endedAt ?? Date.now(); }
       if (s.status === 'working' || s.status === 'attention') {
         s.status = 'idle';
         s.step = 'Stopped when helm closed';
@@ -162,7 +175,7 @@ export class SessionManager {
     const s: Session = {
       id, repoId: repo.id, status: 'working', task: input.task, step: 'Starting', branch, base: remoteBase, worktree: wt,
       model: input.model, permMode: input.permMode, startedAt: now, tokens: { input: 0, output: 0, cacheRead: 0 }, cost: 0, budget: input.budget,
-      ctx: 0, add: 0, del: 0, files: 0, filesTouched: {}, timeline: [{ t: now, status: 'working' }], commits: [], removeAfterMerge: st.removeAfterMerge
+      ctx: 0, add: 0, del: 0, files: 0, filesTouched: {}, timeline: [{ t: now, status: 'working' }], commits: [], removeAfterMerge: st.removeAfterMerge, subagents: []
     };
     this.sessions.push(s);
     this.activity(s, 'start', `started on ${branch}`);
@@ -180,6 +193,7 @@ export class SessionManager {
       `Commit your work in small commits with clear messages. End every commit message with a blank line and this trailer: "Co-authored-by: helm session ${s.id} <noreply@helm.app>".`,
       'Do not push and do not open pull requests; the user does that from helm after reviewing your changes.',
       'If you need a decision from the user, ask with the AskUserQuestion tool instead of guessing.',
+      `Subagents: at most ${this.sessionLimit(s)} may run at once in this session and ${this.repoLimit(s)} across the repository. Start independent work in parallel only within those limits.`,
       st.runTests ? 'Before you finish, run the project\'s tests (from package.json, go.mod, Makefile or equivalent) when they exist, and state the result.' : ''
     ].filter(Boolean).join('\n');
   }
@@ -188,7 +202,7 @@ export class SessionManager {
     const abort = new AbortController();
     const queue = new InputQueue();
     const settings = this.store.data.settings;
-    const rt: Runtime = { q: null as any, queue, abort, asks: new Map(), turnCost: 0, baseCost: s.cost, interrupted: false, budgetPaused: false, toolStart: new Map() };
+    const rt: Runtime = { q: null as any, queue, abort, asks: new Map(), turnCost: 0, baseCost: s.cost, interrupted: false, budgetPaused: false, toolStart: new Map(), lastTools: new Map(), subEvent: new Map(), admitted: new Set() };
     const options: any = {
       cwd: s.worktree,
       model: MODEL_ALIAS[s.model],
@@ -197,6 +211,7 @@ export class SessionManager {
       settingSources: ['user', 'project', 'local'],
       systemPrompt: { type: 'preset', preset: 'claude_code', append: this.systemAppend(s) },
       canUseTool: (tool: string, input: Record<string, unknown>, o: any) => this.canUse(s, rt, tool, input, o),
+      hooks: { PreToolUse: [{ matcher: 'Agent|Task', hooks: [async (input: any) => this.checkSubagentLimit(s, rt, input)] }] },
       env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'helm' }
     };
     const exe = settings.claudePath || this.hooks.claudePath();
@@ -221,6 +236,7 @@ export class SessionManager {
       }
     } finally {
       if (this.rt.get(s.id) === rt) this.rt.delete(s.id);
+      this.stopSubagents(s);
       for (const w of rt.asks.values()) w.resolve({ behavior: 'deny', message: 'Session ended' });
       if (s.status === 'working' || s.status === 'attention') this.setStatus(s, 'idle', 'Stopped');
       s.ask = undefined;
@@ -232,23 +248,35 @@ export class SessionManager {
     if (m.type === 'system' && m.subtype === 'init') {
       s.claudeSessionId = m.session_id;
       s.modelName = m.model;
+      const st = this.store.data.settings;
+      if (!st.billingDetected) {
+        // A Claude login reports no API key; an API key means tokens are paid for.
+        st.billing = m.apiKeySource === 'none' ? 'subscription' : 'api';
+        st.billingDetected = true;
+      }
       this.touch();
       return;
     }
+    if (m.type === 'system' && m.subtype === 'task_notification' && m.tool_use_id) return this.onTaskDone(s, rt, m);
+    if (m.type === 'rate_limit_event') return this.onRateLimit(m.rate_limit_info);
     if (m.type === 'assistant') return this.onAssistant(s, rt, m);
     if (m.type === 'user') return this.onToolResults(s, rt, m);
     if (m.type === 'result') return this.onResult(s, rt, m);
   }
 
   private async onAssistant(s: Session, rt: Runtime, m: any) {
-    if (m.parent_tool_use_id) return; // sub-agent chatter stays out of the main transcript
+    const parent: string | null = m.parent_tool_use_id || null;
+    const sub = parent ? s.subagents.find((x) => x.id === parent) : undefined;
+    if (parent && !sub) return;
+    const tkey = sub ? `${s.id}~${sub.id}` : s.id;
     const u = m.message?.usage;
     if (u) {
       const inp = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0);
       s.tokens.input += inp;
       s.tokens.output += u.output_tokens || 0;
       s.tokens.cacheRead += u.cache_read_input_tokens || 0;
-      s.ctx = inp + (u.cache_read_input_tokens || 0);
+      if (!sub) s.ctx = inp + (u.cache_read_input_tokens || 0);
+      else sub.tokens += inp + (u.output_tokens || 0);
       const [pi, po] = PRICE[s.model] || PRICE.sonnet;
       const est = ((u.input_tokens || 0) * pi + (u.cache_creation_input_tokens || 0) * pi * 1.25 + (u.cache_read_input_tokens || 0) * pi * 0.1 + (u.output_tokens || 0) * po) / 1e6;
       rt.turnCost += est;
@@ -257,25 +285,65 @@ export class SessionManager {
     }
     for (const b of m.message?.content || []) {
       if (b.type === 'text' && b.text?.trim()) {
-        await this.push(s.id, { k: 'agent', text: b.text.trim() });
+        await this.push(tkey, { k: 'agent', text: b.text.trim() });
       } else if (b.type === 'tool_use') {
-        await this.onToolUse(s, rt, b);
+        await this.onToolUse(s, rt, b, tkey, sub);
       }
     }
     this.touch();
     await this.checkBudget(s, rt);
   }
 
-  private async onToolUse(s: Session, rt: Runtime, b: any) {
+  private async startSubagent(s: Session, rt: Runtime, b: any, tkey: string, parentSub?: Subagent) {
+    const input = b.input || {};
+    const now = Date.now();
+    const a: Subagent = {
+      id: b.id, parentId: parentSub?.id ?? null, description: trunc(String(input.description || 'Subagent'), 80),
+      agentType: String(input.subagent_type || 'general-purpose'), status: 'working', startedAt: now, tools: 0, tokens: 0, background: !!input.run_in_background
+    };
+    s.subagents.push(a);
+    const idx = await this.push(tkey, { k: 'subagent', id: a.id, description: a.description, agentType: a.agentType, status: 'working' });
+    rt.subEvent.set(a.id, { tkey, idx });
+    rt.toolStart.set(b.id, { t: now, idx, kind: 'subagent', input, tkey });
+    await this.push(`${s.id}~${a.id}`, { k: 'user', t: now, text: String(input.prompt || ''), from: parentSub ? parentSub.description : s.id });
+    s.step = 'Subagent: ' + a.description;
+    this.activity(s, 'start', `started subagent “${trunc(a.description, 60)}”`);
+    this.touch();
+  }
+
+  private async patchSubagent(rt: Runtime, a: Subagent) {
+    const loc = rt.subEvent.get(a.id);
+    if (loc) await this.patch(loc.tkey, loc.idx, { k: 'subagent', id: a.id, description: a.description, agentType: a.agentType, status: a.status, summary: a.summary });
+  }
+
+  private async finishSubagent(s: Session, rt: Runtime, a: Subagent, status: Subagent['status']) {
+    a.status = status;
+    a.endedAt = Date.now();
+    rt.admitted.delete(a.id);
+    await this.patchSubagent(rt, a);
+    this.scheduleStats(s, rt);
+    this.touch();
+  }
+
+  private async onTaskDone(s: Session, rt: Runtime, m: any) {
+    const a = s.subagents.find((x) => x.id === m.tool_use_id);
+    if (!a || a.status !== 'working') return;
+    if (m.summary) a.summary = trunc(String(m.summary).trim(), 600);
+    await this.finishSubagent(s, rt, a, m.status === 'completed' ? 'done' : m.status === 'stopped' ? 'stopped' : 'failed');
+  }
+
+  private async onToolUse(s: Session, rt: Runtime, b: any, tkey: string, sub?: Subagent) {
     const input = b.input || {};
     const wt = s.worktree;
     const name: string = b.name;
     if (name === 'AskUserQuestion' || name === 'ExitPlanMode' || name === 'TodoWrite') return;
+    if (sub) sub.tools++;
+    if (name === 'Agent' || name === 'Task') return this.startSubagent(s, rt, b, tkey, sub);
     if (COMMAND_TOOLS.has(name)) {
       const cmd = String(input.command || '');
-      const idx = await this.push(s.id, { k: 'bash', id: b.id, cmd, out: '', ok: true, meta: '', done: false });
-      rt.toolStart.set(b.id, { t: Date.now(), idx, kind: 'bash', input });
-      s.step = 'Running ' + trunc(cmd, 80);
+      const idx = await this.push(tkey, { k: 'bash', id: b.id, cmd, out: '', ok: true, meta: '', done: false });
+      rt.toolStart.set(b.id, { t: Date.now(), idx, kind: 'bash', input, tkey });
+      s.step = (sub ? `${sub.description}: ` : '') + 'Running ' + trunc(cmd, 80);
       return;
     }
     if (EDIT_TOOLS.has(name)) {
@@ -297,27 +365,28 @@ export class SessionManager {
           if (e.new_string) { add += n.length; for (const l of n.slice(0, 12)) lines.push(['+', l]); }
         }
       }
-      const idx = await this.push(s.id, { k: 'edit', file, add, del, lines: lines.slice(0, 40) });
-      rt.toolStart.set(b.id, { t: Date.now(), idx, kind: 'edit', input });
-      s.step = 'Editing ' + file;
+      const idx = await this.push(tkey, { k: 'edit', file, add, del, lines: lines.slice(0, 40) });
+      rt.toolStart.set(b.id, { t: Date.now(), idx, kind: 'edit', input, tkey });
+      s.step = (sub ? `${sub.description}: ` : '') + 'Editing ' + file;
       s.editing = { file, line: 1 };
       return;
     }
-    const t = await this.store.transcript(s.id);
+    const t = await this.store.transcript(tkey);
     const target = trunc(String(input.file_path ?? input.pattern ?? input.path ?? input.url ?? input.query ?? input.description ?? input.prompt ?? ''), 140);
     const item: [string, string, string] = [name, rel(wt, target), ''];
     const last = t[t.length - 1];
     let idx: number;
-    if (last && last.k === 'tools' && rt.lastTools === t.length - 1) {
+    if (last && last.k === 'tools' && rt.lastTools.get(tkey) === t.length - 1) {
       last.items.push(item);
       idx = t.length - 1;
-      await this.patch(s.id, idx, last);
+      await this.patch(tkey, idx, last);
     } else {
-      idx = await this.push(s.id, { k: 'tools', items: [item] });
-      rt.lastTools = idx;
+      idx = await this.push(tkey, { k: 'tools', items: [item] });
+      rt.lastTools.set(tkey, idx);
     }
-    rt.toolStart.set(b.id, { t: Date.now(), idx: idx * 1000 + ((t[idx] as any).items.length - 1), kind: 'tool', input });
-    s.step = ({ Read: 'Reading ', Grep: 'Searching ', Glob: 'Listing ', WebFetch: 'Fetching ', WebSearch: 'Searching the web for ' } as any)[name] ? ({ Read: 'Reading ', Grep: 'Searching ', Glob: 'Listing ', WebFetch: 'Fetching ', WebSearch: 'Searching the web for ' } as any)[name] + item[1] : 'Using ' + name;
+    rt.toolStart.set(b.id, { t: Date.now(), idx: idx * 1000 + ((t[idx] as any).items.length - 1), kind: 'tool', input, tkey });
+    const verb = ({ Read: 'Reading ', Grep: 'Searching ', Glob: 'Listing ', WebFetch: 'Fetching ', WebSearch: 'Searching the web for ' } as any)[name];
+    s.step = (sub ? `${sub.description}: ` : '') + (verb ? verb + item[1] : 'Using ' + name);
   }
 
   private async onToolResults(s: Session, rt: Runtime, m: any) {
@@ -332,36 +401,44 @@ export class SessionManager {
       const secs = (Date.now() - start.t) / 1000;
       const meta = secs < 1 ? Math.round(secs * 1000) + 'ms' : secs < 60 ? secs.toFixed(1) + 's' : Math.floor(secs / 60) + 'm ' + Math.round(secs % 60) + 's';
       if (start.kind === 'bash') {
-        const t = await this.store.transcript(s.id);
+        const t = await this.store.transcript(start.tkey);
         const cur = t[start.idx] as Extract<TranscriptEvent, { k: 'bash' }>;
         const lines = text.split('\n').map((l: string) => l.trim()).filter(Boolean);
         const out = b.is_error ? trunc(lines[lines.length - 1] || 'failed', 70) : lines.length ? trunc(lines[lines.length - 1], 70) : '✓';
-        await this.patch(s.id, start.idx, { ...cur, out, ok: !b.is_error, meta, done: true });
-        if (/git\s+commit/.test(cur.cmd)) await this.detectCommit(s, text);
+        await this.patch(start.tkey, start.idx, { ...cur, out, ok: !b.is_error, meta, done: true });
+        if (/git\s+commit/.test(cur.cmd)) await this.detectCommit(s, text, start.tkey);
       } else if (start.kind === 'edit') {
         if (!b.is_error) {
           await this.locateEdit(s, start.input);
           this.scheduleStats(s, rt);
         }
+      } else if (start.kind === 'subagent') {
+        const a = s.subagents.find((x) => x.id === b.tool_use_id);
+        if (a) {
+          a.summary = trunc(text.trim(), 600);
+          // A background subagent's result is only a placeholder; it finishes with its task notification.
+          if (a.background && !b.is_error) await this.patchSubagent(rt, a);
+          else await this.finishSubagent(s, rt, a, b.is_error ? 'failed' : 'done');
+        }
       } else if (start.kind === 'tool') {
         const ti = Math.floor(start.idx / 1000), ii = start.idx % 1000;
-        const t = await this.store.transcript(s.id);
+        const t = await this.store.transcript(start.tkey);
         const cur = t[ti] as Extract<TranscriptEvent, { k: 'tools' }>;
         if (cur && cur.items[ii]) {
           const n = text.split('\n').filter(Boolean).length;
           cur.items[ii][2] = b.is_error ? 'failed' : cur.items[ii][0] === 'Read' ? `${text.split('\n').length} lines` : cur.items[ii][0] === 'Grep' || cur.items[ii][0] === 'Glob' ? `${n} ${n === 1 ? 'match' : 'matches'}` : meta;
-          await this.patch(s.id, ti, cur);
+          await this.patch(start.tkey, ti, cur);
         }
       }
     }
   }
 
-  private async detectCommit(s: Session, out: string) {
+  private async detectCommit(s: Session, out: string, tkey: string) {
     const m = out.match(/^\[[^\]\s]+(?: \(root-commit\))? ([0-9a-f]{7,40})\] (.+)$/m);
     if (!m) return;
     const now = Date.now();
     s.commits.push({ hash: m[1], at: now });
-    await this.push(s.id, { k: 'commit', hash: m[1], msg: m[2], t: now });
+    await this.push(tkey, { k: 'commit', hash: m[1], msg: m[2], t: now });
     this.activity(s, 'commit', `committed ${m[1]} “${trunc(m[2], 70)}”`);
     this.touch();
   }
@@ -403,7 +480,7 @@ export class SessionManager {
       s.cost = rt.baseCost;
     }
     rt.toolStart.clear();
-    rt.lastTools = undefined;
+    rt.lastTools.clear();
     await this.refreshStats(s);
     if (rt.budgetPaused) {
       rt.interrupted = false;
@@ -438,7 +515,53 @@ export class SessionManager {
   }
 
   // ---------------------------------------------------------------- budget
+  private onRateLimit(info: any) {
+    if (!info) return;
+    const w = info.unifiedWindows || {};
+    const plan = this.store.data.plan;
+    const pick = (key: string, type: string) => w[key] ?? (info.rateLimitType === type ? info : undefined);
+    const five = pick('five_hour', 'five_hour');
+    const week = pick('seven_day', 'seven_day');
+    if (five?.utilization != null && five.resetsAt) plan.fiveHour = { util: five.utilization, resetsAt: five.resetsAt };
+    if (week?.utilization != null && week.resetsAt) plan.weekly = { util: week.utilization, resetsAt: week.resetsAt };
+    plan.at = Date.now();
+    this.touch();
+    void this.enforcePlan();
+  }
+
+  /** Pauses running sessions when a subscription window passes the percentage the user set. */
+  async enforcePlan() {
+    const st = this.store.data.settings;
+    if (st.billing !== 'subscription') return;
+    const plan = this.store.data.plan;
+    const checks: ['fiveHour' | 'weekly', number, string][] = [['fiveHour', st.planPause5h, '5-hour'], ['weekly', st.planPauseWeek, 'weekly']];
+    for (const [key, limit, name] of checks) {
+      const w = plan[key];
+      if (!limit || !w || w.resetsAt * 1000 < Date.now() || w.util * 100 < limit || (this.planOverride[key] ?? 0) >= w.resetsAt) continue;
+      for (const [id, rt] of this.rt) {
+        const s = this.get(id);
+        if (!s || s.status !== 'working' || s.ask || rt.budgetPaused) continue;
+        const mins = Math.max(1, Math.round((w.resetsAt * 1000 - Date.now()) / 60000));
+        const resets = mins >= 90 ? `${Math.round(mins / 60)}h` : `${mins}m`;
+        const ask: PendingAsk = { id: uid(), type: 'budget', scope: 'plan', at: Date.now(), head: `Paused at ${Math.round(w.util * 100)}% of your ${name} plan usage`, note: `You set a limit of ${limit}%. The window resets in ${resets}. Continuing may use up the rest of your plan.` };
+        rt.budgetPaused = true;
+        rt.asks.set(ask.id, { ask, scope: 'plan', planKey: key, resolve: () => undefined });
+        s.ask = ask;
+        this.activity(s, 'budget', `paused at ${Math.round(w.util * 100)}% of the ${name} plan usage`);
+        this.setStatus(s, 'attention', ask.head);
+        this.hooks.notify('attention', `${s.id} is paused`, ask.head, s.id);
+        rt.interrupted = true;
+        await rt.q.interrupt().catch(() => undefined);
+      }
+      return;
+    }
+  }
+
   private async checkBudget(s: Session, rt: Runtime) {
+    if (this.billing !== 'api') {
+      await this.enforcePlan();
+      return;
+    }
     if (rt.budgetPaused || s.ask) return;
     const repo = this.repoOf(s);
     const spent = this.store.weekSpend()[s.repoId] || 0;
@@ -448,11 +571,11 @@ export class SessionManager {
     if (!scope) return;
     rt.budgetPaused = true;
     const ask: PendingAsk = scope === 'session'
-      ? { id: uid(), type: 'budget', at: Date.now(), head: `Paused at its $${s.budget.toFixed(2)} session budget`, note: 'Raising the limit resumes where it stopped.' }
-      : { id: uid(), type: 'budget', at: Date.now(), head: `${repo.id} reached its $${repo.cap} weekly budget`, note: 'Raising the repository limit resumes this session where it stopped.' };
+      ? { id: uid(), type: 'budget', scope, at: Date.now(), head: `Paused at its ${this.usd(s.budget)} session budget`, note: 'Raising the limit resumes where it stopped.' }
+      : { id: uid(), type: 'budget', scope, at: Date.now(), head: `${repo.id} reached its ${this.usd(repo.cap, true)} weekly budget`, note: 'Raising the repository limit resumes this session where it stopped.' };
     rt.asks.set(ask.id, { ask, scope, resolve: () => undefined });
     s.ask = ask;
-    this.activity(s, 'budget', ask.head.toLowerCase().replace(/^paused/, 'paused'));
+    this.activity(s, 'budget', ask.head.toLowerCase());
     this.setStatus(s, 'attention', ask.head);
     this.hooks.notify('attention', `${s.id} is paused`, ask.head, s.id);
     rt.interrupted = true;
@@ -523,7 +646,15 @@ export class SessionManager {
     const markIdx = t.findIndex((e) => (e.k === 'permission' || e.k === 'question') && e.askId === askId);
 
     if (w.ask.type === 'budget') {
-      const add = Number(answer.addBudget) || 5;
+      if (w.scope === 'plan' && w.planKey) {
+        const win = this.store.data.plan[w.planKey];
+        this.planOverride[w.planKey] = win?.resetsAt ?? Math.floor(Date.now() / 1000) + 3600;
+        rt.budgetPaused = false;
+        this.setStatus(s, 'working', 'Resuming');
+        rt.queue.push('You were paused at a plan usage limit the user set, and they chose to continue. Continue where you left off.');
+        return;
+      }
+      const add = Number(answer.addBudget) || 5; // USD
       if (w.scope === 'repo') { const r = this.repoOf(s); r.cap += add; } else s.budget += add;
       rt.budgetPaused = false;
       this.setStatus(s, 'working', 'Resuming');
@@ -618,6 +749,38 @@ export class SessionManager {
     if (removeWt) await G.removeWorktree(this.repoOf(s).localPath, s.worktree, s.branch);
     this.store.data.sessions = this.store.data.sessions.filter((x) => x.id !== id);
     this.touch();
+  }
+
+  sessionLimit(s: Session) { return s.maxSubagents ?? this.store.data.settings.maxSubagentsSession; }
+  repoLimit(s: Session) { return this.repoOf(s)?.maxSubagents ?? this.store.data.settings.maxSubagentsRepo; }
+
+  /** Subagents of a session that were let through and are still running. */
+  private runningSubagents(s: Session): number {
+    const rt = this.rt.get(s.id);
+    return s.subagents.filter((a) => a.status === 'working' && (!rt || rt.admitted.has(a.id))).length;
+  }
+
+  /** PreToolUse hook for the Agent tool: enforces the per-session and per-repository limits on subagents running at once. */
+  private async checkSubagentLimit(s: Session, rt: Runtime, input: any): Promise<any> {
+    const id = String(input?.tool_use_id || '');
+    const sl = this.sessionLimit(s), rl = this.repoLimit(s);
+    const mine = this.runningSubagents(s);
+    const inRepo = this.sessions.filter((x) => x.repoId === s.repoId).reduce((n, x) => n + this.runningSubagents(x), 0);
+    let reason = '';
+    if (mine >= sl) reason = sl === 0 ? 'Subagents are turned off for this session.' : `This session already has ${mine} ${mine === 1 ? 'subagent' : 'subagents'} running, which is its limit.`;
+    else if (inRepo >= rl) reason = `${this.repoOf(s)?.id} already has ${inRepo} subagents running across its sessions, which is the repository limit.`;
+    if (!reason) {
+      rt.admitted.add(id);
+      return {};
+    }
+    await this.push(s.id, { k: 'note', tone: 'neutral', text: 'Subagent blocked. ' + reason });
+    return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason + ' Wait for one to finish, or do this work yourself.' } };
+  }
+
+  private stopSubagents(s: Session) {
+    let any = false;
+    for (const a of s.subagents) if (a.status === 'working') { a.status = 'stopped'; a.endedAt = Date.now(); any = true; }
+    if (any) this.touch();
   }
 
   /** Tell a running agent that the user changed a file under it. */

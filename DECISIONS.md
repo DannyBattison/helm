@@ -86,3 +86,27 @@ Why: lets the UI be checked against a real git worktree without a GitHub account
 ## D-019 · 2026-10-23 · GitHub OAuth client ID is built in
 The registered OAuth app's client ID (`Ov23liTYcKE5lBWCEAAV`) is the default in `src/main/store.ts`, so sign-in no longer asks for it. The sign-in field only appears if the setting is empty, and Settings → Account keeps an override. `HELM_GITHUB_CLIENT_ID` still wins when set. Supersedes the "ask for it" part of D-005.
 Why: client IDs are public, and asking every user for one was the wrong experience once the app was registered.
+
+## D-020 · 2026-10-23 · Billing mode: subscription or API tokens
+A new setting `billing` is `subscription` (Claude Max or Pro login) or `api` (pay per token). It is detected from the first session (`apiKeySource` of `none` means a Claude login) and can be changed in Settings. In subscription mode there are no dollar budgets anywhere: no session budget, repository caps, weekly dollar limit or cost columns. The sidebar and Overview show plan usage instead. In API mode everything works as before, with dollar budgets.
+Why: the user runs on a Max 5x plan and doesn't set budgets, but other people pay per token, so both stay supported and configurable.
+
+## D-021 · 2026-10-23 · Plan usage comes from Claude Code's rate-limit events
+The SDK emits `rate_limit_event` messages with `unifiedWindows.five_hour` and `seven_day` utilisation as fractions plus reset times (verified against the user's account). helm stores the latest values and shows them as the 5-hour and weekly meters. In subscription mode the user can set percentage limits for each window; reaching one pauses running sessions into "Needs you" with a "Continue anyway" action that lasts until that window resets.
+Why: it is the real subscription usage, not an estimate from dollar costs.
+
+## D-022 · 2026-10-23 · Currency
+Amounts are stored in USD and displayed in a chosen currency. On first launch the currency is picked from the IP address (ipapi.co), falling back to the OS locale. Rates come from frankfurter.dev (ECB data) and are cached for 12 hours, with built-in fallback rates when offline. The IP lookup happens once, only on first launch, and only until a currency has been detected.
+Why: the user is in the UK and asked for GBP by default. The one-off IP request is the only network call that sends the user's address to a third party.
+
+## D-023 · 2026-10-23 · Subagents
+Subagents started with the Agent tool are tracked as a tree under their session. Each has its own transcript, stored separately. Limits are on subagents running at once, per session and per repository, with defaults in Settings (4 and 8), per-repository overrides in Settings and a per-session override in the session's usage panel. 0 turns subagents off. The limits are enforced by a `PreToolUse` hook on the Agent tool that denies the call with a reason the model can act on, because `canUseTool` is not called for tools the permission mode already allows.
+Why: the user asked for per-project and per-agent limits, a tree view and access to every transcript.
+
+## D-024 · 2026-10-23 · Resizable tables and panes
+All tables have resizable columns (drag the edge of a header cell) and the sidebar and side panes have drag handles. Sizes persist in localStorage per table or pane. Tables that had no header row (commit history, pull requests) gained one so there is something to drag.
+Why: user decision.
+
+## D-025 · 2026-10-23 · Hands-on code browsing outside sessions
+The repository view gains a Code tab: browse and edit your own checkout or any session worktree with Monaco, with quick open, search across files and a commit box. The Code APIs take a workspace id, either a session id or `repo:<owner/name>` for the checkout. Commit history rows open a diff dialog for each file.
+Why: user asked to see diffs from history and to browse and edit code directly, like a lightweight IDE with a hands-on feel.

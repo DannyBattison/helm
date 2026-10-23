@@ -1,7 +1,7 @@
 import { app } from 'electron';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { ActivityEvent, Repo, Session, Settings, TranscriptEvent, User } from '../shared/types';
+import type { ActivityEvent, PlanUsage, Repo, Session, Settings, TranscriptEvent, User } from '../shared/types';
 import { dayStart, home, weekStart } from './util';
 
 /** helm's registered GitHub OAuth app. Client IDs are public; the device flow uses no secret. */
@@ -23,6 +23,14 @@ export const defaultSettings = (): Settings => ({
   weeklyLimit: 100,
   sessionBudget: 10,
   warnAt: 80,
+  maxSubagentsSession: 4,
+  maxSubagentsRepo: 8,
+  billing: 'subscription',
+  billingDetected: false,
+  currency: 'USD',
+  currencyDetected: false,
+  planPause5h: 0,
+  planPauseWeek: 0,
   notifyAttention: { desktop: true, sound: true },
   notifyReady: { desktop: true, sound: false },
   notifyFailed: { desktop: true, sound: true },
@@ -40,10 +48,12 @@ interface Persisted {
   activity: ActivityEvent[];
   settings: Settings;
   usage: { t: number; repoId: string; cost: number; tokens: number }[];
+  plan: PlanUsage;
+  fx: { rates: Record<string, number>; at: number };
 }
 
 export class Store {
-  data: Persisted = { user: null, repos: [], sessions: [], activity: [], settings: defaultSettings(), usage: [] };
+  data: Persisted = { user: null, repos: [], sessions: [], activity: [], settings: defaultSettings(), usage: [], plan: { at: 0 }, fx: { rates: {}, at: 0 } };
   private transcripts = new Map<string, TranscriptEvent[]>();
   private dir = '';
   private timer: NodeJS.Timeout | null = null;
