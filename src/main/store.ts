@@ -20,6 +20,7 @@ export const defaultSettings = (): Settings => ({
   branchPrefix: 'agent/',
   removeAfterMerge: true,
   deliver: 'pr',
+  mergeMethod: 'merge',
   afterMerge: 'archive',
   copyFiles: '.env\n.env.local',
   weeklyLimit: 100,

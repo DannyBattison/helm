@@ -132,6 +132,14 @@ export async function createPull(slug: string, input: { head: string; base: stri
   return x.html_url;
 }
 
+export async function mergePull(slug: string, number: number, method: string): Promise<void> {
+  await gh(`/repos/${slug}/pulls/${number}/merge`, { method: 'PUT', body: JSON.stringify({ merge_method: method }), headers: { 'Content-Type': 'application/json' } });
+}
+
+export async function deleteBranch(slug: string, branch: string): Promise<void> {
+  await gh(`/repos/${slug}/git/refs/heads/${branch.split('/').map(encodeURIComponent).join('/')}`, { method: 'DELETE' });
+}
+
 export async function listPulls(slug: string): Promise<PullRequest[]> {
   const r: any[] = await gh(`/repos/${slug}/pulls?state=all&per_page=30&sort=updated&direction=desc`);
   return Promise.all(r.map(async (p) => {

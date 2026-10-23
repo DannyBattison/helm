@@ -4,7 +4,7 @@ import { api, platform } from '../api';
 import { Hl } from '../Hl';
 import { langFromPath } from '../highlight';
 import { CHECK_RE, relTime } from '../lib';
-import { go, toast, useApp, useTranscript } from '../store';
+import { go, setUI, toast, useApp, useTranscript } from '../store';
 import { Avatar, BranchTag, Button, Checkbox, DiffStat, Grip, IconButton, Input, SegmentedControl, Select, usePaneWidth } from '../ui';
 
 const label: React.CSSProperties = { font: '500 10.5px/1 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' };
@@ -282,7 +282,7 @@ export function Changes({ s }: { s: Session }) {
               <SegmentedControl value={deliver} onChange={(v: string) => setDeliver(v as any)} options={[{ value: 'pr', label: 'Pull request' }, { value: 'merge', label: 'Merge directly' }]} />
             </div>
             {s.mergedAt ? <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>Merged into <b>{s.mergedInto}</b> {relTime(s.mergedAt)}. Merging again pushes anything new since.</div> : null}
-            {deliver === 'pr' && s.prUrl ? <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>A pull request is open for this branch. <a href="#" onClick={(e) => { e.preventDefault(); void api.openExternal(s.prUrl!); }}>View on GitHub</a>. Creating another pushes new commits to the same branch.</div> : null}
+            {deliver === 'pr' && s.prUrl ? <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>A pull request is open for this branch. <a href="#" onClick={(e) => { e.preventDefault(); void api.openExternal(s.prUrl!); }}>View on GitHub</a>{/\/pull\/(\d+)/.test(s.prUrl) ? <>, or <a href="#" onClick={(e) => { e.preventDefault(); setUI({ mergingPr: { repoId: s.repoId, number: +/\/pull\/(\d+)/.exec(s.prUrl!)![1], sessionId: s.id } }); }}>merge it here</a></> : null}. Creating another pushes new commits to the same branch.</div> : null}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>
               <Select size="sm" icon="git-branch" mono value={base} onChange={(e) => setBase(e.target.value)} options={[...new Set([base, ...branches])]} /><i className="ph ph-arrow-left" style={{ fontSize: 12 }} /><BranchTag name={s.branch} />
             </div>

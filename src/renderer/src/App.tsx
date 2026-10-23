@@ -5,7 +5,7 @@ import { theme as resolveTheme } from './lib';
 import { dismissToast, getUI, go, init, setUI, useUI } from './store';
 import { Button, Toast } from './ui';
 import { Activity, Dashboard } from './views/Dashboard';
-import { AddRepo, DeleteSession, NewSession, Palette, RemoveRepo, RenameSession, SignIn } from './views/Dialogs';
+import { AddRepo, DeleteSession, MergePr, NewSession, Palette, RemoveRepo, RenameSession, SignIn } from './views/Dialogs';
 import { Archive } from './views/Archive';
 import { ExternalSessionView, Repo } from './views/Repo';
 import { Session } from './views/Session';
@@ -21,6 +21,7 @@ export function App() {
   const palette = useUI((u) => u.palette);
   const deleting = useUI((u) => u.deleting);
   const renaming = useUI((u) => u.renaming);
+  const mergingPr = useUI((u) => u.mergingPr);
   const removingRepo = useUI((u) => u.removingRepo);
   const term = useUI((u) => u.term);
   const toasts = useUI((u) => u.toasts);
@@ -107,6 +108,7 @@ export function App() {
       {adding ? <AddRepo onClose={() => setUI({ adding: false })} /> : null}
       {newSession ? <NewSession repoId={newSession.repoId} onClose={() => setUI({ newSession: null })} /> : null}
       {removingRepo ? <RemoveRepo key={removingRepo} id={removingRepo} onClose={() => setUI({ removingRepo: null })} /> : null}
+      {mergingPr ? <MergePr key={mergingPr.repoId + mergingPr.number} target={mergingPr} onClose={() => setUI({ mergingPr: null })} /> : null}
       {renaming ? <RenameSession key={renaming} id={renaming} onClose={() => setUI({ renaming: null })} /> : null}
       {deleting ? <DeleteSession key={deleting} id={deleting} onClose={() => setUI({ deleting: null })} /> : null}
       {palette ? <Palette onClose={() => setUI({ palette: false })} toggleTheme={toggleTheme} /> : null}

@@ -1,5 +1,5 @@
 import React from 'react';
-import type { BaseOption, GhRepo, ModelAlias, PermMode, SessionDeleteInfo } from '@shared/types';
+import type { BaseOption, GhRepo, MergeMethod, ModelAlias, PermMode, PullRequest, SessionDeleteInfo } from '@shared/types';
 import { api, platform } from '../api';
 import glyph from '../assets/helm-glyph-violet.svg';
 import { tilde } from '../lib';
@@ -250,6 +250,56 @@ export function NewSession({ repoId, onClose }: { repoId?: string; onClose(): vo
 }
 
 // ------------------------------------------------------------------ delete session
+const METHOD_HELP: Record<MergeMethod, string> = {
+  merge: 'Keeps every commit and adds a merge commit.',
+  squash: 'Combines the branch into one commit on the base.',
+  rebase: 'Replays the commits onto the base, with no merge commit.'
+};
+
+/** Merge an open pull request on GitHub, from inside helm. */
+export function MergePr({ target, onClose }: { target: { repoId: string; number: number; sessionId?: string }; onClose(): void }) {
+  const app = useApp();
+  const session = app.sessions.find((x) => x.id === target.sessionId);
+  const [pr, setPr] = React.useState<PullRequest | null>(null);
+  const [method, setMethod] = React.useState<MergeMethod>(app.settings.mergeMethod);
+  const [del, setDel] = React.useState(!!session?.removeAfterMerge);
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState('');
+  React.useEffect(() => { api.repoPulls(target.repoId).then((l) => setPr(l.find((p) => p.number === target.number) || null)).catch((e) => setErr(errText(e))); }, []);
+  const run = async () => {
+    setBusy(true); setErr('');
+    try {
+      await api.mergePr(target.repoId, target.number, { method, deleteBranch: del });
+      toast({ tone: 'ready', title: `Merged #${target.number}`, description: pr ? `${pr.branch} into ${pr.base}` : undefined });
+      onClose();
+    } catch (e) { setErr(errText(e)); } finally { setBusy(false); }
+  };
+  const note = pr?.draft ? 'This is a draft. GitHub will not merge it until it is marked ready for review.'
+    : pr?.checks === 'failing' ? 'Its checks are failing.'
+    : pr?.checks === 'pending' ? 'Its checks are still running.' : '';
+  return (
+    <Dialog width={500} title={`Merge pull request #${target.number}?`} description={pr ? pr.title : undefined} onClose={onClose}
+      footer={<>
+        <span style={{ flex: 1, font: '400 12px/1.4 var(--font-sans)', color: 'var(--status-error-text)' }}>{err}</span>
+        <Button variant="ghost" onClick={onClose}>Cancel</Button>
+        <Button variant="primary" icon="git-merge" loading={busy} disabled={!pr || pr.state !== 'open'} onClick={run}>{pr ? `Merge into ${pr.base}` : 'Merge'}</Button>
+      </>}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {pr && pr.state !== 'open' ? <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>It is already {pr.state}.</span> : null}
+        {note ? <span style={{ display: 'flex', gap: 8, alignItems: 'flex-start', font: '400 12px/1.45 var(--font-sans)', color: 'var(--status-attention-text)' }}><i className="ph-fill ph-warning-circle" style={{ fontSize: 14, marginTop: 1, flex: 'none' }} />{note}</span> : null}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <span style={{ font: '500 12px/1 var(--font-sans)' }}>How</span>
+          <Select value={method} onChange={(e: any) => setMethod(e.target.value)} options={[{ value: 'merge', label: 'Merge commit' }, { value: 'squash', label: 'Squash and merge' }, { value: 'rebase', label: 'Rebase and merge' }]} />
+          <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>{METHOD_HELP[method]}</span>
+        </div>
+        <Checkbox checked={del} onChange={setDel} label={<span>Delete the branch on GitHub{pr ? <> <code style={{ font: 'var(--type-data)' }}>{pr.branch}</code></> : null}</span>}
+          description="Your local branch and worktree follow the Remove worktree setting." />
+        {session ? <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>{session.removeAfterMerge ? 'The worktree is removed afterwards, ' : 'The worktree is kept, '}and the session is {app.settings.afterMerge === 'archive' ? 'archived' : app.settings.afterMerge === 'delete' ? 'deleted' : 'left as it is'}.</span> : null}
+      </div>
+    </Dialog>
+  );
+}
+
 export function RenameSession({ id, onClose }: { id: string; onClose(): void }) {
   const s = useApp().sessions.find((x) => x.id === id);
   const [name, setName] = React.useState(s?.customTitle || s?.title || '');

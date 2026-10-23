@@ -161,6 +161,8 @@ export interface Settings {
   warnAt: number;
   /** What happens to a session's record once its work is merged: archived (the default), deleted, or left where it is. */
   afterMerge: 'archive' | 'delete' | 'keep';
+  /** How a pull request is merged from helm. */
+  mergeMethod: MergeMethod;
   /** How finished work is delivered: as a pull request, or merged straight into the default branch. The Changes tab can override it per session. */
   deliver: 'pr' | 'merge';
   /** Start Remote Control (`/rc`) in every session, so it can be followed and driven from claude.ai/code or the Claude app. */
@@ -458,6 +460,8 @@ export interface CreatePrInput {
   message?: string;
 }
 
+export type MergeMethod = 'merge' | 'squash' | 'rebase';
+
 export interface MergeInput {
   sessionId: string;
   /** Branch to merge into, without origin/. */
@@ -563,6 +567,8 @@ export interface HelmApi {
   changes(sessionId: string): Promise<ChangesSummary>;
   fileDiff(sessionId: string, path: string): Promise<DiffHunk[]>;
   createPr(input: CreatePrInput): Promise<{ url: string | null }>;
+  /** Merges an open pull request on GitHub, optionally deleting its branch there. The session (if helm started it) is settled straight away. */
+  mergePr(repoId: string, number: number, opts: { method: MergeMethod; deleteBranch: boolean }): Promise<void>;
   /** Skips the pull request: brings the branch up to date with the base, then pushes it onto the base on GitHub. */
   mergeDirect(input: MergeInput): Promise<MergeResult>;
   commitOnly(sessionId: string, files: string[], message: string): Promise<void>;

@@ -135,6 +135,9 @@ export function Settings({ section }: { section?: string }) {
               <Select value={String(st.archiveAfterDays)} onChange={(e: any) => set({ archiveAfterDays: +e.target.value })}
                 options={[{ value: '0', label: 'Never' }, ...[3, 7, 14, 30, 60, 90].map((n) => ({ value: String(n), label: n + ' days' }))]} />
             </SettingRow>
+            <SettingRow title="Merge pull requests by" desc="The default when you merge a pull request from helm. You can change it each time.">
+              <Select value={st.mergeMethod} onChange={(e: any) => set({ mergeMethod: e.target.value })} options={[{ value: 'merge', label: 'Merge commit' }, { value: 'squash', label: 'Squash and merge' }, { value: 'rebase', label: 'Rebase and merge' }]} />
+            </SettingRow>
             <SettingRow title="When a session is ready" desc="Open a pull request for review, or skip it and push the branch straight onto the default branch. You can still choose per session on its Changes tab. A protected branch refuses direct pushes.">
               <SegmentedControl value={st.deliver} onChange={(v: string) => set({ deliver: v as any })} options={[{ value: 'pr', label: 'Pull request' }, { value: 'merge', label: 'Merge directly' }]} />
             </SettingRow>

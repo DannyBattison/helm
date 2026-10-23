@@ -41,7 +41,7 @@ function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string
         {s.status === 'working' ? <Button variant="ghost" icon="pause" onClick={() => guard(api.interrupt(s.id))}>Pause</Button> : null}
         {running ? <Button variant="ghost" icon="stop" onClick={() => guard(api.stopSession(s.id))}>Stop</Button> : null}
         <Button variant="secondary" icon="arrow-square-out" onClick={() => guard(api.openInEditor(s.id))}>Open in editor</Button>
-        {s.mergedAt ? <Badge tone="ready">Merged into {s.mergedInto}</Badge> : s.prUrl ? <Button variant="secondary" icon="git-pull-request" onClick={() => api.openExternal(s.prUrl!)}>View pull request</Button>
+        {s.mergedAt ? <Badge tone="ready">Merged into {s.mergedInto}</Badge> : s.prUrl ? <><Button variant="ghost" icon="git-pull-request" onClick={() => api.openExternal(s.prUrl!)}>View pull request</Button>{prNumber(s.prUrl) ? <Button variant="primary" icon="git-merge" onClick={() => setUI({ mergingPr: { repoId: s.repoId, number: prNumber(s.prUrl)!, sessionId: s.id } })}>Merge pull request</Button> : null}</>
           : s.status === 'ready' ? <Button variant="primary" icon={deliverMerge ? 'git-merge' : 'git-pull-request'} onClick={() => setTab('changes')}>{deliverMerge ? 'Merge changes' : 'Create pull request'}</Button>
           : <Button variant="secondary" icon="git-diff" onClick={() => setTab('changes')}>Review changes</Button>}
       </div>
@@ -247,6 +247,7 @@ function TranscriptItemView({ m, s, onDeny }: { m: TranscriptEvent; s: S; onDeny
 /** Re-renders only when its event changes, or the pending request it may be showing does. */
 export const TranscriptItem = React.memo(TranscriptItemView, (a, b) => a.m === b.m && a.s?.ask?.id === b.s?.ask?.id && a.s?.ask?.orphaned === b.s?.ask?.orphaned);
 
+const prNumber = (url?: string) => { const m = /\/pull\/(\d+)/.exec(url || ''); return m ? +m[1] : null; };
 const gone: React.CSSProperties = { font: '400 13px/1.5 var(--font-sans)', color: 'var(--text-3)', textAlign: 'center', display: 'grid', placeItems: 'center' };
 
 // Drafts and sent messages are kept per session for as long as helm is open, so switching away never loses what you were typing

@@ -219,8 +219,9 @@ function Worktrees({ repo, list, reload }: { repo: R; list: WorktreeInfo[] | nul
   );
 }
 
-function PullRequests({ prs, err }: { prs: PullRequest[] | null; err: string }) {
-  const col = useColumns('pulls', [{ w: 1, min: 220, flex: true }, { w: 70, min: 50 }, { w: 240, min: 120 }, { w: 150, min: 110, fixed: true }]);
+function PullRequests({ prs, err, repoId }: { prs: PullRequest[] | null; err: string; repoId: string }) {
+  const app = useApp();
+  const col = useColumns('pulls', [{ w: 1, min: 220, flex: true }, { w: 70, min: 50 }, { w: 240, min: 120 }, { w: 230, min: 150, fixed: true }]);
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: '0 20px 8px' }}>
       <div style={{ display: 'grid', gridTemplateColumns: '20px ' + col.template, gap: 12, padding: '10px 0', ...head }}>
@@ -235,7 +236,7 @@ function PullRequests({ prs, err }: { prs: PullRequest[] | null; err: string }) 
           <span style={{ font: '500 13px/1 var(--font-sans)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title}</span>
           <span style={{ font: '400 11.5px/1 var(--font-mono)', color: 'var(--text-3)' }}>#{p.number}</span>
           <span style={{ minWidth: 0 }}><BranchTag name={p.branch} /></span>
-          <span style={{ textAlign: 'right' }}><Badge tone={p.state === 'merged' ? 'accent' : p.draft ? 'idle' : p.checks === 'failing' ? 'error' : p.checks === 'pending' ? 'working' : p.state === 'open' ? 'ready' : 'idle'}>
+          <span style={{ textAlign: 'right', display: 'inline-flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>{p.state === 'open' && !p.draft ? <Button size="sm" variant="secondary" icon="git-merge" onClick={(e: any) => { e.stopPropagation(); setUI({ mergingPr: { repoId: repoId, number: p.number, sessionId: app.sessions.find((x) => x.prUrl === p.url)?.id } }); }}>Merge</Button> : null}<Badge tone={p.state === 'merged' ? 'accent' : p.draft ? 'idle' : p.checks === 'failing' ? 'error' : p.checks === 'pending' ? 'working' : p.state === 'open' ? 'ready' : 'idle'}>
             {p.state === 'merged' ? 'Merged' : p.state === 'closed' ? 'Closed' : p.draft ? 'Draft' : p.checks === 'failing' ? 'Checks failing' : p.checks === 'pending' ? 'Checks running' : p.checks === 'passing' ? 'Checks passing' : 'Open'}
           </Badge></span>
         </div>
@@ -497,7 +498,7 @@ export function Repo({ id, themeKey, tab: firstTab }: { id: string; themeKey: 'd
         : tab === 'memory' ? <RepoMemory repo={repo} />
         : tab === 'external' ? <ExternalSessions repo={repo} onCount={setExtCount} />
         : tab === 'worktrees' ? <div style={{ flex: 1, overflow: 'auto' }}><Worktrees repo={repo} list={wts} reload={loadWts} /></div>
-        : <PullRequests prs={prs} err={prErr} />}
+        : <PullRequests prs={prs} err={prErr} repoId={repo.id} />}
       {diff && commit && files?.length ? <CommitDiff repo={repo} commit={commit} files={files} start={diff.path} onClose={() => setDiff(null)} /> : null}
     </div>
   );

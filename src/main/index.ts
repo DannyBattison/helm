@@ -389,6 +389,21 @@ const api: HelmApi = {
     emitState();
     return { url };
   },
+  async mergePr(repoId, number, opts) {
+    const pr = (await GH.listPulls(repoId)).find((p) => p.number === number);
+    if (!pr) throw new Error(`Pull request #${number} was not found.`);
+    if (pr.state !== 'open') throw new Error(`#${number} is already ${pr.state}.`);
+    if (pr.draft) throw new Error(`#${number} is a draft. Mark it ready for review on GitHub first.`);
+    mergingHere.add(`${repoId}#${number}`);
+    try { await GH.mergePull(repoId, number, opts.method); }
+    catch (e: any) { mergingHere.delete(`${repoId}#${number}`); throw new Error(String(e?.message || e).replace(/^GitHub:\s*/, '').replace(/\s*\(\d{3}\)$/, '') || 'GitHub would not merge it.'); }
+    if (opts.deleteBranch) await GH.deleteBranch(repoId, pr.branch).catch(() => undefined);
+    await pollMerges();
+    mergingHere.delete(`${repoId}#${number}`);
+    store.data.activity.unshift({ id: Math.random().toString(36).slice(2), t: Date.now(), kind: 'merge', who: store.data.user?.login || 'you', human: true, what: `merged PR #${pr.number} “${pr.title}” (${opts.method})`, repo: repoId.split('/')[1] });
+    store.save();
+    emitState();
+  },
   async mergeDirect(input) {
     const s = sess(input.sessionId);
     const repo = repos.must(s.repoId);
@@ -531,6 +546,7 @@ async function refreshRates() {
 }
 
 // ------------------------------------------------------------------ merged PR cleanup
+const mergingHere = new Set<string>();
 async function pollMerges() {
   const open = store.data.sessions.filter((s) => s.prUrl && !s.mergedAt);
   const byRepo = new Map<string, typeof open>();
@@ -542,7 +558,7 @@ async function pollMerges() {
         const pr = prs.find((p) => p.url === s.prUrl);
         if (pr?.state === 'merged') {
           await sessions.finishMerged(s.id, { into: pr.base }, { worktree: s.removeAfterMerge, branch: s.removeAfterMerge });
-          store.data.activity.unshift({ id: Math.random().toString(36).slice(2), t: Date.now(), kind: 'merge', who: store.data.user?.login || 'you', human: true, what: `merged PR #${pr.number} “${pr.title}”`, repo: repoId.split('/')[1] });
+          if (!mergingHere.has(`${repoId}#${pr.number}`)) store.data.activity.unshift({ id: Math.random().toString(36).slice(2), t: Date.now(), kind: 'merge', who: store.data.user?.login || 'you', human: true, what: `merged PR #${pr.number} “${pr.title}”`, repo: repoId.split('/')[1] });
         }
       }
     } catch { /* offline */ }
