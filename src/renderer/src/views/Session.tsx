@@ -154,7 +154,7 @@ function TranscriptItemView({ m, s, onDeny }: { m: TranscriptEvent; s: S; onDeny
     </div>
   );
   if (m.k === 'user') return (
-    <div style={{ display: 'flex', gap: 10, ...(!m.from ? { background: 'var(--bg-selected)', borderRadius: 'var(--radius-md)', padding: '10px 12px' } : null) }}>
+    <div style={{ display: 'flex', gap: 10, ...(!m.from ? { background: 'var(--bg-selected)', borderRadius: 'var(--radius-md)', padding: '10px 12px', boxShadow: 'inset 0 0 0 1px var(--border)' } : null) }}>
       <Avatar agent={!!m.from} name={m.from || app.user?.login || 'you'} src={m.from ? undefined : app.user?.avatar || undefined} size={22} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
         <span style={{ font: m.from ? '500 12px/1 var(--font-mono)' : '500 12px/1 var(--font-sans)' }}>{m.from ? m.from + ' → subagent' : app.user?.login || 'you'} {m.t ? <span style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)', marginLeft: 6 }}>{clock(m.t)}</span> : null}</span>
@@ -333,6 +333,7 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
   const histPos = React.useRef(-1);
   const picker = React.useRef<HTMLInputElement>(null);
   const working = s.status === 'working';
+  const enterSends = useApp().settings.sendKey === 'enter';
   const setText = (t: string) => { drafts.set(s.id, t); setTextState(t); };
 
   React.useEffect(() => { setTextState(drafts.get(s.id) || ''); setImages([]); setMention(null); histPos.current = -1; files.current = null; }, [s.id]);
@@ -391,7 +392,8 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
       if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pick(matches[hi]); return; }
     }
     if (mention && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); e.nativeEvent.stopImmediatePropagation(); setMention(null); return; }
-    if (e.key === 'Enter' && mod(e)) { e.preventDefault(); send(); return; }
+    // Which key sends is a setting: Enter (Shift+Enter for a new line), or Ctrl/Cmd+Enter (Enter for a new line). Ctrl/Cmd+Enter always sends.
+    if (e.key === 'Enter' && !e.nativeEvent.isComposing && (mod(e) || (enterSends && !e.shiftKey))) { e.preventDefault(); send(); return; }
     // Up and down walk through what you sent before, when the caret is at the very start or end of the text.
     const past = sent.get(s.id) || [];
     const el = e.currentTarget;
@@ -461,7 +463,7 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
           <span style={{ flex: 1 }} />
           {s.ctx ? <span title={`Context window: ${fmtTokens(s.ctx)} of 200k tokens in use`} style={{ font: '400 11.5px/1 var(--font-mono)', color: ctxPct >= 75 ? 'var(--status-attention-text)' : 'var(--text-3)', whiteSpace: 'nowrap' }}>{ctxPct}% context</span> : null}
           {working ? <Button size="sm" variant="ghost" kbd="Esc" onClick={() => guard(api.interrupt(s.id))}>Interrupt</Button> : null}
-          <Button size="sm" variant="primary" icon="paper-plane-right" kbd={MOD() + '↵'} disabled={!text.trim() && !images.length} onClick={send}>Send</Button>
+          <Button size="sm" variant="primary" icon="paper-plane-right" kbd={enterSends ? 'Enter' : MOD() + '↵'} disabled={!text.trim() && !images.length} onClick={send}>Send</Button>
         </div>
       </div>
     </div>

@@ -279,3 +279,7 @@ Why: user request, a complete record of what happened and who did it.
 ## D-066 · 2026-10-23 · Option to hide the organisation in the sidebar
 Settings → Appearance, "Show organisation in the sidebar" (default on) writes repositories as `acme/storefront` or just `storefront`.
 Why: user request.
+
+## D-067 · 2026-10-23 · Send key is a setting; a border on your messages
+Settings → Agents → "Send messages with": Ctrl+Enter (Cmd+Enter on a Mac), the default and the old behaviour, or Enter. With Enter, Shift+Enter starts a new line and Ctrl/Cmd+Enter still sends; the Send button shows the matching key. Enter is ignored while an input method is composing. Your messages in the conversation get a thin border like the other panels, so they sit in the same visual family.
+Why: user request.

@@ -1,6 +1,6 @@
 import React from 'react';
 import type { ModelAlias, PermMode, Settings as SettingsT } from '@shared/types';
-import { api } from '../api';
+import { api, platform } from '../api';
 import { livePlan, untilReset } from '../lib';
 import { CURRENCIES, rateFor } from '@shared/money';
 import { BUNDLED_FONTS, fontStack, SYSTEM_DEFAULT, systemFonts, systemUiFonts, uiStack, UI_BUNDLED_FONTS, dataStack } from '../fonts';
@@ -127,6 +127,9 @@ export function Settings({ section }: { section?: string }) {
             <SettingRow title="Push after every commit" desc="Tells the agent to push its branch to GitHub right after each commit, so nothing exists only on this machine. Agents always commit as they go. Takes effect when a session next starts."><Switch checked={st.pushOnCommit} onChange={(v: boolean) => set({ pushOnCommit: v })} /></SettingRow>
             <SettingRow title="Commit author" desc="Co-author: commits are authored by you, with a Co-authored-by trailer for the session. Claude only: commits are authored by Claude, with no co-author. Takes effect when a session next starts.">
               <SegmentedControl value={st.commitAuthor} onChange={(v: string) => set({ commitAuthor: v as any })} options={[{ value: 'coauthor', label: 'Co-author' }, { value: 'sole', label: 'Claude only' }]} />
+            </SettingRow>
+            <SettingRow title="Send messages with" desc={st.sendKey === 'enter' ? 'Enter sends. Shift+Enter starts a new line.' : 'Ctrl+Enter (Cmd+Enter on a Mac) sends. Enter starts a new line.'}>
+              <SegmentedControl value={st.sendKey} onChange={(v: string) => set({ sendKey: v as any })} options={[{ value: 'enter', label: 'Enter' }, { value: 'mod-enter', label: platform() === 'darwin' ? 'Cmd+Enter' : 'Ctrl+Enter' }]} />
             </SettingRow>
             <SettingRow title="Run tests before marking ready" desc="Asks the agent to run the project's tests (package.json, go.mod, Makefile) before it finishes."><Switch checked={st.runTests} onChange={(v: boolean) => set({ runTests: v })} /></SettingRow>
           </> : null}

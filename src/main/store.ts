@@ -46,6 +46,7 @@ export const defaultSettings = (): Settings => ({
   notifyChecks: { desktop: false, sound: false },
   dnd: true,
   editorFontSize: 12.5,
+  sendKey: 'mod-enter',
   showOwner: true,
   uiFont: 'Mona Sans',
   dataFont: 'Monaspace Neon',

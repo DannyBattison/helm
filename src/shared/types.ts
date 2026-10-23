@@ -210,6 +210,8 @@ export interface Settings {
   dnd: boolean;
   editorFontSize: number;
   /** Font for the interface: labels, titles and prose. */
+  /** Which key sends a message from the composer. Enter sends and Shift+Enter starts a new line, or Ctrl/Cmd+Enter sends and Enter starts a new line. */
+  sendKey: 'enter' | 'mod-enter';
   /** Show the organisation or user before each repository name in the left tree (`acme/` storefront). */
   showOwner: boolean;
   uiFont: string;
