@@ -1,8 +1,9 @@
 /** Types shared by the main process, preload and renderer. */
 
 import type { Conflict } from './forecast';
+import type { Issue } from './issues';
 import type { Report } from './reports';
-export type { Report, Conflict };
+export type { Report, Conflict, Issue };
 
 export type Status = 'working' | 'attention' | 'ready' | 'idle' | 'error';
 /** ask: approve commands; edits: edits go through, commands ask; plan: plan only; all: nothing asks. */
@@ -141,6 +142,10 @@ export interface Session {
   checkpoints?: number;
   /** The result of the last self-review. */
   review?: SelfReview;
+  /** Waiting to start: for a free slot, or for another session to be merged. It has a worktree but the agent has not run. */
+  queued?: { after?: string; since: number };
+  /** Review comments on its pull request up to this time have already been sent to the agent. */
+  feedbackAt?: number;
   /** Hunks the user has looked at and accepted, by hunk id (path and changed lines, not line numbers). */
   reviewed?: string[];
   /** Said to the agent along with the next message, then forgotten. Used after a checkpoint restore. */
@@ -266,11 +271,21 @@ export interface Settings {
   planPause5h: number;
   /** Pause agents at this percentage of the weekly subscription limit. 0 is off. */
   planPauseWeek: number;
+  /** Most sessions allowed to work at once across all repositories. More wait in a queue. 0 is no limit. */
+  maxRunning: number;
   notifyAttention: { desktop: boolean; sound: boolean };
   notifyReady: { desktop: boolean; sound: boolean };
   notifyFailed: { desktop: boolean; sound: boolean };
   notifyChecks: { desktop: boolean; sound: boolean };
   dnd: boolean;
+  /** No desktop notifications between these local times (HH:MM), unless the session is blocked on an approval and `quietAllowAttention` is on. */
+  quiet: { enabled: boolean; from: string; to: string; allowAttention: boolean };
+  /** Per repository: everything, only things that need you, or nothing. Repositories not listed notify for everything. */
+  notifyRepo: Record<string, 'all' | 'attention' | 'off'>;
+  /** Keep helm in the system tray / menu bar with a count of what needs you. */
+  tray: boolean;
+  /** Look for a new version of helm at launch and download it in the background. */
+  autoUpdate: boolean;
   editorFontSize: number;
   /** Font for the interface: labels, titles and prose. */
   uiFont: string;
@@ -530,6 +545,12 @@ export interface NewSessionInput {
   model: ModelAlias;
   budget: number;
   permMode: PermMode;
+  /** Wait until this session has been merged before starting, so the new one begins from the merged base. */
+  after?: string;
+  /** What the task came from, such as a GitHub issue. */
+  source?: Session['source'];
+  /** Start from this effort level instead of the default. */
+  effort?: Effort;
 }
 
 export interface CreatePrInput {
@@ -723,6 +744,18 @@ export interface HelmApi {
   setHunksReviewed(sessionId: string, ids: string[], reviewed: boolean): Promise<void>;
   /** Has a read-only reviewer go through the branch's diff. The result lands on the session. */
   startReview(sessionId: string): Promise<void>;
+  /** Starts a queued session now, whatever it is waiting for. */
+  startQueued(sessionId: string): Promise<void>;
+  /** Takes a session out of the queue without starting it. */
+  cancelQueued(sessionId: string): Promise<void>;
+  /** Open issues of a repository (pull requests excluded). */
+  repoIssues(repoId: string): Promise<Issue[]>;
+  /** The task text for a session that works on an issue, with its discussion. */
+  issueTask(repoId: string, number: number): Promise<{ task: string; title: string; url: string }>;
+  /** The review comments on a pull request as a task, and the branch to start from. */
+  feedbackTask(repoId: string, number: number): Promise<{ task: string; base: string; count: number }>;
+  /** Sends the pull request's review comments that arrived since the last time to the session's agent. Resolves to how many were sent. */
+  sendPrFeedback(sessionId: string): Promise<number>;
 
   /** Every report for the last `days` days, computed from sessions, the usage ledger and the audit log. */
   getReport(days: number): Promise<Report>;

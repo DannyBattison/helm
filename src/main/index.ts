@@ -15,6 +15,8 @@ import { Store } from './store';
 import { Terminals } from './terminal';
 import { expandHome, home, run } from './util';
 import { CURRENCIES, currencyForRegion, fmtMoney } from '../shared/money';
+import { notifyDecision } from '../shared/notify';
+import { feedbackTask, issueTask, pullNumber } from '../shared/issues';
 import { auditCsv, buildReport, digestMarkdown, sessionsCsv, spendCsv, type ReportInput } from '../shared/reports';
 
 let win: BrowserWindow | null = null;
@@ -71,9 +73,10 @@ const sessions = new SessionManager(store, {
   },
   notify(kind, title, body, sessionId) {
     const st = store.data.settings;
-    const pref = kind === 'attention' ? st.notifyAttention : kind === 'ready' ? st.notifyReady : st.notifyFailed;
-    if (!pref.desktop || !Notification.isSupported() || (win && win.isFocused())) return;
-    const n = new Notification({ title, body, silent: !pref.sound });
+    const repoId = sessions.get(sessionId)?.repoId || '';
+    const d = notifyDecision(st, kind, repoId);
+    if (!d.show || !Notification.isSupported() || (win && win.isFocused())) return;
+    const n = new Notification({ title, body, silent: !d.sound });
     n.on('click', () => {
       win?.show();
       win?.focus();
@@ -524,6 +527,32 @@ const api: HelmApi = {
   },
   async setHunksReviewed(id, ids, reviewed) { sessions.setReviewed(id, ids, reviewed); },
   startReview: (id) => sessions.review(id),
+  startQueued: (id) => sessions.startNow(id),
+  cancelQueued: (id) => sessions.dequeue(id),
+  repoIssues: (id) => GH.listIssues(id),
+  async issueTask(repoId, number) {
+    const [issue, comments] = await Promise.all([GH.getIssue(repoId, number), GH.issueComments(repoId, number).catch(() => [])]);
+    return { task: issueTask(issue, comments), title: issue.title, url: issue.url };
+  },
+  async feedbackTask(repoId, number) {
+    const pr = (await GH.listPulls(repoId)).find((p) => p.number === number);
+    if (!pr) throw new Error(`Pull request #${number} was not found.`);
+    const comments = await GH.pullReviewComments(repoId, number);
+    if (!comments.length) throw new Error('This pull request has no review comments yet.');
+    return { task: feedbackTask(pr, comments), base: 'origin/' + pr.branch, count: comments.length };
+  },
+  async sendPrFeedback(id) {
+    const s = sess(id);
+    const n = pullNumber(s.prUrl);
+    if (!n) throw new Error('This session has no pull request.');
+    const since = s.feedbackAt ?? s.prAt ?? 0;
+    const fresh = (await GH.pullReviewComments(s.repoId, n)).filter((c) => Date.parse(c.at) > since && c.author !== store.data.user?.login);
+    if (!fresh.length) return 0;
+    s.feedbackAt = Math.max(...fresh.map((c) => Date.parse(c.at)));
+    store.save();
+    await sessions.send(id, feedbackTask({ number: n, title: s.customTitle || s.title || s.task, url: s.prUrl! }, fresh));
+    return fresh.length;
+  },
 
   async getReport(days) { return buildReport(reportInput(days)); },
   async reportDigest(days) { return digestMarkdown(reportInput(days), reportMoney); },

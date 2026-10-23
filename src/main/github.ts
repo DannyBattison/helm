@@ -1,6 +1,7 @@
 import { app, safeStorage } from 'electron';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import type { Comment, Issue } from '../shared/issues';
 import type { DeviceCode, GhRepo, PullRequest, User } from '../shared/types';
 
 const SCOPES = 'repo read:org workflow';
@@ -153,4 +154,34 @@ export async function listPulls(slug: string): Promise<PullRequest[]> {
     }
     return { number: p.number, title: p.title, branch: p.head.ref, base: p.base.ref, state: p.merged_at ? 'merged' : p.state, draft: p.draft, url: p.html_url, checks } as PullRequest;
   }));
+}
+
+export async function listIssues(slug: string): Promise<Issue[]> {
+  const r: any[] = await gh(`/repos/${slug}/issues?state=open&per_page=50&sort=updated&direction=desc`);
+  return r.filter((x) => !x.pull_request).map((x) => ({
+    number: x.number, title: x.title, body: x.body || '', url: x.html_url, labels: (x.labels || []).map((l: any) => (typeof l === 'string' ? l : l.name)).filter(Boolean),
+    author: x.user?.login || '', comments: x.comments || 0, updated: x.updated_at
+  }));
+}
+
+export async function getIssue(slug: string, number: number): Promise<Issue> {
+  const x = await gh(`/repos/${slug}/issues/${number}`);
+  return { number: x.number, title: x.title, body: x.body || '', url: x.html_url, labels: (x.labels || []).map((l: any) => (typeof l === 'string' ? l : l.name)).filter(Boolean), author: x.user?.login || '', comments: x.comments || 0, updated: x.updated_at };
+}
+
+/** Comments on an issue or a pull request's conversation. */
+export async function issueComments(slug: string, number: number): Promise<Comment[]> {
+  const r: any[] = await gh(`/repos/${slug}/issues/${number}/comments?per_page=50`);
+  return r.map((c) => ({ author: c.user?.login || '', body: c.body || '', at: c.created_at }));
+}
+
+/** Comments left on a pull request's diff, and the bodies of reviews that asked for changes or commented. */
+export async function pullReviewComments(slug: string, number: number): Promise<Comment[]> {
+  const [inline, reviews] = await Promise.all([
+    gh(`/repos/${slug}/pulls/${number}/comments?per_page=100`) as Promise<any[]>,
+    gh(`/repos/${slug}/pulls/${number}/reviews?per_page=50`) as Promise<any[]>
+  ]);
+  const out: Comment[] = inline.map((c) => ({ author: c.user?.login || '', body: c.body || '', path: c.path, line: c.line ?? c.original_line ?? undefined, at: c.created_at }));
+  for (const r of reviews) if ((r.body || '').trim() && r.state !== 'PENDING') out.push({ author: r.user?.login || '', body: r.body, at: r.submitted_at || '' });
+  return out.sort((a, b) => a.at.localeCompare(b.at));
 }

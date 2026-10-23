@@ -295,3 +295,19 @@ Why: user request. Parallel agents touching the same files is the main way many 
 ## D-070 · 2026-10-23 · Compare runs, and continuing outside sessions
 New session has "Compare several runs": 2 to 4 variants of model and effort for one task, each its own session in a shared `group`. The Compare screen puts them side by side (status, files, lines, commits, tokens, cost, review blockers); "Keep this one" stops and archives the rest and leaves their branches until deleted from the Archive. "Continue in helm" on a session started outside helm copies its conversation (`forkSession` into the new worktree's Claude Code folder) and starts a helm session from the branch it was on if that exists, otherwise from the default branch. The original is untouched; a running session, or a file over 300 MB, is refused.
 Why: user request (fan-out, continue external sessions).
+
+## D-071 · 2026-10-23 · Inbox, driven from the keyboard
+"Needs you" in the left tree, the bell and the ⌘K list now open an Inbox: a list of everything waiting on a person, and the detail of the selected item. Order: agents blocked on an approval or question (oldest first), limits reached, failed sessions, sessions that look stuck, finished work with no pull request or merge, then queued sessions (`src/shared/inbox.ts`). j and k move; a approves, A always allows (only when there is a pattern), d denies, n opens a box to deny with an instruction, 1 to 9 pick an answer when there is exactly one question, a or c continues past a limit, r resumes a failed session, s starts a queued one, Enter opens the session. With several questions there is no single option to press, so the session is opened. The Overview and its "Needs you" filter are unchanged.
+Why: user request. Approvals are the most frequent action in helm.
+
+## D-072 · 2026-10-23 · Queue: a limit on sessions working at once, and "after another session is merged"
+Settings → Claude Code has "Sessions working at once" (0 is no limit). A new session beyond the limit is queued: it gets its worktree and branch straight away but its agent does not start. New session also has "After <session> is merged": the queued session's untouched branch is reset to the base once that merge lands (a session that no longer exists is not waited for), so it starts from code that includes the first one's work. Sessions are released oldest first whenever anything changes. A session waiting on you does not use a slot. Messaging a queued session, or Start now, starts it at once; Cancel takes it out of the queue without running it. Queued sessions have status idle with the reason as their step.
+Why: user request. Without it, a plan window can be spent by whichever sessions were started first.
+
+## D-073 · 2026-10-23 · GitHub issues and review comments become sessions
+Repository → Issues lists open issues; Start session opens New session with the task filled in from the issue, its labels and the last 12 comments (HTML comments removed, long text cut), and remembers the issue on the session, so the suggested pull request text says "Closes #n". Pull requests → Fix comments starts a session from the pull request's branch with its review comments as the task. A session with a pull request has "Send new review comments to the agent", which sends only what arrived since the last time (not by you) and records when. All of it uses the REST API with the existing token.
+Why: user request.
+
+## D-074 · 2026-10-23 · Notification rules
+Settings → Notifications adds quiet hours (a window that may cross midnight; sound is always off inside it; an approval or question can still notify, which is a switch), a rule per repository (everything, only things that need you, nothing), and a tray switch. Decided in `src/shared/notify.ts` so it is tested. The per-kind desktop and sound switches still apply first.
+Why: user request.

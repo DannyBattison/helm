@@ -1,3 +1,4 @@
+import { inbox } from '@shared/inbox';
 import { sessionTitle } from '@shared/types';
 import React from 'react';
 import { FitAddon } from '@xterm/addon-fit';
@@ -47,6 +48,7 @@ export function Sidebar() {
   const [subsClosed, setSubsClosed] = React.useState<Record<string, boolean>>({});
   const [width, grip, resetWidth] = usePaneWidth('sidebar', 240, 180, 440);
   const t = totals(app);
+  const inboxCount = inbox(app.sessions).filter((i) => i.kind !== 'queued' && i.kind !== 'stuck').length;
   const externals = useUI((u) => u.externals);
   const showArchived = useUI((u) => u.showArchived);
   const archivedCount = app.sessions.filter((x) => x.archivedAt).length + Object.values(externals).reduce((n, l) => n + l.filter((x) => x.archived).length, 0);
@@ -141,8 +143,8 @@ export function Sidebar() {
       </div>
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: '4px 6px 8px' }}>
         <TreeItem icon="squares-four" label="Overview" selected={route.screen === 'overview' && !(route as any).filter} onClick={() => go({ screen: 'overview' })} />
-        <TreeItem icon="bell-ringing" label="Needs you" selected={route.screen === 'overview' && (route as any).filter === 'attention'} onClick={() => go({ screen: 'overview', filter: 'attention' })}
-          trailing={t.attention ? <Badge tone="attention" mono>{t.attention}</Badge> : null} />
+        <TreeItem icon="tray" label="Inbox" selected={route.screen === 'inbox'} onClick={() => go({ screen: 'inbox' })}
+          trailing={inboxCount ? <Badge tone="attention" mono>{inboxCount}</Badge> : null} />
         <TreeItem icon="pulse" label="Activity" selected={route.screen === 'activity'} onClick={() => go({ screen: 'activity' })} />
         <TreeItem icon="chart-line-up" label="Reports" selected={route.screen === 'reports'} onClick={() => go({ screen: 'reports' })} />
         <TreeItem icon="archive" label="Archive" selected={route.screen === 'archive'} onClick={() => go({ screen: 'archive' })} trailing={archivedCount ? <span style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)' }}>{archivedCount}</span> : null} />
@@ -225,7 +227,7 @@ export function TitleBar({ crumbs, theme, setTheme }: { crumbs: any[]; theme: 'd
         <Kbd keys={[mac() ? '⌘' : 'Ctrl', 'K']} />
       </button>
       <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 2 }}>
-        <IconButton icon="bell" label="Needs you" badge={need > 0} onClick={() => go({ screen: 'overview', filter: 'attention' })} />
+        <IconButton icon="bell" label="Inbox" badge={need > 0} onClick={() => go({ screen: 'inbox' })} />
         <IconButton icon={theme === 'dark' ? 'sun' : 'moon'} label="Toggle theme" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
         <span style={{ width: 1, height: 16, background: 'var(--border)', margin: '0 6px' }} />
         <Avatar name={app.user?.login || '?'} src={app.user?.avatar || undefined} size={22} />

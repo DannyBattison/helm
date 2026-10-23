@@ -184,7 +184,7 @@ export function AddRepo({ onClose }: { onClose(): void }) {
 }
 
 // ------------------------------------------------------------------ new session
-export function NewSession({ repoId, onClose }: { repoId?: string; onClose(): void }) {
+export function NewSession({ repoId, initial, onClose }: { repoId?: string; initial?: { task?: string; source?: import('@shared/types').Session['source']; base?: string }; onClose(): void }) {
   const app = useApp();
   const { sym, to, from } = useMoney();
   const sub = app.settings.billing === 'subscription';
@@ -193,7 +193,8 @@ export function NewSession({ repoId, onClose }: { repoId?: string; onClose(): vo
   const [bases, setBases] = React.useState<BaseOption[]>([]);
   const [dirty, setDirty] = React.useState(0);
   const [base, setBase] = React.useState(r?.defaultBranch || 'main');
-  const [task, setTask] = React.useState('');
+  const [task, setTask] = React.useState(initial?.task || '');
+  const [after, setAfter] = React.useState('');
   const [model, setModel] = React.useState<ModelAlias>(app.settings.defaultModel);
   const [perm, setPerm] = React.useState<PermMode>(app.settings.permMode);
   const [budget, setBudget] = React.useState(String(Math.round(to(app.settings.sessionBudget) * 100) / 100));
@@ -205,13 +206,13 @@ export function NewSession({ repoId, onClose }: { repoId?: string; onClose(): vo
     if (!repo) return;
     setBase(app.repos.find((x) => x.id === repo)?.defaultBranch || 'main');
     // Start from the local branch when it has commits GitHub does not, since that is where unpushed work is.
-    api.repoBases(repo).then((b) => { setBases(b); if (b[0]) setBase(b[0].ref); }).catch(() => setBases([]));
+    api.repoBases(repo).then((b) => { setBases(b); const want = initial?.base && b.find((x) => x.ref === initial.base); if (want) setBase(want.ref); else if (initial?.base) setBase(initial.base); else if (b[0]) setBase(b[0].ref); }).catch(() => setBases([]));
     api.workspaceInfo('repo:' + repo).then((i) => setDirty(i.dirty)).catch(() => setDirty(0));
   }, [repo]);
   const start = async () => {
     setBusy(true); setErr('');
     try {
-      const input = { repoId: repo, base, task: task.trim(), model, budget: sub ? 0 : from(parseFloat(budget)) || app.settings.sessionBudget, permMode: perm };
+      const input = { repoId: repo, base, task: task.trim(), model, budget: sub ? 0 : from(parseFloat(budget)) || app.settings.sessionBudget, permMode: perm, after: after || undefined, source: initial?.source };
       if (compare) {
         const ids = await api.createGroup(input, variants.map((v) => ({ model: v.model, effort: v.effort === 'default' ? undefined : v.effort })));
         const group = getUI().app?.sessions.find((x) => x.id === ids[0])?.group;
@@ -230,7 +231,7 @@ export function NewSession({ repoId, onClose }: { repoId?: string; onClose(): vo
       footer={<>
         <span style={{ flex: 1, font: '400 12px/1.3 var(--font-sans)', color: err ? 'var(--status-error-text)' : 'var(--text-3)' }}>{err || (r ? `Branch ${app.settings.branchPrefix}<name> from ${base}` : '')}</span>
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" icon="play" kbd={mod + '↵'} loading={busy} disabled={!task.trim() || !repo} onClick={start}>{compare ? `Start ${variants.length} runs` : 'Start session'}</Button>
+        <Button variant="primary" icon="play" kbd={mod + '↵'} loading={busy} disabled={!task.trim() || !repo} onClick={start}>{compare ? `Start ${variants.length} runs` : after ? 'Queue session' : 'Start session'}</Button>
       </>}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -245,6 +246,10 @@ export function NewSession({ repoId, onClose }: { repoId?: string; onClose(): vo
           <Select value={perm} onChange={(e: any) => setPerm(e.target.value)} options={PERM_OPTIONS} />
           {sub ? null : <Input mono value={sym + budget} onChange={(e: any) => setBudget(e.target.value.replace(/[^0-9.]/g, ''))} />}
         </div>
+        {!compare ? (
+          <Select value={after} onChange={(e: any) => setAfter(e.target.value)} icon="hourglass"
+            options={[{ value: '', label: app.settings.maxRunning ? `Start now, or when one of ${app.settings.maxRunning} slots is free` : 'Start right away' }, ...app.sessions.filter((x) => x.repoId === repo && !x.mergedAt && !x.archivedAt).map((x) => ({ value: x.id, label: 'After “' + (x.customTitle || x.title || x.task).slice(0, 48) + '” is merged' }))]} />
+        ) : null}
         <Checkbox checked={compare} onChange={setCompare} label="Compare several runs" description="Start the same task more than once, with different models or effort, and keep the best result." />
         {compare ? <VariantEditor variants={variants} onChange={setVariants} /> : null}
         {(() => {
@@ -419,7 +424,8 @@ export function Palette({ onClose, toggleTheme }: { onClose(): void; toggleTheme
   type Item = { key: string; label: string; hint?: string; icon: string; run(): void };
   const items: Item[] = [
     { key: 'a-overview', label: 'Overview', icon: 'squares-four', run: () => go({ screen: 'overview' }) },
-    { key: 'a-need', label: 'Needs you', icon: 'bell-ringing', run: () => go({ screen: 'overview', filter: 'attention' }) },
+    { key: 'a-need', label: 'Inbox: what needs you', icon: 'tray', run: () => go({ screen: 'inbox' }) },
+    { key: 'a-reports', label: 'Reports', icon: 'chart-line-up', run: () => go({ screen: 'reports' }) },
     { key: 'a-act', label: 'Activity', icon: 'pulse', run: () => go({ screen: 'activity' }) },
     { key: 'a-set', label: 'Settings', icon: 'gear-six', run: () => go({ screen: 'settings' }) },
     { key: 'a-new', label: 'New session', icon: 'plus', hint: mac() ? '⌘N' : 'Ctrl+N', run: () => setUI({ newSession: {} }) },

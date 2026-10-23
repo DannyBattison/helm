@@ -37,6 +37,7 @@ function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string
             <SessionConflicts s={s} />
             {s.group ? <Badge icon="columns"><a href="#" onClick={(e) => { e.preventDefault(); go({ screen: 'compare', group: s.group! }); }}>Compare runs</a></Badge> : null}
             {s.parentId ? <Badge icon="git-fork">Fork of {s.parentId}</Badge> : null}
+            {s.queued ? <Badge icon="hourglass">Queued</Badge> : null}
             {s.stuck ? <Tooltip content={s.stuck}><Badge tone="attention" icon="warning">Looks stuck</Badge></Tooltip> : null}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, font: '400 11.5px/1 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden' }}>
@@ -44,6 +45,7 @@ function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string
             <span>{prettyModel(s)}</span><span>·</span><span>started {clock(s.startedAt)}</span><span>·</span><span>{fmtTokens(s.tokens.input + s.tokens.output + s.tokens.cacheRead)} tokens</span>{sub ? null : <><span>·</span><span>{fmt(s.cost)}</span></>}
           </div>
         </div>
+        {s.queued ? <><Button variant="primary" icon="play" onClick={() => guard(api.startQueued(s.id))}>Start now</Button><Button variant="ghost" onClick={() => guard(api.cancelQueued(s.id))}>Cancel</Button></> : null}
         {s.status === 'idle' && /^Stopped/.test(s.step) ? <Button variant="secondary" icon="play" onClick={() => guard(api.resumeSession(s.id))}>Resume</Button> : null}
         {s.status === 'working' ? <Button variant="ghost" icon="pause" onClick={() => guard(api.interrupt(s.id))}>Pause</Button> : null}
         {running ? <Button variant="ghost" icon="stop" onClick={() => guard(api.stopSession(s.id))}>Stop</Button> : null}

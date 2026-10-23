@@ -8,6 +8,7 @@ import { Activity, Dashboard } from './views/Dashboard';
 import { AddRepo, DeleteSession, MergePr, NewSession, Palette, RemoveRepo, RenameSession, SignIn } from './views/Dialogs';
 import { Archive } from './views/Archive';
 import { Reports } from './views/Reports';
+import { Inbox } from './views/Inbox';
 import { Compare, CheckpointsDialog, ContinueDialog, ForkDialog, RestoreDialog } from './views/Review';
 import { ExternalSessionView, Repo } from './views/Repo';
 import { Session } from './views/Session';
@@ -91,6 +92,9 @@ export function App() {
   } else if (route.screen === 'archive') {
     crumbs = [{ label: 'Archive', icon: 'archive' }];
     body = <Archive />;
+  } else if (route.screen === 'inbox') {
+    crumbs = [{ label: 'Inbox', icon: 'tray' }];
+    body = <Inbox />;
   } else if (route.screen === 'compare') {
     crumbs = [{ label: 'Compare runs', icon: 'columns' }];
     body = <Compare group={route.group} />;
@@ -118,7 +122,7 @@ export function App() {
       </div>
       <StatusBar />
       {adding ? <AddRepo onClose={() => setUI({ adding: false })} /> : null}
-      {newSession ? <NewSession repoId={newSession.repoId} onClose={() => setUI({ newSession: null })} /> : null}
+      {newSession ? <NewSession repoId={newSession.repoId} initial={newSession} onClose={() => setUI({ newSession: null })} /> : null}
       {removingRepo ? <RemoveRepo key={removingRepo} id={removingRepo} onClose={() => setUI({ removingRepo: null })} /> : null}
       {mergingPr ? <MergePr key={mergingPr.repoId + mergingPr.number} target={mergingPr} onClose={() => setUI({ mergingPr: null })} /> : null}
       {checkpointsOf ? <CheckpointsDialog key={checkpointsOf} id={checkpointsOf} onClose={() => setUI({ checkpointsOf: null })} /> : null}

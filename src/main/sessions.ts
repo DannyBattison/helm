@@ -4,6 +4,7 @@ import { homedir, tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fmtMoney } from '../shared/money';
 import { auditText } from '../shared/redact';
+import { queueBlock, queueOrder } from '../shared/queue';
 import { stuckReason } from '../shared/stuck';
 import { REVIEW_SCHEMA, parseReview, reviewPrompt } from '../shared/selfreview';
 import { sessionTitle, type ActivityEvent, type Checkpoint, type Effort, type MessageImage, type ModelAlias, type NewSessionInput, type PendingAsk, type PermMode, type Session, type Status, type Subagent, type TranscriptEvent } from '../shared/types';
@@ -131,7 +132,11 @@ export class SessionManager {
   private get billing() { return this.store.data.settings.billing; }
   get = (id: string) => this.sessions.find((s) => s.id === id);
   repoOf = (s: Session) => this.store.data.repos.find((r) => r.id === s.repoId)!;
-  private touch() { this.store.save(); this.hooks.emitState(); }
+  private touch() {
+    this.store.save();
+    this.hooks.emitState();
+    if (this.sessions.some((s) => s.queued)) void this.pumpQueue();
+  }
 
   /** Called once at startup: nothing is running, so nothing should claim to be. */
   recover() {
@@ -211,12 +216,72 @@ export class SessionManager {
       lastAccess: now, ctx: 0, add: 0, del: 0, files: 0, filesTouched: {}, timeline: [{ t: now, status: 'working' }], commits: [], removeAfterMerge: st.removeAfterMerge, deleteBranchAfterMerge: st.deleteBranchAfterMerge, subagents: [],
       claudeSessionId, effort: extra.effort, parentId: extra.parentId, group: extra.group, source: extra.source
     };
+    s.source ??= input.source;
+    s.effort ??= input.effort;
+    // Wait when another session has to be merged first, or when too many sessions are already working.
+    const wait = input.after ? { after: input.after, since: now } : { since: now };
+    s.queued = wait;
+    const blocked = queueBlock(s, [...this.sessions, s], this.runningCount(), st.maxRunning);
+    s.queued = blocked ? wait : undefined;
+    if (blocked) { s.status = 'idle'; s.step = 'Queued. ' + blocked; s.timeline = [{ t: now, status: 'idle' }]; }
     this.sessions.push(s);
-    this.activity(s, 'start', `started on ${branch}`);
-    this.touch();
+    this.activity(s, 'start', blocked ? `queued: ${blocked.toLowerCase()}` : `started on ${branch}`);
     await this.push(id, { k: 'user', t: now, text: input.task, cp: await this.checkpoint(s, 'Start: ' + input.task) });
+    if (blocked) { this.touch(); return id; }
+    this.touch();
     await this.start(s, input.task);
     return id;
+  }
+
+  // ---------------------------------------------------------------- queue
+  /** Sessions with an agent at work. A session waiting on you does not use a slot. */
+  private runningCount() { return this.sessions.filter((s) => s.status === 'working' && this.rt.has(s.id)).length; }
+  private pumping = false;
+
+  /** Starts queued sessions whose wait is over, oldest first. Runs whenever anything changes. */
+  async pumpQueue() {
+    if (this.pumping || this.quitting) return;
+    this.pumping = true;
+    try {
+      for (const s of queueOrder(this.sessions)) {
+        if (queueBlock(s, this.sessions, this.runningCount(), this.store.data.settings.maxRunning)) continue;
+        await this.release(s);
+      }
+    } finally { this.pumping = false; }
+  }
+
+  private async release(s: Session) {
+    const after = s.queued?.after;
+    s.queued = undefined;
+    if (after && !s.worktreeGone) {
+      // It waited for another session's merge: bring its (still untouched) branch up to the base as it is now.
+      await G.git(this.repoOf(s).localPath, 'fetch', 'origin', '--prune').catch(() => undefined);
+      await G.git(s.worktree, 'reset', '--hard', '-q', s.base).catch(() => undefined);
+    }
+    s.timeline.push({ t: Date.now(), status: 'working' });
+    s.status = 'working';
+    s.endedAt = undefined;
+    s.step = 'Starting';
+    this.activity(s, 'start', 'left the queue');
+    this.store.save();
+    this.hooks.emitState();
+    await this.start(s, s.task);
+  }
+
+  /** Starts a queued session now, whatever it is waiting for. */
+  async startNow(id: string) {
+    const s = this.get(id);
+    if (!s?.queued) return;
+    await this.release(s);
+  }
+
+  /** Takes a session out of the queue without running it. */
+  async dequeue(id: string) {
+    const s = this.get(id);
+    if (!s?.queued) return;
+    s.queued = undefined;
+    s.step = 'Not started';
+    this.touch();
   }
 
   // ---------------------------------------------------------------- checkpoints, forks
@@ -1176,6 +1241,8 @@ export class SessionManager {
     if (!s) throw new Error('Session not found');
     if (s.worktreeGone) throw new Error('This session\'s work was merged and its worktree removed, so it cannot be continued. Start a new session.');
     let rt = this.rt.get(id);
+    // Talking to a queued session starts it now.
+    s.queued = undefined;
     // Talking to a session brings it back from the archive.
     s.lastAccess = Date.now();
     s.archivedAt = undefined;

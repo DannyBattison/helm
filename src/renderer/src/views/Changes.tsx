@@ -222,7 +222,7 @@ export function Changes({ s }: { s: Session }) {
   React.useEffect(() => {
     if (!sum || bodyEdited.current) return;
     const items = sum.commits.slice().reverse().map((c) => `- ${c.msg}`).join('\n');
-    setBody(`${s.task}\n\n${items ? items + '\n\n' : ''}Created with helm · session ${s.id}`);
+    setBody(`${s.task}\n\n${items ? items + '\n\n' : ''}${s.source?.kind === 'issue' ? `Closes #${s.source.number}\n\n` : ''}Created with helm · session ${s.id}`);
   }, [sum, s.id]);
 
   const checks = transcript.filter((e) => e.k === 'bash' && e.done && CHECK_RE.test(e.cmd)) as Extract<(typeof transcript)[number], { k: 'bash' }>[];
@@ -277,7 +277,7 @@ export function Changes({ s }: { s: Session }) {
         <Grip onMouseDown={lgrip} onDoubleClick={lreset} />
         <div style={{ height: 34, flex: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px' }}>
           <Checkbox checked={allOn} onChange={(on) => setUnchecked(on ? new Set() : new Set((sum?.files || []).filter((f) => pickable(f.path)).map((f) => f.path)))} />
-          <span style={{ flex: 1, font: '500 12px/1 var(--font-sans)' }} title="Hunks you have accepted, of those helm has read">{sum?.files.length ?? 0} files{totalHunks ? <span style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)', marginLeft: 8 }}>{doneHunks}/{totalHunks} accepted</span> : null}</span>
+          <span style={{ flex: 1, font: '500 12px/1 var(--font-sans)' }} title="Hunks accepted, of all hunks in the change">{sum?.files.length ?? 0} files{totalHunks ? <span style={{ font: '400 11px/1 var(--font-mono)', color: doneHunks === totalHunks ? 'var(--status-ready-text)' : 'var(--text-3)', marginLeft: 8, whiteSpace: 'nowrap' }}>✓ {doneHunks}/{totalHunks}</span> : null}</span>
           {totalHunks && doneHunks < totalHunks ? <Button size="sm" variant="ghost" onClick={() => void api.setHunksReviewed(s.id, Object.values(fileHunks).flat(), true)}>Accept all</Button> : null}
           <DiffStat additions={totalAdd} deletions={totalDel} blocks={false} />
         </div>
@@ -365,7 +365,7 @@ export function Changes({ s }: { s: Session }) {
               <SegmentedControl value={deliver} onChange={(v: string) => setDeliver(v as any)} options={[{ value: 'pr', label: 'Pull request' }, { value: 'merge', label: 'Merge directly' }]} />
             </div>
             {s.mergedAt ? <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>Merged into <b>{s.mergedInto}</b> {relTime(s.mergedAt)}. Merging again pushes anything new since.</div> : null}
-            {deliver === 'pr' && s.prUrl ? <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>A pull request is open for this branch. <a href="#" onClick={(e) => { e.preventDefault(); void api.openExternal(s.prUrl!); }}>View on GitHub</a>{/\/pull\/(\d+)/.test(s.prUrl) ? <>, or <a href="#" onClick={(e) => { e.preventDefault(); setUI({ mergingPr: { repoId: s.repoId, number: +/\/pull\/(\d+)/.exec(s.prUrl!)![1], sessionId: s.id } }); }}>merge it here</a></> : null}. Creating another pushes new commits to the same branch.</div> : null}
+            {deliver === 'pr' && s.prUrl ? <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}><Button size="sm" variant="secondary" icon="chats" style={{ marginBottom: 8 }} onClick={() => void api.sendPrFeedback(s.id).then((n) => toast({ tone: n ? 'ready' : 'neutral', title: n ? `Sent ${n} review ${n === 1 ? 'comment' : 'comments'} to the agent` : 'No new review comments' })).catch((e) => toast({ tone: 'error', title: 'Could not read the review comments', description: errText(e) }))}>Send new review comments to the agent</Button><br />A pull request is open for this branch. <a href="#" onClick={(e) => { e.preventDefault(); void api.openExternal(s.prUrl!); }}>View on GitHub</a>{/\/pull\/(\d+)/.test(s.prUrl) ? <>, or <a href="#" onClick={(e) => { e.preventDefault(); setUI({ mergingPr: { repoId: s.repoId, number: +/\/pull\/(\d+)/.exec(s.prUrl!)![1], sessionId: s.id } }); }}>merge it here</a></> : null}. Creating another pushes new commits to the same branch.</div> : null}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>
               <Select size="sm" icon="git-branch" mono value={base} onChange={(e) => setBase(e.target.value)} options={[...new Set([base, ...branches])]} /><i className="ph ph-arrow-left" style={{ fontSize: 12 }} /><BranchTag name={s.branch} />
             </div>

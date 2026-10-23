@@ -6,6 +6,7 @@ import { api, on } from './api';
 export type Route =
   | { screen: 'overview'; filter?: string }
   | { screen: 'activity' }
+  | { screen: 'inbox' }
   | { screen: 'archive' }
   | { screen: 'reports'; tab?: string }
   | { screen: 'compare'; group: string }
@@ -31,7 +32,7 @@ export interface UI {
   externals: Record<string, ExternalSession[]>;
   toasts: ToastItem[];
   adding: boolean;
-  newSession: { repoId?: string } | null;
+  newSession: { repoId?: string; task?: string; source?: Session['source']; base?: string } | null;
   /** The session whose delete dialog is open. */
   deleting: string | null;
   mergingPr: { repoId: string; number: number; sessionId?: string } | null;

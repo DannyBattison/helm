@@ -107,6 +107,7 @@ export function Settings({ section }: { section?: string }) {
             <SettingRow title="Always allowed commands" desc="Comma separated patterns. * matches anything. Added to when you choose Always allow.">
               <Field value={st.alwaysAllow} format={(v: string[]) => v.join(', ')} parse={(s: string) => s.split(',').map((x) => x.trim()).filter(Boolean)} onCommit={(v: string[]) => set({ alwaysAllow: v })} style={{ width: 260 }} />
             </SettingRow>
+            <SettingRow title="Sessions working at once" desc="More than this wait in a queue and start as others finish. Sessions waiting on you do not count. A queued session can be started by hand."><Select value={String(st.maxRunning)} onChange={(e: any) => set({ maxRunning: +e.target.value })} options={[0, 1, 2, 3, 4, 6, 8, 12].map((n) => ({ value: String(n), label: n === 0 ? 'No limit' : String(n) }))} /></SettingRow>
             <SettingRow title="Subagents per session" desc="Most subagents one session may run at once. Off stops agents from starting any. A session can override this."><Select value={String(st.maxSubagentsSession)} onChange={(e: any) => set({ maxSubagentsSession: +e.target.value })} options={subLimits([st.maxSubagentsSession])} /></SettingRow>
             <SettingRow title="Subagents per repository" desc="Most subagents that may run at once across every session of a repository."><Select value={String(st.maxSubagentsRepo)} onChange={(e: any) => set({ maxSubagentsRepo: +e.target.value })} options={subLimits([st.maxSubagentsRepo, 16, 24])} /></SettingRow>
             {app.repos.length ? (
@@ -206,6 +207,25 @@ export function Settings({ section }: { section?: string }) {
             {notif('notifyReady', 'Session ready for review')}
             {notif('notifyFailed', 'Session failed or hit its budget')}
             {notif('notifyChecks', 'Pull request checks finished')}
+            <SettingRow title="Quiet hours" desc="No desktop notifications between these times. Sound is silenced too.">
+              <Switch checked={st.quiet.enabled} onChange={(v: boolean) => set({ quiet: { ...st.quiet, enabled: v } })} />
+              <Field value={st.quiet.from} onCommit={(v: string) => set({ quiet: { ...st.quiet, from: v } })} parse={(x: string) => (/^([01]?\d|2[0-3]):[0-5]\d$/.test(x.trim()) ? x.trim() : undefined)} style={{ width: 70 }} />
+              <span style={{ color: 'var(--text-3)' }}>to</span>
+              <Field value={st.quiet.to} onCommit={(v: string) => set({ quiet: { ...st.quiet, to: v } })} parse={(x: string) => (/^([01]?\d|2[0-3]):[0-5]\d$/.test(x.trim()) ? x.trim() : undefined)} style={{ width: 70 }} />
+            </SettingRow>
+            <SettingRow title="Still tell me when an agent is blocked" desc="During quiet hours, an approval or question still notifies you.">
+              <Switch checked={st.quiet.allowAttention} onChange={(v: boolean) => set({ quiet: { ...st.quiet, allowAttention: v } })} />
+            </SettingRow>
+            {app.repos.length ? <>
+              <H sub="Per repository. Only things that need you leaves out finished work and failed checks.">Repositories</H>
+              {app.repos.map((r) => (
+                <SettingRow key={r.id} title={<span style={{ font: '400 13px/1 var(--font-mono)' }}>{r.id}</span>}>
+                  <Select size="sm" value={st.notifyRepo[r.id] || 'all'} onChange={(e: any) => set({ notifyRepo: { ...st.notifyRepo, [r.id]: e.target.value } })} options={[{ value: 'all', label: 'Everything' }, { value: 'attention', label: 'Only things that need you' }, { value: 'off', label: 'Nothing' }]} />
+                </SettingRow>
+              ))}
+            </> : null}
+            <H>System</H>
+            <SettingRow title="Tray icon" desc="Keep helm in the system tray or menu bar, with a count of what needs you and a menu to jump to it."><Switch checked={st.tray} onChange={(v: boolean) => set({ tray: v })} /></SettingRow>
           </> : null}
           {sec === 'appearance' ? <>
             <H>Appearance</H>
