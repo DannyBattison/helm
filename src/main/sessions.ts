@@ -867,12 +867,27 @@ export class SessionManager {
     this.touch();
   }
 
-  async remove(id: string, removeWt: boolean) {
+  /** What deleting would lose: uncommitted work in the worktree, and commits that exist nowhere else. */
+  async deleteInfo(id: string) {
+    const s = this.get(id);
+    if (!s) throw new Error('Session not found');
+    const repo = this.repoOf(s);
+    const worktreeExists = await G.fileExists(s.worktree);
+    const dirty = worktreeExists ? (await G.git(s.worktree, 'status', '--porcelain').catch(() => '')).split('\n').filter(Boolean).length : 0;
+    const pushed = await G.gitOk(repo.localPath, 'rev-parse', '--verify', '--quiet', 'refs/remotes/origin/' + s.branch);
+    const range = pushed ? `origin/${s.branch}..${s.branch}` : `${s.base}..${s.branch}`;
+    const unpushed = +(await G.git(repo.localPath, 'rev-list', '--count', range).catch(() => '0')).trim() || 0;
+    return { branch: s.branch, worktree: s.worktree, worktreeExists, dirty, unpushed, pushed, running: this.rt.has(id) };
+  }
+
+  /** Deletes the session. A branch can only be deleted together with its worktree, since git refuses to delete a checked-out branch. */
+  async remove(id: string, opts: { worktree: boolean; branch: boolean }) {
     const s = this.get(id);
     if (!s) return;
     await this.stop(id);
-    if (removeWt) await G.removeWorktree(this.repoOf(s).localPath, s.worktree, s.branch);
+    if (opts.worktree || opts.branch) await G.removeWorktree(this.repoOf(s).localPath, s.worktree, opts.branch ? s.branch : undefined);
     this.store.data.sessions = this.store.data.sessions.filter((x) => x.id !== id);
+    await this.store.deleteTranscripts(id);
     this.touch();
   }
 

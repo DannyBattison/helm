@@ -1,9 +1,9 @@
 import React from 'react';
-import type { BaseOption, GhRepo, ModelAlias, PermMode } from '@shared/types';
+import type { BaseOption, GhRepo, ModelAlias, PermMode, SessionDeleteInfo } from '@shared/types';
 import { api, platform } from '../api';
 import glyph from '../assets/helm-glyph-violet.svg';
 import { tilde } from '../lib';
-import { go, setUI, toast, useApp, useMoney } from '../store';
+import { getUI, go, setUI, toast, useApp, useMoney } from '../store';
 import { Badge, Button, Checkbox, Dialog, Input, Kbd, Select, Tabs } from '../ui';
 import { MODEL_OPTIONS, PERM_OPTIONS } from './Settings';
 
@@ -244,6 +244,50 @@ export function NewSession({ repoId, onClose }: { repoId?: string; onClose(): vo
           return notes.map((n, i) => <span key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', font: '400 12px/1.45 var(--font-sans)', color: n.warn ? 'var(--status-attention-text)' : 'var(--text-2)' }}><i className={'ph-fill ph-' + (n.warn ? 'warning-circle' : 'info')} style={{ fontSize: 14, marginTop: 1 }} />{n.text}</span>);
         })()}
         <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>{sub ? 'Model and permission mode can be changed later. Plan usage limits are set in Settings → Usage.' : 'Model, permission mode and the session budget can be changed later. The agent pauses at the budget and waits in Needs you.'}</span>
+      </div>
+    </Dialog>
+  );
+}
+
+// ------------------------------------------------------------------ delete session
+export function DeleteSession({ id, onClose }: { id: string; onClose(): void }) {
+  const app = useApp();
+  const s = app.sessions.find((x) => x.id === id);
+  const [info, setInfo] = React.useState<SessionDeleteInfo | null>(null);
+  const [worktree, setWorktree] = React.useState(true);
+  const [branch, setBranch] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState('');
+  React.useEffect(() => { api.sessionDeleteInfo(id).then(setInfo).catch((e) => setErr(errText(e))); }, [id]);
+  const run = async () => {
+    setBusy(true); setErr('');
+    try {
+      await api.deleteSession(id, { worktree: worktree || branch, branch });
+      const r = getUI().route;
+      if (r.screen === 'session' && r.id === id) go({ screen: 'overview' });
+      toast({ tone: 'neutral', title: `Deleted ${id}`, description: [worktree || branch ? 'worktree removed' : 'worktree kept', branch ? 'branch deleted' : 'branch kept'].join(' · ') });
+      onClose();
+    } catch (e) { setErr(errText(e)); } finally { setBusy(false); }
+  };
+  if (!s) return null;
+  const warn = (text: string) => <span style={{ display: 'flex', gap: 8, alignItems: 'flex-start', font: '400 12px/1.45 var(--font-sans)', color: 'var(--status-attention-text)' }}><i className="ph-fill ph-warning-circle" style={{ fontSize: 14, marginTop: 1, flex: 'none' }} />{text}</span>;
+  const removing = worktree || branch;
+  return (
+    <Dialog width={520} title={`Delete ${s.id}?`} description="The conversation and its record in helm are removed. Your checkout and other sessions are not touched." onClose={onClose}
+      footer={<>
+        <span style={{ flex: 1, font: '400 12px/1.3 var(--font-sans)', color: 'var(--status-error-text)' }}>{err}</span>
+        <Button variant="ghost" onClick={onClose}>Cancel</Button>
+        <Button variant="danger" icon="trash" loading={busy} disabled={!info} onClick={run}>Delete session</Button>
+      </>}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {info?.running ? <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>It is running, and will be stopped first.</span> : null}
+        <Checkbox checked={worktree || branch} disabled={branch || !info?.worktreeExists} onChange={setWorktree} label="Remove the worktree"
+          description={info?.worktreeExists ? tilde(info.worktree, app.home) : 'Already gone from disk'} />
+        <Checkbox checked={branch} onChange={(v: boolean) => { setBranch(v); if (v) setWorktree(true); }} label={<span>Delete the branch <code style={{ font: 'var(--type-data)' }}>{s.branch}</code></span>}
+          description={info?.pushed ? 'Only the local branch. It also exists on GitHub and stays there.' : 'Local only. It is not on GitHub.'} />
+        {info && removing && info.dirty > 0 ? warn(`${info.dirty} uncommitted ${info.dirty === 1 ? 'file' : 'files'} in the worktree will be lost.`) : null}
+        {info && branch && info.unpushed > 0 ? warn(`${info.unpushed} ${info.unpushed === 1 ? 'commit' : 'commits'} on this branch ${info.pushed ? 'are not on GitHub' : 'exist nowhere else'}, and will be lost.`) : null}
+        {info && !branch && info.unpushed > 0 ? <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>Keeping the branch keeps its {info.unpushed} {info.unpushed === 1 ? 'commit' : 'commits'}.</span> : null}
       </div>
     </Dialog>
   );

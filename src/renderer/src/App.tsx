@@ -5,7 +5,7 @@ import { theme as resolveTheme } from './lib';
 import { dismissToast, getUI, go, init, setUI, useUI } from './store';
 import { Button, Toast } from './ui';
 import { Activity, Dashboard } from './views/Dashboard';
-import { AddRepo, NewSession, Palette, SignIn } from './views/Dialogs';
+import { AddRepo, DeleteSession, NewSession, Palette, SignIn } from './views/Dialogs';
 import { ExternalSessionView, Repo } from './views/Repo';
 import { Session } from './views/Session';
 import { Settings } from './views/Settings';
@@ -18,6 +18,7 @@ export function App() {
   const adding = useUI((u) => u.adding);
   const newSession = useUI((u) => u.newSession);
   const palette = useUI((u) => u.palette);
+  const deleting = useUI((u) => u.deleting);
   const term = useUI((u) => u.term);
   const toasts = useUI((u) => u.toasts);
   const [sysDark, setSysDark] = React.useState(0);
@@ -96,6 +97,7 @@ export function App() {
       <StatusBar />
       {adding ? <AddRepo onClose={() => setUI({ adding: false })} /> : null}
       {newSession ? <NewSession repoId={newSession.repoId} onClose={() => setUI({ newSession: null })} /> : null}
+      {deleting ? <DeleteSession key={deleting} id={deleting} onClose={() => setUI({ deleting: null })} /> : null}
       {palette ? <Palette onClose={() => setUI({ palette: false })} toggleTheme={toggleTheme} /> : null}
       <div style={{ position: 'absolute', right: 16, bottom: 40, zIndex: 60, display: 'flex', flexDirection: 'column', gap: 8 }}>
         {toasts.map((t) => (

@@ -284,6 +284,19 @@ export interface BaseOption {
   local: boolean;
 }
 
+export interface SessionDeleteInfo {
+  branch: string;
+  worktree: string;
+  worktreeExists: boolean;
+  /** Uncommitted files in the worktree: lost if the worktree is removed. */
+  dirty: number;
+  /** Commits on the branch that are not on GitHub: lost if the branch is deleted. */
+  unpushed: number;
+  /** The branch also exists on GitHub. Only the local one is deleted. */
+  pushed: boolean;
+  running: boolean;
+}
+
 export interface WorkspaceInfo {
   root: string;
   branch: string;
@@ -413,7 +426,10 @@ export interface HelmApi {
   interrupt(sessionId: string): Promise<void>;
   stopSession(sessionId: string): Promise<void>;
   resumeSession(sessionId: string): Promise<void>;
-  deleteSession(sessionId: string, removeWorktree: boolean): Promise<void>;
+  /** What deleting a session would remove or lose, so the dialog can say so. */
+  sessionDeleteInfo(sessionId: string): Promise<SessionDeleteInfo>;
+  /** Deletes the session. The branch can only go with the worktree, because git won't delete a branch that is checked out. */
+  deleteSession(sessionId: string, opts: { worktree: boolean; branch: boolean }): Promise<void>;
   setSessionModel(sessionId: string, model: ModelAlias): Promise<void>;
   setSessionPermMode(sessionId: string, mode: PermMode): Promise<void>;
   setSessionMaxSubagents(sessionId: string, max: number | null): Promise<void>;

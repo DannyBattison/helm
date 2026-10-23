@@ -4,7 +4,7 @@ import { api, platform } from '../api';
 import { Cmd, Hl } from '../Hl';
 import { highlightBlock, langFromPath, langFromTag } from '../highlight';
 import { clock, elapsed, fmtTokens, prettyModel, runningSubagents, STATUS_LABEL, subagentTree, tilde } from '../lib';
-import { go, loadTranscript, toast, useApp, useMoney, useTranscript } from '../store';
+import { go, loadTranscript, setUI, toast, useApp, useMoney, useTranscript } from '../store';
 import { Avatar, Badge, BranchTag, Button, DiffStat, Grip, IconButton, Meter, Select, StatusDot, Tabs, usePaneWidth } from '../ui';
 import { Changes } from './Changes';
 import { CodeView } from './CodeView';
@@ -301,7 +301,7 @@ function UsagePanel({ s }: { s: S }) {
         <span className="selectable" style={{ font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-2)', wordBreak: 'break-all' }}>{tilde(s.worktree, app.home)}</span>
         <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>Isolated from your main checkout.{s.removeAfterMerge ? ' Removed after the PR merges.' : ''}</span>
         <div style={{ display: 'flex', gap: 6 }}>
-          <Button size="sm" variant="ghost" icon="trash" onClick={() => { if (confirm(`Delete session ${s.id} and remove its worktree? Unpushed commits on ${s.branch} are lost.`)) { void guard(api.deleteSession(s.id, true)); go({ screen: 'overview' }); } }}>Delete session</Button>
+          <Button size="sm" variant="ghost" icon="trash" onClick={() => setUI({ deleting: s.id })}>Delete session…</Button>
         </div>
       </div>
     </aside>

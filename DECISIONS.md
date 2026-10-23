@@ -181,3 +181,8 @@ Why: user asked for lifetime tokens per project.
 ## D-042 · 2026-10-23 · Highlighting inside shell commands
 Commands shown for approval are highlighted piece by piece. The shell is highlighted as shell, and a heredoc body in the language of the file it writes (from the extension) or the interpreter it feeds (`python3 - <<EOF`), else only if the language can be detected confidently, else left plain. Lines are preserved one for one and all text is escaped.
 Why: a long heredoc that wrote a JavaScript file showed as plain text.
+
+## D-043 · 2026-10-23 · Deleting a session
+Right-clicking a session in the left tree opens a menu: open conversation, open code, review changes, copy branch name, stop, and delete. Delete opens a dialog that asks separately about the worktree (on by default) and the branch (off by default). It warns when removing the worktree would lose uncommitted files, and when deleting the branch would lose commits that are not on GitHub (or exist nowhere else), and says the GitHub copy of a pushed branch is never touched. A branch can only be deleted together with its worktree, because git will not delete a checked-out branch, so ticking the branch ticks the worktree. Deleting also removes the session's saved transcripts and its subagents' transcripts; lifetime token totals are kept. The Session page's Delete button uses the same dialog.
+Behaviour changed: deleting a session used to always delete its branch. The Worktrees tab's Remove now keeps the branch, matching its own confirmation text. Removing a worktree after a merged pull request still deletes the branch.
+Why: user request. The old behaviour could silently discard unpushed commits.

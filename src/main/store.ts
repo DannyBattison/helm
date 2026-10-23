@@ -1,5 +1,5 @@
 import { app } from 'electron';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ActivityEvent, Lifetime, PlanUsage, Repo, Session, Settings, TranscriptEvent, User } from '../shared/types';
 import { dayStart, home, weekStart } from './util';
@@ -103,6 +103,15 @@ export class Store {
       this.transcripts.set(id, t!);
     }
     return t!;
+  }
+
+  /** A session's transcript and those of its subagents (`<id>~<subagent>`). */
+  async deleteTranscripts(id: string) {
+    for (const [k, tm] of this.tTimers) if (k === id || k.startsWith(id + '~')) { clearTimeout(tm); this.tTimers.delete(k); }
+    for (const k of [...this.transcripts.keys()]) if (k === id || k.startsWith(id + '~')) this.transcripts.delete(k);
+    try {
+      for (const f of await readdir(join(this.dir, 'transcripts'))) if (f === id + '.json' || f.startsWith(id + '~')) await rm(join(this.dir, 'transcripts', f), { force: true });
+    } catch { /* nothing saved */ }
   }
 
   saveTranscript(id: string) {

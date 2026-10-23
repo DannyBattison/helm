@@ -23,3 +23,5 @@ export { TreeItem } from './TreeItem';
 export { Grip, useColumns, usePaneWidth } from './resize';
 export type { Col } from './resize';
 export { Skeleton } from './Skeleton';
+export { ContextMenu } from './ContextMenu';
+export type { MenuItem } from './ContextMenu';

@@ -215,7 +215,7 @@ const api: HelmApi = {
   async removeWorktree(repoId, path) {
     const r = repos.must(repoId);
     const s = store.data.sessions.find((x) => x.repoId === repoId && x.worktree === path);
-    if (s) await sessions.remove(s.id, true);
+    if (s) await sessions.remove(s.id, { worktree: true, branch: false });
     else await G.removeWorktree(r.localPath, path);
   },
 
@@ -224,7 +224,8 @@ const api: HelmApi = {
   interrupt: (id) => sessions.interrupt(id),
   stopSession: (id) => sessions.stop(id),
   async resumeSession(id) { await sessions.send(id, 'Continue where you left off.'); },
-  deleteSession: (id, rm) => sessions.remove(id, rm),
+  sessionDeleteInfo: (id) => sessions.deleteInfo(id),
+  deleteSession: (id, opts) => sessions.remove(id, opts),
   setSessionModel: (id, m) => sessions.setModel(id, m),
   setSessionPermMode: (id, m) => sessions.setPermMode(id, m),
   refreshSubagent: (id, subId) => sessions.refreshSubagent(id, subId),
@@ -438,7 +439,7 @@ async function pollMerges() {
       for (const s of list) {
         const pr = prs.find((p) => p.url === s.prUrl);
         if (pr?.state === 'merged') {
-          await sessions.remove(s.id, true);
+          await sessions.remove(s.id, { worktree: true, branch: true });
           store.data.activity.unshift({ id: Math.random().toString(36).slice(2), t: Date.now(), kind: 'merge', who: store.data.user?.login || 'you', human: true, what: `merged PR #${pr.number} “${pr.title}”`, repo: repoId.split('/')[1] });
         }
       }

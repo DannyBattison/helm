@@ -6,7 +6,7 @@ import { fontStack } from '../fonts';
 import glyph from '../assets/helm-glyph-violet.svg';
 import { ago, elapsed, livePlan, reposWithSessions, runningSubagents, subagentTree, totals, untilReset } from '../lib';
 import { go, setUI, useApp, useMoney, useUI, useTranscript, type Route } from '../store';
-import { Avatar, Badge, Breadcrumbs, Grip, IconButton, Kbd, Meter, TreeItem, usePaneWidth } from '../ui';
+import { Avatar, Badge, Breadcrumbs, ContextMenu, Grip, IconButton, Kbd, Meter, TreeItem, usePaneWidth, type MenuItem } from '../ui';
 
 const mac = () => platform() === 'darwin';
 
@@ -47,6 +47,20 @@ export function Sidebar() {
   const [width, grip, resetWidth] = usePaneWidth('sidebar', 240, 180, 440);
   const t = totals(app);
   const externals = useUI((u) => u.externals);
+  const [menu, setMenu] = React.useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
+  const sessionMenu = (e: React.MouseEvent, s: (typeof app.sessions)[number]) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const running = s.status === 'working' || s.status === 'attention';
+    setMenu({ x: e.clientX, y: e.clientY, items: [
+      { label: 'Open conversation', icon: 'chats-circle', onClick: () => go({ screen: 'session', id: s.id, tab: 'conversation' }) },
+      { label: 'Open code', icon: 'code', onClick: () => go({ screen: 'session', id: s.id, tab: 'code' }) },
+      { label: s.files ? `Review changes (${s.files})` : 'Review changes', icon: 'git-diff', onClick: () => go({ screen: 'session', id: s.id, tab: 'changes' }) },
+      { label: 'Copy branch name', icon: 'copy', separator: true, onClick: () => void api.copyText(s.branch) },
+      { label: 'Stop session', icon: 'stop', disabled: !running, onClick: () => void api.stopSession(s.id) },
+      { label: 'Delete session…', icon: 'trash', danger: true, separator: true, onClick: () => setUI({ deleting: s.id }) }
+    ] });
+  };
   // Reordering: repositories among themselves, and sessions within their repository. Subagents are never dragged on their own.
   const drag = React.useRef<{ kind: 'repo' | 'session'; id: string; repoId?: string } | null>(null);
   const [over, setOver] = React.useState<{ key: string; pos: 'before' | 'after' } | null>(null);
@@ -112,7 +126,7 @@ export function Sidebar() {
                 const subsOpen = !subsClosed[s.id];
                 return (
                   <div key={s.id} {...target('session', s.id, r.id)} style={line(s.id)}>
-                    <div {...dnd('session', s.id, r.id)}>
+                    <div {...dnd('session', s.id, r.id)} onContextMenu={(e) => sessionMenu(e, s)}>
                     <TreeItem depth={1} status={s.status} label={s.id} expandable={tree.length > 0} expanded={subsOpen}
                       meta={running ? <span style={{ color: 'var(--status-working-text)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><i className="ph ph-tree-structure" style={{ fontSize: 11 }} />{running}</span> : elapsed(s.startedAt, s.endedAt)}
                       selected={route.screen === 'session' && route.id === s.id && !route.sub}
@@ -155,6 +169,7 @@ export function Sidebar() {
         <PlanMeters />
         <TreeItem icon="gear-six" label="Settings" selected={route.screen === 'settings'} onClick={() => go({ screen: 'settings' })} style={{ margin: '0 -6px' }} />
       </div>
+      {menu ? <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} /> : null}
     </aside>
   );
 }
