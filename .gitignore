@@ -1,0 +1,35 @@
+# dependencies and build output
+node_modules/
+out/
+dist/
+release/
+.vite/
+*.tsbuildinfo
+coverage/
+
+# logs and temp
+*.log
+npm-debug.log*
+.tmp/
+.cache/
+
+# env and secrets
+.env
+.env.*
+!.env.example
+*.pem
+
+# OS and editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# local Claude Code state
+.claude/settings.local.json
+
+# design handoff bundle (reference material, not part of the app)
+design_handoff_helm_desktop/
+Multi-agent desktop application design.zip

@@ -1,0 +1,7 @@
+:root{
+  --space-0:0;--space-px:1px;--space-0-5:2px;--space-1:4px;--space-1-5:6px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-8:32px;--space-10:40px;--space-12:48px;
+  --radius-xs:3px;--radius-sm:4px;--radius-md:6px;--radius-lg:8px;--radius-xl:12px;--radius-full:999px;
+  --control-h-sm:24px;--control-h:28px;--control-h-lg:32px;
+  --row-h:28px;--row-h-dense:24px;
+  --titlebar-h:38px;--sidebar-w:240px;--statusbar-h:24px;
+}
