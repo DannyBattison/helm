@@ -542,18 +542,28 @@ export interface CompanionState {
 /** The small picture of helm that goes to the companion website: no code, no file contents, only what a phone screen needs. */
 export interface CompanionSnapshot {
   at: number;
+  /** Counts every event logged, so the website knows when to read the activity log again. */
+  activitySeq: number;
   user: { login: string; avatar: string };
   billing: 'subscription' | 'api';
+  /** Display currency and the rate from USD, for amounts. */
+  currency: { code: string; rate: number };
   /** Whether the website may answer and message agents, or only watch. */
   control: boolean;
   plan: { fiveHour?: PlanWindow; weekly?: PlanWindow };
-  repos: { id: string; name: string; owner: string; lifetimeTokens: number }[];
+  tokensToday: number;
+  repos: { id: string; name: string; owner: string; lifetime: Lifetime; weekSpend: number; cap: number }[];
   sessions: {
-    id: string; title: string; repoId: string; repoName: string; status: Status; step: string; branch: string; model: string; permMode: string;
-    startedAt: number; tokens: number; cost: number; ctx: number; files: number; add: number; del: number; prUrl?: string; mergedInto?: string; archived: boolean;
-    subagents: { running: number; total: number };
+    id: string; title: string; repoId: string; repoName: string; status: Status; step: string; branch: string; base: string; model: string; permMode: string;
+    startedAt: number; endedAt?: number; lastAccess: number;
+    tokens: number; tokenDetail: { input: number; output: number; cacheRead: number }; cost: number; budget: number; ctx: number;
+    files: number; add: number; del: number; commits: number; prUrl?: string; mergedInto?: string; archived: boolean; worktreeGone?: boolean;
+    subagents: { id: string; parentId: string | null; description: string; agentType: string; status: Subagent['status']; startedAt: number; endedAt?: number; tools: number; tokens: number; summary?: string; background?: boolean }[];
+    maxSubagents?: number;
     ask?: { id: string; type: string; head: string; note: string; command?: string; tool?: string; pattern?: string; scope?: string; orphaned?: boolean; questions?: AskQuestion[] };
   }[];
+  /** Sessions started outside helm (the VS Code extension, the CLI), read-only. */
+  externals: { repoId: string; id: string; title: string; branch?: string; active: boolean; lastModified: number; archived: boolean }[];
   activity: { t: number; who: string; what: string; kind: string; repo: string; ok?: boolean }[];
 }
 

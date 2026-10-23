@@ -120,7 +120,11 @@ Object.assign(companionOps, {
     const repo = repos.must(repoId);
     await sessions.create({ repoId, base: repo.defaultBranch, task, model: st.defaultModel, budget: st.sessionBudget, permMode: st.permMode });
   },
-  transcript: (id: string) => store.transcript(id)
+  transcript: (key: string) => store.transcript(key),
+  externals: (repoId: string) => api.listExternalSessions(repoId),
+  externalTranscript: async (repoId: string, sessionId: string, limit: number) => { const r = await externalTranscript(repoId, sessionId, { tail: limit }); return { ready: r.ready, total: r.total, start: r.start, events: r.events }; },
+  archiveExternal: (sessionId: string, archived: boolean) => api.archiveExternal(sessionId, archived),
+  activity: (before: number | undefined, limit: number) => store.readLog(before, limit)
 });
 const terms = new Terminals((id, data) => send('termData', { id, data }), (id) => send('termExit', { id }));
 
