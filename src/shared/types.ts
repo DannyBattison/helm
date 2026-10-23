@@ -137,13 +137,22 @@ export type TranscriptEvent =
 export interface ActivityEvent {
   id: string;
   t: number;
-  kind: 'ready' | 'attention' | 'budget' | 'commit' | 'start' | 'merge' | 'done' | 'error';
+  kind: ActivityKind;
+  /** A session id for what an agent did, the user's login for what they asked helm to do, `helm` for what helm did by itself. */
   who: string;
   human?: boolean;
   what: string;
   repo: string;
   sessionId?: string;
+  /** The full command, path or error, when `what` is shortened. */
+  detail?: string;
+  /** False when the action failed. */
+  ok?: boolean;
 }
+
+export type ActivityKind =
+  | 'ready' | 'attention' | 'budget' | 'commit' | 'start' | 'merge' | 'done' | 'error'
+  | 'push' | 'fetch' | 'git' | 'pr' | 'worktree' | 'session' | 'approval' | 'bash' | 'edit';
 
 export interface Settings {
   theme: ThemePref;
@@ -201,6 +210,8 @@ export interface Settings {
   dnd: boolean;
   editorFontSize: number;
   /** Font for the interface: labels, titles and prose. */
+  /** Show the organisation or user before each repository name in the left tree (`acme/` storefront). */
+  showOwner: boolean;
   uiFont: string;
   /** Monospaced font for data in the interface: paths, branches, hashes and numbers. */
   dataFont: string;
@@ -247,7 +258,10 @@ export interface AppState {
   user: User | null;
   repos: Repo[];
   sessions: Session[];
+  /** The latest few events. The Activity page reads the full log with `activityLog`. */
   activity: ActivityEvent[];
+  /** Counts every event logged, so a page can tell when to read the log again. */
+  activitySeq: number;
   settings: Settings;
   /** Spend per repo id since the start of the current week (Monday). */
   weekSpend: Record<string, number>;
@@ -516,6 +530,8 @@ export interface MergeResult {
 /** Request/response calls from renderer to main. */
 export interface HelmApi {
   getState(): Promise<AppState>;
+  /** The log of everything helm and its agents did, newest first. `before` is a timestamp to page back from. */
+  activityLog(opts?: { before?: number; limit?: number }): Promise<ActivityEvent[]>;
   updateSettings(patch: Partial<Settings>): Promise<void>;
 
   signInStart(): Promise<DeviceCode>;

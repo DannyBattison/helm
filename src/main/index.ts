@@ -32,6 +32,7 @@ function buildState(): AppState {
     repos: store.data.repos,
     sessions: store.data.sessions,
     activity: store.data.activity,
+    activitySeq: store.logSeq,
     settings: store.data.settings,
     weekSpend: store.weekSpend(),
     lifetime: store.data.totals,
@@ -190,8 +191,12 @@ function openExternalEditor(path: string, kind: string, line?: number) {
 }
 
 // ------------------------------------------------------------------ API
+const me = () => store.data.user?.login || 'you';
+const repoName = (id: string) => store.data.repos.find((r) => r.id === id)?.name || id.split('/').pop() || '';
+
 const api: HelmApi = {
   async getState() { return buildState(); },
+  activityLog: (opts) => store.readLog(opts?.before, opts?.limit),
   async updateSettings(patch: Partial<Settings>) {
     Object.assign(store.data.settings, patch);
     if ('theme' in patch) applyTheme();
@@ -230,10 +235,10 @@ const api: HelmApi = {
   },
 
   async listGithubRepos() { return GH.listRepos(new Set(store.data.repos.map((r) => r.id))); },
-  async cloneRepos(ids) { for (const id of ids) await repos.cloneSlug(id); },
-  async cloneUrl(url, dir) { await repos.cloneUrl(url, dir); },
+  async cloneRepos(ids) { for (const id of ids) { await repos.cloneSlug(id); store.log({ kind: 'git', who: me(), human: true, what: 'cloned the repository', repo: repoName(id) }); } },
+  async cloneUrl(url, dir) { await repos.cloneUrl(url, dir); store.log({ kind: 'git', who: me(), human: true, what: `cloned ${url}`, repo: url.split('/').pop()?.replace(/\.git$/, '') || '' }); },
   async inspectClone(path) { return repos.inspect(path); },
-  async addLocalRepo(path) { await repos.addFromPath(expandHome(path)); },
+  async addLocalRepo(path) { await repos.addFromPath(expandHome(path)); store.log({ kind: 'git', who: me(), human: true, what: `added ${path}`, repo: path.split(/[\\/]/).pop() || '' }); },
   async removeRepo(id) {
     if (store.data.sessions.some((s) => s.repoId === id)) throw new Error('Remove or delete this repository\'s sessions first.');
     await repos.remove(id);
@@ -243,7 +248,10 @@ const api: HelmApi = {
     const r = await dialog.showOpenDialog(win!, { properties: ['openDirectory', 'createDirectory'] });
     return r.canceled ? null : r.filePaths[0];
   },
-  async fetchRepo(id) { await repos.fetch(id); },
+  async fetchRepo(id) {
+    try { await repos.fetch(id); store.log({ kind: 'fetch', who: me(), human: true, what: 'fetched origin', repo: repoName(id) }); }
+    catch (e: any) { store.log({ kind: 'fetch', who: me(), human: true, what: 'fetch failed', repo: repoName(id), ok: false, detail: String(e?.message || e) }); throw e; }
+  },
   repoBranches: (id) => repos.branches(id),
   repoBases: (id) => repos.bases(id),
   repoHistory: (id, limit) => repos.history(id, store.data.sessions, limit),
@@ -270,7 +278,7 @@ const api: HelmApi = {
     const r = repos.must(repoId);
     const s = store.data.sessions.find((x) => x.repoId === repoId && x.worktree === path);
     if (s) await sessions.remove(s.id, { worktree: true, branch: false });
-    else await G.removeWorktree(r.localPath, path);
+    else { await G.removeWorktree(r.localPath, path); store.log({ kind: 'worktree', who: me(), human: true, what: 'removed a worktree', repo: r.name, detail: path }); }
   },
 
   createSession: (input) => sessions.create(input),
@@ -375,6 +383,7 @@ const api: HelmApi = {
   async commitOnly(id, files, message) {
     const w = ws(id);
     await commitFiles(w.worktree, files, message);
+    store.log({ kind: 'commit', who: me(), human: true, what: `committed ${files.length} ${files.length === 1 ? 'file' : 'files'}: ${message.split('\n')[0].slice(0, 80)}`, repo: w.sessionId ? repoName(sessions.get(w.sessionId)?.repoId || '') : '', sessionId: w.sessionId, detail: files.join('\n') });
     const s = w.sessionId ? sessions.get(w.sessionId) : undefined;
     if (s) await sessions.refreshStats(s);
   },
@@ -390,7 +399,12 @@ const api: HelmApi = {
         if (t.dirty) uncommitted++;
         await G.git(cwd, 'push', '-u', 'origin', t.branch);
         pushed.push(key);
-      } catch (e: any) { failed.push({ id: key, error: String(e?.message || e).split('\n').slice(-2).join(' ').trim() }); }
+        store.log({ kind: 'push', who: me(), human: true, what: `pushed ${t.branch} (${t.ahead} ${t.ahead === 1 ? 'commit' : 'commits'})`, repo: repoName(t.repoId), sessionId: t.kind === 'session' ? t.id : undefined });
+      } catch (e: any) {
+        const error = String(e?.message || e).split('\n').slice(-2).join(' ').trim();
+        failed.push({ id: key, error });
+        store.log({ kind: 'push', who: me(), human: true, what: `push of ${t.branch} failed`, repo: repoName(t.repoId), sessionId: t.kind === 'session' ? t.id : undefined, ok: false, detail: error });
+      }
     }
     emitState();
     return { pushed, failed, uncommitted };
@@ -400,11 +414,12 @@ const api: HelmApi = {
     const repo = repos.must(s.repoId);
     if (input.files.length) await commitFiles(s.worktree, input.files, input.message || input.title);
     await G.git(s.worktree, 'push', '-u', 'origin', s.branch);
+    store.log({ kind: 'push', who: me(), human: true, what: `pushed ${s.branch}`, repo: repo.name, sessionId: s.id });
     const url = await GH.createPull(repo.id, { head: s.branch, base: input.base, title: input.title, body: input.body, draft: input.draft });
     s.prUrl = url;
     s.removeAfterMerge = input.removeAfterMerge;
     s.deleteBranchAfterMerge = input.deleteBranchAfterMerge;
-    store.data.activity.unshift({ id: Math.random().toString(36).slice(2), t: Date.now(), kind: 'ready', who: s.id, what: `opened a pull request`, repo: repo.name, sessionId: s.id });
+    store.log({ kind: 'pr', who: me(), human: true, what: `opened a pull request for ${s.branch}`, repo: repo.name, sessionId: s.id });
     store.save();
     emitState();
     return { url };
@@ -422,7 +437,7 @@ const api: HelmApi = {
     if (opts.deleteBranch) await GH.deleteBranch(repoId, pr.branch).catch(() => undefined);
     await pollMerges();
     mergingHere.delete(`${repoId}#${number}`);
-    store.data.activity.unshift({ id: Math.random().toString(36).slice(2), t: Date.now(), kind: 'merge', who: store.data.user?.login || 'you', human: true, what: `merged PR #${pr.number} “${pr.title}” (${opts.method})`, repo: repoId.split('/')[1] });
+    store.log({ kind: 'merge', who: store.data.user?.login || 'you', human: true, what: `merged PR #${pr.number} “${pr.title}” (${opts.method})`, repo: repoId.split('/')[1] });
     store.save();
     emitState();
   },
@@ -441,7 +456,7 @@ const api: HelmApi = {
         throw new Error(`${base} has changes that conflict with this branch. Ask the agent to merge ${base} into it and resolve the conflicts, then try again.`);
       }
     }
-    try { await G.git(s.worktree, 'push', 'origin', `HEAD:refs/heads/${base}`); }
+    try { await G.git(s.worktree, 'push', 'origin', `HEAD:refs/heads/${base}`); store.log({ kind: 'push', who: me(), human: true, what: `pushed ${s.branch} onto ${base}`, repo: repo.name, sessionId: s.id }); }
     catch (e: any) { throw new Error(`GitHub refused the push to ${base}${/protected|denied|declined|rule/i.test(String(e?.message)) ? ', which looks protected: use a pull request instead' : ''}. ${String(e?.message || e).split('\n').slice(-3).join(' ').trim()}`); }
     const sha = (await G.git(s.worktree, 'rev-parse', '--short', 'HEAD')).trim();
     // Keep the local copy of the base branch in step, when that can be done without touching anyone's work.
@@ -457,7 +472,7 @@ const api: HelmApi = {
     } catch (e: any) { localNote = `Your local ${base} could not be fast-forwarded (${String(e?.message || e).split('\n')[0]}).`; }
     s.mergedInto = base;
     s.mergedAt = Date.now();
-    store.data.activity.unshift({ id: Math.random().toString(36).slice(2), t: Date.now(), kind: 'merge', who: store.data.user?.login || 'you', human: true, what: `merged ${s.branch} into ${base}`, repo: repo.name, sessionId: s.id });
+    store.log({ kind: 'merge', who: store.data.user?.login || 'you', human: true, what: `merged ${s.branch} into ${base}`, repo: repo.name, sessionId: s.id });
     store.save();
     emitState();
     // A branch cannot be deleted while it is checked out, so deleting it takes the worktree with it.
@@ -614,7 +629,7 @@ async function pollMerges() {
         if (pr?.state === 'merged') {
           const delBranch = s.deleteBranchAfterMerge ?? s.removeAfterMerge;
           await sessions.finishMerged(s.id, { into: pr.base }, { worktree: s.removeAfterMerge || delBranch, branch: delBranch });
-          if (!mergingHere.has(`${repoId}#${pr.number}`)) store.data.activity.unshift({ id: Math.random().toString(36).slice(2), t: Date.now(), kind: 'merge', who: store.data.user?.login || 'you', human: true, what: `merged PR #${pr.number} “${pr.title}”`, repo: repoId.split('/')[1] });
+          if (!mergingHere.has(`${repoId}#${pr.number}`)) store.log({ kind: 'merge', who: store.data.user?.login || 'you', human: true, what: `merged PR #${pr.number} “${pr.title}”`, repo: repoId.split('/')[1] });
         }
       }
     } catch { /* offline */ }

@@ -153,7 +153,7 @@ export function Sidebar() {
             <div key={r.id} {...target('repo', r.id)} style={line(r.id)}>
               <div {...dnd('repo', r.id)} onContextMenu={(e) => repoMenu(e, r)}>
               <TreeItem icon="book-bookmark" expandable={sessions.length > 0} expanded={open}
-                label={<span><span style={{ color: 'var(--text-3)' }}>{r.owner}/</span>{r.name}</span>}
+                label={<span>{app.settings.showOwner ? <span style={{ color: 'var(--text-3)' }}>{r.owner}/</span> : null}{r.name}</span>}
                 selected={route.screen === 'repo' && route.id === r.id} meta={sessions.length || null}
                 trailing={lifetimeTokens(app.lifetime[r.id]) ? <span title={`${lifetimeTokens(app.lifetime[r.id]).toLocaleString()} tokens used in ${r.name} over its lifetime, including deleted sessions`} style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)', flex: 'none', marginLeft: 6 }}>{fmtTokens(lifetimeTokens(app.lifetime[r.id]))}</span> : null}
                 onClick={() => { if (route.screen === 'repo' && route.id === r.id) setClosed({ ...closed, [r.id]: open }); else go({ screen: 'repo', id: r.id }); }} />

@@ -1,8 +1,9 @@
 import { app } from 'electron';
-import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { appendFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ActivityEvent, Lifetime, PlanUsage, Repo, Session, Settings, TranscriptEvent, User } from '../shared/types';
-import { dayStart, home, weekStart } from './util';
+import { dayStart, home, uid, weekStart } from './util';
 
 /** helm's registered GitHub OAuth app. Client IDs are public; the device flow uses no secret. */
 export const DEFAULT_GITHUB_CLIENT_ID = 'Ov23liTYcKE5lBWCEAAV';
@@ -45,6 +46,7 @@ export const defaultSettings = (): Settings => ({
   notifyChecks: { desktop: false, sound: false },
   dnd: true,
   editorFontSize: 12.5,
+  showOwner: true,
   uiFont: 'Mona Sans',
   dataFont: 'Monaspace Neon',
   editorFont: 'Monaspace Neon',
@@ -74,6 +76,42 @@ export class Store {
   private dir = '';
   private timer: NodeJS.Timeout | null = null;
   private tTimers = new Map<string, NodeJS.Timeout>();
+  private logChain: Promise<void> = Promise.resolve();
+  /** Events logged since helm started. The state carries it so the Activity page knows when to read again. */
+  logSeq = 0;
+
+  /**
+   * Records something that happened. Every event goes on the end of activity.jsonl, which is never rewritten, so the log can be long
+   * without slowing the state; the latest few stay in memory too.
+   */
+  log(e: Omit<ActivityEvent, 'id' | 't'> & { t?: number }) {
+    const ev: ActivityEvent = { id: uid(), t: Date.now(), ...e };
+    this.data.activity.unshift(ev);
+    if (this.data.activity.length > 60) this.data.activity.length = 60;
+    this.logSeq++;
+    const file = join(this.dir, 'activity.jsonl');
+    this.logChain = this.logChain.then(async () => {
+      // Keep one earlier file of up to 8 MB, so the log cannot grow without limit.
+      const size = (await stat(file).catch(() => null))?.size ?? 0;
+      if (size > 8 * 1024 * 1024) await rename(file, join(this.dir, 'activity.old.jsonl')).catch(() => undefined);
+      await appendFile(file, JSON.stringify(ev) + '\n', 'utf8');
+    }).catch(() => undefined);
+  }
+
+  async readLog(before = Infinity, limit = 300): Promise<ActivityEvent[]> {
+    await this.logChain;
+    const out: ActivityEvent[] = [];
+    for (const name of ['activity.jsonl', 'activity.old.jsonl']) {
+      const text = await readFile(join(this.dir, name), 'utf8').catch(() => '');
+      const lines = text.split('\n');
+      for (let i = lines.length - 1; i >= 0 && out.length < limit; i--) {
+        if (!lines[i]) continue;
+        try { const ev = JSON.parse(lines[i]) as ActivityEvent; if (ev.t < before) out.push(ev); } catch { /* a torn last line */ }
+      }
+      if (out.length >= limit) break;
+    }
+    return out;
+  }
 
   async load() {
     this.dir = app.getPath('userData');
@@ -85,6 +123,9 @@ export class Store {
       // Sessions saved by older versions have no subagents.
       for (const x of this.data.sessions) { x.subagents ||= []; x.lastAccess ||= x.endedAt ?? x.startedAt; }
       this.data.extArchive ||= {};
+      if (!existsSync(join(this.dir, 'activity.jsonl')) && this.data.activity.length) {
+        await writeFile(join(this.dir, 'activity.jsonl'), [...this.data.activity].reverse().map((e) => JSON.stringify(e)).join('\n') + '\n', 'utf8');
+      }
       // The copy list used to be one comma-separated line. It is now gitignore patterns, one per line.
       if (!/[\r\n]/.test(this.data.settings.copyFiles) && this.data.settings.copyFiles.includes(',')) this.data.settings.copyFiles = this.data.settings.copyFiles.split(',').map((x) => x.trim()).filter(Boolean).join('\n');
       // Lifetime totals started later than sessions did: seed them from the sessions that exist, once.

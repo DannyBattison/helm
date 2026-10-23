@@ -144,11 +144,12 @@ export class SessionManager {
     this.hooks.emitTranscript(id, index, ev);
   }
 
-  private activity(s: Session, kind: ActivityEvent['kind'], what: string) {
-    const a = this.store.data.activity;
-    a.unshift({ id: uid(), t: Date.now(), kind, who: s.id, what, repo: this.repoOf(s)?.name || '', sessionId: s.id });
-    if (a.length > 300) a.length = 300;
+  private activity(s: Session, kind: ActivityEvent['kind'], what: string, extra: { who?: string; human?: boolean; detail?: string; ok?: boolean } = {}) {
+    this.store.log({ kind, who: s.id, what, repo: this.repoOf(s)?.name || '', sessionId: s.id, ...extra });
   }
+
+  /** The person who asked for something: their GitHub login, or `you`. */
+  private me() { return this.store.data.user?.login || 'you'; }
 
   private setStatus(s: Session, status: Status, step?: string) {
     if (s.status !== status) {
@@ -177,6 +178,7 @@ export class SessionManager {
     const isLocal = !input.base.startsWith('origin/') && (await G.gitOk(repo.localPath, 'rev-parse', '--verify', '--quiet', 'refs/heads/' + input.base));
     const remoteBase = input.base.startsWith('origin/') || isLocal ? input.base : (await G.gitOk(repo.localPath, 'rev-parse', '--verify', 'origin/' + input.base)) ? 'origin/' + input.base : input.base;
     await G.addWorktree(repo.localPath, wt, branch, remoteBase);
+    this.store.log({ kind: 'worktree', who: this.store.data.user?.login || 'you', human: true, what: `created worktree for ${branch} from ${remoteBase}`, repo: repo.name, detail: wt });
     await this.copyUntracked(repo.localPath, wt, st.copyFiles);
 
     const now = Date.now();
@@ -485,6 +487,8 @@ export class SessionManager {
     if (name === 'Agent' || name === 'Task') return this.startSubagent(s, rt, b, tkey, sub);
     if (COMMAND_TOOLS.has(name)) {
       const cmd = String(input.command || '');
+      const gitKind = /(^|&&|;|\|\|)\s*git\s+(?:-C\s+\S+\s+)?push\b/.test(cmd) ? 'push' : /(^|&&|;|\|\|)\s*git\s+(?:-C\s+\S+\s+)?(fetch|pull|merge|rebase|checkout|switch|branch|reset|stash|tag|clone|worktree|cherry-pick|revert)\b/.test(cmd) ? 'git' : 'bash';
+      this.activity(s, gitKind, (sub ? `${sub.description}: ` : '') + 'ran ' + trunc(cmd.replace(/\s+/g, ' '), 110), { detail: cmd });
       const idx = await this.push(tkey, { k: 'bash', id: b.id, cmd, out: '', ok: true, meta: '', done: false });
       rt.toolStart.set(b.id, { t: Date.now(), idx, kind: 'bash', input, tkey });
       s.step = (sub ? `${sub.description}: ` : '') + 'Running ' + trunc(cmd, 80);
@@ -492,6 +496,7 @@ export class SessionManager {
     }
     if (EDIT_TOOLS.has(name)) {
       const file = rel(wt, String(input.file_path || input.notebook_path || ''));
+      this.activity(s, 'edit', (sub ? `${sub.description}: ` : '') + `${name === 'Write' ? 'wrote' : 'edited'} ${file}`, { detail: file });
       const lines: [string, string][] = [];
       let add = 0, del = 0;
       const edits = name === 'MultiEdit' ? input.edits || [] : name === 'Edit' ? [input] : [];
@@ -726,6 +731,7 @@ export class SessionManager {
     this.setStatus(s, 'attention', ask.head);
     this.hooks.notify('attention', `${s.id} is paused`, ask.head, s.id);
     rt.interrupted = true;
+    this.activity(s, 'session', 'paused the agent', { who: this.me(), human: true });
     await rt.q.interrupt().catch(() => undefined);
   }
 
@@ -795,6 +801,10 @@ export class SessionManager {
     if (!w || !rt) return this.resolveOrphan(s, askId, answer);
     rt.asks.delete(askId);
     s.ask = undefined;
+    if (w.ask.type === 'approve') {
+      const d = answer?.decision as string;
+      this.activity(s, 'approval', `${d === 'deny' ? 'denied' : d === 'always' ? 'always allowed' : 'approved'} ${trunc(w.ask.command || w.ask.head || '', 90)}`, { who: this.me(), human: true, detail: w.ask.command, ok: d !== 'deny' });
+    } else if (w.ask.type === 'question') this.activity(s, 'approval', 'answered a question', { who: this.me(), human: true });
     const t = await this.store.transcript(sessionId);
     const markIdx = t.findIndex((e) => (e.k === 'permission' || e.k === 'question') && e.askId === askId);
 
@@ -943,6 +953,7 @@ export class SessionManager {
     const s = this.get(id);
     if (!s) return;
     if (rt) {
+      this.activity(s, 'session', 'stopped the session', { who: this.me(), human: true });
       for (const w of rt.asks.values()) w.resolve({ behavior: 'deny', message: 'Session stopped', interrupt: true });
       rt.asks.clear();
       rt.queue.close();
@@ -995,6 +1006,7 @@ export class SessionManager {
     if (!s) return;
     title = title.trim().slice(0, 120);
     s.customTitle = title || undefined;
+    this.activity(s, 'session', title ? `renamed to “${title}”` : 'went back to Claude\'s name', { who: this.me(), human: true });
     this.touch();
     // Keep Claude Code's own name in step, so the same session reads the same in VS Code.
     if (title && s.claudeSessionId) await renameSession(s.claudeSessionId, title, { dir: s.worktree }).catch(() => undefined);
@@ -1007,6 +1019,7 @@ export class SessionManager {
     s.archivedAt = archived ? Date.now() : undefined;
     s.archivedAuto = undefined;
     if (!archived) s.lastAccess = Date.now();
+    this.activity(s, 'session', archived ? 'archived the session' : 'restored the session from the archive', { who: this.me(), human: true });
     this.touch();
   }
 
@@ -1032,6 +1045,7 @@ export class SessionManager {
       if ((s.lastAccess || s.startedAt) > cutoff) continue;
       s.archivedAt = Date.now();
       s.archivedAuto = true;
+      this.activity(s, 'session', `archived automatically after ${days} idle days`, { who: 'helm', human: true });
       any = true;
     }
     if (any) this.touch();
@@ -1068,6 +1082,7 @@ export class SessionManager {
     }
     s.mergedInto = merged.into;
     s.mergedAt = merged.at ?? Date.now();
+    this.activity(s, 'worktree', `cleaned up after the merge${opts.branch ? ': worktree and branch removed' : opts.worktree ? ': worktree removed' : ''}`, { who: 'helm', human: true });
     if (record === 'archive') { s.archivedAt = Date.now(); s.archivedAuto = undefined; }
     this.touch();
   }
@@ -1076,6 +1091,7 @@ export class SessionManager {
     const s = this.get(id);
     if (!s) return;
     await this.stop(id);
+    this.activity(s, 'session', `deleted${opts.branch ? ' with its branch' : opts.worktree ? ' with its worktree' : ''}`, { who: this.me(), human: true });
     if (opts.worktree || opts.branch) await G.removeWorktree(this.repoOf(s).localPath, s.worktree, opts.branch ? s.branch : undefined);
     this.store.data.sessions = this.store.data.sessions.filter((x) => x.id !== id);
     await this.store.deleteTranscripts(id);

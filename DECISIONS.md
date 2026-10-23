@@ -271,3 +271,11 @@ Why: user report that it could not be seen.
 ## D-064 · 2026-10-23 · File names in the conversation open the file
 The file name on Read, Edit and Write rows and on edit cards is a link. It opens that file, in that session's worktree, in the editor chosen in Settings: helm's own Code tab (at the file), or VS Code, Cursor or Zed (VS Code and Cursor are given the line too). Paths outside the worktree, patterns (Grep, Glob), sessions whose worktree was removed, and read-only external sessions are shown as plain text.
 Why: user request.
+
+## D-065 · 2026-10-23 · Activity is a log of everything helm and its agents do
+Every action is written to `activity.jsonl` in the data folder, an append-only file that is never rewritten (one earlier file of up to 8 MB is kept), so a long log does not slow the app state; only the latest 60 events travel in the state. The Activity page reads the file in pages of 300 (Show older), and again whenever something is logged. What is logged: helm's own git work on your behalf (fetch, push, commit, clone, adding a repository, worktrees created and removed, pull request opened or merged, direct merges); changes to sessions (archived, restored, renamed, deleted, stopped, paused, cleaned up after a merge, and archived by the idle timer, attributed to `helm`); approvals and answers; and what each agent does: every command it runs (pushes and other git commands are tagged as such), every file it edits or writes, commits, subagents, questions, budget pauses and failures. Reading and searching files is not logged, because it would bury everything else. Failures are shown in red with the error on hover. Filters: All, Needs you, Git, Sessions, Agent actions. Existing events are carried over on first start.
+Why: user request, a complete record of what happened and who did it.
+
+## D-066 · 2026-10-23 · Option to hide the organisation in the sidebar
+Settings → Appearance, "Show organisation in the sidebar" (default on) writes repositories as `acme/storefront` or just `storefront`.
+Why: user request.

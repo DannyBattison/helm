@@ -1,6 +1,6 @@
 import React from 'react';
 import { usePush } from './push';
-import { sessionTitle, type ExternalSession, type Session } from '@shared/types';
+import { sessionTitle, type ActivityEvent, type ExternalSession, type Session } from '@shared/types';
 import { api, platform } from '../api';
 import { ago, clock, fmtTokens, lifetimeTokens, laneAxis, laneData, LANE_MIN, livePlan, repoOf, reposWithSessions, runningSubagents, sessionTokens, totals, untilReset } from '../lib';
 import { Cmd } from '../Hl';
@@ -292,9 +292,33 @@ function LifetimeByRepo() {
 export function Activity() {
   const app = useApp();
   const [f, setF] = React.useState('all');
-  const ICON: Record<string, [string, string]> = { ready: ['check-circle', 'var(--status-ready)'], attention: ['bell-ringing', 'var(--status-attention)'], budget: ['coins', 'var(--status-attention)'], commit: ['git-commit', 'var(--text-2)'], start: ['play-circle', 'var(--status-working)'], merge: ['git-merge', 'var(--accent-text)'], done: ['check', 'var(--text-3)'], error: ['warning-circle', 'var(--status-error)'] };
-  const groups: Record<string, string[] | null> = { all: null, attention: ['attention', 'budget', 'error'], commits: ['commit', 'merge'], sessions: ['start', 'done', 'ready'] };
-  const rows = app.activity.filter((a) => !groups[f] || groups[f]!.includes(a.kind));
+  const [log, setLog] = React.useState<ActivityEvent[] | null>(null);
+  const [more, setMore] = React.useState(true);
+  const [loading, setLoading] = React.useState(false);
+  const PAGE = 300;
+  const ICON: Record<string, [string, string]> = {
+    ready: ['check-circle', 'var(--status-ready)'], attention: ['bell-ringing', 'var(--status-attention)'], budget: ['coins', 'var(--status-attention)'], commit: ['git-commit', 'var(--text-2)'],
+    start: ['play-circle', 'var(--status-working)'], merge: ['git-merge', 'var(--accent-text)'], done: ['check', 'var(--text-3)'], error: ['warning-circle', 'var(--status-error)'],
+    push: ['cloud-arrow-up', 'var(--text-2)'], fetch: ['arrows-clockwise', 'var(--text-3)'], git: ['git-branch', 'var(--text-2)'], pr: ['git-pull-request', 'var(--status-ready)'],
+    worktree: ['tree-structure', 'var(--text-3)'], session: ['chats-circle', 'var(--text-3)'], approval: ['shield-check', 'var(--status-attention)'], bash: ['terminal', 'var(--text-3)'], edit: ['pencil-simple', 'var(--text-3)']
+  };
+  const groups: Record<string, string[] | null> = {
+    all: null,
+    attention: ['attention', 'budget', 'error', 'approval'],
+    git: ['commit', 'merge', 'push', 'fetch', 'git', 'pr', 'worktree'],
+    sessions: ['start', 'done', 'ready', 'session', 'error'],
+    agents: ['bash', 'edit', 'push', 'git', 'commit', 'approval']
+  };
+  // The newest page is read again whenever something is logged; older pages are added on request.
+  React.useEffect(() => {
+    api.activityLog({ limit: PAGE }).then((l) => { setLog((cur) => { const older = (cur || []).filter((e) => l.length && e.t < l[l.length - 1].t); return [...l, ...older]; }); if (l.length < PAGE) setMore(false); }).catch(() => setLog((c) => c || []));
+  }, [app.activitySeq]);
+  const older = async () => {
+    if (!log?.length || loading) return;
+    setLoading(true);
+    try { const l = await api.activityLog({ before: log[log.length - 1].t, limit: PAGE }); setLog([...log, ...l]); if (l.length < PAGE) setMore(false); } finally { setLoading(false); }
+  };
+  const rows = (log || []).filter((a) => !groups[f] || groups[f]!.includes(a.kind) && (f !== 'agents' || !a.human));
   const startOfDay = new Date().setHours(0, 0, 0, 0);
   const today = rows.filter((a) => a.t >= startOfDay), earlier = rows.filter((a) => a.t < startOfDay);
   const list = (items: typeof rows, label: string) => items.length ? <>
@@ -303,6 +327,7 @@ export function Activity() {
       {items.map((a) => {
         const [ic, col] = ICON[a.kind] || ICON.done;
         const human = a.kind === 'merge' || a.human;
+        const failed = a.ok === false;
         return (
           <div key={a.id} style={{ display: 'grid', gridTemplateColumns: '44px 20px minmax(0,1fr) auto', gap: 10, alignItems: 'center', minHeight: 36, borderTop: '1px solid var(--border-subtle)' }}>
             <span style={{ font: '400 11.5px/1 var(--font-mono)', color: 'var(--text-3)' }}>{clock(a.t)}</span>
@@ -310,7 +335,7 @@ export function Activity() {
             <span style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0, font: '400 13px/1.35 var(--font-sans)' }}>
               <Avatar size={16} agent={!human} name={a.who} />
               <span style={{ font: '500 12px/1 var(--font-mono)', color: 'var(--text-1)', cursor: human ? 'default' : 'pointer' }} onClick={() => !human && a.sessionId && go({ screen: 'session', id: a.sessionId, tab: 'conversation' })}>{a.who}</span>
-              <span style={{ color: 'var(--text-2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.what}</span>
+              <span title={a.detail || a.what} style={{ color: failed ? 'var(--status-error-text)' : 'var(--text-2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.what}</span>
             </span>
             <span style={{ font: '400 11.5px/1 var(--font-mono)', color: 'var(--text-3)' }}>{a.repo}</span>
           </div>
@@ -323,11 +348,13 @@ export function Activity() {
       <div style={{ maxWidth: 860, padding: '20px 24px 32px', display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <h1 style={{ margin: 0, flex: 1, font: '600 20px/1.2 var(--font-sans)' }}>Activity</h1>
-          <SegmentedControl size="sm" value={f} onChange={setF} options={[{ value: 'all', label: 'All' }, { value: 'attention', label: 'Needs you' }, { value: 'commits', label: 'Commits & merges' }, { value: 'sessions', label: 'Sessions' }]} />
+          <SegmentedControl size="sm" value={f} onChange={setF} options={[{ value: 'all', label: 'All' }, { value: 'attention', label: 'Needs you' }, { value: 'git', label: 'Git' }, { value: 'sessions', label: 'Sessions' }, { value: 'agents', label: 'Agent actions' }]} />
         </div>
-        {rows.length === 0 ? <div style={{ font: '400 13px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Nothing yet. Events from your sessions show up here.</div> : null}
+        {log == null ? <div style={{ font: '400 13px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Loading…</div> : null}
+        {log && rows.length === 0 ? <div style={{ font: '400 13px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Nothing yet. Everything helm and its agents do shows up here: git pushes and fetches, commits, merges, commands and file edits, approvals, and changes to sessions. Reading files is not logged.</div> : null}
         {list(today, 'Today')}
         {list(earlier, 'Earlier')}
+        {more && log && log.length >= PAGE ? <div><Button size="sm" variant="ghost" loading={loading} onClick={older}>Show older</Button></div> : null}
       </div>
     </div>
   );
