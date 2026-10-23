@@ -196,8 +196,13 @@ export class SessionManager {
     const st = this.store.data.settings;
     return [
       `You are running inside helm, working in an isolated git worktree on branch ${s.branch} (based on ${s.base}). Stay inside this directory.`,
-      `Commit your work in small commits with clear messages. End every commit message with a blank line and this trailer: "Co-authored-by: helm session ${s.id} <noreply@helm.app>".`,
-      'Do not push and do not open pull requests; the user does that from helm after reviewing your changes.',
+      'Commit as you go: make a commit each time a coherent piece of work is done and working, rather than one big commit at the end. Keep commits small with clear messages.',
+      st.commitAuthor === 'sole'
+        ? `End every commit message with a blank line and this trailer: "Helm-Session: ${s.id}". Do not add any Co-authored-by trailer. The commits are authored by Claude alone.`
+        : `End every commit message with a blank line and this trailer: "Co-authored-by: helm session ${s.id} <noreply@helm.app>".`,
+      st.pushOnCommit
+        ? `Push after every commit: run \`git push -u origin ${s.branch}\` right after each \`git commit\`. Do not open pull requests; the user does that from helm.`
+        : 'Do not push and do not open pull requests; the user does that from helm after reviewing your changes.',
       'If you need a decision from the user, ask with the AskUserQuestion tool instead of guessing.',
       `Subagents: at most ${this.sessionLimit(s)} may run at once in this session and ${this.repoLimit(s)} across the repository. Start independent work in parallel only within those limits.`,
       st.runTests ? 'Before you finish, run the project\'s tests (from package.json, go.mod, Makefile or equivalent) when they exist, and state the result.' : ''
@@ -219,7 +224,10 @@ export class SessionManager {
       systemPrompt: { type: 'preset', preset: 'claude_code', append: this.systemAppend(s) },
       canUseTool: (tool: string, input: Record<string, unknown>, o: any) => this.canUse(s, rt, tool, input, o),
       hooks: { PreToolUse: [{ matcher: 'Agent|Task', hooks: [async (input: any) => this.checkSubagentLimit(s, rt, input)] }] },
-      env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'helm' }
+      env: {
+        ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'helm',
+        ...(settings.commitAuthor === 'sole' ? { GIT_AUTHOR_NAME: 'Claude', GIT_AUTHOR_EMAIL: 'noreply@anthropic.com' } : {})
+      }
     };
     // Only set when on, so a user's own Claude Code setting is never switched off by helm.
     if (settings.remoteControl) options.settings = { remoteControlAtStartup: true };
