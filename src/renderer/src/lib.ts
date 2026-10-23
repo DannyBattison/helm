@@ -104,3 +104,26 @@ export function langOf(path: string): string {
 
 /** Checks the agent ran: tests, linters, type checks and builds that succeeded. */
 export const CHECK_RE = /\b(test|vitest|jest|pytest|lint|eslint|golangci-lint|typecheck|tsc|build|check|clippy|mypy|cargo test|go test)\b/i;
+
+export function untilReset(resetsAtSec: number): string {
+  const m = Math.max(0, Math.round((resetsAtSec * 1000 - Date.now()) / 60000));
+  if (m < 90) return m + 'm';
+  if (m < 48 * 60) return Math.round(m / 60) + 'h';
+  return Math.round(m / 1440) + 'd';
+}
+
+/** Plan windows that have not reset yet. A window past its reset time reads as unknown, not as the old number. */
+export function livePlan(app: AppState) {
+  const ok = (w?: { util: number; resetsAt: number }) => (w && w.resetsAt * 1000 > Date.now() ? w : undefined);
+  return { fiveHour: ok(app.plan.fiveHour), weekly: ok(app.plan.weekly) };
+}
+
+export const subagentTree = (s: Session) => {
+  const out: { a: Session['subagents'][number]; depth: number }[] = [];
+  const walk = (parent: string | null, depth: number) => {
+    for (const a of s.subagents || []) if (a.parentId === parent) { out.push({ a, depth }); walk(a.id, depth + 1); }
+  };
+  walk(null, 0);
+  return out;
+};
+export const runningSubagents = (s: Session) => (s.subagents || []).filter((a) => a.status === 'working').length;

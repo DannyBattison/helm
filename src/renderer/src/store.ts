@@ -1,12 +1,13 @@
 import { useSyncExternalStore } from 'react';
 import type { AppState, HelmEvents, Session, TranscriptEvent } from '@shared/types';
+import { currencySymbol, fmtMoney, fromDisplay, toDisplay } from '@shared/money';
 import { api, on } from './api';
 
 export type Route =
   | { screen: 'overview'; filter?: string }
   | { screen: 'activity' }
   | { screen: 'repo'; id: string }
-  | { screen: 'session'; id: string; tab?: string }
+  | { screen: 'session'; id: string; tab?: string; sub?: string }
   | { screen: 'settings'; section?: string };
 
 export interface ToastItem {
@@ -89,3 +90,18 @@ export async function init() {
 export const useApp = () => useUI((u) => u.app)!;
 export const useSession = (id: string): Session | undefined => useUI((u) => u.app?.sessions.find((s) => s.id === id));
 export const useTranscript = (id: string) => useUI((u) => u.transcripts[id]);
+
+/** Formats USD amounts in the user's display currency. `from` and `to` convert typed amounts. */
+export function useMoney() {
+  const app = useApp();
+  const cur = app.settings.currency;
+  return {
+    cur,
+    sym: currencySymbol(cur),
+    fmt: (usd: number, whole = false) => fmtMoney(usd, cur, app.rates, { whole }),
+    to: (usd: number) => toDisplay(usd, cur, app.rates),
+    from: (v: number) => fromDisplay(v, cur, app.rates)
+  };
+}
+
+export const useSubscription = () => useUI((u) => u.app?.settings.billing === 'subscription');

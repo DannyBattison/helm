@@ -1,13 +1,13 @@
 import React from 'react';
 import type { Session } from '@shared/types';
 import { api, platform } from '../api';
-import { ago, clock, fmtTokens, laneAxis, laneData, LANE_MIN, money, repoOf, reposWithSessions, sessionTokens, totals } from '../lib';
-import { go, setUI, useApp, toast } from '../store';
-import { Avatar, Button, DiffStat, Meter, SegmentedControl, Stat, StatusDot } from '../ui';
+import { ago, clock, fmtTokens, laneAxis, laneData, LANE_MIN, livePlan, repoOf, reposWithSessions, runningSubagents, sessionTokens, totals, untilReset } from '../lib';
+import { go, setUI, useApp, useMoney, toast } from '../store';
+import { Avatar, Button, DiffStat, Meter, SegmentedControl, Stat, StatusDot, useColumns } from '../ui';
+import { PlanMeters } from './Shell';
 
 const lanePct = (m: number) => ((m / LANE_MIN) * 100).toFixed(2) + '%';
 const LANE_COLOR: Record<string, string> = { working: 'var(--status-working)', attention: 'var(--status-attention)', ready: 'var(--status-ready)', idle: 'var(--status-idle)' };
-const COLS = '20px minmax(150px,1fr) minmax(150px,1.35fr) minmax(180px,1.6fr) 88px 52px 52px 104px';
 
 const guard = (p: Promise<any>) => p.catch((e: any) => toast({ tone: 'error', title: 'That did not work', description: String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '') }));
 
@@ -25,6 +25,7 @@ export function Lane({ s, now }: { s: Session; now: number }) {
 
 export function AttentionCard({ s }: { s: Session }) {
   const a = s.ask!;
+  const { fmt, sym, from } = useMoney();
   const open = () => go({ screen: 'session', id: s.id, tab: 'conversation' });
   const resolve = (answer: any) => guard(api.resolveAsk(s.id, a.id, answer));
   const q = a.questions?.[0];
@@ -38,7 +39,8 @@ export function AttentionCard({ s }: { s: Session }) {
       </div>
       <div style={{ font: '600 13px/1.35 var(--font-sans)', textWrap: 'pretty' as any }}>{a.head}</div>
       {a.command ? <code className="selectable" style={{ font: 'var(--type-data)', padding: '6px 8px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-editor)', boxShadow: 'inset 0 0 0 1px var(--border-subtle)', color: 'var(--text-1)', wordBreak: 'break-all' }}>{a.tool === 'Bash' || a.tool === 'PowerShell' ? '$ ' : ''}{a.command}</code> : null}
-      {a.type === 'budget' ? <Meter value={s.cost} max={s.budget} detail={money(s.cost) + ' / ' + money(s.budget)} label="Session budget" /> : null}
+      {a.type === 'budget' && a.scope === 'plan' ? <PlanMeters /> : null}
+      {a.type === 'budget' && a.scope !== 'plan' ? <Meter value={s.cost} max={s.budget} detail={fmt(s.cost) + ' / ' + fmt(s.budget)} label="Session budget" /> : null}
       {a.note ? <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)', flex: 1, textWrap: 'pretty' as any }}>{a.note}</div> : null}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         {a.type === 'approve' ? <>
@@ -51,7 +53,7 @@ export function AttentionCard({ s }: { s: Session }) {
           <Button size="sm" variant="ghost" onClick={open}>Reply</Button>
         </> : null}
         {a.type === 'budget' ? <>
-          <Button size="sm" variant="primary" onClick={() => resolve({ addBudget: 5 })}>Add $5 and resume</Button>
+          <Button size="sm" variant="primary" onClick={() => resolve({ addBudget: a.scope === 'plan' ? 0 : from(5) })}>{a.scope === 'plan' ? 'Continue anyway' : `Add ${sym}5 and resume`}</Button>
           <Button size="sm" variant="ghost" onClick={open}>Open session</Button>
         </> : null}
         {a.type === 'approve' ? <Button size="sm" variant="ghost" onClick={open}>Open session</Button> : null}
@@ -60,29 +62,30 @@ export function AttentionCard({ s }: { s: Session }) {
   );
 }
 
-function SessionRow({ s, now }: { s: Session; now: number }) {
+function SessionRow({ s, now, tpl, sub }: { s: Session; now: number; tpl: string; sub: boolean }) {
+  const { fmt, sym, from } = useMoney();
   const [hover, setHover] = React.useState(false);
   const needs = s.status === 'attention';
   const a = s.ask;
   return (
     <div onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
       onClick={() => go({ screen: 'session', id: s.id, tab: s.status === 'ready' ? 'changes' : 'conversation' })}
-      style={{ display: 'grid', gridTemplateColumns: COLS, gap: 12, alignItems: 'center', minHeight: 44, padding: '0 12px', borderTop: '1px solid var(--border-subtle)', background: hover ? 'var(--bg-hover)' : 'transparent', cursor: 'pointer' }}>
+      style={{ display: 'grid', gridTemplateColumns: tpl, gap: 12, alignItems: 'center', minHeight: 44, padding: '0 12px', borderTop: '1px solid var(--border-subtle)', background: hover ? 'var(--bg-hover)' : 'transparent', cursor: 'pointer' }}>
       <StatusDot status={s.status} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
         <span style={{ font: '500 13px/1.2 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.task}</span>
-        <span style={{ font: '400 11px/1.2 var(--font-mono)', color: 'var(--text-3)', display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}><i className="ph ph-git-branch" style={{ fontSize: 11 }} />{s.branch}</span>
+        <span style={{ font: '400 11px/1.2 var(--font-mono)', color: 'var(--text-3)', display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}><i className="ph ph-git-branch" style={{ fontSize: 11 }} />{s.branch}{runningSubagents(s) ? <span style={{ color: 'var(--status-working-text)', marginLeft: 6 }}>⑂ {runningSubagents(s)} {runningSubagents(s) === 1 ? 'subagent' : 'subagents'}</span> : null}</span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
         <span style={{ flex: 1, minWidth: 0, font: '400 12px/1.3 var(--font-sans)', color: needs ? 'var(--status-attention-text)' : 'var(--text-2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.step}</span>
         {a?.type === 'approve' ? <Button size="sm" variant="primary" onClick={(e) => { e.stopPropagation(); void guard(api.resolveAsk(s.id, a.id, { decision: 'approve' })); }}>Approve</Button> : null}
-        {a?.type === 'budget' ? <Button size="sm" variant="secondary" onClick={(e) => { e.stopPropagation(); void guard(api.resolveAsk(s.id, a.id, { addBudget: 5 })); }}>Add $5</Button> : null}
+        {a?.type === 'budget' ? <Button size="sm" variant="secondary" onClick={(e) => { e.stopPropagation(); void guard(api.resolveAsk(s.id, a.id, { addBudget: a.scope === 'plan' ? 0 : from(5) })); }}>{a.scope === 'plan' ? 'Continue' : `Add ${sym}5`}</Button> : null}
         {s.status === 'ready' ? <Button size="sm" variant="secondary" icon="git-diff">Review</Button> : null}
       </div>
       <Lane s={s} now={now} />
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Meter value={s.ctx} max={200000} warnAt={0.75} style={{ flex: 1 }} /><span style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-2)', width: 30, textAlign: 'right' }}>{fmtTokens(s.ctx)}</span></div>
       <span style={{ font: 'var(--type-data)', textAlign: 'right' }}>{fmtTokens(sessionTokens(s))}</span>
-      <span style={{ font: 'var(--type-data)', textAlign: 'right' }}>{money(s.cost)}</span>
+      {sub ? null : <span style={{ font: 'var(--type-data)', textAlign: 'right' }}>{fmt(s.cost)}</span>}
       <span style={{ textAlign: 'right' }}><DiffStat additions={s.add} deletions={s.del} /></span>
     </div>
   );
@@ -111,6 +114,13 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
   const [now, setNow] = React.useState(Date.now());
   React.useEffect(() => { const i = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(i); }, []);
   const t = totals(app);
+  const { fmt } = useMoney();
+  const sub = app.settings.billing === 'subscription';
+  const plan = livePlan(app);
+  const col = useColumns(sub ? 'ledger-sub' : 'ledger-api', [
+    { w: 20, min: 20, fixed: true }, { w: 270, min: 150 }, { w: 200, min: 150, flex: true }, { w: 300, min: 180 }, { w: 88, min: 60 }, { w: 56, min: 44 },
+    ...(sub ? [] : [{ w: 56, min: 44 }]), { w: 104, min: 80, fixed: true }
+  ]);
   const visible = (s: Session) => filter === 'all' || s.status === filter;
   const axis = laneAxis(now);
   const asks = app.sessions.filter((s) => s.ask).sort((a, b) => a.ask!.at - b.ask!.at);
@@ -136,8 +146,13 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
           <div style={cell}><Stat label="Ready for review" value={t.ready} tone="ready" /></div>
           <div style={cell}><Stat label="Tokens today" value={fmtTokens(t.tokens)} /></div>
           <div style={{ ...cell, gap: 10 }}>
-            <Stat label="Spend this week" value={money(t.spent)} />
-            <Meter value={t.spent} max={t.cap} warnAt={app.settings.warnAt / 100} detail={`of $${t.cap} across ${app.repos.length} ${app.repos.length === 1 ? 'repository' : 'repositories'}`} />
+            {sub ? <>
+              <Stat label="Plan usage this week" value={plan.weekly ? Math.round(plan.weekly.util * 100) + '%' : '—'} detail={plan.weekly ? `resets in ${untilReset(plan.weekly.resetsAt)}` : 'appears after the first message'} />
+              <Meter value={plan.fiveHour?.util ?? 0} max={1} warnAt={app.settings.warnAt / 100} detail={plan.fiveHour ? `5-hour window ${Math.round(plan.fiveHour.util * 100)}% · resets ${untilReset(plan.fiveHour.resetsAt)}` : '5-hour window: no data yet'} />
+            </> : <>
+              <Stat label="Spend this week" value={fmt(t.spent)} />
+              <Meter value={t.spent} max={t.cap} warnAt={app.settings.warnAt / 100} detail={`of ${fmt(t.cap, true)} across ${app.repos.length} ${app.repos.length === 1 ? 'repository' : 'repositories'}`} />
+            </>}
           </div>
         </div>
 
@@ -173,23 +188,25 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
               ))}
               <span style={{ display: 'flex', alignItems: 'center', gap: 5, font: '400 11px/1 var(--font-sans)', color: 'var(--text-3)' }}><span style={{ width: 2, height: 10, borderRadius: 1, background: 'var(--text-1)' }} />Commit</span>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: COLS, gap: 12, alignItems: 'end', padding: '6px 12px', borderTop: '1px solid var(--border)', font: '500 10.5px/1 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>
-              <span /><span>Session</span><span>Now</span>
-              <span style={{ position: 'relative', height: 11 }}>{axis.map(([m, l]) => <span key={l} style={{ position: 'absolute', left: lanePct(m), transform: 'translateX(-50%)', font: '400 10.5px/1 var(--font-mono)', textTransform: 'none', letterSpacing: 0, color: l === 'now' ? 'var(--text-1)' : 'var(--text-3)' }}>{l}</span>)}</span>
-              <span>Context</span><span style={{ textAlign: 'right' }}>Tokens</span><span style={{ textAlign: 'right' }}>Cost</span><span style={{ textAlign: 'right' }}>Changes</span>
+            <div style={{ display: 'grid', gridTemplateColumns: col.template, gap: 12, alignItems: 'end', padding: '6px 12px', borderTop: '1px solid var(--border)', font: '500 10.5px/1 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>
+              <span />{col.cell(1, 'Session')}{col.cell(2, 'Now')}
+              {col.cell(3, axis.map(([m, l]) => <span key={l} style={{ position: 'absolute', left: lanePct(m), transform: 'translateX(-50%)', font: '400 10.5px/1 var(--font-mono)', textTransform: 'none', letterSpacing: 0, color: l === 'now' ? 'var(--text-1)' : 'var(--text-3)' }}>{l}</span>), { height: 11 })}
+              {col.cell(4, 'Context')}{col.cell(5, 'Tokens', { textAlign: 'right' })}{sub ? null : col.cell(6, 'Cost', { textAlign: 'right' })}<span style={{ textAlign: 'right' }}>Changes</span>
             </div>
             {groups.map(({ repo: r, sessions }) => (
               <div key={r.id}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, height: 34, padding: '0 8px 0 12px', borderTop: '1px solid var(--border)', background: 'var(--bg-raised)' }}>
                   <i className="ph ph-book-bookmark" style={{ fontSize: 14, color: 'var(--text-3)' }} />
                   <span style={{ font: '600 12.5px/1 var(--font-sans)', cursor: 'pointer' }} onClick={() => go({ screen: 'repo', id: r.id })}><span style={{ fontWeight: 400, color: 'var(--text-3)' }}>{r.owner}/</span>{r.name}</span>
-                  <Meter value={app.weekSpend[r.id] || 0} max={r.cap} style={{ width: 90, marginLeft: 6 }} warnAt={app.settings.warnAt / 100} />
-                  <span style={{ font: '400 11px/1 var(--font-mono)', color: (app.weekSpend[r.id] || 0) / r.cap >= app.settings.warnAt / 100 ? 'var(--status-attention-text)' : 'var(--text-3)' }}>{money(app.weekSpend[r.id] || 0)} / ${r.cap}</span>
+                  {sub ? null : <>
+                    <Meter value={app.weekSpend[r.id] || 0} max={r.cap} style={{ width: 90, marginLeft: 6 }} warnAt={app.settings.warnAt / 100} />
+                    <span style={{ font: '400 11px/1 var(--font-mono)', color: (app.weekSpend[r.id] || 0) / r.cap >= app.settings.warnAt / 100 ? 'var(--status-attention-text)' : 'var(--text-3)' }}>{fmt(app.weekSpend[r.id] || 0)} / {fmt(r.cap, true)}</span>
+                  </>}
                   <span style={{ flex: 1 }} />
                   <Button size="sm" variant="ghost" icon="git-commit" onClick={() => go({ screen: 'repo', id: r.id })}>History</Button>
                   <Button size="sm" variant="ghost" icon="plus" onClick={() => setUI({ newSession: { repoId: r.id } })}>New session</Button>
                 </div>
-                {sessions.filter(visible).map((s) => <SessionRow key={s.id} s={s} now={now} />)}
+                {sessions.filter(visible).map((s) => <SessionRow key={s.id} s={s} now={now} tpl={col.template} sub={sub} />)}
               </div>
             ))}
           </section>

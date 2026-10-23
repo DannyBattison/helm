@@ -3,9 +3,9 @@ import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
 import { api, on, platform } from '../api';
 import glyph from '../assets/helm-glyph-violet.svg';
-import { elapsed, reposWithSessions, totals } from '../lib';
-import { go, setUI, useApp, useUI, useTranscript, type Route } from '../store';
-import { Avatar, Badge, Breadcrumbs, IconButton, Kbd, Meter, TreeItem } from '../ui';
+import { elapsed, livePlan, reposWithSessions, runningSubagents, subagentTree, totals, untilReset } from '../lib';
+import { go, setUI, useApp, useMoney, useUI, useTranscript, type Route } from '../store';
+import { Avatar, Badge, Breadcrumbs, Grip, IconButton, Kbd, Meter, TreeItem, usePaneWidth } from '../ui';
 
 const mac = () => platform() === 'darwin';
 
@@ -18,13 +18,37 @@ function SectionLabel({ children, action }: any) {
   );
 }
 
+export function PlanMeters() {
+  const app = useApp();
+  const { fmt } = useMoney();
+  const p = livePlan(app);
+  const warn = app.settings.warnAt / 100;
+  if (app.settings.billing === 'api') {
+    const t = totals(app);
+    return <Meter label="This week" detail={fmt(t.spent) + ' / ' + fmt(t.cap, true)} value={t.spent} max={t.cap} warnAt={warn} />;
+  }
+  const row = (label: string, w?: { util: number; resetsAt: number }) =>
+    w ? <Meter label={label} detail={`${Math.round(w.util * 100)}% · resets ${untilReset(w.resetsAt)}`} value={w.util} max={1} warnAt={warn} />
+      : <Meter label={label} detail="no data yet" value={0} max={1} />;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }} title="Claude plan usage, as reported by Claude Code">
+      {row('5-hour', p.fiveHour)}
+      {row('Weekly', p.weekly)}
+    </div>
+  );
+}
+
 export function Sidebar() {
   const app = useApp();
   const route = useUI((u) => u.route);
   const [closed, setClosed] = React.useState<Record<string, boolean>>({});
+  const [subsClosed, setSubsClosed] = React.useState<Record<string, boolean>>({});
+  const [width, grip, resetWidth] = usePaneWidth('sidebar', 240, 180, 440);
   const t = totals(app);
+  const subStatus = (st: string) => (st === 'working' ? 'working' : st === 'failed' ? 'error' : 'idle');
   return (
-    <aside style={{ width: 'var(--sidebar-w)', flex: 'none', display: 'flex', flexDirection: 'column', background: 'var(--bg-sidebar)', borderRight: '1px solid var(--border)' }}>
+    <aside style={{ position: 'relative', width, flex: 'none', display: 'flex', flexDirection: 'column', background: 'var(--bg-sidebar)', borderRight: '1px solid var(--border)' }}>
+      <Grip onMouseDown={grip} onDoubleClick={resetWidth} />
       <div className="drag" style={{ height: 'var(--titlebar-h)', flex: 'none', display: 'flex', alignItems: 'center', gap: 10, padding: '0 14px 0 ' + (mac() ? 78 : 14) + 'px' }}>
         <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
           <img src={glyph} width="16" height="16" alt="" />
@@ -46,18 +70,35 @@ export function Sidebar() {
                 label={<span><span style={{ color: 'var(--text-3)' }}>{r.owner}/</span>{r.name}</span>}
                 selected={route.screen === 'repo' && route.id === r.id} meta={sessions.length || null}
                 onClick={() => { if (route.screen === 'repo' && route.id === r.id) setClosed({ ...closed, [r.id]: open }); else go({ screen: 'repo', id: r.id }); }} />
-              {open ? sessions.map((s) => (
-                <TreeItem key={s.id} depth={1} status={s.status} label={s.id} meta={elapsed(s.startedAt, s.endedAt)}
-                  selected={route.screen === 'session' && route.id === s.id}
-                  onClick={() => go({ screen: 'session', id: s.id, tab: s.status === 'ready' ? 'changes' : 'conversation' })} />
-              )) : null}
+              {open ? sessions.map((s) => {
+                const tree = subagentTree(s);
+                const running = runningSubagents(s);
+                const subsOpen = !subsClosed[s.id];
+                return (
+                  <div key={s.id}>
+                    <TreeItem depth={1} status={s.status} label={s.id} expandable={tree.length > 0} expanded={subsOpen}
+                      meta={running ? <span style={{ color: 'var(--status-working-text)' }}>{running}⑂</span> : elapsed(s.startedAt, s.endedAt)}
+                      selected={route.screen === 'session' && route.id === s.id && !route.sub}
+                      onClick={() => {
+                        const here = route.screen === 'session' && route.id === s.id && !route.sub;
+                        if (here && tree.length) setSubsClosed({ ...subsClosed, [s.id]: subsOpen });
+                        else go({ screen: 'session', id: s.id, tab: s.status === 'ready' ? 'changes' : 'conversation' });
+                      }} />
+                    {subsOpen ? tree.map(({ a, depth }) => (
+                      <TreeItem key={a.id} depth={2 + depth} status={subStatus(a.status)} label={a.description} meta={a.tools + ' tools'}
+                        selected={route.screen === 'session' && route.id === s.id && route.sub === a.id}
+                        onClick={() => go({ screen: 'session', id: s.id, tab: 'conversation', sub: a.id })} />
+                    )) : null}
+                  </div>
+                );
+              }) : null}
               {sessions.length === 0 ? <div style={{ padding: '4px 0 6px 42px', font: '400 12px/1.3 var(--font-sans)', color: 'var(--text-3)' }}>No sessions</div> : null}
             </div>
           );
         })}
       </div>
       <div style={{ flex: 'none', padding: '10px 12px', borderTop: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <Meter label="This week" detail={'$' + t.spent.toFixed(2) + ' / $' + t.cap} value={t.spent} max={t.cap} warnAt={app.settings.warnAt / 100} />
+        <PlanMeters />
         <TreeItem icon="gear-six" label="Settings" selected={route.screen === 'settings'} onClick={() => go({ screen: 'settings' })} style={{ margin: '0 -6px' }} />
       </div>
     </aside>

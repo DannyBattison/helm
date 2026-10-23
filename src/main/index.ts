@@ -83,6 +83,12 @@ const sess = (id: string) => {
   if (!s) throw new Error('Session not found');
   return s;
 };
+/** A workspace is a session worktree or the repository's own checkout. */
+function ws(id: string): { worktree: string; base: string; sessionId?: string } {
+  if (id.startsWith('repo:')) return { worktree: repos.must(id.slice(5)).localPath, base: 'HEAD' };
+  const s = sess(id);
+  return { worktree: s.worktree, base: s.base, sessionId: s.id };
+}
 function safePath(s: { worktree: string }, p: string): string {
   const abs = resolve(s.worktree, p);
   const r = relative(s.worktree, abs);
@@ -190,9 +196,18 @@ const api: HelmApi = {
   resolveAsk: (id, askId, answer) => sessions.resolveAsk(id, askId, answer),
   getTranscript: (id) => store.transcript(id),
 
-  async listTree(id, dir) { return repos.tree(sess(id).worktree, dir); },
+  async workspaceInfo(id) {
+    const w = ws(id);
+    const branch = (await G.git(w.worktree, 'rev-parse', '--abbrev-ref', 'HEAD').catch(() => '')).trim();
+    const dirty = (await G.git(w.worktree, 'status', '--porcelain').catch(() => '')).split('\n').filter(Boolean).length;
+    return { root: w.worktree, branch, dirty, session: !!w.sessionId };
+  },
+  async listFiles(id) { return G.listFiles(ws(id).worktree); },
+  async searchFiles(id, q, matchCase) { return G.searchFiles(ws(id).worktree, q, !!matchCase); },
+  commitDiff: (repoId, hash, path) => G.commitDiff(repos.must(repoId).localPath, hash, path),
+  async listTree(id, dir) { return repos.tree(ws(id).worktree, dir); },
   async readFile(id, path) {
-    const abs = safePath(sess(id), path);
+    const abs = safePath(ws(id), path);
     const st = await stat(abs);
     if (st.size > 3 * 1024 * 1024) return { text: '', binary: true };
     const buf = await readFile(abs);
@@ -200,22 +215,22 @@ const api: HelmApi = {
     return { text: buf.toString('utf8'), binary: false };
   },
   async writeFile(id, path, text) {
-    const s = sess(id);
-    await writeFile(safePath(s, path), text, 'utf8');
-    await sessions.userEdited(id, path);
-    await sessions.refreshStats(s);
+    const w = ws(id);
+    await writeFile(safePath(w, path), text, 'utf8');
+    const s = w.sessionId ? sessions.get(w.sessionId) : undefined;
+    if (s) { await sessions.userEdited(id, path); await sessions.refreshStats(s); }
   },
   async fileGitLines(id, path) {
-    const s = sess(id);
+    const w = ws(id);
     const added: number[] = [], modified: number[] = [];
-    const tracked = await G.gitOk(s.worktree, 'ls-files', '--error-unmatch', path);
+    const tracked = await G.gitOk(w.worktree, 'ls-files', '--error-unmatch', path);
     if (!tracked) {
-      const n = (await readFile(safePath(s, path), 'utf8').catch(() => '')).split('\n').length;
+      const n = (await readFile(safePath(w, path), 'utf8').catch(() => '')).split('\n').length;
       for (let i = 1; i <= n; i++) added.push(i);
       return { added, modified };
     }
-    const mb = await G.mergeBase(s.worktree, s.base).catch(() => 'HEAD');
-    const out = await G.git(s.worktree, 'diff', '-U0', mb, '--', path);
+    const mb = await G.mergeBase(w.worktree, w.base).catch(() => 'HEAD');
+    const out = await G.git(w.worktree, 'diff', '-U0', mb, '--', path);
     for (const m of out.matchAll(/^@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/gm)) {
       const oldN = m[1] === undefined ? 1 : +m[1], start = +m[2], len = m[3] === undefined ? 1 : +m[3];
       for (let i = 0; i < len; i++) (oldN === 0 ? added : modified).push(start + i);
@@ -223,7 +238,7 @@ const api: HelmApi = {
     return { added, modified };
   },
   async fileBlame(id, path) {
-    const s = sess(id);
+    const s = ws(id);
     const out = await G.git(s.worktree, 'blame', '--line-porcelain', '--', path).catch(() => '');
     const res: { line: number; hash: string; who: string }[] = [];
     let hash = '', who = '', line = 0;
@@ -235,14 +250,15 @@ const api: HelmApi = {
     }
     return res;
   },
-  async changedFiles(id) { return G.dirtyFiles(sess(id).worktree); },
+  async changedFiles(id) { return G.dirtyFiles(ws(id).worktree); },
   async changes(id) { const s = sess(id); return G.changes(s.worktree, s.base); },
   async fileDiff(id, path) { const s = sess(id); return G.fileDiff(s.worktree, s.base, path); },
 
   async commitOnly(id, files, message) {
-    const s = sess(id);
-    await commitFiles(s.worktree, files, message);
-    await sessions.refreshStats(s);
+    const w = ws(id);
+    await commitFiles(w.worktree, files, message);
+    const s = w.sessionId ? sessions.get(w.sessionId) : undefined;
+    if (s) await sessions.refreshStats(s);
   },
   async createPr(input) {
     const s = sess(input.sessionId);
@@ -271,7 +287,7 @@ const api: HelmApi = {
   checkClaude: (p) => detectClaude(p),
 
   async termOpen(id, cols, rows) {
-    const cwd = id ? sess(id).worktree : null;
+    const cwd = id ? ws(id).worktree : null;
     return terms.open(cwd, cols, rows);
   },
   async termWrite(id, d) { terms.write(id, d); },

@@ -3,7 +3,7 @@ import type { GhRepo, ModelAlias, PermMode } from '@shared/types';
 import { api, platform } from '../api';
 import glyph from '../assets/helm-glyph-violet.svg';
 import { tilde } from '../lib';
-import { go, setUI, toast, useApp } from '../store';
+import { go, setUI, toast, useApp, useMoney } from '../store';
 import { Badge, Button, Checkbox, Dialog, Input, Kbd, Select, Tabs } from '../ui';
 import { MODEL_OPTIONS, PERM_OPTIONS } from './Settings';
 
@@ -185,6 +185,8 @@ export function AddRepo({ onClose }: { onClose(): void }) {
 // ------------------------------------------------------------------ new session
 export function NewSession({ repoId, onClose }: { repoId?: string; onClose(): void }) {
   const app = useApp();
+  const { sym, to, from } = useMoney();
+  const sub = app.settings.billing === 'subscription';
   const [repo, setRepo] = React.useState(repoId || app.repos[0]?.id || '');
   const r = app.repos.find((x) => x.id === repo);
   const [branches, setBranches] = React.useState<string[]>([]);
@@ -192,7 +194,7 @@ export function NewSession({ repoId, onClose }: { repoId?: string; onClose(): vo
   const [task, setTask] = React.useState('');
   const [model, setModel] = React.useState<ModelAlias>(app.settings.defaultModel);
   const [perm, setPerm] = React.useState<PermMode>(app.settings.permMode);
-  const [budget, setBudget] = React.useState(String(app.settings.sessionBudget));
+  const [budget, setBudget] = React.useState(String(Math.round(to(app.settings.sessionBudget) * 100) / 100));
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState('');
   React.useEffect(() => {
@@ -203,7 +205,7 @@ export function NewSession({ repoId, onClose }: { repoId?: string; onClose(): vo
   const start = async () => {
     setBusy(true); setErr('');
     try {
-      const id = await api.createSession({ repoId: repo, base, task: task.trim(), model, budget: parseFloat(budget) || app.settings.sessionBudget, permMode: perm });
+      const id = await api.createSession({ repoId: repo, base, task: task.trim(), model, budget: sub ? 0 : from(parseFloat(budget)) || app.settings.sessionBudget, permMode: perm });
       onClose();
       go({ screen: 'session', id, tab: 'conversation' });
     } catch (e) { setErr(errText(e)); } finally { setBusy(false); }
@@ -224,12 +226,12 @@ export function NewSession({ repoId, onClose }: { repoId?: string; onClose(): vo
         <textarea autoFocus rows={5} value={task} onChange={(e) => setTask(e.target.value)} placeholder="What should the agent do? Be specific about the outcome, and mention files or checks that matter."
           onKeyDown={(e) => { if (e.key === 'Enter' && (mac() ? e.metaKey : e.ctrlKey) && task.trim()) void start(); }}
           style={{ resize: 'vertical', border: 'none', outline: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border-strong)', color: 'var(--text-1)', font: '400 13px/1.55 var(--font-sans)', padding: '10px 12px' }} />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 110px', gap: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: sub ? '1fr 1fr' : '1fr 1fr 110px', gap: 8 }}>
           <Select value={model} onChange={(e: any) => setModel(e.target.value)} options={MODEL_OPTIONS} />
           <Select value={perm} onChange={(e: any) => setPerm(e.target.value)} options={PERM_OPTIONS} />
-          <Input mono value={'$' + budget.replace(/^\$/, '')} onChange={(e: any) => setBudget(e.target.value.replace(/[^0-9.]/g, ''))} />
+          {sub ? null : <Input mono value={sym + budget} onChange={(e: any) => setBudget(e.target.value.replace(/[^0-9.]/g, ''))} />}
         </div>
-        <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>Model, permission mode and the session budget can be changed later. The agent pauses at the budget and waits in Needs you.</span>
+        <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>{sub ? 'Model and permission mode can be changed later. Plan usage limits are set in Settings → Usage.' : 'Model, permission mode and the session budget can be changed later. The agent pauses at the budget and waits in Needs you.'}</span>
       </div>
     </Dialog>
   );

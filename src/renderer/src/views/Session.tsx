@@ -1,9 +1,9 @@
 import React from 'react';
 import type { Session as S, TranscriptEvent, ModelAlias, PermMode } from '@shared/types';
 import { api, platform } from '../api';
-import { clock, fmtTokens, money, prettyModel, STATUS_LABEL, tilde } from '../lib';
-import { go, loadTranscript, toast, useApp, useTranscript } from '../store';
-import { Avatar, Badge, BranchTag, Button, DiffStat, IconButton, Meter, Select, Tabs } from '../ui';
+import { clock, elapsed, fmtTokens, prettyModel, runningSubagents, STATUS_LABEL, subagentTree, tilde } from '../lib';
+import { go, loadTranscript, toast, useApp, useMoney, useTranscript } from '../store';
+import { Avatar, Badge, BranchTag, Button, DiffStat, Grip, IconButton, Meter, Select, StatusDot, Tabs, usePaneWidth } from '../ui';
 import { Changes } from './Changes';
 import { CodeView } from './CodeView';
 
@@ -15,6 +15,8 @@ const label: React.CSSProperties = { font: '500 10.5px/1 var(--font-sans)', lett
 const box: React.CSSProperties = { borderRadius: 'var(--radius-md)', background: 'var(--bg-panel)', boxShadow: 'inset 0 0 0 1px var(--border)', overflow: 'hidden' };
 
 function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string): void }) {
+  const { fmt } = useMoney();
+  const sub = useApp().settings.billing === 'subscription';
   const running = s.status === 'working' || s.status === 'attention';
   return (
     <div style={{ flex: 'none', padding: '14px 20px 0', display: 'flex', flexDirection: 'column', gap: 12, borderBottom: '1px solid var(--border)' }}>
@@ -27,7 +29,7 @@ function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, font: '400 11.5px/1 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden' }}>
             <BranchTag worktree base={s.base.replace(/^origin\//, '')} name={s.branch} />
-            <span>{prettyModel(s)}</span><span>·</span><span>started {clock(s.startedAt)}</span><span>·</span><span>{fmtTokens(s.tokens.input + s.tokens.output + s.tokens.cacheRead)} tokens</span><span>·</span><span>{money(s.cost)}</span>
+            <span>{prettyModel(s)}</span><span>·</span><span>started {clock(s.startedAt)}</span><span>·</span><span>{fmtTokens(s.tokens.input + s.tokens.output + s.tokens.cacheRead)} tokens</span>{sub ? null : <><span>·</span><span>{fmt(s.cost)}</span></>}
           </div>
         </div>
         {s.status === 'working' ? <Button variant="ghost" icon="pause" onClick={() => guard(api.interrupt(s.id))}>Pause</Button> : null}
@@ -42,6 +44,26 @@ function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string
         { value: 'code', label: 'Code', icon: 'code' },
         { value: 'changes', label: 'Changes', icon: 'git-diff', count: s.files }
       ]} />
+    </div>
+  );
+}
+
+const subTone = (st: string) => (st === 'working' ? 'working' : st === 'failed' ? 'error' : 'idle');
+const subLabel = (st: string) => (st === 'working' ? 'Running' : st === 'failed' ? 'Failed' : st === 'stopped' ? 'Stopped' : 'Done');
+
+function SubagentTree({ s, selected }: { s: S; selected?: string }) {
+  const rows = subagentTree(s);
+  if (!rows.length) return <span style={{ font: '400 12px/1.4 var(--font-sans)', color: 'var(--text-3)' }}>No subagents in this session.</span>;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      {rows.map(({ a, depth }) => (
+        <div key={a.id} onClick={() => go({ screen: 'session', id: s.id, tab: 'conversation', sub: a.id })} className="helm-row-hover"
+          style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 28, padding: '0 6px 0 ' + (6 + depth * 14) + 'px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', background: selected === a.id ? 'var(--bg-selected)' : undefined }}>
+          <StatusDot status={subTone(a.status)} size={7} />
+          <span style={{ flex: 1, minWidth: 0, font: '400 12px/1.2 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={a.description}>{a.description}</span>
+          <span style={{ font: '400 10.5px/1 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap' }}>{a.tools} tools · {a.status === 'working' ? elapsed(a.startedAt) : elapsed(a.startedAt, a.endedAt)}</span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -86,11 +108,25 @@ function Rich({ text }: { text: string }) {
 
 function TranscriptItem({ m, s, onDeny }: { m: TranscriptEvent; s: S; onDeny(): void }) {
   const app = useApp();
+  if (m.k === 'subagent') return (
+    <div style={{ marginLeft: 32, ...box }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 34, padding: '4px 10px' }}>
+        <i className="ph ph-tree-structure" style={{ fontSize: 14, color: 'var(--accent-text)' }} />
+        <span style={{ font: '500 12px/1 var(--font-sans)', color: 'var(--text-2)' }}>Subagent</span>
+        <Badge mono>{m.agentType}</Badge>
+        <span style={{ font: '500 12.5px/1.2 var(--font-sans)', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.description}</span>
+        {m.status === 'working' ? <i className="ph ph-circle-notch" style={{ fontSize: 13, color: 'var(--status-working-text)', animation: 'helm-spin .9s linear infinite' }} /> : null}
+        <Badge tone={subTone(m.status) as any} dot>{subLabel(m.status)}</Badge>
+        <Button size="sm" variant="ghost" iconRight="arrow-right" onClick={() => go({ screen: 'session', id: s.id, tab: 'conversation', sub: m.id })}>Transcript</Button>
+      </div>
+      {m.summary && m.status !== 'working' ? <div className="selectable" style={{ padding: '8px 12px 10px', borderTop: '1px solid var(--border-subtle)', font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-2)', whiteSpace: 'pre-wrap' }}>{m.summary}</div> : null}
+    </div>
+  );
   if (m.k === 'user') return (
     <div style={{ display: 'flex', gap: 10 }}>
-      <Avatar name={app.user?.login || 'you'} src={app.user?.avatar || undefined} size={22} />
+      <Avatar agent={!!m.from} name={m.from || app.user?.login || 'you'} src={m.from ? undefined : app.user?.avatar || undefined} size={22} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <span style={{ font: '500 12px/1 var(--font-sans)' }}>{app.user?.login || 'you'} <span style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)', marginLeft: 6 }}>{clock(m.t)}</span></span>
+        <span style={{ font: m.from ? '500 12px/1 var(--font-mono)' : '500 12px/1 var(--font-sans)' }}>{m.from ? m.from + ' → subagent' : app.user?.login || 'you'} <span style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)', marginLeft: 6 }}>{clock(m.t)}</span></span>
         <div className="selectable" style={{ font: '400 13px/1.55 var(--font-sans)', color: 'var(--text-1)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.text}</div>
       </div>
     </div>
@@ -216,17 +252,31 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
 
 function UsagePanel({ s }: { s: S }) {
   const app = useApp();
+  const { fmt } = useMoney();
+  const sub = app.settings.billing === 'subscription';
+  const [width, grip, resetWidth] = usePaneWidth('usage-panel', 300, 240, 560, -1);
+  const limit = s.maxSubagents ?? app.settings.maxSubagentsSession;
+  const running = runningSubagents(s);
   const n = (v: string, l: string) => <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}><span style={{ font: '500 15px/1 var(--font-mono)' }}>{v}</span><span style={{ font: '400 11.5px/1 var(--font-sans)', color: 'var(--text-3)' }}>{l}</span></div>;
   const files = Object.entries(s.filesTouched);
   return (
-    <aside style={{ width: 300, flex: 'none', borderLeft: '1px solid var(--border)', overflow: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 20, background: 'var(--bg-panel)' }}>
+    <aside style={{ position: 'relative', width, flex: 'none', borderLeft: '1px solid var(--border)', overflow: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 20, background: 'var(--bg-panel)' }}>
+      <Grip edge="left" onMouseDown={grip} onDoubleClick={resetWidth} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <span style={label}>Usage</span>
         <Meter label="Context window" detail={fmtTokens(s.ctx) + ' / 200k'} value={s.ctx} max={200000} warnAt={0.75} />
-        <Meter label="Session budget" detail={money(s.cost) + ' / $' + s.budget} value={s.cost} max={s.budget} warnAt={app.settings.warnAt / 100} />
+        {sub ? null : <Meter label="Session budget" detail={fmt(s.cost) + ' / ' + fmt(s.budget, true)} value={s.cost} max={s.budget} warnAt={app.settings.warnAt / 100} />}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 4 }}>
-          {n(fmtTokens(s.tokens.input), 'Input')}{n(fmtTokens(s.tokens.output), 'Output')}{n(fmtTokens(s.tokens.cacheRead), 'Cache read')}{n(money(s.cost), 'Cost so far')}
+          {n(fmtTokens(s.tokens.input), 'Input')}{n(fmtTokens(s.tokens.output), 'Output')}{n(fmtTokens(s.tokens.cacheRead), 'Cache read')}{sub ? n(String(s.subagents.length), 'Subagents') : n(fmt(s.cost), 'Cost so far')}
         </div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ ...label, flex: 1 }}>Subagents · {running} of {limit} running</span>
+          <Select size="sm" value={s.maxSubagents == null ? 'default' : String(s.maxSubagents)} onChange={(e: any) => guard(api.setSessionMaxSubagents(s.id, e.target.value === 'default' ? null : +e.target.value))}
+            options={[{ value: 'default', label: 'Default (' + app.settings.maxSubagentsSession + ')' }, ...[0, 1, 2, 3, 4, 6, 8, 12].map((n) => ({ value: String(n), label: n === 0 ? 'Off' : 'Up to ' + n }))]} />
+        </div>
+        <SubagentTree s={s} />
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <span style={label}>Files touched · {files.length}</span>
@@ -250,7 +300,51 @@ function UsagePanel({ s }: { s: S }) {
   );
 }
 
-export function Session({ id, tab, setTab, themeKey }: { id: string; tab: string; setTab(t: string): void; themeKey: 'dark' | 'light' }) {
+function SubagentView({ s, subId }: { s: S; subId: string }) {
+  const a = s.subagents.find((x) => x.id === subId);
+  const key = `${s.id}~${subId}`;
+  const items = useTranscript(key);
+  const scroller = React.useRef<HTMLDivElement>(null);
+  const stick = React.useRef(true);
+  const [width, grip, resetWidth] = usePaneWidth('usage-panel', 300, 240, 560, -1);
+  React.useEffect(() => { void loadTranscript(key); }, [key]);
+  React.useEffect(() => { const el = scroller.current; if (el && stick.current) el.scrollTop = el.scrollHeight; }, [items]);
+  if (!a) return <div style={{ padding: 24, font: '400 13px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>This subagent is no longer in the session.</div>;
+  const parent = a.parentId ? s.subagents.find((x) => x.id === a.parentId) : undefined;
+  return (
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ flex: 'none', padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: 10, borderBottom: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+          <Button size="sm" variant="ghost" icon="arrow-left" onClick={() => (parent ? go({ screen: 'session', id: s.id, tab: 'conversation', sub: parent.id }) : go({ screen: 'session', id: s.id, tab: 'conversation' }))}>{parent ? parent.description : s.id}</Button>
+          <i className="ph ph-tree-structure" style={{ fontSize: 18, color: 'var(--accent-text)' }} />
+          <span style={{ font: '600 16px/1.2 var(--font-sans)', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.description}</span>
+          <Badge mono>{a.agentType}</Badge>
+          <Badge tone={subTone(a.status) as any} dot>{subLabel(a.status)}</Badge>
+        </div>
+        <div style={{ display: 'flex', gap: 10, font: '400 11.5px/1 var(--font-mono)', color: 'var(--text-3)' }}>
+          <span>started {clock(a.startedAt)}</span><span>·</span><span>{a.status === 'working' ? elapsed(a.startedAt) : elapsed(a.startedAt, a.endedAt)}</span><span>·</span><span>{a.tools} tool calls</span><span>·</span><span>{fmtTokens(a.tokens)} tokens</span>
+        </div>
+      </div>
+      <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+        <div ref={scroller} onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }} style={{ flex: 1, minWidth: 0, overflow: 'auto', padding: '20px 20px 24px' }}>
+          <div style={{ maxWidth: 820, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {!items ? <span style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>Loading transcript…</span> : null}
+            {(items || []).map((m, i) => <TranscriptItem key={i} m={m} s={s} onDeny={() => undefined} />)}
+            {a.status === 'working' ? <div style={{ marginLeft: 32, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1 var(--font-sans)', color: 'var(--status-working-text)' }}><i className="ph ph-circle-notch" style={{ fontSize: 14, animation: 'helm-spin .9s linear infinite' }} />Working</div> : null}
+            <div style={{ marginLeft: 32, font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>This transcript is read-only. Message the parent agent from the session's conversation.</div>
+          </div>
+        </div>
+        <aside style={{ position: 'relative', width, flex: 'none', borderLeft: '1px solid var(--border)', overflow: 'auto', padding: 16, background: 'var(--bg-panel)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <Grip edge="left" onMouseDown={grip} onDoubleClick={resetWidth} />
+          <span style={label}>All subagents</span>
+          <SubagentTree s={s} selected={subId} />
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+export function Session({ id, tab, setTab, themeKey, sub }: { id: string; tab: string; setTab(t: string): void; themeKey: 'dark' | 'light'; sub?: string }) {
   const app = useApp();
   const s = app.sessions.find((x) => x.id === id);
   const items = useTranscript(id);
@@ -277,7 +371,8 @@ export function Session({ id, tab, setTab, themeKey }: { id: string; tab: string
   if (!s) return <div style={{ padding: 24, font: '400 13px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>This session no longer exists.</div>;
 
   let body: React.ReactNode;
-  if (tab === 'code') body = <CodeView s={s} themeKey={themeKey} />;
+  if (sub) body = <SubagentView s={s} subId={sub} />;
+  else if (tab === 'code') body = <CodeView s={s} themeKey={themeKey} />;
   else if (tab === 'changes') body = <Changes s={s} />;
   else body = (
     <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>

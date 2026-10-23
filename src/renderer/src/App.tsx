@@ -56,8 +56,9 @@ export function App() {
   if (route.screen === 'session') {
     const s = app.sessions.find((x) => x.id === route.id);
     const r = s && app.repos.find((x) => x.id === s.repoId);
-    crumbs = [{ label: r?.id || 'Session', icon: 'book-bookmark', onClick: r && (() => go({ screen: 'repo', id: r.id })) }, route.id];
-    body = <Session key={route.id} id={route.id} tab={route.tab || 'conversation'} setTab={(t) => go({ ...route, tab: t })} themeKey={theme} />;
+    const subA = route.sub ? s?.subagents.find((x) => x.id === route.sub) : undefined;
+    crumbs = [{ label: r?.id || 'Session', icon: 'book-bookmark', onClick: r && (() => go({ screen: 'repo', id: r.id })) }, subA ? { label: route.id, onClick: () => go({ screen: 'session', id: route.id, tab: 'conversation' }) } : route.id, ...(subA ? [{ label: subA.description, icon: 'tree-structure' }] : [])];
+    body = <Session key={route.id} id={route.id} tab={route.tab || 'conversation'} sub={route.sub} setTab={(t) => go({ screen: 'session', id: route.id, tab: t })} themeKey={theme} />;
   } else if (route.screen === 'repo') {
     crumbs = [{ label: route.id, icon: 'book-bookmark' }];
     body = <Repo key={route.id} id={route.id} />;

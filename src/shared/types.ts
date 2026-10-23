@@ -240,6 +240,20 @@ export interface ChangesSummary {
   dirty: number;
 }
 
+export interface WorkspaceInfo {
+  root: string;
+  branch: string;
+  dirty: number;
+  /** True for a session worktree, false for the repository's own checkout. */
+  session: boolean;
+}
+
+export interface SearchHit {
+  path: string;
+  line: number;
+  text: string;
+}
+
 export interface TreeEntry {
   name: string;
   path: string;
@@ -334,6 +348,7 @@ export interface HelmApi {
   repoWorktrees(id: string): Promise<WorktreeInfo[]>;
   repoPulls(id: string): Promise<PullRequest[]>;
   commitFiles(id: string, hash: string): Promise<FileChange[]>;
+  commitDiff(repoId: string, hash: string, path: string): Promise<DiffHunk[]>;
   removeWorktree(repoId: string, path: string): Promise<void>;
 
   createSession(input: NewSessionInput): Promise<string>;
@@ -349,6 +364,10 @@ export interface HelmApi {
   resolveAsk(sessionId: string, askId: string, answer: { decision: 'approve' | 'always' | 'deny'; text?: string } | { answers: Record<string, string> } | { addBudget: number }): Promise<void>;
   getTranscript(sessionId: string): Promise<TranscriptEvent[]>;
 
+  /** A workspace id is a session id, or `repo:<owner/name>` for the repository's own checkout. */
+  workspaceInfo(ws: string): Promise<WorkspaceInfo>;
+  listFiles(ws: string): Promise<string[]>;
+  searchFiles(ws: string, query: string, matchCase?: boolean): Promise<SearchHit[]>;
   listTree(sessionId: string, dir: string): Promise<TreeEntry[]>;
   readFile(sessionId: string, path: string): Promise<{ text: string; binary: boolean }>;
   writeFile(sessionId: string, path: string, text: string): Promise<void>;

@@ -160,3 +160,26 @@ export async function dirtyFiles(wt: string): Promise<{ path: string; status: st
 }
 
 export const fileExists = (p: string) => stat(p).then(() => true, () => false);
+
+export async function commitDiff(repo: string, hash: string, path: string): Promise<DiffHunk[]> {
+  return parseDiff(await git(repo, 'show', '-U4', '-M', '--format=', hash, '--', path));
+}
+
+export async function listFiles(wt: string): Promise<string[]> {
+  const out = await git(wt, 'ls-files', '--cached', '--others', '--exclude-standard');
+  return [...new Set(out.split('\n').filter(Boolean))];
+}
+
+export async function searchFiles(wt: string, query: string, matchCase: boolean): Promise<{ path: string; line: number; text: string }[]> {
+  if (!query.trim()) return [];
+  const args = ['grep', '-n', '-I', '--no-color', '-F', '--untracked', ...(matchCase ? [] : ['-i']), '-e', query];
+  let out = '';
+  try { out = await git(wt, ...args); } catch { return []; } // exit code 1 means no matches
+  const hits: { path: string; line: number; text: string }[] = [];
+  for (const l of out.split('\n')) {
+    const m = l.match(/^(.+?):(\d+):(.*)$/);
+    if (m) hits.push({ path: m[1], line: +m[2], text: m[3].slice(0, 240) });
+    if (hits.length >= 400) break;
+  }
+  return hits;
+}
