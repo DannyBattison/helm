@@ -54,10 +54,12 @@
     "appId": "dev.helm.app",
     "productName": "helm",
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
     "files": [
       "out/**",
+      "build/icon.png",
       "package.json"
     ],
     "asarUnpack": [
@@ -65,17 +67,20 @@
       "node_modules/@homebridge/**"
     ],
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         "nsis"
       ]
     },
     "mac": {
+      "icon": "build/icon.icns",
       "target": [
         "dmg"
       ],
       "category": "public.app-category.developer-tools"
     },
     "linux": {
+      "icon": "build/icon.png",
       "target": [
         "AppImage"
       ],

@@ -697,12 +697,19 @@ async function pollMerges() {
 }
 
 // ------------------------------------------------------------------ window
+/** The wheel tile: the window and taskbar icon while developing, and on Linux. Installed builds get theirs from the installer. */
+function appIcon() {
+  const p = join(app.getAppPath(), 'build', 'icon.png');
+  return existsSync(p) ? p : undefined;
+}
+
 function createWindow() {
   const dark = nativeTheme.shouldUseDarkColors;
   win = new BrowserWindow({
     width: 1440, height: 900, minWidth: 1180, minHeight: 700, show: false,
     backgroundColor: dark ? '#0e0e12' : '#fbfbfc',
     title: 'helm',
+    icon: appIcon(),
     titleBarStyle: 'hidden',
     ...(process.platform === 'darwin' ? { trafficLightPosition: { x: 14, y: 12 } } : { titleBarOverlay: { color: dark ? '#0e0e12' : '#fbfbfc', symbolColor: dark ? '#9d9dab' : '#55555f', height: 38 } }),
     webPreferences: { preload: join(__dirname, '../preload/index.js'), sandbox: false, contextIsolation: true, nodeIntegration: false }
@@ -720,6 +727,7 @@ if (!lock) app.quit();
 else {
   app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
   app.whenReady().then(async () => {
+    if (process.platform === 'darwin') { const p = appIcon(); if (p) try { app.dock?.setIcon(p); } catch { /* optional */ } }
     await store.load();
     if (!process.env.HELM_DEV_NO_RECOVER) sessions.recover();
     void companion.loadKey().then(() => companion.apply());
