@@ -27,7 +27,7 @@ function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string
         <Avatar agent name={s.id} size={26} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0, flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-            <span style={{ font: '600 16px/1.2 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.task}</span>
+            <span style={{ font: '600 16px/1.2 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={s.task} onDoubleClick={() => setUI({ renaming: s.id })}>{s.customTitle || s.title || s.task}</span>
             <Badge tone={s.status} dot>{STATUS_LABEL[s.status]}</Badge>
             {s.archivedAt ? <Badge>Archived</Badge> : null}
           </div>

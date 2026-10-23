@@ -1,5 +1,5 @@
 import React from 'react';
-import type { ExternalSession, Session } from '@shared/types';
+import { sessionTitle, type ExternalSession, type Session } from '@shared/types';
 import { api, platform } from '../api';
 import { ago, clock, fmtTokens, lifetimeTokens, laneAxis, laneData, LANE_MIN, livePlan, repoOf, reposWithSessions, runningSubagents, sessionTokens, totals, untilReset } from '../lib';
 import { Cmd } from '../Hl';
@@ -35,7 +35,7 @@ export function AttentionCard({ s }: { s: Session }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, font: '400 11.5px/1 var(--font-mono)', color: 'var(--text-3)' }}>
         <StatusDot status="attention" size={7} />
         <span style={{ color: 'var(--text-2)' }}>{s.repoId.split('/')[1]}</span><span>/</span>
-        <span style={{ color: 'var(--text-1)', cursor: 'pointer' }} onClick={open}>{s.id}</span>
+        <span style={{ color: 'var(--text-1)', cursor: 'pointer' }} onClick={open}>{sessionTitle(s)}</span>
         <span style={{ marginLeft: 'auto' }}>{ago(a.at)}</span>
       </div>
       <div style={{ font: '600 13px/1.35 var(--font-sans)', textWrap: 'pretty' as any }}>{a.head}</div>

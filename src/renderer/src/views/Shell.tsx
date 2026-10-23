@@ -1,3 +1,4 @@
+import { sessionTitle } from '@shared/types';
 import React from 'react';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
@@ -61,6 +62,7 @@ export function Sidebar() {
       { label: 'Open code', icon: 'code', onClick: () => go({ screen: 'session', id: s.id, tab: 'code' }) },
       { label: s.files ? `Review changes (${s.files})` : 'Review changes', icon: 'git-diff', onClick: () => go({ screen: 'session', id: s.id, tab: 'changes' }) },
       { label: 'Copy branch name', icon: 'copy', separator: true, onClick: () => void api.copyText(s.branch) },
+      { label: 'Rename…', icon: 'pencil-simple', onClick: () => setUI({ renaming: s.id }) },
       { label: 'Stop session', icon: 'stop', disabled: !running, onClick: () => void api.stopSession(s.id) },
       { label: s.archivedAt ? 'Restore from archive' : running ? 'Archive (stop it first)' : 'Archive session', icon: s.archivedAt ? 'arrow-counter-clockwise' : 'archive', disabled: !s.archivedAt && running, onClick: () => { api.archiveSession(s.id, !s.archivedAt).catch((err) => toast({ tone: 'error', title: 'Could not archive', description: String(err?.message || err).replace(/^Error invoking remote method \'\w+\': Error: /, '') })); } },
       { label: 'Delete session…', icon: 'trash', danger: true, separator: true, onClick: () => setUI({ deleting: s.id }) }
@@ -162,7 +164,7 @@ export function Sidebar() {
                 return (
                   <div key={s.id} {...target('session', s.id, r.id)} style={line(s.id)}>
                     <div {...dnd('session', s.id, r.id)} onContextMenu={(e) => sessionMenu(e, s)}>
-                    <TreeItem depth={1} status={s.status} label={s.id} expandable={tree.length > 0} expanded={subsOpen} style={s.archivedAt ? { opacity: 0.6 } : undefined} trailing={s.archivedAt ? <i className="ph ph-archive" title="Archived" style={{ fontSize: 12, color: 'var(--text-3)' }} /> : null}
+                    <TreeItem depth={1} status={s.status} label={sessionTitle(s)} expandable={tree.length > 0} expanded={subsOpen} style={s.archivedAt ? { opacity: 0.6 } : undefined} trailing={s.archivedAt ? <i className="ph ph-archive" title="Archived" style={{ fontSize: 12, color: 'var(--text-3)' }} /> : null}
                       meta={running ? <span style={{ color: 'var(--status-working-text)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><i className="ph ph-tree-structure" style={{ fontSize: 11 }} />{running}</span> : elapsed(s.startedAt, s.endedAt)}
                       selected={route.screen === 'session' && route.id === s.id && !route.sub}
                       onClick={() => {

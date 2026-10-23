@@ -66,6 +66,10 @@ export interface Subagent {
 
 export interface Session {
   id: string;
+  /** A short name Claude Code gave the conversation. Shown instead of the id until you rename it. */
+  title?: string;
+  /** A name you gave it. Wins over `title`. */
+  customTitle?: string;
   repoId: string;
   status: Status;
   task: string;
@@ -314,6 +318,9 @@ export interface SessionDeleteInfo {
   running: boolean;
 }
 
+/** What to call a session: your name for it, else Claude's, else its id. */
+export const sessionTitle = (s: { id: string; title?: string; customTitle?: string }) => s.customTitle || s.title || s.id;
+
 export interface ExternalTranscript {
   ready: boolean;
   /** Events in the whole conversation. */
@@ -461,6 +468,8 @@ export interface HelmApi {
   /** What deleting a session would remove or lose, so the dialog can say so. */
   sessionDeleteInfo(sessionId: string): Promise<SessionDeleteInfo>;
   archiveSession(sessionId: string, archived: boolean): Promise<void>;
+  /** Names a session. An empty title goes back to the one Claude gave it. */
+  renameSession(sessionId: string, title: string): Promise<void>;
   /** Records that a session was opened, which restarts its idle timer. */
   touchSession(sessionId: string): Promise<void>;
   /** Archives or restores a session started outside helm. Restoring also overrides the age rule. */

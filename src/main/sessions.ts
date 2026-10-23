@@ -1,4 +1,4 @@
-import { getSubagentMessages, query, type Query, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import { getSessionInfo, getSubagentMessages, query, renameSession, type Query, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { copyFile, mkdir, readFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fmtMoney } from '../shared/money';
@@ -616,6 +616,7 @@ export class SessionManager {
     rt.lastTools.clear();
     for (const a of s.subagents) if (a.agentId) await this.syncSubagent(s, a);
     await this.refreshStats(s);
+    void this.refreshTitle(s);
     if (rt.budgetPaused) {
       rt.interrupted = false;
       this.touch();
@@ -933,6 +934,28 @@ export class SessionManager {
     s.permMode = mode;
     await this.rt.get(id)?.q.setPermissionMode(mode === 'plan' ? 'plan' : mode === 'edits' ? 'acceptEdits' : 'default').catch(() => undefined);
     this.touch();
+  }
+
+  /** Claude Code names a conversation after its first turns. Pick that up once it exists, unless it is just the first prompt echoed back. */
+  private async refreshTitle(s: Session) {
+    if (!s.claudeSessionId) return;
+    try {
+      const i = await getSessionInfo(s.claudeSessionId, { dir: s.worktree });
+      const t = i?.summary?.trim();
+      if (!t || t === i?.firstPrompt?.trim() || t === s.title) return;
+      s.title = t;
+      this.touch();
+    } catch { /* no title yet */ }
+  }
+
+  async rename(id: string, title: string) {
+    const s = this.get(id);
+    if (!s) return;
+    title = title.trim().slice(0, 120);
+    s.customTitle = title || undefined;
+    this.touch();
+    // Keep Claude Code's own name in step, so the same session reads the same in VS Code.
+    if (title && s.claudeSessionId) await renameSession(s.claudeSessionId, title, { dir: s.worktree }).catch(() => undefined);
   }
 
   archive(id: string, archived: boolean) {

@@ -276,6 +276,7 @@ const api: HelmApi = {
   stopSession: (id) => sessions.stop(id),
   async resumeSession(id) { await sessions.send(id, 'Continue where you left off.'); },
   sessionDeleteInfo: (id) => sessions.deleteInfo(id),
+  async renameSession(id, title) { await sessions.rename(id, title); },
   async archiveSession(id, archived) { sessions.archive(id, archived); },
   async touchSession(id) { sessions.touchAccess(id); },
   async archiveExternal(id, archived) { store.data.extArchive[id] = archived ? 'archived' : 'restored'; store.save(); },

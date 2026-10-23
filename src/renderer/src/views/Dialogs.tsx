@@ -250,6 +250,27 @@ export function NewSession({ repoId, onClose }: { repoId?: string; onClose(): vo
 }
 
 // ------------------------------------------------------------------ delete session
+export function RenameSession({ id, onClose }: { id: string; onClose(): void }) {
+  const s = useApp().sessions.find((x) => x.id === id);
+  const [name, setName] = React.useState(s?.customTitle || s?.title || '');
+  const [err, setErr] = React.useState('');
+  if (!s) return null;
+  const save = async (v: string) => {
+    try { await api.renameSession(id, v); onClose(); } catch (e) { setErr(errText(e)); }
+  };
+  return (
+    <Dialog width={440} title="Rename session" description={s.title && !s.customTitle ? `Claude named this one. Branch ${s.branch} is not changed.` : `The branch ${s.branch} is not changed.`} onClose={onClose}
+      footer={<>
+        <span style={{ flex: 1, font: '400 12px/1.3 var(--font-sans)', color: 'var(--status-error-text)' }}>{err}</span>
+        {s.customTitle ? <Button variant="ghost" onClick={() => void save('')}>Use Claude's name</Button> : null}
+        <Button variant="ghost" onClick={onClose}>Cancel</Button>
+        <Button variant="primary" disabled={!name.trim()} onClick={() => void save(name)}>Rename</Button>
+      </>}>
+      <Input autoFocus value={name} placeholder={s.id} onChange={(e: any) => setName(e.target.value)} onKeyDown={(e: any) => { if (e.key === 'Enter' && name.trim()) void save(name); }} />
+    </Dialog>
+  );
+}
+
 export function DeleteSession({ id, onClose }: { id: string; onClose(): void }) {
   const app = useApp();
   const s = app.sessions.find((x) => x.id === id);
