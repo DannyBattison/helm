@@ -1,0 +1,14 @@
+:root{
+  --shadow-popover:0 0 0 1px var(--border),0 8px 24px rgba(0,0,0,.45);
+  --shadow-dialog:0 0 0 1px var(--border),0 24px 64px rgba(0,0,0,.55);
+  --shadow-toast:0 0 0 1px var(--border),0 6px 18px rgba(0,0,0,.4);
+  --ring-focus:0 0 0 2px var(--focus-ring);
+  --ease-out:cubic-bezier(.2,.8,.2,1);
+  --ease-in-out:cubic-bezier(.4,0,.2,1);
+  --dur-fast:90ms;--dur:140ms;--dur-slow:220ms;
+}
+[data-theme="light"]{
+  --shadow-popover:0 0 0 1px var(--border),0 8px 24px rgba(20,20,40,.12);
+  --shadow-dialog:0 0 0 1px var(--border),0 24px 64px rgba(20,20,40,.18);
+  --shadow-toast:0 0 0 1px var(--border),0 6px 18px rgba(20,20,40,.12);
+}
