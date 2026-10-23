@@ -239,3 +239,7 @@ Why: user request.
 ## D-056 · 2026-10-23 · Merge a pull request from inside helm
 An open pull request can be merged without leaving helm: a Merge button on its row in the repository's Pull requests tab, "Merge pull request" in a session's header, and "merge it here" on the Changes tab. All open a confirmation dialog showing the title, a warning for a draft or failing/running checks, the method (merge commit, squash or rebase; default in Settings → Worktrees), and a choice to delete the branch on GitHub (on by default when the session removes its worktree). Drafts are refused with an explanation, and GitHub's own refusal (conflicts, required reviews or checks, protected branch) is shown as is. On success the session, if helm started it, is settled immediately (worktree and branch removed as configured, then archived/deleted/left per the setting) rather than waiting for the two-minute poll.
 Why: user request. Merging is outward-facing, so it always asks first.
+
+## D-015 · 2026-10-23 · Commit author and push-on-commit are prompt-level settings
+`commitAuthor` is `coauthor` (user authors, `Co-authored-by: helm session` trailer) or `sole` (the agent's Bash gets `GIT_AUTHOR_NAME/EMAIL` for Claude and a non-attributing `Helm-Session:` trailer). `pushOnCommit` replaces the "do not push" instruction with "push after every commit". Both apply when a session next starts. The history view recognises either trailer.
+Why: helm cannot hook the agent's own `git commit`, so the system prompt and environment are the only levers.

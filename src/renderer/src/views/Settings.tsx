@@ -91,7 +91,7 @@ export function Settings({ section }: { section?: string }) {
               <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>{(app.user?.orgs || []).length ? app.user!.orgs.map((o) => <Badge key={o}>{o}</Badge>) : <span style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>None</span>}</span>
               <Button size="sm" iconRight="arrow-square-out" onClick={() => api.openExternal('https://github.com/settings/applications')}>Manage on GitHub</Button>
             </SettingRow>
-            <SettingRow title="Commit identity" desc="Agent commits are authored by you, using your git user.name and user.email, with the session name in a Co-authored-by trailer." />
+            <SettingRow title="Commit identity" desc="Your git user.name and user.email are used for commits and pushes. Who agent commits are credited to is set under Claude Code." />
             <SettingRow title="GitHub OAuth client ID" desc="Used for sign-in. Create an OAuth app on GitHub with device flow enabled.">
               <Field value={st.githubClientId} onCommit={(v: string) => set({ githubClientId: v.trim() })} style={{ width: 240 }} />
             </SettingRow>
@@ -124,6 +124,10 @@ export function Settings({ section }: { section?: string }) {
               </div>
             ) : null}
             <SettingRow title="Remote Control for new and resumed sessions" desc="Starts Remote Control (/rc) in every agent, so you can follow and drive it from claude.ai/code or the Claude app. Takes effect when a session next starts. Needs a Claude subscription sign-in, and can be blocked by your organisation."><Switch checked={st.remoteControl} onChange={(v: boolean) => set({ remoteControl: v })} /></SettingRow>
+            <SettingRow title="Push after every commit" desc="Tells the agent to push its branch to GitHub right after each commit, so nothing exists only on this machine. Agents always commit as they go. Takes effect when a session next starts."><Switch checked={st.pushOnCommit} onChange={(v: boolean) => set({ pushOnCommit: v })} /></SettingRow>
+            <SettingRow title="Commit author" desc="Co-author: commits are authored by you, with a Co-authored-by trailer for the session. Claude only: commits are authored by Claude, with no co-author. Takes effect when a session next starts.">
+              <SegmentedControl value={st.commitAuthor} onChange={(v: string) => set({ commitAuthor: v as any })} options={[{ value: 'coauthor', label: 'Co-author' }, { value: 'sole', label: 'Claude only' }]} />
+            </SettingRow>
             <SettingRow title="Run tests before marking ready" desc="Asks the agent to run the project's tests (package.json, go.mod, Makefile) before it finishes."><Switch checked={st.runTests} onChange={(v: boolean) => set({ runTests: v })} /></SettingRow>
           </> : null}
           {sec === 'worktrees' ? <>

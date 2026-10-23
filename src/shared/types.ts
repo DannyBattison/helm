@@ -150,6 +150,10 @@ export interface Settings {
   permMode: PermMode;
   alwaysAllow: string[];
   runTests: boolean;
+  /** Tell the agent to push its branch after every commit. */
+  pushOnCommit: boolean;
+  /** Who the agent's commits are credited to: you, with Claude as a co-author, or Claude alone. */
+  commitAuthor: 'coauthor' | 'sole';
   worktreeRoot: string;
   cloneRoot: string;
   branchPrefix: string;
@@ -572,6 +576,8 @@ export interface HelmApi {
   /** Skips the pull request: brings the branch up to date with the base, then pushes it onto the base on GitHub. */
   mergeDirect(input: MergeInput): Promise<MergeResult>;
   commitOnly(sessionId: string, files: string[], message: string): Promise<void>;
+  /** Pushes every session branch that has commits GitHub does not. Uncommitted changes are left alone. */
+  pushAll(): Promise<{ pushed: string[]; failed: { id: string; error: string }[]; uncommitted: number }>;
   requestChanges(sessionId: string, comments: ReviewComment[]): Promise<void>;
   openInEditor(sessionId: string, path?: string): Promise<void>;
   openExternal(url: string): Promise<void>;

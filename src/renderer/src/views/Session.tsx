@@ -135,7 +135,7 @@ function TranscriptItemView({ m, s, onDeny }: { m: TranscriptEvent; s: S; onDeny
     </div>
   );
   if (m.k === 'user') return (
-    <div style={{ display: 'flex', gap: 10 }}>
+    <div style={{ display: 'flex', gap: 10, ...(!m.from ? { background: 'var(--bg-selected)', borderRadius: 'var(--radius-md)', padding: '10px 12px' } : null) }}>
       <Avatar agent={!!m.from} name={m.from || app.user?.login || 'you'} src={m.from ? undefined : app.user?.avatar || undefined} size={22} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
         <span style={{ font: m.from ? '500 12px/1 var(--font-mono)' : '500 12px/1 var(--font-sans)' }}>{m.from ? m.from + ' → subagent' : app.user?.login || 'you'} {m.t ? <span style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)', marginLeft: 6 }}>{clock(m.t)}</span> : null}</span>
@@ -145,7 +145,13 @@ function TranscriptItemView({ m, s, onDeny }: { m: TranscriptEvent; s: S; onDeny
     </div>
   );
   if (m.k === 'agent') return (
-    <div className="selectable" style={{ paddingLeft: 32, font: '400 13px/1.6 var(--font-sans)', color: 'var(--text-1)', display: 'flex', flexDirection: 'column', gap: 6, wordBreak: 'break-word' }}><Rich text={m.text} /></div>
+    <div style={{ display: 'flex', gap: 10 }}>
+      <Avatar agent name="Claude" size={22} />
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={{ font: '500 12px/1 var(--font-sans)' }}>Claude</span>
+        <div className="selectable" style={{ font: '400 13px/1.6 var(--font-sans)', color: 'var(--text-1)', display: 'flex', flexDirection: 'column', gap: 6, wordBreak: 'break-word' }}><Rich text={m.text} /></div>
+      </div>
+    </div>
   );
   if (m.k === 'tools') return <div style={{ marginLeft: 32, ...box, padding: '3px 0' }}>{m.items.map((t, i) => <ToolRow key={i} tool={t[0]} target={t[1]} meta={t[2]} />)}</div>;
   if (m.k === 'edit') return (

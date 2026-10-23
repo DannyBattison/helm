@@ -376,6 +376,21 @@ const api: HelmApi = {
     const s = w.sessionId ? sessions.get(w.sessionId) : undefined;
     if (s) await sessions.refreshStats(s);
   },
+  async pushAll() {
+    const pushed: string[] = [], failed: { id: string; error: string }[] = [];
+    let uncommitted = 0;
+    for (const s of [...sessions.sessions]) {
+      if (s.archivedAt || s.worktreeGone || !(await G.fileExists(s.worktree))) continue;
+      try {
+        const info = await sessions.deleteInfo(s.id);
+        uncommitted += info.dirty > 0 ? 1 : 0;
+        if (info.unpushed === 0) continue;
+        await G.git(s.worktree, 'push', '-u', 'origin', s.branch);
+        pushed.push(s.id);
+      } catch (e: any) { failed.push({ id: s.id, error: String(e?.message || e).split('\n').slice(-2).join(' ').trim() }); }
+    }
+    return { pushed, failed, uncommitted };
+  },
   async createPr(input) {
     const s = sess(input.sessionId);
     const repo = repos.must(s.repoId);

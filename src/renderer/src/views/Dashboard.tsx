@@ -138,6 +138,17 @@ function FirstRun() {
 export function Dashboard({ filter: initial }: { filter?: string }) {
   const app = useApp();
   const [filter, setFilter] = React.useState(initial || 'all');
+  const [pushing, setPushing] = React.useState(false);
+  const pushAll = async () => {
+    setPushing(true);
+    try {
+      const r = await api.pushAll();
+      const dirty = r.uncommitted ? ` ${r.uncommitted} ${r.uncommitted === 1 ? 'session has' : 'sessions have'} uncommitted changes, which were not pushed.` : '';
+      if (r.failed.length) toast({ tone: 'error', title: `Pushed ${r.pushed.length}, ${r.failed.length} failed`, description: r.failed.map((f) => `${f.id}: ${f.error}`).join('\n') + dirty });
+      else toast({ tone: 'ready', title: r.pushed.length ? `Pushed ${r.pushed.length} ${r.pushed.length === 1 ? 'branch' : 'branches'}` : 'Nothing to push', description: dirty.trim() || undefined });
+    } catch (e: any) { toast({ tone: 'error', title: 'Push failed', description: String(e?.message || e) }); }
+    setPushing(false);
+  };
   const [now, setNow] = React.useState(Date.now());
   React.useEffect(() => { const i = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(i); }, []);
   const t = totals(app);
@@ -170,6 +181,7 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
             <h1 style={{ margin: 0, font: '600 20px/1.2 var(--font-sans)', letterSpacing: 'var(--tracking-tight)' }}>{filter === 'attention' ? 'Needs you' : 'Overview'}</h1>
             <span style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>{date} · {liveSessions} {liveSessions === 1 ? 'session' : 'sessions'} across {withSessions} {withSessions === 1 ? 'repository' : 'repositories'}{totalExt ? ` · ${totalExt} external, read-only` : ''}</span>
           </div>
+          <Button variant="ghost" icon="cloud-arrow-up" loading={pushing} disabled={app.sessions.length === 0} onClick={pushAll}>Push all</Button>
           <Button variant="ghost" icon="book-bookmark" onClick={() => setUI({ adding: true })}>Add repository</Button>
           <Button variant="primary" icon="plus" kbd={platform() === 'darwin' ? '⌘N' : 'Ctrl+N'} disabled={app.repos.length === 0} onClick={() => setUI({ newSession: {} })}>New session</Button>
         </div>
