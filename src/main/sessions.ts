@@ -2,7 +2,7 @@ import { getSessionInfo, getSubagentMessages, query, renameSession, type Query, 
 import { copyFile, mkdir, readFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fmtMoney } from '../shared/money';
-import type { ActivityEvent, ModelAlias, NewSessionInput, PendingAsk, PermMode, Session, Status, Subagent, TranscriptEvent } from '../shared/types';
+import type { ActivityEvent, Effort, MessageImage, ModelAlias, NewSessionInput, PendingAsk, PermMode, Session, Status, Subagent, TranscriptEvent } from '../shared/types';
 import * as G from './git';
 import type { Store } from './store';
 import { commandPattern, expandHome, globMatch, hasShellControl, uid } from './util';
@@ -20,8 +20,11 @@ class InputQueue implements AsyncIterable<SDKUserMessage> {
   private items: SDKUserMessage[] = [];
   private waiters: ((r: IteratorResult<SDKUserMessage>) => void)[] = [];
   private closed = false;
-  push(text: string) {
-    const m: SDKUserMessage = { type: 'user', message: { role: 'user', content: text }, parent_tool_use_id: null };
+  push(text: string, images: MessageImage[] = []) {
+    const content: any = images.length
+      ? [...images.map((i) => ({ type: 'image', source: { type: 'base64', media_type: i.mediaType, data: i.data } })), { type: 'text', text: text || 'See the attached image.' }]
+      : text;
+    const m: SDKUserMessage = { type: 'user', message: { role: 'user', content }, parent_tool_use_id: null };
     const w = this.waiters.shift();
     if (w) w({ value: m, done: false });
     else this.items.push(m);
@@ -206,7 +209,7 @@ export class SessionManager {
     ].filter(Boolean).join('\n');
   }
 
-  private async start(s: Session, first?: string) {
+  private async start(s: Session, first?: string, firstImages: MessageImage[] = []) {
     const abort = new AbortController();
     const queue = new InputQueue();
     const settings = this.store.data.settings;
@@ -214,6 +217,7 @@ export class SessionManager {
     const options: any = {
       cwd: s.worktree,
       model: MODEL_ALIAS[s.model],
+      ...(s.effort ? { effort: s.effort } : {}),
       permissionMode: s.permMode === 'plan' ? 'plan' : s.permMode === 'edits' ? 'acceptEdits' : 'default',
       abortController: abort,
       settingSources: ['user', 'project', 'local'],
@@ -229,7 +233,7 @@ export class SessionManager {
     if (s.claudeSessionId) options.resume = s.claudeSessionId;
     rt.q = query({ prompt: queue, options });
     this.rt.set(s.id, rt);
-    if (first) queue.push(first);
+    if (first) queue.push(first, firstImages);
     void this.consume(s, rt);
   }
 
@@ -872,7 +876,7 @@ export class SessionManager {
   }
 
   // ---------------------------------------------------------------- controls
-  async send(id: string, text: string) {
+  async send(id: string, text: string, images: MessageImage[] = []) {
     const s = this.get(id);
     if (!s) throw new Error('Session not found');
     let rt = this.rt.get(id);
@@ -880,7 +884,7 @@ export class SessionManager {
     s.lastAccess = Date.now();
     s.archivedAt = undefined;
     s.archivedAuto = undefined;
-    await this.push(id, { k: 'user', t: Date.now(), text });
+    await this.push(id, { k: 'user', t: Date.now(), text, images: images.length ? images : undefined });
     if (s.ask && rt) {
       // Replying while it waits counts as answering a question, or as a denial with an explanation.
       const w = [...rt.asks.values()][0];
@@ -890,11 +894,11 @@ export class SessionManager {
     s.endedAt = undefined;
     if (!rt) {
       this.setStatus(s, 'working', 'Starting');
-      await this.start(s, text);
+      await this.start(s, text, images);
       return;
     }
     this.setStatus(s, 'working', 'Reading your message');
-    rt.queue.push(text);
+    rt.queue.push(text, images);
   }
 
   async interrupt(id: string) {
@@ -925,6 +929,15 @@ export class SessionManager {
     if (!s) return;
     s.model = model;
     await this.rt.get(id)?.q.setModel(MODEL_ALIAS[model]).catch(() => undefined);
+    this.touch();
+  }
+
+  async setEffort(id: string, effort: Effort | null) {
+    const s = this.get(id);
+    if (!s) return;
+    s.effort = effort ?? undefined;
+    // Applies to the running conversation when Claude Code accepts it, and to every later start either way.
+    await this.rt.get(id)?.q.applyFlagSettings({ effortLevel: effort ?? undefined } as any).catch(() => undefined);
     this.touch();
   }
 
@@ -986,7 +999,7 @@ export class SessionManager {
     let any = false;
     for (const s of this.sessions) {
       if (s.archivedAt || this.rt.has(s.id) || s.status === 'working' || s.status === 'attention' || s.ask) continue;
-      if (s.status === 'ready' && !s.prUrl) continue;
+      if (s.status === 'ready' && !s.prUrl && !s.mergedAt) continue;
       if ((s.lastAccess || s.startedAt) > cutoff) continue;
       s.archivedAt = Date.now();
       s.archivedAuto = true;

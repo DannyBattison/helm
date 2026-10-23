@@ -19,6 +19,7 @@ export const defaultSettings = (): Settings => ({
   cloneRoot: join(home, 'code'),
   branchPrefix: 'agent/',
   removeAfterMerge: true,
+  deliver: 'pr',
   copyFiles: '.env, .env.local',
   weeklyLimit: 100,
   sessionBudget: 10,

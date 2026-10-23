@@ -66,6 +66,11 @@ export interface Subagent {
 
 export interface Session {
   id: string;
+  /** Merged straight into this branch without a pull request, and when. */
+  mergedInto?: string;
+  mergedAt?: number;
+  /** How hard the model thinks. Unset leaves it to Claude Code's default for the model. */
+  effort?: Effort;
   /** A short name Claude Code gave the conversation. Shown instead of the id until you rename it. */
   title?: string;
   /** A name you gave it. Wins over `title`. */
@@ -113,7 +118,7 @@ export interface Session {
 }
 
 export type TranscriptEvent =
-  | { k: 'user'; t: number; text: string; from?: string }
+  | { k: 'user'; t: number; text: string; from?: string; images?: MessageImage[] }
   | { k: 'subagent'; id: string; description: string; agentType: string; status: Subagent['status']; summary?: string }
   | { k: 'agent'; text: string; list?: string[] }
   | { k: 'tools'; items: [string, string, string][] }
@@ -151,6 +156,8 @@ export interface Settings {
   weeklyLimit: number;
   sessionBudget: number;
   warnAt: number;
+  /** How finished work is delivered: as a pull request, or merged straight into the default branch. The Changes tab can override it per session. */
+  deliver: 'pr' | 'merge';
   /** Start Remote Control (`/rc`) in every session, so it can be followed and driven from claude.ai/code or the Claude app. */
   remoteControl: boolean;
   /** Archive sessions that have not been opened for this many days. 0 never archives. */
@@ -343,6 +350,15 @@ export interface ProjectMemory {
   instructions: MemoryEntry[];
 }
 
+/** A picture sent with a message, as base64 (no data: prefix). */
+export interface MessageImage {
+  mediaType: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
+  data: string;
+  name?: string;
+}
+
+export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+
 export interface ExternalTranscript {
   ready: boolean;
   /** Events in the whole conversation. */
@@ -437,6 +453,25 @@ export interface CreatePrInput {
   message?: string;
 }
 
+export interface MergeInput {
+  sessionId: string;
+  /** Branch to merge into, without origin/. */
+  base: string;
+  /** Commit message for any uncommitted files that are included. */
+  message: string;
+  files: string[];
+  removeAfterMerge: boolean;
+}
+
+export interface MergeResult {
+  /** The commit the branch now points at on origin. */
+  sha: string;
+  /** Whether the base branch in your own checkout was brought up to date too. */
+  localUpdated: boolean;
+  /** Why it was not, when it was not. */
+  localNote?: string;
+}
+
 /** Request/response calls from renderer to main. */
 export interface HelmApi {
   getState(): Promise<AppState>;
@@ -483,7 +518,8 @@ export interface HelmApi {
   removeWorktree(repoId: string, path: string): Promise<void>;
 
   createSession(input: NewSessionInput): Promise<string>;
-  sendMessage(sessionId: string, text: string): Promise<void>;
+  sendMessage(sessionId: string, text: string, images?: MessageImage[]): Promise<void>;
+  setSessionEffort(sessionId: string, effort: Effort | null): Promise<void>;
   interrupt(sessionId: string): Promise<void>;
   stopSession(sessionId: string): Promise<void>;
   resumeSession(sessionId: string): Promise<void>;
@@ -522,6 +558,8 @@ export interface HelmApi {
   changes(sessionId: string): Promise<ChangesSummary>;
   fileDiff(sessionId: string, path: string): Promise<DiffHunk[]>;
   createPr(input: CreatePrInput): Promise<{ url: string | null }>;
+  /** Skips the pull request: brings the branch up to date with the base, then pushes it onto the base on GitHub. */
+  mergeDirect(input: MergeInput): Promise<MergeResult>;
   commitOnly(sessionId: string, files: string[], message: string): Promise<void>;
   requestChanges(sessionId: string, comments: ReviewComment[]): Promise<void>;
   openInEditor(sessionId: string, path?: string): Promise<void>;

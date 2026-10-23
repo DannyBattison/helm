@@ -1,5 +1,5 @@
 import React from 'react';
-import type { Session as S, TranscriptEvent, ModelAlias, PermMode } from '@shared/types';
+import type { Session as S, TranscriptEvent, ModelAlias, PermMode, Effort, MessageImage } from '@shared/types';
 import { api, platform } from '../api';
 import { Cmd, Hl } from '../Hl';
 import { highlightBlock, langFromPath, langFromTag } from '../highlight';
@@ -21,6 +21,7 @@ function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string
   const { fmt } = useMoney();
   const sub = useApp().settings.billing === 'subscription';
   const running = s.status === 'working' || s.status === 'attention';
+  const deliverMerge = useApp().settings.deliver === 'merge';
   return (
     <div style={{ flex: 'none', padding: '14px 20px 0', display: 'flex', flexDirection: 'column', gap: 12, borderBottom: '1px solid var(--border)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
@@ -40,8 +41,8 @@ function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string
         {s.status === 'working' ? <Button variant="ghost" icon="pause" onClick={() => guard(api.interrupt(s.id))}>Pause</Button> : null}
         {running ? <Button variant="ghost" icon="stop" onClick={() => guard(api.stopSession(s.id))}>Stop</Button> : null}
         <Button variant="secondary" icon="arrow-square-out" onClick={() => guard(api.openInEditor(s.id))}>Open in editor</Button>
-        {s.prUrl ? <Button variant="secondary" icon="git-pull-request" onClick={() => api.openExternal(s.prUrl!)}>View pull request</Button>
-          : s.status === 'ready' ? <Button variant="primary" icon="git-pull-request" onClick={() => setTab('changes')}>Create pull request</Button>
+        {s.mergedAt ? <Badge tone="ready">Merged into {s.mergedInto}</Badge> : s.prUrl ? <Button variant="secondary" icon="git-pull-request" onClick={() => api.openExternal(s.prUrl!)}>View pull request</Button>
+          : s.status === 'ready' ? <Button variant="primary" icon={deliverMerge ? 'git-merge' : 'git-pull-request'} onClick={() => setTab('changes')}>{deliverMerge ? 'Merge changes' : 'Create pull request'}</Button>
           : <Button variant="secondary" icon="git-diff" onClick={() => setTab('changes')}>Review changes</Button>}
       </div>
       <Tabs value={tab} onChange={setTab} style={{ borderBottom: 'none', padding: 0 }} tabs={[
@@ -139,6 +140,7 @@ function TranscriptItemView({ m, s, onDeny }: { m: TranscriptEvent; s: S; onDeny
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
         <span style={{ font: m.from ? '500 12px/1 var(--font-mono)' : '500 12px/1 var(--font-sans)' }}>{m.from ? m.from + ' → subagent' : app.user?.login || 'you'} {m.t ? <span style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)', marginLeft: 6 }}>{clock(m.t)}</span> : null}</span>
         <div className="selectable" style={{ font: '400 13px/1.55 var(--font-sans)', color: 'var(--text-1)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.text}</div>
+        {m.images?.length ? <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{m.images.map((im, i) => <img key={i} src={`data:${im.mediaType};base64,${im.data}`} alt={im.name || 'attached image'} title={im.name} style={{ maxWidth: 260, maxHeight: 180, borderRadius: 'var(--radius-md)', boxShadow: 'inset 0 0 0 1px var(--border)', objectFit: 'contain', background: 'var(--bg-editor)' }} />)}</div> : null}
       </div>
     </div>
   );
@@ -245,29 +247,193 @@ function TranscriptItemView({ m, s, onDeny }: { m: TranscriptEvent; s: S; onDeny
 /** Re-renders only when its event changes, or the pending request it may be showing does. */
 export const TranscriptItem = React.memo(TranscriptItemView, (a, b) => a.m === b.m && a.s?.ask?.id === b.s?.ask?.id && a.s?.ask?.orphaned === b.s?.ask?.orphaned);
 
+// Drafts and sent messages are kept per session for as long as helm is open, so switching away never loses what you were typing
+// and the up arrow can bring back the last thing you said.
+const drafts = new Map<string, string>();
+const sent = new Map<string, string[]>();
+const MAX_IMAGES = 6;
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+type Draft = MessageImage & { id: number; url: string; bytes: number };
+let imageSeq = 0;
+
+const readImage = (f: File): Promise<Draft> => new Promise((resolve, reject) => {
+  const r = new FileReader();
+  r.onerror = () => reject(new Error('Could not read ' + (f.name || 'the image')));
+  r.onload = () => {
+    const url = String(r.result);
+    resolve({ id: ++imageSeq, mediaType: f.type as any, data: url.slice(url.indexOf(',') + 1), name: f.name && f.name !== 'image.png' ? f.name : `image-${imageSeq}.${f.type.split('/')[1]}`, url, bytes: f.size });
+  };
+  r.readAsDataURL(f);
+});
+
+const EFFORTS: { value: string; label: string }[] = [
+  { value: 'default', label: 'Default effort' }, { value: 'low', label: 'Effort: Low' }, { value: 'medium', label: 'Effort: Medium' },
+  { value: 'high', label: 'Effort: High' }, { value: 'xhigh', label: 'Effort: Extra high' }, { value: 'max', label: 'Effort: Max' }
+];
+
+/** Files whose path contains the letters you typed, in order, best matches first. */
+function matchFiles(files: string[], q: string): string[] {
+  const needle = q.toLowerCase();
+  if (!needle) return files.slice(0, 8);
+  const scored: [number, string][] = [];
+  for (const f of files) {
+    const l = f.toLowerCase();
+    const base = l.slice(l.lastIndexOf('/') + 1);
+    let score = -1;
+    if (base.startsWith(needle)) score = 0;
+    else if (base.includes(needle)) score = 1;
+    else if (l.includes(needle)) score = 2;
+    else {
+      let i = 0;
+      for (const ch of l) if (ch === needle[i]) i++;
+      if (i === needle.length) score = 3;
+    }
+    if (score >= 0) scored.push([score * 1000 + f.length, f]);
+  }
+  return scored.sort((x, y) => x[0] - y[0]).slice(0, 8).map((x) => x[1]);
+}
+
 function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAreaElement> }) {
-  const [text, setText] = React.useState('');
+  const [text, setTextState] = React.useState(drafts.get(s.id) || '');
+  const [images, setImages] = React.useState<Draft[]>([]);
+  const [focused, setFocused] = React.useState(false);
+  const [over, setOver] = React.useState(false);
+  const [mention, setMention] = React.useState<{ at: number; q: string } | null>(null);
+  const [hi, setHi] = React.useState(0);
+  const files = React.useRef<string[] | null>(null);
+  const histPos = React.useRef(-1);
+  const picker = React.useRef<HTMLInputElement>(null);
   const working = s.status === 'working';
+  const setText = (t: string) => { drafts.set(s.id, t); setTextState(t); };
+
+  React.useEffect(() => { setTextState(drafts.get(s.id) || ''); setImages([]); setMention(null); histPos.current = -1; files.current = null; }, [s.id]);
+  // Grow with the text, up to about nine lines, then scroll.
+  React.useLayoutEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 200) + 'px';
+  }, [text]);
+
   const send = () => {
     const t = text.trim();
-    if (!t) return;
-    setText('');
-    void guard(api.sendMessage(s.id, t));
+    if (!t && !images.length) return;
+    sent.set(s.id, [...(sent.get(s.id) || []), t].slice(-50));
+    histPos.current = -1;
+    const pics = images.map(({ mediaType, data, name }) => ({ mediaType, data, name }));
+    setText(''); setImages([]); setMention(null);
+    void guard(api.sendMessage(s.id, t, pics.length ? pics : undefined));
   };
-  const placeholder = s.ask?.type === 'question' ? 'Type your answer' : s.ask ? 'Tell the agent what to do instead, or approve above' : working ? 'Add guidance while it works, or press Esc to interrupt' : 'Reply to ' + s.id;
+
+  const addImages = async (list: File[]) => {
+    const ok = list.filter((f) => IMAGE_TYPES.includes(f.type));
+    if (list.length && !ok.length) { toast({ tone: 'neutral', title: 'Only PNG, JPEG, GIF and WebP images can be attached' }); return; }
+    const room = MAX_IMAGES - images.length;
+    if (ok.length > room) toast({ tone: 'neutral', title: `At most ${MAX_IMAGES} images per message` });
+    const big = ok.filter((f) => f.size > MAX_IMAGE_BYTES);
+    if (big.length) toast({ tone: 'neutral', title: 'Image too large', description: `${big[0].name || 'It'} is over 5 MB.` });
+    const take = ok.filter((f) => f.size <= MAX_IMAGE_BYTES).slice(0, Math.max(0, room));
+    try { const drafts2 = await Promise.all(take.map(readImage)); setImages((cur) => [...cur, ...drafts2]); } catch (e: any) { toast({ tone: 'error', title: 'Could not attach', description: String(e?.message || e) }); }
+  };
+
+  // The @word under the caret, if any: it opens the file list.
+  const track = (value: string, caret: number) => {
+    const m = /(^|\s)@([^\s@]*)$/.exec(value.slice(0, caret));
+    if (!m) { setMention(null); return; }
+    setMention({ at: caret - m[2].length - 1, q: m[2] });
+    setHi(0);
+    if (!files.current) { files.current = []; api.listFiles(s.id).then((l) => { files.current = l; setMention((x) => (x ? { ...x } : x)); }).catch(() => { files.current = null; }); }
+  };
+  const matches = mention ? matchFiles(files.current || [], mention.q) : [];
+  const pick = (path: string) => {
+    if (!mention) return;
+    const el = inputRef.current;
+    const caret = el ? el.selectionStart : text.length;
+    const next = text.slice(0, mention.at) + '@' + path + ' ' + text.slice(caret);
+    setText(next);
+    setMention(null);
+    requestAnimationFrame(() => { el?.focus(); const p = mention.at + path.length + 2; el?.setSelectionRange(p, p); });
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (mention && matches.length) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setHi((h) => (h + 1) % matches.length); return; }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setHi((h) => (h - 1 + matches.length) % matches.length); return; }
+      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pick(matches[hi]); return; }
+    }
+    if (mention && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); e.nativeEvent.stopImmediatePropagation(); setMention(null); return; }
+    if (e.key === 'Enter' && mod(e)) { e.preventDefault(); send(); return; }
+    // Up and down walk through what you sent before, when the caret is at the very start or end of the text.
+    const past = sent.get(s.id) || [];
+    const el = e.currentTarget;
+    if (e.key === 'ArrowUp' && past.length && el.selectionStart === 0 && el.selectionEnd === 0 && (text === '' || histPos.current >= 0)) {
+      e.preventDefault();
+      histPos.current = Math.min(histPos.current + 1, past.length - 1);
+      setText(past[past.length - 1 - histPos.current]);
+    } else if (e.key === 'ArrowDown' && histPos.current >= 0 && el.selectionStart === text.length) {
+      e.preventDefault();
+      histPos.current -= 1;
+      setText(histPos.current < 0 ? '' : past[past.length - 1 - histPos.current]);
+    }
+  };
+
+  const placeholder = s.ask?.type === 'question' ? 'Type your answer' : s.ask ? 'Tell the agent what to do instead, or approve above' : working ? 'Add guidance while it works, or press Esc to interrupt' : 'Reply to ' + (s.customTitle || s.title || s.id) + '. @ mentions a file, and you can paste or drop images';
+  const ctxPct = Math.round((s.ctx / 200000) * 100);
   return (
     <div style={{ flex: 'none', padding: '0 20px 16px' }}>
-      <div style={{ maxWidth: 820, margin: '0 auto', borderRadius: 'var(--radius-lg)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border-strong)' }}>
-        <textarea ref={inputRef} value={text} onChange={(e) => setText(e.target.value)} placeholder={placeholder} rows={2}
-          onKeyDown={(e) => { if (e.key === 'Enter' && mod(e)) { e.preventDefault(); send(); } }}
-          style={{ width: '100%', resize: 'none', border: 'none', outline: 'none', background: 'transparent', color: 'var(--text-1)', font: '400 13px/1.5 var(--font-sans)', padding: '10px 12px 4px' }} />
+      <div
+        onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
+        onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setOver(true); } }}
+        onDragLeave={() => setOver(false)}
+        onDrop={(e) => { if (e.dataTransfer.files.length) { e.preventDefault(); void addImages([...e.dataTransfer.files]); } setOver(false); }}
+        style={{ position: 'relative', maxWidth: 820, margin: '0 auto', borderRadius: 'var(--radius-lg)', background: 'var(--bg-input)', transition: 'box-shadow .12s',
+          boxShadow: over ? 'var(--ring-focus), inset 0 0 0 1px var(--accent)' : focused ? 'var(--ring-focus), inset 0 0 0 1px var(--accent)' : 'inset 0 0 0 1px var(--border-strong)' }}>
+        {mention && matches.length ? (
+          <div role="listbox" style={{ position: 'absolute', left: 0, right: 0, bottom: 'calc(100% + 6px)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-raised)', boxShadow: 'var(--shadow-popover, 0 8px 24px rgba(0,0,0,.4)), inset 0 0 0 1px var(--border-strong)', padding: 4, zIndex: 20, maxHeight: 260, overflow: 'auto' }}>
+            {matches.map((f, i) => {
+              const cut = f.lastIndexOf('/');
+              return (
+                <div key={f} role="option" aria-selected={i === hi} onMouseDown={(e) => { e.preventDefault(); pick(f); }} onMouseEnter={() => setHi(i)}
+                  style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '6px 8px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', background: i === hi ? 'var(--bg-selected, var(--bg-hover))' : undefined, minWidth: 0 }}>
+                  <i className="ph ph-file" style={{ fontSize: 13, color: 'var(--text-3)', alignSelf: 'center' }} />
+                  <span style={{ font: '500 12.5px/1.2 var(--font-mono)', color: 'var(--text-1)', whiteSpace: 'nowrap' }}>{f.slice(cut + 1)}</span>
+                  {cut >= 0 ? <span style={{ font: '400 11.5px/1.2 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', direction: 'rtl', textAlign: 'left', minWidth: 0 }}>{f.slice(0, cut)}</span> : null}
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
+        {images.length ? (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', padding: '8px 8px 0' }}>
+            {images.map((im) => (
+              <div key={im.id} title={im.name} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 6, height: 28, padding: '0 22px 0 4px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-raised)', boxShadow: 'inset 0 0 0 1px var(--border)' }}>
+                <img src={im.url} alt="" style={{ width: 20, height: 20, objectFit: 'cover', borderRadius: 3 }} />
+                <span style={{ font: '500 11.5px/1 var(--font-sans)', color: 'var(--text-1)', maxWidth: 150, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{im.name}</span>
+                <span style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)' }}>{im.bytes > 1e6 ? (im.bytes / 1e6).toFixed(1) + ' MB' : Math.max(1, Math.round(im.bytes / 1e3)) + ' kB'}</span>
+                <span role="button" aria-label="Remove image" onClick={() => setImages((c) => c.filter((x) => x.id !== im.id))} style={{ position: 'absolute', right: 5, top: 0, bottom: 0, display: 'flex', alignItems: 'center', cursor: 'pointer', color: 'var(--text-3)' }}><i className="ph ph-x" style={{ fontSize: 11 }} /></span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        <textarea ref={inputRef} value={text} placeholder={placeholder} rows={2}
+          onChange={(e) => { setText(e.target.value); histPos.current = -1; track(e.target.value, e.target.selectionStart); }}
+          onKeyUp={(e) => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') track(e.currentTarget.value, e.currentTarget.selectionStart); }}
+          onClick={(e) => track(e.currentTarget.value, e.currentTarget.selectionStart)}
+          onPaste={(e) => { const f = [...e.clipboardData.files].filter((x) => x.type.startsWith('image/')); if (f.length) { e.preventDefault(); void addImages(f); } }}
+          onKeyDown={onKeyDown}
+          style={{ display: 'block', width: '100%', boxSizing: 'border-box', resize: 'none', border: 'none', outline: 'none', boxShadow: 'none', background: 'transparent', color: 'var(--text-1)', font: '400 13px/1.5 var(--font-sans)', padding: '10px 12px 4px', maxHeight: 200 }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px 6px 8px' }}>
-          <IconButton icon="at" label="Mention a file" size="sm" onClick={() => { setText((t) => t + '@'); inputRef.current?.focus(); }} />
-          <Select size="sm" value={s.model} onChange={(e) => guard(api.setSessionModel(s.id, e.target.value as ModelAlias))} options={[{ value: 'sonnet', label: 'Sonnet' }, { value: 'opus', label: 'Opus' }, { value: 'haiku', label: 'Haiku' }]} />
-          <Select size="sm" value={s.permMode} onChange={(e) => guard(api.setSessionPermMode(s.id, e.target.value as PermMode))} options={[{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits' }, { value: 'plan', label: 'Plan only' }]} />
+          <input ref={picker} type="file" accept={IMAGE_TYPES.join(',')} multiple hidden onChange={(e) => { void addImages([...(e.target.files || [])]); e.target.value = ''; }} />
+          <IconButton icon="at" label="Mention a file" size="sm" onClick={() => { const el = inputRef.current; const c = el ? el.selectionStart : text.length; const pre = text.slice(0, c); const lead = pre && !/\s$/.test(pre) ? ' ' : ''; setText(pre + lead + '@' + text.slice(c)); requestAnimationFrame(() => { el?.focus(); const p = c + lead.length + 1; el?.setSelectionRange(p, p); track(el!.value, p); }); }} />
+          <IconButton icon="paperclip" label="Attach an image" size="sm" onClick={() => picker.current?.click()} />
+          <Select size="sm" value={s.model} onChange={(e: any) => guard(api.setSessionModel(s.id, e.target.value as ModelAlias))} options={[{ value: 'sonnet', label: 'Sonnet' }, { value: 'opus', label: 'Opus' }, { value: 'haiku', label: 'Haiku' }]} />
+          <Select size="sm" value={s.effort || 'default'} onChange={(e: any) => guard(api.setSessionEffort(s.id, e.target.value === 'default' ? null : (e.target.value as Effort)))} options={EFFORTS} />
+          <Select size="sm" value={s.permMode} onChange={(e: any) => guard(api.setSessionPermMode(s.id, e.target.value as PermMode))} options={[{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits' }, { value: 'plan', label: 'Plan only' }]} />
           <span style={{ flex: 1 }} />
+          {s.ctx ? <span title={`Context window: ${fmtTokens(s.ctx)} of 200k tokens in use`} style={{ font: '400 11.5px/1 var(--font-mono)', color: ctxPct >= 75 ? 'var(--status-attention-text)' : 'var(--text-3)', whiteSpace: 'nowrap' }}>{ctxPct}% context</span> : null}
           {working ? <Button size="sm" variant="ghost" kbd="Esc" onClick={() => guard(api.interrupt(s.id))}>Interrupt</Button> : null}
-          <Button size="sm" variant="primary" icon="paper-plane-right" kbd={MOD() + '↵'} disabled={!text.trim()} onClick={send}>Send</Button>
+          <Button size="sm" variant="primary" icon="paper-plane-right" kbd={MOD() + '↵'} disabled={!text.trim() && !images.length} onClick={send}>Send</Button>
         </div>
       </div>
     </div>

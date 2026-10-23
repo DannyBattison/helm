@@ -52,7 +52,7 @@ export function Archive() {
               <StatusDot status={s.status} pulse={false} />
               <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
                 <span style={{ font: '500 13px/1.2 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.task}</span>
-                <span style={{ font: '400 11px/1.2 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.branch}{s.files ? ` · ${s.files} files changed` : ''}{s.prUrl ? ' · PR open' : ''}</span>
+                <span style={{ font: '400 11px/1.2 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.branch}{s.files ? ` · ${s.files} files changed` : ''}{s.mergedAt ? ` · merged into ${s.mergedInto}` : s.prUrl ? ' · PR open' : ''}</span>
               </span>
               <span style={{ font: '400 12px/1 var(--font-mono)', color: 'var(--text-2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.repoId}</span>
               <span style={{ font: '400 12px/1.3 var(--font-sans)', color: 'var(--text-2)' }}>{relTime(s.archivedAt!)} · {reason(s)}</span>

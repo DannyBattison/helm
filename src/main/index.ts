@@ -272,7 +272,8 @@ const api: HelmApi = {
   },
 
   createSession: (input) => sessions.create(input),
-  sendMessage: (id, text) => sessions.send(id, text),
+  sendMessage: (id, text, images) => sessions.send(id, text, images),
+  setSessionEffort: (id, e) => sessions.setEffort(id, e),
   interrupt: (id) => sessions.interrupt(id),
   stopSession: (id) => sessions.stop(id),
   async resumeSession(id) { await sessions.send(id, 'Continue where you left off.'); },
@@ -387,6 +388,43 @@ const api: HelmApi = {
     store.save();
     emitState();
     return { url };
+  },
+  async mergeDirect(input) {
+    const s = sess(input.sessionId);
+    const repo = repos.must(s.repoId);
+    const base = input.base.replace(/^origin\//, '');
+    if (base === s.branch) throw new Error('A session cannot merge into its own branch.');
+    if (input.files.length) await commitFiles(s.worktree, input.files, input.message || s.task);
+    await G.git(s.worktree, 'fetch', 'origin', base);
+    // Bring the branch up to date first, so the push onto the base is a plain fast-forward and nothing on origin is overwritten.
+    if (!(await G.gitOk(s.worktree, 'merge-base', '--is-ancestor', `origin/${base}`, 'HEAD'))) {
+      try { await G.git(s.worktree, 'merge', '--no-edit', '-m', `Merge ${base} into ${s.branch}`, `origin/${base}`); }
+      catch (e: any) {
+        await G.gitOk(s.worktree, 'merge', '--abort');
+        throw new Error(`${base} has changes that conflict with this branch. Ask the agent to merge ${base} into it and resolve the conflicts, then try again.`);
+      }
+    }
+    try { await G.git(s.worktree, 'push', 'origin', `HEAD:refs/heads/${base}`); }
+    catch (e: any) { throw new Error(`GitHub refused the push to ${base}${/protected|denied|declined|rule/i.test(String(e?.message)) ? ', which looks protected: use a pull request instead' : ''}. ${String(e?.message || e).split('\n').slice(-3).join(' ').trim()}`); }
+    const sha = (await G.git(s.worktree, 'rev-parse', '--short', 'HEAD')).trim();
+    // Keep the local copy of the base branch in step, when that can be done without touching anyone's work.
+    let localUpdated = false, localNote: string | undefined;
+    try {
+      const current = (await G.git(repo.localPath, 'symbolic-ref', '--short', 'HEAD').catch(() => '')).trim();
+      if (current === base) {
+        if ((await G.git(repo.localPath, 'status', '--porcelain', '--untracked-files=no')).trim()) localNote = `Your checkout of ${base} has uncommitted changes, so it was left alone.`;
+        else { await G.git(repo.localPath, 'merge', '--ff-only', `origin/${base}`); localUpdated = true; }
+      } else if (await G.gitOk(repo.localPath, 'rev-parse', '--verify', `refs/heads/${base}`)) {
+        await G.git(repo.localPath, 'fetch', 'origin', `${base}:${base}`); localUpdated = true;
+      }
+    } catch (e: any) { localNote = `Your local ${base} could not be fast-forwarded (${String(e?.message || e).split('\n')[0]}).`; }
+    s.mergedInto = base;
+    s.mergedAt = Date.now();
+    store.data.activity.unshift({ id: Math.random().toString(36).slice(2), t: Date.now(), kind: 'merge', who: store.data.user?.login || 'you', human: true, what: `merged ${s.branch} into ${base}`, repo: repo.name, sessionId: s.id });
+    store.save();
+    emitState();
+    if (input.removeAfterMerge) await sessions.remove(s.id, { worktree: true, branch: true });
+    return { sha, localUpdated, localNote };
   },
   async requestChanges(id, comments) {
     const text = 'Review comments from the user. Please address each one:\n\n' + comments.map((c) => `- ${c.file}:${c.line}: ${c.text}`).join('\n');

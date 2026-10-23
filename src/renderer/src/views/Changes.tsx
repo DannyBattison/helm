@@ -3,7 +3,7 @@ import type { ChangesSummary, DiffHunk, ReviewComment, Session } from '@shared/t
 import { api, platform } from '../api';
 import { Hl } from '../Hl';
 import { langFromPath } from '../highlight';
-import { CHECK_RE } from '../lib';
+import { CHECK_RE, relTime } from '../lib';
 import { go, toast, useApp, useTranscript } from '../store';
 import { Avatar, BranchTag, Button, Checkbox, DiffStat, Grip, IconButton, Input, SegmentedControl, Select, usePaneWidth } from '../ui';
 
@@ -109,6 +109,9 @@ export function Changes({ s }: { s: Session }) {
   const [body, setBody] = React.useState('');
   const [draft, setDraft] = React.useState(false);
   const [rm, setRm] = React.useState(s.removeAfterMerge);
+  const [deliver, setDeliver] = React.useState<'pr' | 'merge'>(app.settings.deliver);
+  const [armed, setArmed] = React.useState(false);
+  React.useEffect(() => setArmed(false), [deliver, base, title]);
   const [busy, setBusy] = React.useState('');
   const bodyEdited = React.useRef(false);
   const [lw, lgrip, lreset] = usePaneWidth('changes-files', 280, 200, 560);
@@ -163,6 +166,12 @@ export function Changes({ s }: { s: Session }) {
     const r = await api.createPr({ sessionId: s.id, base, title, body, draft, removeAfterMerge: rm, files: filesToStage, message: title });
     toast({ tone: 'ready', title: 'Pull request opened', description: r.url || undefined });
     if (r.url) void api.openExternal(r.url);
+  });
+  const merge = () => run('merge', async () => {
+    const r = await api.mergeDirect({ sessionId: s.id, base, message: title || s.task, files: filesToStage, removeAfterMerge: rm });
+    setArmed(false);
+    toast({ tone: 'ready', title: `Merged into ${base}`, description: [`${r.sha} is on GitHub`, r.localUpdated ? `local ${base} updated` : r.localNote].filter(Boolean).join(' · ') });
+    if (rm) go({ screen: 'overview' });
   });
   const commitOnly = () => run('commit', async () => { await api.commitOnly(s.id, filesToStage, title); toast({ tone: 'ready', title: 'Committed', description: `${filesToStage.length} files on ${s.branch}` }); });
   const requestChanges = () => run('req', async () => { await api.requestChanges(s.id, comments); setC([]); go({ screen: 'session', id: s.id, tab: 'conversation' }); });
@@ -268,20 +277,27 @@ export function Changes({ s }: { s: Session }) {
             ))}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <span style={label}>Pull request</span>
-            {s.prUrl ? <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>A pull request is open for this branch. <a href="#" onClick={(e) => { e.preventDefault(); void api.openExternal(s.prUrl!); }}>View on GitHub</a>. Creating another pushes new commits to the same branch.</div> : null}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ ...label, flex: 1 }}>{deliver === 'pr' ? 'Pull request' : 'Merge'}</span>
+              <SegmentedControl value={deliver} onChange={(v: string) => setDeliver(v as any)} options={[{ value: 'pr', label: 'Pull request' }, { value: 'merge', label: 'Merge directly' }]} />
+            </div>
+            {s.mergedAt ? <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>Merged into <b>{s.mergedInto}</b> {relTime(s.mergedAt)}. Merging again pushes anything new since.</div> : null}
+            {deliver === 'pr' && s.prUrl ? <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>A pull request is open for this branch. <a href="#" onClick={(e) => { e.preventDefault(); void api.openExternal(s.prUrl!); }}>View on GitHub</a>. Creating another pushes new commits to the same branch.</div> : null}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>
               <Select size="sm" icon="git-branch" mono value={base} onChange={(e) => setBase(e.target.value)} options={[...new Set([base, ...branches])]} /><i className="ph ph-arrow-left" style={{ fontSize: 12 }} /><BranchTag name={s.branch} />
             </div>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" />
-            <textarea rows={8} value={body} onChange={(e) => { bodyEdited.current = true; setBody(e.target.value); }}
-              style={{ resize: 'vertical', border: 'none', outline: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border)', color: 'var(--text-1)', font: '400 12px/1.55 var(--font-mono)', padding: '8px 10px' }} />
-            <Checkbox checked={draft} onChange={setDraft} label="Open as draft" />
-            <Checkbox checked={rm} onChange={setRm} label="Remove worktree after merge" description={s.worktree} />
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={deliver === 'pr' ? 'Title' : 'Commit message for uncommitted files'} />
+            {deliver === 'merge' ? <div style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>No pull request and no review: the branch is brought up to date with <b>{base}</b> (merging it in if needed), then pushed onto <b>{base}</b> on GitHub. If <b>{base}</b> is protected, GitHub refuses it.</div> : null}
+            {deliver === 'pr' ? <textarea rows={8} value={body} onChange={(e) => { bodyEdited.current = true; setBody(e.target.value); }}
+              style={{ resize: 'vertical', border: 'none', outline: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border)', color: 'var(--text-1)', font: '400 12px/1.55 var(--font-mono)', padding: '8px 10px' }} /> : null}
+            {deliver === 'pr' ? <Checkbox checked={draft} onChange={setDraft} label="Open as draft" /> : null}
+            <Checkbox checked={rm} onChange={setRm} label={deliver === 'pr' ? 'Remove worktree after merge' : 'Remove worktree and branch after merging'} description={s.worktree} />
           </div>
         </div>
         <div style={{ flex: 'none', padding: 12, borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <Button variant="primary" icon="git-pull-request" kbd={MOD() + '↵'} fullWidth loading={busy === 'pr'} disabled={!title.trim() || !!busy || !app.user} onClick={createPr}>Create pull request</Button>
+          {deliver === 'pr'
+            ? <Button variant="primary" icon="git-pull-request" kbd={MOD() + '↵'} fullWidth loading={busy === 'pr'} disabled={!title.trim() || !!busy || !app.user} onClick={createPr}>Create pull request</Button>
+            : <Button variant={armed ? 'danger' : 'primary'} icon="git-merge" fullWidth loading={busy === 'merge'} disabled={!!busy || (!sum?.commits.length && filesToStage.length === 0)} onClick={() => (armed ? merge() : setArmed(true))}>{armed ? `Push to ${base} on GitHub. Click again to confirm` : `Merge into ${base}`}</Button>}
           <div style={{ display: 'flex', gap: 8 }}>
             <Button style={{ flex: 1 }} icon="chat-circle-text" disabled={comments.length === 0 || !!busy} loading={busy === 'req'} onClick={requestChanges}>Request changes · {comments.length}</Button>
             <Button variant="ghost" style={{ flex: 1 }} disabled={filesToStage.length === 0 || !!busy} loading={busy === 'commit'} onClick={commitOnly}>Commit only</Button>

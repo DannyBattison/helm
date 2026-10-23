@@ -135,6 +135,9 @@ export function Settings({ section }: { section?: string }) {
               <Select value={String(st.archiveAfterDays)} onChange={(e: any) => set({ archiveAfterDays: +e.target.value })}
                 options={[{ value: '0', label: 'Never' }, ...[3, 7, 14, 30, 60, 90].map((n) => ({ value: String(n), label: n + ' days' }))]} />
             </SettingRow>
+            <SettingRow title="When a session is ready" desc="Open a pull request for review, or skip it and push the branch straight onto the default branch. You can still choose per session on its Changes tab. A protected branch refuses direct pushes.">
+              <SegmentedControl value={st.deliver} onChange={(v: string) => set({ deliver: v as any })} options={[{ value: 'pr', label: 'Pull request' }, { value: 'merge', label: 'Merge directly' }]} />
+            </SettingRow>
             <SettingRow title="Remove worktree after merge" desc="Applies to pull requests opened from helm."><Switch checked={st.removeAfterMerge} onChange={(v: boolean) => set({ removeAfterMerge: v })} /></SettingRow>
             <SettingRow title="Copy untracked files" desc="Files like .env are copied into each new worktree."><Field value={st.copyFiles} onCommit={(v: string) => set({ copyFiles: v })} style={{ width: 200 }} /></SettingRow>
           </> : null}
