@@ -251,3 +251,7 @@ Why: user report that dragging right could expand a column to the left.
 ## D-059 · 2026-10-23 · GitHub link on a commit checks the commit is pushed
 The GitHub button in the commit panel first checks that the commit is reachable from a remote branch (`git branch -r --contains`). A commit that only exists on this computer has no page on GitHub, which showed as a 404; helm now says it is not on GitHub yet and to push the branch. History lists every local branch, so unpushed commits are common.
 Why: user report of a 404.
+
+## D-060 · 2026-10-23 · Allow everything permission mode
+A fourth permission mode, "Allow everything", in Settings, the new-session dialog and each session's composer. It maps to the SDK's `bypassPermissions`, so no command or edit asks for approval. Every session is started with `allowDangerouslySkipPermissions` so a running conversation can be switched into it from the composer; that flag alone does not change the mode. Budgets, plan-usage pauses and the subagent limits still apply, because they do not depend on the approval prompt. The setting says plainly that the worktree protects your checkout but not the network or files outside it.
+Why: user request.

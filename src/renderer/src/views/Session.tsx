@@ -438,7 +438,7 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
           <IconButton icon="paperclip" label="Attach an image" size="sm" onClick={() => picker.current?.click()} />
           <Select size="sm" value={s.model} onChange={(e: any) => guard(api.setSessionModel(s.id, e.target.value as ModelAlias))} options={[{ value: 'sonnet', label: 'Sonnet' }, { value: 'opus', label: 'Opus' }, { value: 'haiku', label: 'Haiku' }]} />
           <Select size="sm" value={s.effort || 'default'} onChange={(e: any) => guard(api.setSessionEffort(s.id, e.target.value === 'default' ? null : (e.target.value as Effort)))} options={EFFORTS} />
-          <Select size="sm" value={s.permMode} onChange={(e: any) => guard(api.setSessionPermMode(s.id, e.target.value as PermMode))} options={[{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits' }, { value: 'plan', label: 'Plan only' }]} />
+          <Select size="sm" value={s.permMode} onChange={(e: any) => guard(api.setSessionPermMode(s.id, e.target.value as PermMode))} options={[{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits' }, { value: 'plan', label: 'Plan only' }, { value: 'all', label: 'Allow everything' }]} />
           <span style={{ flex: 1 }} />
           {s.ctx ? <span title={`Context window: ${fmtTokens(s.ctx)} of 200k tokens in use`} style={{ font: '400 11.5px/1 var(--font-mono)', color: ctxPct >= 75 ? 'var(--status-attention-text)' : 'var(--text-3)', whiteSpace: 'nowrap' }}>{ctxPct}% context</span> : null}
           {working ? <Button size="sm" variant="ghost" kbd="Esc" onClick={() => guard(api.interrupt(s.id))}>Interrupt</Button> : null}

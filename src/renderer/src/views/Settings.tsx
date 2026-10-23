@@ -10,7 +10,7 @@ import { Avatar, Badge, Button, Input, Meter, SegmentedControl, Select, Switch, 
 const errText = (e: any) => String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '');
 const set = (patch: Partial<SettingsT>) => void api.updateSettings(patch);
 
-export const PERM_OPTIONS = [{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits, ask for commands' }, { value: 'plan', label: 'Plan only' }];
+export const PERM_OPTIONS = [{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits, ask for commands' }, { value: 'plan', label: 'Plan only' }, { value: 'all', label: 'Allow everything' }];
 export const MODEL_OPTIONS = [{ value: 'sonnet', label: 'Sonnet' }, { value: 'opus', label: 'Opus' }, { value: 'haiku', label: 'Haiku' }];
 
 function SettingRow({ title, desc, children }: { title: React.ReactNode; desc?: React.ReactNode; children?: React.ReactNode }) {
@@ -103,7 +103,7 @@ export function Settings({ section }: { section?: string }) {
               {app.claudeVersion ? <Badge tone="ready" dot>{app.claudeVersion}</Badge> : <Badge>bundled</Badge>}
             </SettingRow>
             <SettingRow title="Default model"><Select value={st.defaultModel} onChange={(e: any) => set({ defaultModel: e.target.value as ModelAlias })} options={MODEL_OPTIONS} /></SettingRow>
-            <SettingRow title="Permission mode" desc="What an agent can do without asking you first."><Select value={st.permMode} onChange={(e: any) => set({ permMode: e.target.value as PermMode })} options={PERM_OPTIONS} /></SettingRow>
+            <SettingRow title="Permission mode" desc={st.permMode === 'all' ? 'Agents run every command and edit every file without asking. The worktree keeps them off your checkout, but they can still reach the network and files outside it. Pre-approved patterns and approvals no longer matter.' : 'What an agent can do without asking you first.'}><Select value={st.permMode} onChange={(e: any) => set({ permMode: e.target.value as PermMode })} options={PERM_OPTIONS} /></SettingRow>
             <SettingRow title="Always allowed commands" desc="Comma separated patterns. * matches anything. Added to when you choose Always allow.">
               <Field value={st.alwaysAllow} format={(v: string[]) => v.join(', ')} parse={(s: string) => s.split(',').map((x) => x.trim()).filter(Boolean)} onCommit={(v: string[]) => set({ alwaysAllow: v })} style={{ width: 260 }} />
             </SettingRow>

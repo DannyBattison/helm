@@ -1,7 +1,8 @@
 /** Types shared by the main process, preload and renderer. */
 
 export type Status = 'working' | 'attention' | 'ready' | 'idle' | 'error';
-export type PermMode = 'ask' | 'edits' | 'plan';
+/** ask: approve commands; edits: edits go through, commands ask; plan: plan only; all: nothing asks. */
+export type PermMode = 'ask' | 'edits' | 'plan' | 'all';
 export type ModelAlias = 'sonnet' | 'opus' | 'haiku';
 export type ThemePref = 'dark' | 'light' | 'system';
 

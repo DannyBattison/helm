@@ -17,6 +17,8 @@ export interface Hooks {
 }
 
 /** Input stream for a streaming-mode query. */
+const sdkMode = (m: PermMode) => (m === 'plan' ? 'plan' : m === 'edits' ? 'acceptEdits' : m === 'all' ? 'bypassPermissions' : 'default') as 'plan' | 'acceptEdits' | 'bypassPermissions' | 'default';
+
 class InputQueue implements AsyncIterable<SDKUserMessage> {
   private items: SDKUserMessage[] = [];
   private waiters: ((r: IteratorResult<SDKUserMessage>) => void)[] = [];
@@ -218,7 +220,9 @@ export class SessionManager {
       cwd: s.worktree,
       model: MODEL_ALIAS[s.model],
       ...(s.effort ? { effort: s.effort } : {}),
-      permissionMode: s.permMode === 'plan' ? 'plan' : s.permMode === 'edits' ? 'acceptEdits' : 'default',
+      permissionMode: sdkMode(s.permMode),
+      // Only permission to switch to Allow everything later in the conversation; the mode itself is what is chosen above.
+      allowDangerouslySkipPermissions: true,
       abortController: abort,
       settingSources: ['user', 'project', 'local'],
       systemPrompt: { type: 'preset', preset: 'claude_code', append: this.systemAppend(s) },
@@ -970,7 +974,7 @@ export class SessionManager {
     const s = this.get(id);
     if (!s) return;
     s.permMode = mode;
-    await this.rt.get(id)?.q.setPermissionMode(mode === 'plan' ? 'plan' : mode === 'edits' ? 'acceptEdits' : 'default').catch(() => undefined);
+    await this.rt.get(id)?.q.setPermissionMode(sdkMode(mode)).catch(() => undefined);
     this.touch();
   }
 
