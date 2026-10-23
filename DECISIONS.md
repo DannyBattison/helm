@@ -39,3 +39,19 @@ Why: user instruction.
 ## D-009 · 2026-10-23 · .gitignore covers dependencies, build output, secrets and the design bundle
 Ignored: `node_modules/`, `out/`, `dist/`, `release/`, logs, `.env*`, OS and editor files, and the design handoff folder and zip. The relevant design assets (tokens, fonts, glyphs, components) are copied into `src/` so the app doesn't depend on the bundle.
 Why: user asked for a gitignore up front so unneeded files never get committed. This refines D-008, which left the handoff untracked.
+
+## D-010 · 2026-10-23 · Permission model for agent tool calls
+`canUseTool` auto-allows reads, edits inside the session worktree and a short list of read-only commands. Other commands wait in "Needs you" unless they match the always-allowed patterns in Settings. "Always allow" derives a pattern from the command (`pnpm test *`) and adds it to that global list. Edits outside the worktree always ask. Replying in the composer while a request waits answers a question or denies an approval with an explanation.
+Why: matches the design's three approval surfaces and keeps agents inside their worktree without prompting for every read.
+
+## D-011 · 2026-10-23 · Cost tracking and budgets
+Cost is the SDK's cumulative `total_cost_usd` from each result message. Between results, an estimate from token usage and list prices is added so a budget can stop a long turn. The session budget and the repository weekly cap both pause the session into "Needs you" with an "Add $5 and resume" action.
+Why: results only arrive at the end of a turn, and budgets need to bite during one.
+
+## D-012 · 2026-10-23 · Session status rules
+A finished turn with changes or commits becomes `ready`; with none it becomes `idle` ("Done"). Interrupt and Pause are the same action and leave the session `idle` so a reply resumes it. On app start any session that was working or waiting is set to `idle` and resumed from its saved Claude session id when the user replies.
+Why: sessions can't keep running when helm is closed, and the status should never claim otherwise.
+
+## D-013 · 2026-10-23 · Agent commits carry a Co-authored-by trailer
+The system prompt asks the agent to end commit messages with `Co-authored-by: helm session <id> <noreply@helm.app>`. Commits are authored with the user's git identity because the worktree inherits it.
+Why: the Settings copy promises authorship by the user with the session in a trailer, and the history view uses the trailer to mark agent commits.

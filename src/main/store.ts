@@ -1,0 +1,118 @@
+import { app } from 'electron';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import type { ActivityEvent, Repo, Session, Settings, TranscriptEvent, User } from '../shared/types';
+import { dayStart, home, weekStart } from './util';
+
+export const defaultSettings = (): Settings => ({
+  theme: 'dark',
+  githubClientId: process.env.HELM_GITHUB_CLIENT_ID || '',
+  claudePath: '',
+  defaultModel: 'sonnet',
+  permMode: 'ask',
+  alwaysAllow: [],
+  runTests: true,
+  worktreeRoot: join(home, '.helm', 'worktrees'),
+  cloneRoot: join(home, 'code'),
+  branchPrefix: 'agent/',
+  removeAfterMerge: true,
+  copyFiles: '.env, .env.local',
+  weeklyLimit: 100,
+  sessionBudget: 10,
+  warnAt: 80,
+  notifyAttention: { desktop: true, sound: true },
+  notifyReady: { desktop: true, sound: false },
+  notifyFailed: { desktop: true, sound: true },
+  notifyChecks: { desktop: false, sound: false },
+  dnd: true,
+  editorFontSize: 12.5,
+  density: 'Compact',
+  openIn: 'helm'
+});
+
+interface Persisted {
+  user: User | null;
+  repos: Repo[];
+  sessions: Session[];
+  activity: ActivityEvent[];
+  settings: Settings;
+  usage: { t: number; repoId: string; cost: number; tokens: number }[];
+}
+
+export class Store {
+  data: Persisted = { user: null, repos: [], sessions: [], activity: [], settings: defaultSettings(), usage: [] };
+  private transcripts = new Map<string, TranscriptEvent[]>();
+  private dir = '';
+  private timer: NodeJS.Timeout | null = null;
+  private tTimers = new Map<string, NodeJS.Timeout>();
+
+  async load() {
+    this.dir = app.getPath('userData');
+    await mkdir(join(this.dir, 'transcripts'), { recursive: true });
+    try {
+      const raw = JSON.parse(await readFile(join(this.dir, 'helm.json'), 'utf8'));
+      this.data = { ...this.data, ...raw, settings: { ...defaultSettings(), ...raw.settings } };
+    } catch { /* first run */ }
+  }
+
+  save() {
+    if (this.timer) return;
+    this.timer = setTimeout(() => { this.timer = null; void this.flush(); }, 400);
+  }
+
+  async flush() {
+    const file = join(this.dir, 'helm.json');
+    await writeFile(file + '.tmp', JSON.stringify(this.data));
+    await rename(file + '.tmp', file);
+  }
+
+  async transcript(id: string): Promise<TranscriptEvent[]> {
+    let t = this.transcripts.get(id);
+    if (!t) {
+      try { t = JSON.parse(await readFile(join(this.dir, 'transcripts', id + '.json'), 'utf8')); } catch { t = []; }
+      this.transcripts.set(id, t!);
+    }
+    return t!;
+  }
+
+  saveTranscript(id: string) {
+    if (this.tTimers.has(id)) return;
+    this.tTimers.set(id, setTimeout(async () => {
+      this.tTimers.delete(id);
+      const t = this.transcripts.get(id);
+      if (!t) return;
+      const file = join(this.dir, 'transcripts', id + '.json');
+      await writeFile(file + '.tmp', JSON.stringify(t));
+      await rename(file + '.tmp', file);
+    }, 600));
+  }
+
+  async flushAll() {
+    for (const [id, tm] of this.tTimers) {
+      clearTimeout(tm);
+      this.tTimers.delete(id);
+      const t = this.transcripts.get(id);
+      if (t) await writeFile(join(this.dir, 'transcripts', id + '.json'), JSON.stringify(t));
+    }
+    await this.flush();
+  }
+
+  addUsage(repoId: string, cost: number, tokens: number) {
+    this.data.usage.push({ t: Date.now(), repoId, cost, tokens });
+    const cutoff = Date.now() - 15 * 86400_000;
+    if (this.data.usage.length > 5000) this.data.usage = this.data.usage.filter((u) => u.t >= cutoff);
+    this.save();
+  }
+
+  weekSpend(): Record<string, number> {
+    const from = weekStart();
+    const out: Record<string, number> = {};
+    for (const u of this.data.usage) if (u.t >= from) out[u.repoId] = (out[u.repoId] || 0) + u.cost;
+    return out;
+  }
+
+  tokensToday(): number {
+    const from = dayStart();
+    return this.data.usage.reduce((a, u) => (u.t >= from ? a + u.tokens : a), 0);
+  }
+}
