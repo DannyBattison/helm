@@ -6,7 +6,7 @@ import { fmtMoney } from '../shared/money';
 import type { ActivityEvent, Effort, MessageImage, ModelAlias, NewSessionInput, PendingAsk, PermMode, Session, Status, Subagent, TranscriptEvent } from '../shared/types';
 import * as G from './git';
 import type { Store } from './store';
-import { commandPattern, expandHome, globMatch, hasShellControl, uid } from './util';
+import { commandPattern, expandHome, findBash, globMatch, hasShellControl, uid } from './util';
 
 export interface Hooks {
   emitState(): void;
@@ -551,12 +551,14 @@ export class SessionManager {
       const meta = secs < 1 ? Math.round(secs * 1000) + 'ms' : secs < 60 ? secs.toFixed(1) + 's' : Math.floor(secs / 60) + 'm ' + Math.round(secs % 60) + 's';
       if (start.kind === 'bash') {
         const t = await this.store.transcript(start.tkey);
-        const cur = t[start.idx] as Extract<TranscriptEvent, { k: 'bash' }>;
+        const at = findBash(t, b.tool_use_id, start.idx);
+        const cur = at >= 0 ? (t[at] as Extract<TranscriptEvent, { k: 'bash' }>) : undefined;
+        const command = cur?.cmd ?? String(start.input?.command || '');
         // Only the last line is shown, so only the end of a huge output is looked at.
         const lines = (text.length > 20000 ? text.slice(-20000) : text).split('\n').map((l: string) => l.trim()).filter(Boolean);
         const out = b.is_error ? trunc(lines[lines.length - 1] || 'failed', 70) : lines.length ? trunc(lines[lines.length - 1], 70) : '✓';
-        await this.patch(start.tkey, start.idx, { ...cur, out, ok: !b.is_error, meta, done: true });
-        if (/git\s+commit/.test(cur.cmd)) await this.detectCommit(s, text, start.tkey);
+        if (cur) await this.patch(start.tkey, at, { ...cur, out, ok: !b.is_error, meta, done: true });
+        if (/git\s+commit/.test(command)) await this.detectCommit(s, text, start.tkey);
       } else if (start.kind === 'edit') {
         if (!b.is_error) {
           await this.locateEdit(s, start.input);

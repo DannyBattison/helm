@@ -161,6 +161,8 @@ export class Store {
     let t = this.transcripts.get(id);
     if (!t) {
       try { t = JSON.parse(await readFile(join(this.dir, 'transcripts', id + '.json'), 'utf8')); } catch { t = []; }
+      // An earlier bug could leave an entry with no type (a result patched into a slot that was no longer there). Drop those.
+      if (Array.isArray(t)) t = t.filter((e: any) => e && typeof e.k === 'string'); else t = [];
       this.transcripts.set(id, t!);
     }
     return t!;

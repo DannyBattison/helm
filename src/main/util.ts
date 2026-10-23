@@ -49,6 +49,17 @@ export function globMatch(pattern: string, text: string): boolean {
   return p === pattern.length;
 }
 
+/**
+ * Where a command's card is in a transcript. The place it was given when the command started can be wrong by the time the result
+ * arrives, because a subagent's transcript is rebuilt from Claude Code's saved file in between, so look there first and then by id.
+ * -1 when the card is gone (the rebuilt transcript already has the finished command).
+ */
+export function findBash(t: ({ k?: string; id?: string } | null | undefined)[], toolId: string, hint: number): number {
+  const at = t[hint];
+  if (at && at.k === 'bash' && at.id === toolId) return hint;
+  return t.findIndex((e) => !!e && e.k === 'bash' && e.id === toolId);
+}
+
 /** Shell syntax that can chain, redirect or substitute, so one pattern must never cover a command using it. */
 export const hasShellControl = (cmd: string) => /[;&|`<>\r\n]|\$\(|\$\{/.test(cmd);
 
