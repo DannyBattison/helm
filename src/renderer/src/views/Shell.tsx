@@ -5,7 +5,7 @@ import { api, on, platform } from '../api';
 import { fontStack } from '../fonts';
 import glyph from '../assets/helm-glyph-violet.svg';
 import { ago, elapsed, livePlan, reposWithSessions, runningSubagents, subagentTree, totals, untilReset } from '../lib';
-import { go, setUI, toast, useApp, useMoney, useUI, useTranscript, type Route } from '../store';
+import { go, refreshExternals, setUI, toast, useApp, useMoney, useUI, useTranscript, type Route } from '../store';
 import { Avatar, Badge, Breadcrumbs, ContextMenu, Grip, IconButton, Kbd, Meter, TreeItem, usePaneWidth, type MenuItem } from '../ui';
 
 const mac = () => platform() === 'darwin';
@@ -47,6 +47,10 @@ export function Sidebar() {
   const [width, grip, resetWidth] = usePaneWidth('sidebar', 240, 180, 440);
   const t = totals(app);
   const externals = useUI((u) => u.externals);
+  const showArchived = useUI((u) => u.showArchived);
+  const archivedCount = app.sessions.filter((x) => x.archivedAt).length + Object.values(externals).reduce((n, l) => n + l.filter((x) => x.archived).length, 0);
+  const extList = (id: string) => (externals[id] || []).filter((x) => showArchived || !x.archived);
+  const toggleArchived = () => { try { localStorage.setItem('helm-show-archived', showArchived ? '0' : '1'); } catch { /* storage unavailable */ } setUI({ showArchived: !showArchived }); };
   const [menu, setMenu] = React.useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
   const sessionMenu = (e: React.MouseEvent, s: (typeof app.sessions)[number]) => {
     e.preventDefault();
@@ -58,7 +62,17 @@ export function Sidebar() {
       { label: s.files ? `Review changes (${s.files})` : 'Review changes', icon: 'git-diff', onClick: () => go({ screen: 'session', id: s.id, tab: 'changes' }) },
       { label: 'Copy branch name', icon: 'copy', separator: true, onClick: () => void api.copyText(s.branch) },
       { label: 'Stop session', icon: 'stop', disabled: !running, onClick: () => void api.stopSession(s.id) },
+      { label: s.archivedAt ? 'Restore from archive' : running ? 'Archive (stop it first)' : 'Archive session', icon: s.archivedAt ? 'arrow-counter-clockwise' : 'archive', disabled: !s.archivedAt && running, onClick: () => { api.archiveSession(s.id, !s.archivedAt).catch((err) => toast({ tone: 'error', title: 'Could not archive', description: String(err?.message || err).replace(/^Error invoking remote method \'\w+\': Error: /, '') })); } },
       { label: 'Delete session…', icon: 'trash', danger: true, separator: true, onClick: () => setUI({ deleting: s.id }) }
+    ] });
+  };
+  const externalMenu = (e: React.MouseEvent, repoId: string, x: (typeof externals)[string][number]) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setMenu({ x: e.clientX, y: e.clientY, items: [
+      { label: 'Open transcript', icon: 'eye', onClick: () => go({ screen: 'external', repoId, id: x.id }) },
+      { label: 'Copy session id', icon: 'copy', onClick: () => void api.copyText(x.id) },
+      { label: x.archived ? 'Restore from archive' : 'Archive', icon: x.archived ? 'arrow-counter-clockwise' : 'archive', separator: true, onClick: () => { api.archiveExternal(x.id, !x.archived).then(() => refreshExternals()); } }
     ] });
   };
   const repoMenu = (e: React.MouseEvent, r: (typeof app.repos)[number]) => {
@@ -128,9 +142,10 @@ export function Sidebar() {
         <TreeItem icon="bell-ringing" label="Needs you" selected={route.screen === 'overview' && (route as any).filter === 'attention'} onClick={() => go({ screen: 'overview', filter: 'attention' })}
           trailing={t.attention ? <Badge tone="attention" mono>{t.attention}</Badge> : null} />
         <TreeItem icon="pulse" label="Activity" selected={route.screen === 'activity'} onClick={() => go({ screen: 'activity' })} />
-        <SectionLabel action={<IconButton icon="plus" label="Add repository" size="sm" onClick={() => setUI({ adding: true })} />}>Repositories</SectionLabel>
+        <TreeItem icon="archive" label="Archive" selected={route.screen === 'archive'} onClick={() => go({ screen: 'archive' })} trailing={archivedCount ? <span style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)' }}>{archivedCount}</span> : null} />
+        <SectionLabel action={<><IconButton icon="archive" label={showArchived ? 'Hide archived sessions' : 'Show archived sessions'} size="sm" active={showArchived} onClick={toggleArchived} /><IconButton icon="plus" label="Add repository" size="sm" onClick={() => setUI({ adding: true })} /></>}>Repositories</SectionLabel>
         {app.repos.length === 0 ? <div style={{ padding: '4px 10px 6px', font: '400 12px/1.4 var(--font-sans)', color: 'var(--text-3)' }}>No repositories yet. Use + to add one from GitHub.</div> : null}
-        {reposWithSessions(app).map(({ repo: r, sessions }) => {
+        {reposWithSessions(app, showArchived).map(({ repo: r, sessions }) => {
           const open = !closed[r.id];
           return (
             <div key={r.id} {...target('repo', r.id)} style={line(r.id)}>
@@ -147,7 +162,7 @@ export function Sidebar() {
                 return (
                   <div key={s.id} {...target('session', s.id, r.id)} style={line(s.id)}>
                     <div {...dnd('session', s.id, r.id)} onContextMenu={(e) => sessionMenu(e, s)}>
-                    <TreeItem depth={1} status={s.status} label={s.id} expandable={tree.length > 0} expanded={subsOpen}
+                    <TreeItem depth={1} status={s.status} label={s.id} expandable={tree.length > 0} expanded={subsOpen} style={s.archivedAt ? { opacity: 0.6 } : undefined} trailing={s.archivedAt ? <i className="ph ph-archive" title="Archived" style={{ fontSize: 12, color: 'var(--text-3)' }} /> : null}
                       meta={running ? <span style={{ color: 'var(--status-working-text)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><i className="ph ph-tree-structure" style={{ fontSize: 11 }} />{running}</span> : elapsed(s.startedAt, s.endedAt)}
                       selected={route.screen === 'session' && route.id === s.id && !route.sub}
                       onClick={() => {
@@ -166,21 +181,21 @@ export function Sidebar() {
               }) : null}
               {open ? (() => {
                 // Sessions started outside helm: read-only. Live ones and the latest few; the rest are in the repository's tab.
-                const all = externals[r.id] || [];
+                const all = extList(r.id);
                 const shown = all.filter((x, i) => x.active || i < 4);
                 return <>
                   {shown.map((x) => (
-                    <TreeItem key={x.id} depth={1} status={x.active ? 'working' : 'idle'}
+                    <div key={x.id} onContextMenu={(e) => externalMenu(e, r.id, x)} style={x.archived ? { opacity: 0.6 } : undefined}><TreeItem depth={1} status={x.active ? 'working' : 'idle'}
                       label={<span style={{ fontStyle: 'italic' }} title={`${x.title}\nStarted outside helm. Read-only.`}>{x.title}</span>}
                       meta={x.active ? 'live' : ago(x.lastModified)}
                       trailing={<i className="ph ph-eye" title="Read-only: started outside helm" style={{ fontSize: 12, color: 'var(--text-3)' }} />}
                       selected={route.screen === 'external' && route.id === x.id}
-                      onClick={() => go({ screen: 'external', repoId: r.id, id: x.id })} />
+                      onClick={() => go({ screen: 'external', repoId: r.id, id: x.id })} /></div>
                   ))}
                   {all.length > shown.length ? <div onClick={() => go({ screen: 'repo', id: r.id, tab: 'external' })} className="helm-row-hover" style={{ padding: '4px 8px 6px 40px', font: '400 11.5px/1.3 var(--font-sans)', color: 'var(--text-3)', cursor: 'pointer', borderRadius: 4 }}>{all.length - shown.length} more external</div> : null}
                 </>;
               })() : null}
-              {sessions.length === 0 && !(externals[r.id]?.length) ? <div style={{ padding: '4px 0 6px 42px', font: '400 12px/1.3 var(--font-sans)', color: 'var(--text-3)' }}>No sessions</div> : null}
+              {sessions.length === 0 && !extList(r.id).length ? <div style={{ padding: '4px 0 6px 42px', font: '400 12px/1.3 var(--font-sans)', color: 'var(--text-3)' }}>No sessions</div> : null}
             </div>
           );
         })}

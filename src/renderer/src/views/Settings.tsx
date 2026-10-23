@@ -130,6 +130,10 @@ export function Settings({ section }: { section?: string }) {
             <SettingRow title="Location"><Field value={st.worktreeRoot} onCommit={(v: string) => set({ worktreeRoot: v })} style={{ width: 260 }} /></SettingRow>
             <SettingRow title="Clone location" desc="Repositories cloned from GitHub go to <location>/<owner>/<name>."><Field value={st.cloneRoot} onCommit={(v: string) => set({ cloneRoot: v })} style={{ width: 260 }} /></SettingRow>
             <SettingRow title="Branch prefix" desc="New sessions branch from the repository's default branch."><Field value={st.branchPrefix} onCommit={(v: string) => set({ branchPrefix: v })} style={{ width: 120 }} /></SettingRow>
+            <SettingRow title="Archive sessions not opened for" desc="Archived sessions leave the left tree and Overview, and stay in the Archive. Their worktree and branch are kept. Sessions that are running, waiting on you, or finished but not yet reviewed are never archived automatically.">
+              <Select value={String(st.archiveAfterDays)} onChange={(e: any) => set({ archiveAfterDays: +e.target.value })}
+                options={[{ value: '0', label: 'Never' }, ...[3, 7, 14, 30, 60, 90].map((n) => ({ value: String(n), label: n + ' days' }))]} />
+            </SettingRow>
             <SettingRow title="Remove worktree after merge" desc="Applies to pull requests opened from helm."><Switch checked={st.removeAfterMerge} onChange={(v: boolean) => set({ removeAfterMerge: v })} /></SettingRow>
             <SettingRow title="Copy untracked files" desc="Files like .env are copied into each new worktree."><Field value={st.copyFiles} onCommit={(v: string) => set({ copyFiles: v })} style={{ width: 200 }} /></SettingRow>
           </> : null}

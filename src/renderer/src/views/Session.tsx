@@ -28,6 +28,7 @@ function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
             <span style={{ font: '600 16px/1.2 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.task}</span>
             <Badge tone={s.status} dot>{STATUS_LABEL[s.status]}</Badge>
+            {s.archivedAt ? <Badge>Archived</Badge> : null}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, font: '400 11.5px/1 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden' }}>
             <BranchTag worktree base={s.base.replace(/^origin\//, '')} name={s.branch} />
@@ -312,6 +313,7 @@ function UsagePanel({ s }: { s: S }) {
         <span className="selectable" style={{ font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-2)', wordBreak: 'break-all' }}>{tilde(s.worktree, app.home)}</span>
         <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>Isolated from your main checkout.{s.removeAfterMerge ? ' Removed after the PR merges.' : ''}</span>
         <div style={{ display: 'flex', gap: 6 }}>
+          <Button size="sm" variant="ghost" icon={s.archivedAt ? 'arrow-counter-clockwise' : 'archive'} disabled={!s.archivedAt && (s.status === 'working' || s.status === 'attention')} onClick={() => guard(api.archiveSession(s.id, !s.archivedAt))}>{s.archivedAt ? 'Restore' : 'Archive'}</Button>
           <Button size="sm" variant="ghost" icon="trash" onClick={() => setUI({ deleting: s.id })}>Delete session…</Button>
         </div>
       </div>

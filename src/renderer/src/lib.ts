@@ -44,12 +44,12 @@ export function relTime(t: number): string {
 export const sessionTokens = (s: Session) => s.tokens.input + s.tokens.output + s.tokens.cacheRead;
 
 export function totals(app: AppState) {
-  const c = (st: Status) => app.sessions.filter((s) => s.status === st).length;
+  const c = (st: Status) => app.sessions.filter((s) => s.status === st && !s.archivedAt).length;
   const spent = Object.values(app.weekSpend).reduce((a, b) => a + b, 0);
   return { working: c('working'), attention: c('attention'), ready: c('ready'), idle: c('idle'), spent, cap: app.settings.weeklyLimit, tokens: app.tokensToday };
 }
 
-export const reposWithSessions = (app: AppState) => app.repos.map((r) => ({ repo: r, sessions: app.sessions.filter((s) => s.repoId === r.id) }));
+export const reposWithSessions = (app: AppState, includeArchived = false) => app.repos.map((r) => ({ repo: r, sessions: app.sessions.filter((s) => s.repoId === r.id && (includeArchived || !s.archivedAt)) }));
 
 export const repoOf = (app: AppState, s: Session): Repo | undefined => app.repos.find((r) => r.id === s.repoId);
 

@@ -6,6 +6,7 @@ import { dismissToast, getUI, go, init, setUI, useUI } from './store';
 import { Button, Toast } from './ui';
 import { Activity, Dashboard } from './views/Dashboard';
 import { AddRepo, DeleteSession, NewSession, Palette, RemoveRepo, SignIn } from './views/Dialogs';
+import { Archive } from './views/Archive';
 import { ExternalSessionView, Repo } from './views/Repo';
 import { Session } from './views/Session';
 import { Settings } from './views/Settings';
@@ -25,6 +26,9 @@ export function App() {
   const [sysDark, setSysDark] = React.useState(0);
 
   React.useEffect(() => { void init(); }, []);
+  // Opening a session restarts its idle timer.
+  const openedSession = route.screen === 'session' ? route.id : '';
+  React.useEffect(() => { if (openedSession) void api.touchSession(openedSession); }, [openedSession]);
   React.useEffect(() => {
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
     const h = () => setSysDark((n) => n + 1);
@@ -76,6 +80,9 @@ export function App() {
   } else if (route.screen === 'settings') {
     crumbs = [{ label: 'Settings', icon: 'gear-six' }];
     body = <Settings section={route.section} />;
+  } else if (route.screen === 'archive') {
+    crumbs = [{ label: 'Archive', icon: 'archive' }];
+    body = <Archive />;
   } else if (route.screen === 'activity') {
     crumbs = [{ label: 'Activity', icon: 'pulse' }];
     body = <Activity />;

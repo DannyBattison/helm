@@ -142,7 +142,9 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
   React.useEffect(() => { const i = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(i); }, []);
   const t = totals(app);
   const externals = useUI((u) => u.externals);
-  const totalExt = Object.values(externals).reduce((n, l) => n + l.length, 0);
+  const totalExt = Object.values(externals).reduce((n, l) => n + l.filter((x) => !x.archived).length, 0);
+  const archivedTotal = app.sessions.filter((s) => s.archivedAt).length + Object.values(externals).reduce((n, l) => n + l.filter((x) => x.archived).length, 0);
+  const liveSessions = app.sessions.filter((s) => !s.archivedAt).length;
   const { fmt } = useMoney();
   const sub = app.settings.billing === 'subscription';
   const plan = livePlan(app);
@@ -150,14 +152,14 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
     { w: 20, min: 20, fixed: true }, { w: 270, min: 150 }, { w: 200, min: 150, flex: true }, { w: 300, min: 180 }, { w: 88, min: 60 }, { w: 56, min: 44 },
     ...(sub ? [] : [{ w: 56, min: 44 }]), { w: 104, min: 80, fixed: true }
   ]);
-  const visible = (s: Session) => filter !== 'external' && (filter === 'all' || s.status === filter);
-  const extVisible = (x: ExternalSession) => filter === 'all' || filter === 'external' || (filter === 'working' && x.active);
+  const visible = (s: Session) => (filter === 'archived' ? !!s.archivedAt : !s.archivedAt && filter !== 'external' && (filter === 'all' || s.status === filter));
+  const extVisible = (x: ExternalSession) => (filter === 'archived' ? x.archived : !x.archived && (filter === 'all' || filter === 'external' || (filter === 'working' && x.active)));
   const extFor = (id: string) => (externals[id] || []).filter(extVisible);
   const extShown = (id: string) => extFor(id).filter((x, i) => filter === 'external' || x.active || i < 5);
   const axis = laneAxis(now);
   const asks = app.sessions.filter((s) => s.ask).sort((a, b) => a.ask!.at - b.ask!.at);
   const cell: React.CSSProperties = { padding: '14px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'center', borderLeft: '1px solid var(--border-subtle)' };
-  const groups = reposWithSessions(app).filter(({ repo: r, sessions }) => sessions.some(visible) || extFor(r.id).length > 0);
+  const groups = reposWithSessions(app, true).filter(({ repo: r, sessions }) => sessions.some(visible) || extFor(r.id).length > 0);
   const date = new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
   const withSessions = new Set(app.sessions.map((s) => s.repoId)).size;
   return (
@@ -166,7 +168,7 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12 }}>
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
             <h1 style={{ margin: 0, font: '600 20px/1.2 var(--font-sans)', letterSpacing: 'var(--tracking-tight)' }}>{filter === 'attention' ? 'Needs you' : 'Overview'}</h1>
-            <span style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>{date} · {app.sessions.length} {app.sessions.length === 1 ? 'session' : 'sessions'} across {withSessions} {withSessions === 1 ? 'repository' : 'repositories'}{totalExt ? ` · ${totalExt} external, read-only` : ''}</span>
+            <span style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>{date} · {liveSessions} {liveSessions === 1 ? 'session' : 'sessions'} across {withSessions} {withSessions === 1 ? 'repository' : 'repositories'}{totalExt ? ` · ${totalExt} external, read-only` : ''}</span>
           </div>
           <Button variant="ghost" icon="book-bookmark" onClick={() => setUI({ adding: true })}>Add repository</Button>
           <Button variant="primary" icon="plus" kbd={platform() === 'darwin' ? '⌘N' : 'Ctrl+N'} disabled={app.repos.length === 0} onClick={() => setUI({ newSession: {} })}>New session</Button>
@@ -188,7 +190,7 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
           </div>
         </div>
 
-        {app.sessions.length === 0 && totalExt === 0 ? <FirstRun /> : null}
+        {liveSessions === 0 && totalExt === 0 && archivedTotal === 0 ? <FirstRun /> : null}
 
         {asks.length > 0 ? (
           <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -205,16 +207,17 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
           <div style={{ font: '400 13px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Nothing is waiting on you.</div>
         ) : null}
 
-        {app.sessions.length > 0 || totalExt > 0 ? (
+        {liveSessions > 0 || totalExt > 0 || archivedTotal > 0 ? (
           <section style={{ borderRadius: 'var(--radius-lg)', background: 'var(--bg-panel)', boxShadow: 'inset 0 0 0 1px var(--border)', overflow: 'hidden' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px' }}>
               <span style={{ font: '600 13px/1 var(--font-sans)' }}>Sessions</span>
               <SegmentedControl size="sm" value={filter} onChange={setFilter} options={[
-                { value: 'all', label: 'All', count: app.sessions.length },
+                { value: 'all', label: 'All', count: liveSessions },
                 { value: 'attention', label: 'Needs you', count: t.attention },
                 { value: 'working', label: 'Working', count: t.working },
                 { value: 'ready', label: 'Review', count: t.ready },
-                { value: 'external', label: 'External', count: totalExt }]} />
+                { value: 'external', label: 'External', count: totalExt },
+                { value: 'archived', label: 'Archived', count: archivedTotal }]} />
               <span style={{ flex: 1 }} />
               {[['working', 'Working'], ['attention', 'Waiting on you'], ['ready', 'Ready']].map(([k, l]) => (
                 <span key={k} style={{ display: 'flex', alignItems: 'center', gap: 5, font: '400 11px/1 var(--font-sans)', color: 'var(--text-3)' }}><span style={{ width: 12, height: 6, borderRadius: 2, background: LANE_COLOR[k] }} />{l}</span>

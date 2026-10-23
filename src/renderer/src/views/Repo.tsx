@@ -305,20 +305,22 @@ function ExternalSessions({ repo, onCount }: { repo: R; onCount(n: number): void
     api.listExternalSessions(repo.id).then((l) => { setList(l); setErr(''); }).catch((e) => { setList([]); setErr(errText(e)); });
   }, [repo.id]);
   React.useEffect(() => { load(); const t = setInterval(load, 10000); return () => clearInterval(t); }, [load]);
-  React.useEffect(() => onCount(list?.length || 0), [list]);
+  const visibleList = (list || []).filter((x) => !x.archived);
+  const hiddenCount = (list || []).length - visibleList.length;
+  React.useEffect(() => onCount(visibleList.length), [list]);
   const open = (x: ExternalSession) => go({ screen: 'external', repoId: repo.id, id: x.id });
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: '0 20px 12px' }}>
       <div style={{ padding: '12px 0 4px', font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-3)', maxWidth: 760 }}>
-        Claude Code sessions for this repository that helm did not start, for example from the VS Code extension or the command line. They are found by project folder in <code style={{ font: 'var(--type-data)' }}>~/.claude</code>, are read-only here, and also appear in the list on the left.
+        Claude Code sessions for this repository that helm did not start, for example from the VS Code extension or the command line. They are found by project folder in <code style={{ font: 'var(--type-data)' }}>~/.claude</code>, are read-only here, and also appear in the list on the left.{hiddenCount ? <> {hiddenCount} {hiddenCount === 1 ? 'is' : 'are'} archived: <a href="#" onClick={(e) => { e.preventDefault(); go({ screen: 'archive' }); }}>see the Archive</a>.</> : null}
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: col.template, gap: 12, padding: '10px 0', ...head }}>
         <span />{col.cell(1, 'Session')}{col.cell(2, 'Branch')}{col.cell(3, 'Last active')}<span style={{ textAlign: 'right' }}>Size</span>
       </div>
       {list == null ? <SkeletonRows n={5} template={col.template} widths={[null, 70, 50, 40, 30]} height={44} lead /> : null}
       {err ? <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--status-error-text)', padding: '8px 0' }}>{err}</div> : null}
-      {list && !err && list.length === 0 ? <div style={{ font: '400 13px/1.5 var(--font-sans)', color: 'var(--text-3)', padding: '8px 0' }}>No sessions from outside helm for this repository.</div> : null}
-      {(list || []).map((x) => (
+      {list && !err && visibleList.length === 0 ? <div style={{ font: '400 13px/1.5 var(--font-sans)', color: 'var(--text-3)', padding: '8px 0' }}>No sessions from outside helm for this repository.</div> : null}
+      {visibleList.map((x) => (
         <div key={x.id} onClick={() => open(x)} className="helm-row-hover" style={{ display: 'grid', gridTemplateColumns: col.template, gap: 12, alignItems: 'center', minHeight: 44, borderTop: '1px solid var(--border-subtle)', cursor: 'pointer' }}>
           <StatusDot status={x.active ? 'working' : 'idle'} />
           <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>

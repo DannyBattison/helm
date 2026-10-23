@@ -6,6 +6,7 @@ import { api, on } from './api';
 export type Route =
   | { screen: 'overview'; filter?: string }
   | { screen: 'activity' }
+  | { screen: 'archive' }
   | { screen: 'repo'; id: string; tab?: string }
   | { screen: 'external'; repoId: string; id: string }
   | { screen: 'session'; id: string; tab?: string; sub?: string }
@@ -33,6 +34,8 @@ export interface UI {
   deleting: string | null;
   /** The repository whose remove dialog is open. */
   removingRepo: string | null;
+  /** Show archived sessions in the left tree. Off by default. */
+  showArchived: boolean;
   palette: boolean;
   term: boolean;
   /** Set while resolving the first state snapshot fails. */
@@ -43,7 +46,7 @@ function loadRoute(): Route {
   try { return JSON.parse(localStorage.getItem('helm-route') || '') || { screen: 'overview' }; } catch { return { screen: 'overview' }; }
 }
 
-let ui: UI = { app: null, route: loadRoute(), transcripts: {}, externals: {}, toasts: [], adding: false, newSession: null, deleting: null, removingRepo: null, palette: false, term: false };
+let ui: UI = { app: null, route: loadRoute(), transcripts: {}, externals: {}, toasts: [], adding: false, newSession: null, deleting: null, removingRepo: null, showArchived: (() => { try { return localStorage.getItem('helm-show-archived') === '1'; } catch { return false; } })(), palette: false, term: false };
 const listeners = new Set<() => void>();
 
 export function setUI(patch: Partial<UI> | ((u: UI) => Partial<UI>)) {
