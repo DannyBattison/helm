@@ -6,6 +6,7 @@ import { tilde } from '../lib';
 import { getUI, go, setUI, toast, useApp, useMoney } from '../store';
 import { Badge, Button, Checkbox, Dialog, Input, Kbd, Select, Tabs } from '../ui';
 import { MODEL_OPTIONS, PERM_OPTIONS } from './Settings';
+import { VariantEditor, type Variant } from './Review';
 
 const errText = (e: any) => String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '');
 const mac = () => platform() === 'darwin';
@@ -198,6 +199,8 @@ export function NewSession({ repoId, onClose }: { repoId?: string; onClose(): vo
   const [budget, setBudget] = React.useState(String(Math.round(to(app.settings.sessionBudget) * 100) / 100));
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState('');
+  const [compare, setCompare] = React.useState(false);
+  const [variants, setVariants] = React.useState<Variant[]>([{ model: 'sonnet', effort: 'default' }, { model: 'opus', effort: 'default' }]);
   React.useEffect(() => {
     if (!repo) return;
     setBase(app.repos.find((x) => x.id === repo)?.defaultBranch || 'main');
@@ -208,7 +211,15 @@ export function NewSession({ repoId, onClose }: { repoId?: string; onClose(): vo
   const start = async () => {
     setBusy(true); setErr('');
     try {
-      const id = await api.createSession({ repoId: repo, base, task: task.trim(), model, budget: sub ? 0 : from(parseFloat(budget)) || app.settings.sessionBudget, permMode: perm });
+      const input = { repoId: repo, base, task: task.trim(), model, budget: sub ? 0 : from(parseFloat(budget)) || app.settings.sessionBudget, permMode: perm };
+      if (compare) {
+        const ids = await api.createGroup(input, variants.map((v) => ({ model: v.model, effort: v.effort === 'default' ? undefined : v.effort })));
+        const group = getUI().app?.sessions.find((x) => x.id === ids[0])?.group;
+        onClose();
+        go(group ? { screen: 'compare', group } : { screen: 'overview' });
+        return;
+      }
+      const id = await api.createSession(input);
       onClose();
       go({ screen: 'session', id, tab: 'conversation' });
     } catch (e) { setErr(errText(e)); } finally { setBusy(false); }
@@ -219,7 +230,7 @@ export function NewSession({ repoId, onClose }: { repoId?: string; onClose(): vo
       footer={<>
         <span style={{ flex: 1, font: '400 12px/1.3 var(--font-sans)', color: err ? 'var(--status-error-text)' : 'var(--text-3)' }}>{err || (r ? `Branch ${app.settings.branchPrefix}<name> from ${base}` : '')}</span>
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" icon="play" kbd={mod + '↵'} loading={busy} disabled={!task.trim() || !repo} onClick={start}>Start session</Button>
+        <Button variant="primary" icon="play" kbd={mod + '↵'} loading={busy} disabled={!task.trim() || !repo} onClick={start}>{compare ? `Start ${variants.length} runs` : 'Start session'}</Button>
       </>}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -229,11 +240,13 @@ export function NewSession({ repoId, onClose }: { repoId?: string; onClose(): vo
         <textarea autoFocus rows={5} value={task} onChange={(e) => setTask(e.target.value)} placeholder="What should the agent do? Be specific about the outcome, and mention files or checks that matter."
           onKeyDown={(e) => { if (e.key === 'Enter' && (mac() ? e.metaKey : e.ctrlKey) && task.trim()) void start(); }}
           style={{ resize: 'vertical', border: 'none', outline: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border-strong)', color: 'var(--text-1)', font: '400 13px/1.55 var(--font-sans)', padding: '10px 12px' }} />
-        <div style={{ display: 'grid', gridTemplateColumns: sub ? '1fr 1fr' : '1fr 1fr 110px', gap: 8 }}>
-          <Select value={model} onChange={(e: any) => setModel(e.target.value)} options={MODEL_OPTIONS} />
+        <div style={{ display: 'grid', gridTemplateColumns: sub ? '1fr 1fr' : '1fr 1fr 110px', gap: 8, ...(compare ? { opacity: 0.5 } : null) }}>
+          <Select disabled={compare} value={model} onChange={(e: any) => setModel(e.target.value)} options={MODEL_OPTIONS} />
           <Select value={perm} onChange={(e: any) => setPerm(e.target.value)} options={PERM_OPTIONS} />
           {sub ? null : <Input mono value={sym + budget} onChange={(e: any) => setBudget(e.target.value.replace(/[^0-9.]/g, ''))} />}
         </div>
+        <Checkbox checked={compare} onChange={setCompare} label="Compare several runs" description="Start the same task more than once, with different models or effort, and keep the best result." />
+        {compare ? <VariantEditor variants={variants} onChange={setVariants} /> : null}
         {(() => {
           const here = bases.find((b) => b.ref === base);
           const hidden = bases.find((b) => b.local && b.ahead > 0 && 'origin/' + b.ref === base);

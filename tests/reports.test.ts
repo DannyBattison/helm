@@ -171,3 +171,62 @@ describe('digest', () => {
     expect(digestMarkdown(input(), (v) => String(v))).toContain('Nothing merged');
   });
 });
+
+import { hunkId, hunkPatch } from '../src/shared/hunks';
+import { forecastable, overlap, parseMergeTree } from '../src/shared/forecast';
+import { blockers, parseReview } from '../src/shared/selfreview';
+import type { DiffHunk } from '../src/shared/types';
+
+describe('hunks', () => {
+  const h: DiffHunk = { header: '@@ -3,4 +3,4 @@ fn', lines: [[' ', 3, 3, 'a'], ['-', 4, null, 'old'], ['+', null, 4, 'new'], [' ', 5, 5, 'b']] };
+  it('has an id that ignores line numbers and context', () => {
+    const moved: DiffHunk = { header: '@@ -30,4 +30,4 @@', lines: [[' ', 30, 30, 'zzz'], ['-', 31, null, 'old'], ['+', null, 31, 'new']] };
+    expect(hunkId('f.ts', h)).toBe(hunkId('f.ts', moved));
+    expect(hunkId('g.ts', h)).not.toBe(hunkId('f.ts', h));
+    expect(hunkId('f.ts', { ...h, lines: [['+', null, 4, 'other']] })).not.toBe(hunkId('f.ts', h));
+  });
+  it('builds a patch git can apply', () => {
+    const p = hunkPatch('src/f.ts', h);
+    expect(p).toContain('--- a/src/f.ts\n+++ b/src/f.ts\n@@ -3,4 +3,4 @@ fn\n a\n-old\n+new\n b\n');
+  });
+  it('marks added and removed files', () => {
+    expect(hunkPatch('n.ts', { header: '@@ -0,0 +1,1 @@ new file', lines: [['+', null, 1, 'x']] })).toContain('new file mode 100644\n--- /dev/null\n+++ b/n.ts\n@@ -0,0 +1,1 @@\n+x');
+    expect(hunkPatch('d.ts', { header: '@@ -1,1 +0,0 @@', lines: [['-', 1, null, 'x']] })).toContain('deleted file mode 100644\n--- a/d.ts\n+++ /dev/null');
+  });
+});
+
+describe('conflict forecast', () => {
+  it('reads conflicted paths from merge-tree output', () => {
+    expect(parseMergeTree('abc123\nsrc/a.ts\nsrc/b.ts\n\nAuto-merging x\n')).toEqual(['src/a.ts', 'src/b.ts']);
+    expect(parseMergeTree('abc123\n')).toEqual([]);
+  });
+  it('finds files two sessions both touched', () => {
+    const a = session({ filesTouched: { 'a.ts': { add: 1, del: 0 }, 'b.ts': { add: 1, del: 0 } } });
+    const b = session({ filesTouched: { 'b.ts': { add: 1, del: 0 }, 'c.ts': { add: 1, del: 0 } } });
+    expect(overlap(a, b)).toEqual(['b.ts']);
+  });
+  it('compares only live sessions with changes', () => {
+    expect(forecastable(session({ files: 1 }))).toBe(true);
+    expect(forecastable(session())).toBe(false);
+    expect(forecastable(session({ files: 1, mergedAt: 1 }))).toBe(false);
+    expect(forecastable(session({ files: 1, archivedAt: 1 }))).toBe(false);
+  });
+});
+
+describe('self review', () => {
+  it('reads structured output and normalises findings', () => {
+    const r = parseReview({ summary: ' ok ', findings: [{ severity: 'blocker', file: 'a.ts', line: 3, text: 'bad' }, { severity: 'weird', text: 'hm' }, { text: '  ' }] }, '');
+    expect(r).toEqual({ summary: 'ok', findings: [{ severity: 'blocker', file: 'a.ts', line: 3, text: 'bad' }, { severity: 'note', file: undefined, line: undefined, text: 'hm' }] });
+  });
+  it('falls back to JSON in the text, fenced or bare', () => {
+    expect(parseReview(undefined, 'Here:\n```json\n{"summary":"fine","findings":[]}\n```')).toEqual({ summary: 'fine', findings: [] });
+    expect(parseReview(undefined, 'blah {"summary":"fine","findings":[]} end')).toEqual({ summary: 'fine', findings: [] });
+    expect(parseReview(undefined, 'no json here')).toBeNull();
+  });
+  it('counts blockers only for a finished review', () => {
+    const base = { at: 1, head: 'h', summary: '', findings: [{ severity: 'blocker' as const, text: 'x' }, { severity: 'note' as const, text: 'y' }] };
+    expect(blockers({ ...base, state: 'done' })).toBe(1);
+    expect(blockers({ ...base, state: 'running' })).toBe(0);
+    expect(blockers(undefined)).toBe(0);
+  });
+});

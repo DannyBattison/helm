@@ -311,6 +311,7 @@ export function ExternalSessionView({ repoId, id }: { repoId: string; id: string
           <span style={{ font: '600 15px/1.2 var(--font-sans)', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{known?.title || 'Claude Code session'}</span>
           {known?.branch ? <BranchTag name={known.branch} /> : null}
           <Badge tone="neutral">External · read-only</Badge>
+          <Button size="sm" variant="secondary" icon="play" disabled={active} title={active ? 'It is running right now. Let it finish first.' : 'Copy this conversation into a helm session with its own worktree'} onClick={() => setUI({ continuing: { repoId, externalId: id, title: known?.title || 'Claude Code session' } })}>Continue in helm</Button>
           {active ? <Badge tone="working" dot>Active now</Badge> : known ? <Badge>Last active {ago(known.lastModified)}</Badge> : null}
         </div>
         <div style={{ font: '400 11.5px/1.4 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={known?.cwd}>{known?.cwd ? tilde(known.cwd, app.home) + ' · ' : ''}{id}{win ? ` · ${win.total} events` : ''}</div>

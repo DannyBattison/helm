@@ -8,6 +8,7 @@ import { Activity, Dashboard } from './views/Dashboard';
 import { AddRepo, DeleteSession, MergePr, NewSession, Palette, RemoveRepo, RenameSession, SignIn } from './views/Dialogs';
 import { Archive } from './views/Archive';
 import { Reports } from './views/Reports';
+import { Compare, CheckpointsDialog, ContinueDialog, ForkDialog, RestoreDialog } from './views/Review';
 import { ExternalSessionView, Repo } from './views/Repo';
 import { Session } from './views/Session';
 import { Settings } from './views/Settings';
@@ -22,6 +23,10 @@ export function App() {
   const palette = useUI((u) => u.palette);
   const deleting = useUI((u) => u.deleting);
   const renaming = useUI((u) => u.renaming);
+  const checkpointsOf = useUI((u) => u.checkpointsOf);
+  const restoring = useUI((u) => u.restoring);
+  const forking = useUI((u) => u.forking);
+  const continuing = useUI((u) => u.continuing);
   const mergingPr = useUI((u) => u.mergingPr);
   const removingRepo = useUI((u) => u.removingRepo);
   const term = useUI((u) => u.term);
@@ -86,6 +91,9 @@ export function App() {
   } else if (route.screen === 'archive') {
     crumbs = [{ label: 'Archive', icon: 'archive' }];
     body = <Archive />;
+  } else if (route.screen === 'compare') {
+    crumbs = [{ label: 'Compare runs', icon: 'columns' }];
+    body = <Compare group={route.group} />;
   } else if (route.screen === 'reports') {
     crumbs = [{ label: 'Reports', icon: 'chart-line-up' }];
     body = <Reports tab={route.tab} />;
@@ -113,6 +121,10 @@ export function App() {
       {newSession ? <NewSession repoId={newSession.repoId} onClose={() => setUI({ newSession: null })} /> : null}
       {removingRepo ? <RemoveRepo key={removingRepo} id={removingRepo} onClose={() => setUI({ removingRepo: null })} /> : null}
       {mergingPr ? <MergePr key={mergingPr.repoId + mergingPr.number} target={mergingPr} onClose={() => setUI({ mergingPr: null })} /> : null}
+      {checkpointsOf ? <CheckpointsDialog key={checkpointsOf} id={checkpointsOf} onClose={() => setUI({ checkpointsOf: null })} /> : null}
+      {restoring ? <RestoreDialog key={restoring.sessionId + restoring.n} target={restoring} onClose={() => setUI({ restoring: null })} /> : null}
+      {forking ? <ForkDialog key={forking.sessionId + forking.index} target={forking} onClose={() => setUI({ forking: null })} /> : null}
+      {continuing ? <ContinueDialog key={continuing.externalId} target={continuing} onClose={() => setUI({ continuing: null })} /> : null}
       {renaming ? <RenameSession key={renaming} id={renaming} onClose={() => setUI({ renaming: null })} /> : null}
       {deleting ? <DeleteSession key={deleting} id={deleting} onClose={() => setUI({ deleting: null })} /> : null}
       {palette ? <Palette onClose={() => setUI({ palette: false })} toggleTheme={toggleTheme} /> : null}

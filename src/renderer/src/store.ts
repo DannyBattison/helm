@@ -8,6 +8,7 @@ export type Route =
   | { screen: 'activity' }
   | { screen: 'archive' }
   | { screen: 'reports'; tab?: string }
+  | { screen: 'compare'; group: string }
   | { screen: 'repo'; id: string; tab?: string }
   | { screen: 'external'; repoId: string; id: string }
   | { screen: 'session'; id: string; tab?: string; sub?: string; file?: string; line?: number }
@@ -35,6 +36,11 @@ export interface UI {
   deleting: string | null;
   mergingPr: { repoId: string; number: number; sessionId?: string } | null;
   renaming: string | null;
+  /** Dialogs on a session: its checkpoints, restoring one, forking at a message, continuing an outside session. */
+  checkpointsOf: string | null;
+  restoring: { sessionId: string; n: number; label: string } | null;
+  forking: { sessionId: string; index: number | null; text: string } | null;
+  continuing: { repoId: string; externalId: string; title: string } | null;
   /** The repository whose remove dialog is open. */
   removingRepo: string | null;
   /** Show archived sessions in the left tree. Off by default. */
@@ -49,7 +55,7 @@ function loadRoute(): Route {
   try { return JSON.parse(localStorage.getItem('helm-route') || '') || { screen: 'overview' }; } catch { return { screen: 'overview' }; }
 }
 
-let ui: UI = { app: null, route: loadRoute(), transcripts: {}, externals: {}, toasts: [], adding: false, newSession: null, deleting: null, mergingPr: null, renaming: null, removingRepo: null, showArchived: (() => { try { return localStorage.getItem('helm-show-archived') === '1'; } catch { return false; } })(), palette: false, term: false };
+let ui: UI = { app: null, route: loadRoute(), transcripts: {}, externals: {}, toasts: [], adding: false, newSession: null, deleting: null, mergingPr: null, renaming: null, checkpointsOf: null, restoring: null, forking: null, continuing: null, removingRepo: null, showArchived: (() => { try { return localStorage.getItem('helm-show-archived') === '1'; } catch { return false; } })(), palette: false, term: false };
 const listeners = new Set<() => void>();
 
 export function setUI(patch: Partial<UI> | ((u: UI) => Partial<UI>)) {

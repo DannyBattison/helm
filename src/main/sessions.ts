@@ -1,12 +1,14 @@
-import { getSessionInfo, getSubagentMessages, query, renameSession, type Query, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
-import { copyFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { forkSession, getSessionInfo, getSessionMessages, getSubagentMessages, query, renameSession, type Query, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import { copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { homedir, tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fmtMoney } from '../shared/money';
 import { auditText } from '../shared/redact';
 import { stuckReason } from '../shared/stuck';
-import type { ActivityEvent, Effort, MessageImage, ModelAlias, NewSessionInput, PendingAsk, PermMode, Session, Status, Subagent, TranscriptEvent } from '../shared/types';
+import { REVIEW_SCHEMA, parseReview, reviewPrompt } from '../shared/selfreview';
+import { sessionTitle, type ActivityEvent, type Checkpoint, type Effort, type MessageImage, type ModelAlias, type NewSessionInput, type PendingAsk, type PermMode, type Session, type Status, type Subagent, type TranscriptEvent } from '../shared/types';
 import * as G from './git';
+import { checkpointParent, dropCheckpoints, listCheckpoints, restoreCheckpoint, seedFromCheckpoint, takeCheckpoint } from './review';
 import type { Store } from './store';
 import { commandPattern, expandHome, globMatch, hasShellControl, uid } from './util';
 
@@ -99,6 +101,21 @@ const inside = (wt: string, p: string) => {
 const trunc = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').split('-').slice(0, 4).join('-') || 'session';
 
+/** Claude Code files a project's sessions under ~/.claude/projects/<path with every non-alphanumeric turned into a dash>. */
+export const claudeProjectDir = (path: string) => join(homedir(), '.claude', 'projects', resolve(path).replace(/[^a-zA-Z0-9]/g, '-'));
+
+/** Things a new session can start with beyond a task: a copied conversation, a worktree seeded from a checkpoint, where it came from. */
+export interface CreateExtra {
+  /** Runs once the worktree exists. Returns the Claude Code session to resume, or nothing to start a new conversation. */
+  claude?: (worktree: string) => Promise<string | undefined>;
+  /** Start the worktree from this checkpoint commit instead of from the base. */
+  seed?: string;
+  parentId?: string;
+  group?: string;
+  source?: Session['source'];
+  effort?: Effort;
+}
+
 export const MODEL_ALIAS: Record<ModelAlias, string> = { sonnet: 'sonnet', opus: 'opus', haiku: 'haiku' };
 
 export class SessionManager {
@@ -167,7 +184,7 @@ export class SessionManager {
   }
 
   // ---------------------------------------------------------------- create
-  async create(input: NewSessionInput): Promise<string> {
+  async create(input: NewSessionInput, extra: CreateExtra = {}): Promise<string> {
     const repo = this.store.data.repos.find((r) => r.id === input.repoId);
     if (!repo) throw new Error('Repository not found');
     const st = this.store.data.settings;
@@ -180,21 +197,223 @@ export class SessionManager {
     // `main` means the local branch, `origin/main` the one on GitHub. A bare name that only exists on GitHub falls back to it.
     const isLocal = !input.base.startsWith('origin/') && (await G.gitOk(repo.localPath, 'rev-parse', '--verify', '--quiet', 'refs/heads/' + input.base));
     const remoteBase = input.base.startsWith('origin/') || isLocal ? input.base : (await G.gitOk(repo.localPath, 'rev-parse', '--verify', 'origin/' + input.base)) ? 'origin/' + input.base : input.base;
-    await G.addWorktree(repo.localPath, wt, branch, remoteBase);
+    await G.addWorktree(repo.localPath, wt, branch, extra.seed ? await checkpointParent(repo.localPath, extra.seed) : remoteBase);
+    if (extra.seed) await seedFromCheckpoint(wt, extra.seed);
     await this.copyUntracked(repo.localPath, wt, st.copyFiles);
+    let claudeSessionId: string | undefined;
+    try { claudeSessionId = await extra.claude?.(wt); }
+    catch (e) { await G.removeWorktree(repo.localPath, wt, branch); throw e; }
 
     const now = Date.now();
     const s: Session = {
       id, repoId: repo.id, status: 'working', task: input.task, step: 'Starting', branch, base: remoteBase, worktree: wt,
       model: input.model, permMode: input.permMode, startedAt: now, tokens: { input: 0, output: 0, cacheRead: 0 }, cost: 0, budget: input.budget,
-      lastAccess: now, ctx: 0, add: 0, del: 0, files: 0, filesTouched: {}, timeline: [{ t: now, status: 'working' }], commits: [], removeAfterMerge: st.removeAfterMerge, deleteBranchAfterMerge: st.deleteBranchAfterMerge, subagents: []
+      lastAccess: now, ctx: 0, add: 0, del: 0, files: 0, filesTouched: {}, timeline: [{ t: now, status: 'working' }], commits: [], removeAfterMerge: st.removeAfterMerge, deleteBranchAfterMerge: st.deleteBranchAfterMerge, subagents: [],
+      claudeSessionId, effort: extra.effort, parentId: extra.parentId, group: extra.group, source: extra.source
     };
     this.sessions.push(s);
     this.activity(s, 'start', `started on ${branch}`);
     this.touch();
-    await this.push(id, { k: 'user', t: now, text: input.task });
+    await this.push(id, { k: 'user', t: now, text: input.task, cp: await this.checkpoint(s, 'Start: ' + input.task) });
     await this.start(s, input.task);
     return id;
+  }
+
+  // ---------------------------------------------------------------- checkpoints, forks
+  /** Saves the worktree as it is, before the agent acts on the next message. Failing to do so never blocks the message. */
+  private async checkpoint(s: Session, label: string): Promise<number | undefined> {
+    if (s.worktreeGone) return undefined;
+    const n = (s.checkpoints || 0) + 1;
+    try {
+      await takeCheckpoint(s.worktree, s.id, n, trunc(label.replace(/\s+/g, ' ').trim(), 100));
+      s.checkpoints = n;
+      return n;
+    } catch { return undefined; }
+  }
+
+  /** A checkpoint on demand, before something you are about to do by hand. */
+  async snapshot(id: string, label: string) {
+    const s = this.get(id);
+    if (s) await this.checkpoint(s, label);
+  }
+
+  async checkpoints(id: string): Promise<Checkpoint[]> {
+    const s = this.get(id);
+    if (!s || s.worktreeGone) return [];
+    return listCheckpoints(s.worktree, id);
+  }
+
+  async restoreTo(id: string, n: number) {
+    const s = this.get(id);
+    if (!s) throw new Error('Session not found');
+    if (s.worktreeGone) throw new Error('This session\'s worktree is gone.');
+    if (this.rt.has(id) && (s.status === 'working' || s.status === 'attention')) throw new Error('Stop the session first: restoring while the agent is working would pull files out from under it.');
+    const cp = (await listCheckpoints(s.worktree, id)).find((c) => c.n === n);
+    if (!cp) throw new Error('That checkpoint no longer exists.');
+    const safety = await this.checkpoint(s, `Before restoring to checkpoint ${n}`);
+    await restoreCheckpoint(s.worktree, cp.commit);
+    s.agentNote = `Note from helm: the user restored your worktree to how it was at: "${cp.label.replace(/^Start: |^Before: /, '')}". Everything changed after that point has been undone, commits included, and uncommitted files were replaced. Do not assume later edits exist; re-read files before changing them.`;
+    s.stuck = undefined;
+    s.fileEdits = undefined;
+    await this.push(id, { k: 'note', tone: 'neutral', text: `Restored the worktree to checkpoint ${n} (${cp.label.replace(/^Start: |^Before: /, '')}).${safety ? ` Checkpoint ${safety} holds what it was before, so this can be undone.` : ''}` });
+    await this.refreshStats(s);
+    this.touch();
+  }
+
+  /**
+   * Copies a Claude Code conversation (optionally only up to a message) so a new worktree can resume it. The copy is written to the
+   * project folder of the source, then moved to the folder Claude Code uses for the new worktree.
+   */
+  private async adoptConversation(sourceId: string, sourceDir: string, destWorktree: string, upTo: string | undefined, title: string): Promise<string> {
+    const forked = await forkSession(sourceId, { dir: sourceDir, upToMessageId: upTo, title });
+    const file = forked.sessionId + '.jsonl';
+    let from = join(claudeProjectDir(sourceDir), file);
+    if (!(await G.fileExists(from))) {
+      // The folder name is not always the plain encoding (long paths are shortened), so look for the file.
+      const root = join(homedir(), '.claude', 'projects');
+      from = '';
+      for (const d of await readdir(root).catch(() => [] as string[])) if (await G.fileExists(join(root, d, file))) { from = join(root, d, file); break; }
+    }
+    if (!from) throw new Error('The copy of the conversation was made but could not be found on disk.');
+    const to = join(claudeProjectDir(destWorktree), file);
+    await mkdir(dirname(to), { recursive: true });
+    await copyFile(from, to);
+    return forked.sessionId;
+  }
+
+  /** The uuid of the message just before your n-th identical message, so a fork can stop short of it. null if it is the first message, undefined if it is not found. */
+  private async messageBefore(claudeId: string, dir: string, text: string, occurrence: number): Promise<string | null | undefined> {
+    const msgs = (await getSessionMessages(claudeId, { dir })) as any[];
+    const body = (m: any) => {
+      const c = m.message?.content;
+      if (typeof c === 'string') return c;
+      if (!Array.isArray(c) || c.some((b: any) => b.type === 'tool_result')) return null;
+      return c.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n');
+    };
+    let seen = 0;
+    for (let i = 0; i < msgs.length; i++) {
+      if (msgs[i].type !== 'user' || msgs[i].parent_tool_use_id) continue;
+      const t = body(msgs[i]);
+      if (t == null || t.trim() !== text.trim()) continue;
+      if (++seen === occurrence) return i === 0 ? null : msgs[i - 1].uuid;
+    }
+    return undefined;
+  }
+
+  async fork(id: string, index: number | null, task: string): Promise<string> {
+    const s = this.get(id);
+    if (!s) throw new Error('Session not found');
+    if (!task.trim()) throw new Error('Say what the new session should do.');
+    const t = await this.store.transcript(id);
+    const ev = index != null ? t[index] : undefined;
+    if (index != null && ev?.k !== 'user') throw new Error('Pick one of your messages to fork from.');
+    let seed: string | undefined;
+    if (ev?.k === 'user' && ev.cp && !s.worktreeGone) seed = (await listCheckpoints(s.worktree, id)).find((c) => c.n === ev.cp)?.commit;
+    let upTo: string | null | undefined;
+    if (ev?.k === 'user' && s.claudeSessionId) {
+      const occurrence = t.slice(0, index! + 1).filter((e) => e.k === 'user' && e.text.trim() === ev.text.trim()).length;
+      upTo = await this.messageBefore(s.claudeSessionId, s.worktree, ev.text, occurrence);
+      if (upTo === undefined) throw new Error('Could not find that message in the Claude Code conversation, so it cannot be forked from there.');
+    }
+    const claude = s.claudeSessionId && upTo !== null
+      ? (wt: string) => this.adoptConversation(s.claudeSessionId!, s.worktree, wt, upTo ?? undefined, `Fork of ${sessionTitle(s)}`)
+      : undefined;
+    return this.create({ repoId: s.repoId, base: seed || s.worktreeGone ? s.base : s.branch, task: task.trim(), model: s.model, budget: s.budget, permMode: s.permMode }, { seed, claude, parentId: s.id, effort: s.effort });
+  }
+
+  async continueExternal(repoId: string, externalId: string, task: string): Promise<string> {
+    const repo = this.store.data.repos.find((r) => r.id === repoId);
+    if (!repo) throw new Error('Repository not found');
+    if (!task.trim()) throw new Error('Say what the session should do next.');
+    const info = await getSessionInfo(externalId);
+    if (!info) throw new Error('That Claude Code session could not be found.');
+    if ((info.fileSize ?? 0) > 300 * 1024 * 1024) throw new Error('That conversation file is over 300 MB, too big to copy. Start a new session and tell it what you were doing.');
+    const dir = info.cwd || repo.localPath;
+    const st = this.store.data.settings;
+    // Carry on from the branch it was on when that still exists, otherwise from the default branch.
+    const branch = info.gitBranch;
+    let base = repo.defaultBranch;
+    if (branch && !branch.startsWith(st.branchPrefix)) {
+      if (await G.gitOk(repo.localPath, 'rev-parse', '--verify', '--quiet', 'refs/heads/' + branch)) base = branch;
+      else if (await G.gitOk(repo.localPath, 'rev-parse', '--verify', '--quiet', 'refs/remotes/origin/' + branch)) base = 'origin/' + branch;
+    }
+    return this.create({ repoId, base, task: task.trim(), model: st.defaultModel, budget: st.sessionBudget, permMode: st.permMode },
+      { claude: (wt) => this.adoptConversation(externalId, dir, wt, undefined, `${info.customTitle || info.summary || 'Session'} (in helm)`) });
+  }
+
+  async createGroup(input: NewSessionInput, variants: { model: ModelAlias; effort?: Effort }[]): Promise<string[]> {
+    if (variants.length < 2) throw new Error('Pick at least two variants to compare.');
+    const group = uid();
+    const ids: string[] = [];
+    // One after another: each session's name is made unique against the ones that exist.
+    for (const v of variants.slice(0, 6)) ids.push(await this.create({ ...input, model: v.model }, { group, effort: v.effort }));
+    return ids;
+  }
+
+  async keepFromGroup(group: string, keepId: string) {
+    const mine = this.sessions.filter((s) => s.group === group);
+    if (!mine.some((s) => s.id === keepId)) throw new Error('That session is not in the group.');
+    for (const s of mine) {
+      if (s.id === keepId) continue;
+      await this.stop(s.id);
+      s.archivedAt = Date.now();
+      s.archivedAuto = undefined;
+    }
+    this.touch();
+  }
+
+  // ---------------------------------------------------------------- self review
+  async review(id: string) {
+    const s = this.get(id);
+    if (!s) throw new Error('Session not found');
+    if (s.worktreeGone) throw new Error('This session\'s worktree is gone.');
+    if (s.review?.state === 'running') return;
+    const head = (await G.git(s.worktree, 'rev-parse', '--short', 'HEAD').catch(() => '')).trim();
+    s.review = { at: Date.now(), state: 'running', head, summary: '', findings: [] };
+    this.touch();
+    void this.runReview(s, head);
+  }
+
+  private async runReview(s: Session, head: string) {
+    const settings = this.store.data.settings;
+    let structured: unknown, text = '', cost = 0, failure = '';
+    let q: Query | undefined;
+    try {
+      const options: any = {
+        cwd: s.worktree, model: MODEL_ALIAS[s.model], maxTurns: 30, permissionMode: 'dontAsk', settingSources: ['user', 'project', 'local'],
+        allowedTools: ['Read', 'Grep', 'Glob', 'Bash(git diff:*)', 'Bash(git log:*)', 'Bash(git show:*)', 'Bash(git merge-base:*)', 'Bash(git status:*)', 'Bash(git blame:*)', 'Bash(ls:*)', 'Bash(cat:*)', 'Bash(rg:*)', 'Bash(grep:*)'],
+        disallowedTools: ['Edit', 'MultiEdit', 'Write', 'NotebookEdit', 'Agent', 'Task'],
+        outputFormat: { type: 'json_schema', schema: REVIEW_SCHEMA },
+        env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'helm' }
+      };
+      const exe = settings.claudePath || this.hooks.claudePath();
+      if (exe) options.pathToClaudeCodeExecutable = exe;
+      q = query({ prompt: reviewPrompt(s.task, s.base), options });
+      for await (const m of q as AsyncIterable<any>) {
+        if (m.type !== 'result') continue;
+        structured = m.structured_output;
+        text = String(m.result || '');
+        cost = Number(m.total_cost_usd) || 0;
+        if (m.is_error) failure = text || String(m.subtype || 'The reviewer stopped early');
+      }
+    } catch (e: any) { failure = String(e?.message || e); }
+    finally { try { q?.close(); } catch { /* already closed */ } }
+    if (cost) { this.store.addUsage(s.repoId, cost, 0); this.store.addDaily(s.repoId, s.model, { cost }); }
+    const parsed = failure ? null : parseReview(structured, text);
+    s.review = parsed
+      ? { at: Date.now(), state: 'done', head, summary: parsed.summary, findings: parsed.findings, cost }
+      : { at: Date.now(), state: 'failed', head, summary: failure || 'The reviewer did not return a usable answer.', findings: [], cost };
+    this.activity(s, 'ready', parsed ? `reviewed: ${parsed.findings.filter((f) => f.severity === 'blocker').length} blockers, ${parsed.findings.length} findings` : 'review failed');
+    this.touch();
+  }
+
+  setReviewed(id: string, ids: string[], reviewed: boolean) {
+    const s = this.get(id);
+    if (!s) return;
+    const set = new Set(s.reviewed || []);
+    for (const h of ids) reviewed ? set.add(h) : set.delete(h);
+    s.reviewed = [...set].slice(-2000);
+    this.touch();
   }
 
   // ---------------------------------------------------------------- run
@@ -961,7 +1180,8 @@ export class SessionManager {
     s.lastAccess = Date.now();
     s.archivedAt = undefined;
     s.archivedAuto = undefined;
-    await this.push(id, { k: 'user', t: Date.now(), text, images: images.length ? images : undefined });
+    const cp = await this.checkpoint(s, 'Before: ' + text);
+    await this.push(id, { k: 'user', t: Date.now(), text, images: images.length ? images : undefined, cp });
     if (s.ask && rt) {
       // Replying while it waits counts as answering a question, or as a denial with an explanation.
       const w = [...rt.asks.values()][0];
@@ -970,13 +1190,15 @@ export class SessionManager {
     }
     s.endedAt = undefined;
     s.stuck = undefined;
+    const outgoing = s.agentNote ? `${s.agentNote}\n\n${text}` : text;
+    s.agentNote = undefined;
     if (!rt) {
       this.setStatus(s, 'working', 'Starting');
-      await this.start(s, text, images);
+      await this.start(s, outgoing, images);
       return;
     }
     this.setStatus(s, 'working', 'Reading your message');
-    rt.queue.push(text, images);
+    rt.queue.push(outgoing, images);
   }
 
   async interrupt(id: string) {
@@ -1126,6 +1348,7 @@ export class SessionManager {
     if (!s) return;
     await this.stop(id);
     if (opts.worktree || opts.branch) await G.removeWorktree(this.repoOf(s).localPath, s.worktree, opts.branch ? s.branch : undefined);
+    await dropCheckpoints(this.repoOf(s).localPath, id).catch(() => undefined);
     this.store.data.sessions = this.store.data.sessions.filter((x) => x.id !== id);
     await this.store.deleteTranscripts(id);
     this.touch();

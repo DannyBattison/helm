@@ -9,6 +9,7 @@ import * as G from './git';
 import * as GH from './github';
 import { deleteMemory, projectMemory, readMemory, writeMemory } from './memory';
 import { RepoService } from './repos';
+import { forecastRepo, revertHunk } from './review';
 import { SessionManager } from './sessions';
 import { Store } from './store';
 import { Terminals } from './terminal';
@@ -18,6 +19,7 @@ import { auditCsv, buildReport, digestMarkdown, sessionsCsv, spendCsv, type Repo
 
 let win: BrowserWindow | null = null;
 let claudeVersion: string | null = null;
+let forecast: import('../shared/forecast').Conflict[] = [];
 const store = new Store();
 
 function send<K extends keyof HelmEvents>(channel: K, payload: HelmEvents[K]) {
@@ -37,6 +39,7 @@ function buildState(): AppState {
     weekSpend: store.weekSpend(),
     lifetime: store.data.totals,
     tokensToday: store.tokensToday(),
+    forecast,
     claudeVersion,
     plan: store.data.plan,
     rates: store.data.fx.rates,
@@ -468,7 +471,7 @@ const api: HelmApi = {
     return { sha, localUpdated, localNote };
   },
   async requestChanges(id, comments) {
-    const text = 'Review comments from the user. Please address each one:\n\n' + comments.map((c) => `- ${c.file}:${c.line}: ${c.text}`).join('\n');
+    const text = 'Review comments from the user. Please address each one:\n\n' + comments.map((c) => `- ${c.line ? `${c.file}:${c.line}` : c.file}: ${c.text}`).join('\n');
     await sessions.send(id, text);
   },
   async openInEditor(id, path, line) {
@@ -504,6 +507,23 @@ const api: HelmApi = {
   async termResize(id, c, r) { terms.resize(id, c, r); },
   async termClose(id) { terms.close(id); },
   async copyText(t) { clipboard.writeText(t); },
+
+  checkpoints: (id) => sessions.checkpoints(id),
+  restoreCheckpoint: (id, n) => sessions.restoreTo(id, n),
+  forkSession: (id, index, task) => sessions.fork(id, index, task),
+  continueExternal: (repoId, extId, task) => sessions.continueExternal(repoId, extId, task),
+  createGroup: (input, variants) => sessions.createGroup(input, variants),
+  keepFromGroup: (group, keep) => sessions.keepFromGroup(group, keep),
+  async revertHunk(id, path, hunk) {
+    const s = sess(id);
+    safePath(s, path);
+    await sessions.snapshot(id, `Before rejecting a hunk in ${path}`);
+    await revertHunk(s.worktree, path, hunk);
+    await sessions.userEdited(id, path);
+    await sessions.refreshStats(s);
+  },
+  async setHunksReviewed(id, ids, reviewed) { sessions.setReviewed(id, ids, reviewed); },
+  startReview: (id) => sessions.review(id),
 
   async getReport(days) { return buildReport(reportInput(days)); },
   async reportDigest(days) { return digestMarkdown(reportInput(days), reportMoney); },
@@ -640,6 +660,23 @@ async function pollMerges() {
   }
 }
 
+// ------------------------------------------------------------------ conflict forecast
+let forecastSig = '';
+let forecasting = false;
+/** Recomputes who would conflict with whom, but only when something that could change the answer has changed. */
+async function refreshForecast() {
+  if (forecasting) return;
+  const live = store.data.sessions.filter((s) => !s.archivedAt && !s.mergedAt && !s.worktreeGone);
+  const sig = live.map((s) => `${s.id}:${s.commits.length}:${s.files}:${s.add}:${s.del}:${Object.keys(s.filesTouched || {}).length}`).join('|');
+  if (sig === forecastSig) return;
+  forecasting = true;
+  try {
+    const next = (await Promise.all(store.data.repos.map((r) => forecastRepo(r, live).catch(() => [])))).flat();
+    forecastSig = sig;
+    if (JSON.stringify(next.map((c) => [c.a, c.b, c.kind, c.files])) !== JSON.stringify(forecast.map((c) => [c.a, c.b, c.kind, c.files]))) { forecast = next; emitState(); }
+  } finally { forecasting = false; }
+}
+
 // ------------------------------------------------------------------ window
 function createWindow() {
   const dark = nativeTheme.shouldUseDarkColors;
@@ -676,6 +713,8 @@ else {
     nativeTheme.themeSource = store.data.settings.theme;
     createWindow();
     setInterval(pollMerges, 120_000);
+    setInterval(() => void refreshForecast(), 20_000);
+    setTimeout(() => void refreshForecast(), 4000);
     void detectCurrency().then(refreshRates);
     sessions.autoArchive();
     setInterval(() => sessions.autoArchive(), 3600_000);

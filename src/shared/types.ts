@@ -1,7 +1,8 @@
 /** Types shared by the main process, preload and renderer. */
 
+import type { Conflict } from './forecast';
 import type { Report } from './reports';
-export type { Report };
+export type { Report, Conflict };
 
 export type Status = 'working' | 'attention' | 'ready' | 'idle' | 'error';
 /** ask: approve commands; edits: edits go through, commands ask; plan: plan only; all: nothing asks. */
@@ -140,6 +141,19 @@ export interface Session {
   checkpoints?: number;
   /** The result of the last self-review. */
   review?: SelfReview;
+  /** Hunks the user has looked at and accepted, by hunk id (path and changed lines, not line numbers). */
+  reviewed?: string[];
+  /** Said to the agent along with the next message, then forgotten. Used after a checkpoint restore. */
+  agentNote?: string;
+}
+
+/** A saved state of a session's worktree. Taken before each message you send. */
+export interface Checkpoint {
+  n: number;
+  commit: string;
+  at: number;
+  /** What it was taken before, or why. */
+  label: string;
 }
 
 export interface SelfReview {
@@ -149,6 +163,8 @@ export interface SelfReview {
   /** The branch tip the review was of, so a later commit makes it stale. */
   head: string;
   summary: string;
+  /** What the review cost, USD. */
+  cost?: number;
   findings: { severity: 'blocker' | 'warning' | 'note'; file?: string; line?: number; text: string }[];
 }
 
@@ -179,7 +195,7 @@ export interface DailyUsage {
 }
 
 export type TranscriptEvent =
-  | { k: 'user'; t: number; text: string; from?: string; images?: MessageImage[] }
+  | { k: 'user'; t: number; text: string; from?: string; images?: MessageImage[]; cp?: number }
   | { k: 'subagent'; id: string; description: string; agentType: string; status: Subagent['status']; summary?: string }
   | { k: 'agent'; text: string; list?: string[] }
   | { k: 'tools'; items: [string, string, string][] }
@@ -310,6 +326,8 @@ export interface AppState {
   /** Lifetime usage per repository id. */
   lifetime: Record<string, Lifetime>;
   tokensToday: number;
+  /** Live sessions that would conflict with each other or with their base. */
+  forecast: Conflict[];
   claudeVersion: string | null;
   plan: PlanUsage;
   /** USD to other currencies. */
@@ -689,6 +707,22 @@ export interface HelmApi {
   termClose(id: string): Promise<void>;
 
   copyText(text: string): Promise<void>;
+
+  checkpoints(sessionId: string): Promise<Checkpoint[]>;
+  /** Puts the worktree back as it was at a checkpoint. A safety checkpoint is taken first, so the restore can be undone. Refused while the agent is working. */
+  restoreCheckpoint(sessionId: string, n: number): Promise<void>;
+  /** Starts a new session from this one at one of your messages (an index into its transcript, or null for now): the conversation up to it, and the worktree as it was then. */
+  forkSession(sessionId: string, index: number | null, task: string): Promise<string>;
+  /** Carries on a session started outside helm, in its own worktree, from a copy of its conversation. */
+  continueExternal(repoId: string, externalId: string, task: string): Promise<string>;
+  /** The same task started in several sessions, one per variant, to compare. */
+  createGroup(input: NewSessionInput, variants: { model: ModelAlias; effort?: Effort }[]): Promise<string[]>;
+  /** Keeps one session of a group and archives the rest. */
+  keepFromGroup(group: string, keepId: string): Promise<void>;
+  revertHunk(sessionId: string, path: string, hunk: DiffHunk): Promise<void>;
+  setHunksReviewed(sessionId: string, ids: string[], reviewed: boolean): Promise<void>;
+  /** Has a read-only reviewer go through the branch's diff. The result lands on the session. */
+  startReview(sessionId: string): Promise<void>;
 
   /** Every report for the last `days` days, computed from sessions, the usage ledger and the audit log. */
   getReport(days: number): Promise<Report>;

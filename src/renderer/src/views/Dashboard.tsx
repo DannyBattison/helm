@@ -7,6 +7,7 @@ import { Cmd } from '../Hl';
 import { go, setUI, useApp, useMoney, toast, useUI } from '../store';
 import { Avatar, Button, DiffStat, Meter, SegmentedControl, Stat, StatusDot, useColumns } from '../ui';
 import { PlanMeters } from './Shell';
+import { ForecastNotice } from './Review';
 
 const lanePct = (m: number) => ((m / LANE_MIN) * 100).toFixed(2) + '%';
 const LANE_COLOR: Record<string, string> = { working: 'var(--status-working)', attention: 'var(--status-attention)', ready: 'var(--status-ready)', idle: 'var(--status-idle)' };
@@ -192,6 +193,8 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
             </>}
           </div>
         </div>
+
+        <ForecastNotice conflicts={app.forecast || []} />
 
         {liveSessions === 0 && totalExt === 0 && archivedTotal === 0 ? <FirstRun /> : null}
 
