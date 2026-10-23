@@ -31,6 +31,8 @@ export interface UI {
   newSession: { repoId?: string } | null;
   /** The session whose delete dialog is open. */
   deleting: string | null;
+  /** The repository whose remove dialog is open. */
+  removingRepo: string | null;
   palette: boolean;
   term: boolean;
   /** Set while resolving the first state snapshot fails. */
@@ -41,7 +43,7 @@ function loadRoute(): Route {
   try { return JSON.parse(localStorage.getItem('helm-route') || '') || { screen: 'overview' }; } catch { return { screen: 'overview' }; }
 }
 
-let ui: UI = { app: null, route: loadRoute(), transcripts: {}, externals: {}, toasts: [], adding: false, newSession: null, deleting: null, palette: false, term: false };
+let ui: UI = { app: null, route: loadRoute(), transcripts: {}, externals: {}, toasts: [], adding: false, newSession: null, deleting: null, removingRepo: null, palette: false, term: false };
 const listeners = new Set<() => void>();
 
 export function setUI(patch: Partial<UI> | ((u: UI) => Partial<UI>)) {

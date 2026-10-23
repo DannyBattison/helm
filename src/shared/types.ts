@@ -458,6 +458,10 @@ export interface HelmApi {
   requestChanges(sessionId: string, comments: ReviewComment[]): Promise<void>;
   openInEditor(sessionId: string, path?: string): Promise<void>;
   openExternal(url: string): Promise<void>;
+  /** Opens a folder in the system file manager. */
+  openFolder(path: string): Promise<void>;
+  /** Opens the repository in the editor chosen in Settings. With helm as the editor it opens the Code tab instead. */
+  openRepoInEditor(repoId: string): Promise<void>;
   checkClaude(path: string): Promise<string | null>;
 
   termOpen(sessionId: string | null, cols: number, rows: number): Promise<string>;

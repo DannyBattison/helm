@@ -293,6 +293,40 @@ export function DeleteSession({ id, onClose }: { id: string; onClose(): void }) 
   );
 }
 
+// ------------------------------------------------------------------ remove repository
+export function RemoveRepo({ id, onClose }: { id: string; onClose(): void }) {
+  const app = useApp();
+  const repo = app.repos.find((r) => r.id === id);
+  const mine = app.sessions.filter((s) => s.repoId === id);
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState('');
+  if (!repo) return null;
+  const run = async () => {
+    setBusy(true); setErr('');
+    try {
+      await api.removeRepo(id);
+      const r = getUI().route;
+      if ((r.screen === 'repo' && r.id === id) || (r.screen === 'external' && r.repoId === id)) go({ screen: 'overview' });
+      onClose();
+    } catch (e) { setErr(errText(e)); } finally { setBusy(false); }
+  };
+  return (
+    <Dialog width={480} title={`Remove ${repo.id} from helm?`} description="helm stops tracking it. The folder on disk and the repository on GitHub are not touched." onClose={onClose}
+      footer={<>
+        <span style={{ flex: 1, font: '400 12px/1.3 var(--font-sans)', color: 'var(--status-error-text)' }}>{err}</span>
+        <Button variant="ghost" onClick={onClose}>Cancel</Button>
+        <Button variant="danger" icon="trash" loading={busy} disabled={mine.length > 0} onClick={run}>Remove repository</Button>
+      </>}>
+      {mine.length ? (
+        <span style={{ display: 'flex', gap: 8, alignItems: 'flex-start', font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--status-attention-text)' }}>
+          <i className="ph-fill ph-warning-circle" style={{ fontSize: 14, marginTop: 2, flex: 'none' }} />
+          It still has {mine.length} {mine.length === 1 ? 'session' : 'sessions'} ({mine.slice(0, 3).map((s) => s.id).join(', ')}{mine.length > 3 ? '…' : ''}). Delete {mine.length === 1 ? 'it' : 'them'} first, from the right-click menu in the left tree, so no worktrees are left behind.
+        </span>
+      ) : <span style={{ font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>Its usage history is kept, so adding it again picks up where it left off. Its weekly cap goes back to the default.</span>}
+    </Dialog>
+  );
+}
+
 // ------------------------------------------------------------------ command palette
 export function Palette({ onClose, toggleTheme }: { onClose(): void; toggleTheme(): void }) {
   const app = useApp();

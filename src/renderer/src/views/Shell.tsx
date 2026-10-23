@@ -5,7 +5,7 @@ import { api, on, platform } from '../api';
 import { fontStack } from '../fonts';
 import glyph from '../assets/helm-glyph-violet.svg';
 import { ago, elapsed, livePlan, reposWithSessions, runningSubagents, subagentTree, totals, untilReset } from '../lib';
-import { go, setUI, useApp, useMoney, useUI, useTranscript, type Route } from '../store';
+import { go, setUI, toast, useApp, useMoney, useUI, useTranscript, type Route } from '../store';
 import { Avatar, Badge, Breadcrumbs, ContextMenu, Grip, IconButton, Kbd, Meter, TreeItem, usePaneWidth, type MenuItem } from '../ui';
 
 const mac = () => platform() === 'darwin';
@@ -61,6 +61,26 @@ export function Sidebar() {
       { label: 'Delete session…', icon: 'trash', danger: true, separator: true, onClick: () => setUI({ deleting: s.id }) }
     ] });
   };
+  const repoMenu = (e: React.MouseEvent, r: (typeof app.repos)[number]) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const editor = app.settings.openIn;
+    const fail = (title: string) => (err: any) => toast({ tone: 'error', title, description: String(err?.message || err).replace(/^Error invoking remote method '\w+': Error: /, '') });
+    setMenu({ x: e.clientX, y: e.clientY, items: [
+      { label: 'New session', icon: 'plus', onClick: () => setUI({ newSession: { repoId: r.id } }) },
+      { label: 'History', icon: 'git-commit', separator: true, onClick: () => go({ screen: 'repo', id: r.id, tab: 'history' }) },
+      { label: 'Code', icon: 'code', onClick: () => go({ screen: 'repo', id: r.id, tab: 'code' }) },
+      { label: 'Branches & worktrees', icon: 'tree-structure', onClick: () => go({ screen: 'repo', id: r.id, tab: 'worktrees' }) },
+      { label: 'Pull requests', icon: 'git-pull-request', onClick: () => go({ screen: 'repo', id: r.id, tab: 'prs' }) },
+      { label: 'Fetch from GitHub', icon: 'arrows-clockwise', separator: true, onClick: () => { api.fetchRepo(r.id).then(() => toast({ tone: 'ready', title: 'Fetched', description: r.id })).catch(fail('Fetch failed')); } },
+      { label: 'Open on GitHub', icon: 'github-logo', onClick: () => void api.openExternal(`https://github.com/${r.id}`) },
+      { label: editor === 'helm' ? 'Open code in helm' : `Open in ${editor}`, icon: 'arrow-square-out', separator: true, onClick: () => { api.openRepoInEditor(r.id).catch(fail('Could not open the editor')); } },
+      { label: 'Show in file manager', icon: 'folder-open', onClick: () => { api.openFolder(r.localPath).catch(fail('Could not open the folder')); } },
+      { label: 'Copy path', icon: 'copy', onClick: () => void api.copyText(r.localPath) },
+      { label: 'Copy GitHub URL', icon: 'link', onClick: () => void api.copyText(`https://github.com/${r.id}`) },
+      { label: 'Remove from helm…', icon: 'trash', danger: true, separator: true, onClick: () => setUI({ removingRepo: r.id }) }
+    ] });
+  };
   // Reordering: repositories among themselves, and sessions within their repository. Subagents are never dragged on their own.
   const drag = React.useRef<{ kind: 'repo' | 'session'; id: string; repoId?: string } | null>(null);
   const [over, setOver] = React.useState<{ key: string; pos: 'before' | 'after' } | null>(null);
@@ -114,7 +134,7 @@ export function Sidebar() {
           const open = !closed[r.id];
           return (
             <div key={r.id} {...target('repo', r.id)} style={line(r.id)}>
-              <div {...dnd('repo', r.id)}>
+              <div {...dnd('repo', r.id)} onContextMenu={(e) => repoMenu(e, r)}>
               <TreeItem icon="book-bookmark" expandable={sessions.length > 0} expanded={open}
                 label={<span><span style={{ color: 'var(--text-3)' }}>{r.owner}/</span>{r.name}</span>}
                 selected={route.screen === 'repo' && route.id === r.id} meta={sessions.length || null}

@@ -346,6 +346,13 @@ const api: HelmApi = {
     else openExternalEditor(path ? safePath(s, path) : s.worktree, kind);
   },
   async openExternal(url) { if (/^https:\/\//.test(url)) await shell.openExternal(url); },
+  async openFolder(path) { const err = await shell.openPath(path); if (err) throw new Error(err); },
+  async openRepoInEditor(id) {
+    const r = repos.must(id);
+    const kind = store.data.settings.openIn;
+    if (kind === 'helm') send('navigate', { screen: 'repo', id, tab: 'code' });
+    else openExternalEditor(r.localPath, kind);
+  },
   checkClaude: (p) => detectClaude(p),
 
   async termOpen(id, cols, rows) {

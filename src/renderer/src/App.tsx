@@ -5,7 +5,7 @@ import { theme as resolveTheme } from './lib';
 import { dismissToast, getUI, go, init, setUI, useUI } from './store';
 import { Button, Toast } from './ui';
 import { Activity, Dashboard } from './views/Dashboard';
-import { AddRepo, DeleteSession, NewSession, Palette, SignIn } from './views/Dialogs';
+import { AddRepo, DeleteSession, NewSession, Palette, RemoveRepo, SignIn } from './views/Dialogs';
 import { ExternalSessionView, Repo } from './views/Repo';
 import { Session } from './views/Session';
 import { Settings } from './views/Settings';
@@ -19,6 +19,7 @@ export function App() {
   const newSession = useUI((u) => u.newSession);
   const palette = useUI((u) => u.palette);
   const deleting = useUI((u) => u.deleting);
+  const removingRepo = useUI((u) => u.removingRepo);
   const term = useUI((u) => u.term);
   const toasts = useUI((u) => u.toasts);
   const [sysDark, setSysDark] = React.useState(0);
@@ -71,7 +72,7 @@ export function App() {
     body = <ExternalSessionView key={route.id} repoId={route.repoId} id={route.id} />;
   } else if (route.screen === 'repo') {
     crumbs = [{ label: route.id, icon: 'book-bookmark' }];
-    body = <Repo key={route.id} id={route.id} tab={route.tab} themeKey={theme} />;
+    body = <Repo key={route.id + ':' + (route.tab || '')} id={route.id} tab={route.tab} themeKey={theme} />;
   } else if (route.screen === 'settings') {
     crumbs = [{ label: 'Settings', icon: 'gear-six' }];
     body = <Settings section={route.section} />;
@@ -97,6 +98,7 @@ export function App() {
       <StatusBar />
       {adding ? <AddRepo onClose={() => setUI({ adding: false })} /> : null}
       {newSession ? <NewSession repoId={newSession.repoId} onClose={() => setUI({ newSession: null })} /> : null}
+      {removingRepo ? <RemoveRepo key={removingRepo} id={removingRepo} onClose={() => setUI({ removingRepo: null })} /> : null}
       {deleting ? <DeleteSession key={deleting} id={deleting} onClose={() => setUI({ deleting: null })} /> : null}
       {palette ? <Palette onClose={() => setUI({ palette: false })} toggleTheme={toggleTheme} /> : null}
       <div style={{ position: 'absolute', right: 16, bottom: 40, zIndex: 60, display: 'flex', flexDirection: 'column', gap: 8 }}>
