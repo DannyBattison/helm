@@ -1,5 +1,5 @@
 import React from 'react';
-import type { GhRepo, ModelAlias, PermMode } from '@shared/types';
+import type { BaseOption, GhRepo, ModelAlias, PermMode } from '@shared/types';
 import { api, platform } from '../api';
 import glyph from '../assets/helm-glyph-violet.svg';
 import { tilde } from '../lib';
@@ -189,7 +189,8 @@ export function NewSession({ repoId, onClose }: { repoId?: string; onClose(): vo
   const sub = app.settings.billing === 'subscription';
   const [repo, setRepo] = React.useState(repoId || app.repos[0]?.id || '');
   const r = app.repos.find((x) => x.id === repo);
-  const [branches, setBranches] = React.useState<string[]>([]);
+  const [bases, setBases] = React.useState<BaseOption[]>([]);
+  const [dirty, setDirty] = React.useState(0);
   const [base, setBase] = React.useState(r?.defaultBranch || 'main');
   const [task, setTask] = React.useState('');
   const [model, setModel] = React.useState<ModelAlias>(app.settings.defaultModel);
@@ -200,7 +201,9 @@ export function NewSession({ repoId, onClose }: { repoId?: string; onClose(): vo
   React.useEffect(() => {
     if (!repo) return;
     setBase(app.repos.find((x) => x.id === repo)?.defaultBranch || 'main');
-    api.repoBranches(repo).then(setBranches).catch(() => setBranches([]));
+    // Start from the local branch when it has commits GitHub does not, since that is where unpushed work is.
+    api.repoBases(repo).then((b) => { setBases(b); if (b[0]) setBase(b[0].ref); }).catch(() => setBases([]));
+    api.workspaceInfo('repo:' + repo).then((i) => setDirty(i.dirty)).catch(() => setDirty(0));
   }, [repo]);
   const start = async () => {
     setBusy(true); setErr('');
@@ -221,7 +224,7 @@ export function NewSession({ repoId, onClose }: { repoId?: string; onClose(): vo
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div style={{ display: 'flex', gap: 8 }}>
           <Select value={repo} onChange={(e: any) => setRepo(e.target.value)} options={app.repos.map((x) => x.id)} style={{ flex: 1 }} icon="book-bookmark" />
-          <Select value={base} onChange={(e: any) => setBase(e.target.value)} options={[...new Set([base, ...branches])]} mono icon="git-branch" />
+          <Select value={base} onChange={(e: any) => setBase(e.target.value)} options={bases.length ? bases.map((b) => ({ value: b.ref, label: b.label })) : [base]} mono icon="git-branch" />
         </div>
         <textarea autoFocus rows={5} value={task} onChange={(e) => setTask(e.target.value)} placeholder="What should the agent do? Be specific about the outcome, and mention files or checks that matter."
           onKeyDown={(e) => { if (e.key === 'Enter' && (mac() ? e.metaKey : e.ctrlKey) && task.trim()) void start(); }}
@@ -231,6 +234,15 @@ export function NewSession({ repoId, onClose }: { repoId?: string; onClose(): vo
           <Select value={perm} onChange={(e: any) => setPerm(e.target.value)} options={PERM_OPTIONS} />
           {sub ? null : <Input mono value={sym + budget} onChange={(e: any) => setBudget(e.target.value.replace(/[^0-9.]/g, ''))} />}
         </div>
+        {(() => {
+          const here = bases.find((b) => b.ref === base);
+          const hidden = bases.find((b) => b.local && b.ahead > 0 && 'origin/' + b.ref === base);
+          const notes: { text: string; warn?: boolean }[] = [];
+          if (here?.local && here.ahead > 0) notes.push({ text: `Starts from your local ${here.ref}, including ${here.ahead} ${here.ahead === 1 ? 'commit' : 'commits'} that are not on GitHub yet.` });
+          if (hidden) notes.push({ warn: true, text: `Your local ${hidden.ref} has ${hidden.ahead} ${hidden.ahead === 1 ? 'commit' : 'commits'} that ${base} does not. The agent will not see them.` });
+          if (dirty > 0) notes.push({ warn: true, text: `${dirty} uncommitted ${dirty === 1 ? 'file' : 'files'} in your checkout will not be in the session. Commit them first if the agent needs them.` });
+          return notes.map((n, i) => <span key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', font: '400 12px/1.45 var(--font-sans)', color: n.warn ? 'var(--status-attention-text)' : 'var(--text-2)' }}><i className={'ph-fill ph-' + (n.warn ? 'warning-circle' : 'info')} style={{ fontSize: 14, marginTop: 1 }} />{n.text}</span>);
+        })()}
         <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>{sub ? 'Model and permission mode can be changed later. Plan usage limits are set in Settings → Usage.' : 'Model, permission mode and the session budget can be changed later. The agent pauses at the budget and waits in Needs you.'}</span>
       </div>
     </Dialog>

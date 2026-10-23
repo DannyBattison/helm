@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, join, normalize } from 'node:path';
-import type { FileChange, HistoryCommit, Repo, Session, WorktreeInfo } from '../shared/types';
+import type { BaseOption, FileChange, HistoryCommit, Repo, Session, WorktreeInfo } from '../shared/types';
 import * as G from './git';
 import * as GH from './github';
 import type { Store } from './store';
@@ -113,6 +113,31 @@ export class RepoService {
     const r = this.must(id);
     const c = await this.loadCache(r);
     return c ? this.decorate(r, c.raw.slice(0, limit), sessions) : null;
+  }
+
+  async bases(id: string): Promise<BaseOption[]> {
+    const r = this.must(id);
+    const local = await G.git(r.localPath, 'for-each-ref', '--format=%(refname:short)\t%(upstream:short)\t%(upstream:track)', 'refs/heads').catch(() => '');
+    const remote = (await G.git(r.localPath, 'for-each-ref', '--format=%(refname:short)', 'refs/remotes/origin').catch(() => '')).split('\n').map((x) => x.trim()).filter((x) => x && x !== 'origin' && x !== 'origin/HEAD');
+    const prefix = this.store.data.settings.branchPrefix;
+    const out: BaseOption[] = [];
+    const covered = new Set<string>();
+    for (const line of local.split('\n').filter(Boolean)) {
+      const [name, upstream = '', track = ''] = line.split('\t');
+      if (name.startsWith(prefix)) continue; // another session's branch is not a base
+      const ahead = +(track.match(/ahead (\d+)/)?.[1] || 0);
+      const behind = +(track.match(/behind (\d+)/)?.[1] || 0);
+      if (upstream && !track.includes('gone')) {
+        covered.add(upstream);
+        if (ahead > 0) {
+          out.push({ ref: name, label: `${name} · local, ${ahead} not on GitHub`, ahead, behind, local: true });
+          out.push({ ref: upstream, label: upstream, ahead: 0, behind: 0, local: false });
+        } else out.push({ ref: upstream, label: name, ahead: 0, behind, local: false }); // in step with GitHub: start from the fetched copy
+      } else out.push({ ref: name, label: `${name} · local only`, ahead: 0, behind: 0, local: true });
+    }
+    for (const rb of remote) if (!covered.has(rb)) out.push({ ref: rb, label: rb, ahead: 0, behind: 0, local: false });
+    const isDefault = (o: BaseOption) => o.ref === r.defaultBranch || o.ref === 'origin/' + r.defaultBranch;
+    return out.sort((a, b) => Number(isDefault(b)) - Number(isDefault(a)) || Number(b.ahead > 0) - Number(a.ahead > 0));
   }
 
   async history(id: string, sessions: Session[], limit = 150): Promise<HistoryCommit[]> {

@@ -190,6 +190,7 @@ const api: HelmApi = {
   },
   async fetchRepo(id) { await repos.fetch(id); },
   repoBranches: (id) => repos.branches(id),
+  repoBases: (id) => repos.bases(id),
   repoHistory: (id, limit) => repos.history(id, store.data.sessions, limit),
   repoHistoryCached: (id, limit) => repos.cachedHistory(id, store.data.sessions, limit),
   async reorderRepos(ids) {

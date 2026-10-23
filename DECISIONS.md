@@ -169,3 +169,7 @@ Why: user request.
 ## D-039 · 2026-10-23 · External sessions on the Overview
 Sessions started outside helm also appear in the Overview ledger under their repository, in italics with an eye icon and "external · read-only", with an External filter, a count in the summary line and an "external live" item in the status bar. Live ones also show under the Working filter. The most recent five and any live ones are listed per repository.
 Why: user asked for them to be visible there as well as in the sidebar.
+
+## D-040 · 2026-10-23 · Sessions can start from local branches
+New sessions used to branch from `origin/<base>` only, as the handoff describes. That hides any commit not yet pushed: this repository's `main` was 15 commits ahead of GitHub, whose `main` held only a README, so a session started on it saw an empty project. The New session dialog now lists where a session can start from: a local branch with unpushed commits is offered as "main · local, N not on GitHub" and is the default, next to `origin/main`; branches in step with GitHub still start from the freshly fetched `origin/` copy. The dialog says when unpushed commits are included, when the chosen base would hide them, and how many uncommitted files in the checkout will not be in the session. Uncommitted files are deliberately never copied, so an agent always starts from a commit.
+Why: found when a session on helm's own repository could not see the code.

@@ -161,7 +161,9 @@ export class SessionManager {
     const wt = join(expandHome(st.worktreeRoot), repo.name, id);
 
     await G.git(repo.localPath, 'fetch', 'origin', '--prune').catch(() => undefined);
-    const remoteBase = (await G.gitOk(repo.localPath, 'rev-parse', '--verify', 'origin/' + input.base)) ? 'origin/' + input.base : input.base;
+    // `main` means the local branch, `origin/main` the one on GitHub. A bare name that only exists on GitHub falls back to it.
+    const isLocal = !input.base.startsWith('origin/') && (await G.gitOk(repo.localPath, 'rev-parse', '--verify', '--quiet', 'refs/heads/' + input.base));
+    const remoteBase = input.base.startsWith('origin/') || isLocal ? input.base : (await G.gitOk(repo.localPath, 'rev-parse', '--verify', 'origin/' + input.base)) ? 'origin/' + input.base : input.base;
     await G.addWorktree(repo.localPath, wt, branch, remoteBase);
     for (const f of st.copyFiles.split(',').map((x) => x.trim()).filter(Boolean)) {
       const from = join(repo.localPath, f);

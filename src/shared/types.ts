@@ -263,6 +263,17 @@ export interface ExternalSession {
   active: boolean;
 }
 
+/** Somewhere a new session can start from: a local branch, or a branch on GitHub. */
+export interface BaseOption {
+  /** A ref git understands: `main` is the local branch, `origin/main` the one on GitHub. */
+  ref: string;
+  label: string;
+  /** Commits a local branch has that its GitHub branch does not. */
+  ahead: number;
+  behind: number;
+  local: boolean;
+}
+
 export interface WorkspaceInfo {
   root: string;
   branch: string;
@@ -367,6 +378,8 @@ export interface HelmApi {
   chooseFolder(): Promise<string | null>;
   fetchRepo(id: string): Promise<void>;
   repoBranches(id: string): Promise<string[]>;
+  /** Where a new session can start from. Local branches with unpushed commits are offered separately from GitHub's. */
+  repoBases(id: string): Promise<BaseOption[]>;
   /** `limit` is how many commits to read. Repeats are served from a cache until a ref changes. */
   repoHistory(id: string, limit?: number): Promise<HistoryCommit[]>;
   /** The last history read for this repository, instantly and possibly stale, or null if there is none yet. */
