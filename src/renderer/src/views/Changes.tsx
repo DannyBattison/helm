@@ -3,7 +3,7 @@ import type { ChangesSummary, DiffHunk, ReviewComment, Session } from '@shared/t
 import { api, platform } from '../api';
 import { CHECK_RE } from '../lib';
 import { go, toast, useApp, useTranscript } from '../store';
-import { Avatar, BranchTag, Button, Checkbox, DiffStat, IconButton, Input, SegmentedControl, Select } from '../ui';
+import { Avatar, BranchTag, Button, Checkbox, DiffStat, Grip, IconButton, Input, SegmentedControl, Select, usePaneWidth } from '../ui';
 
 const label: React.CSSProperties = { font: '500 10.5px/1 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' };
 const sClr: Record<string, string> = { M: 'var(--status-attention-text)', A: 'var(--diff-add-fg)', D: 'var(--diff-del-fg)', R: 'var(--accent-text)' };
@@ -15,7 +15,7 @@ const pending = new Map<string, ReviewComment[]>();
 
 type Row = [string, number | null, number | null, string];
 
-function DiffLine({ l, onComment }: { l: Row; onComment(line: number): void }) {
+export function DiffLine({ l, onComment }: { l: Row; onComment(line: number): void }) {
   const [t, o, n, text] = l;
   const bg = t === '+' ? 'var(--diff-add-bg)' : t === '-' ? 'var(--diff-del-bg)' : 'transparent';
   const gut = t === '+' ? 'var(--diff-add-gutter)' : t === '-' ? 'var(--diff-del-gutter)' : 'transparent';
@@ -30,7 +30,7 @@ function DiffLine({ l, onComment }: { l: Row; onComment(line: number): void }) {
   );
 }
 
-function SplitRows({ lines, onComment }: { lines: Row[]; onComment(line: number): void }) {
+export function SplitRows({ lines, onComment }: { lines: Row[]; onComment(line: number): void }) {
   const out: React.ReactNode[] = [];
   let i = 0;
   const cell = (l: Row | null, side: 'l' | 'r') => {
@@ -109,6 +109,8 @@ export function Changes({ s }: { s: Session }) {
   const [rm, setRm] = React.useState(s.removeAfterMerge);
   const [busy, setBusy] = React.useState('');
   const bodyEdited = React.useRef(false);
+  const [lw, lgrip, lreset] = usePaneWidth('changes-files', 280, 200, 560);
+  const [rw, rgrip, rreset] = usePaneWidth('changes-pr', 340, 280, 620, -1);
   const sig = s.files + ':' + s.add + ':' + s.del + ':' + s.commits.length;
 
   const setC = (c: ReviewComment[]) => { pending.set(s.id, c); setComments(c); };
@@ -182,7 +184,8 @@ export function Changes({ s }: { s: Session }) {
 
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-      <div style={{ width: 280, flex: 'none', display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border)', background: 'var(--bg-sidebar)' }}>
+      <div style={{ position: 'relative', width: lw, flex: 'none', display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border)', background: 'var(--bg-sidebar)' }}>
+        <Grip onMouseDown={lgrip} onDoubleClick={lreset} />
         <div style={{ height: 34, flex: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px' }}>
           <Checkbox checked={allOn} onChange={(on) => setUnchecked(on ? new Set() : new Set((sum?.files || []).filter((f) => pickable(f.path)).map((f) => f.path)))} />
           <span style={{ flex: 1, font: '500 12px/1 var(--font-sans)' }}>{sum?.files.length ?? 0} files</span>
@@ -237,7 +240,8 @@ export function Changes({ s }: { s: Session }) {
         </div>
       </div>
 
-      <aside style={{ width: 340, flex: 'none', borderLeft: '1px solid var(--border)', background: 'var(--bg-panel)', display: 'flex', flexDirection: 'column' }}>
+      <aside style={{ position: 'relative', width: rw, flex: 'none', borderLeft: '1px solid var(--border)', background: 'var(--bg-panel)', display: 'flex', flexDirection: 'column' }}>
+        <Grip edge="left" onMouseDown={rgrip} onDoubleClick={rreset} />
         <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 20 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <span style={label}>Checks run by the agent</span>

@@ -272,7 +272,7 @@ function UsagePanel({ s }: { s: S }) {
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ ...label, flex: 1 }}>Subagents · {running} of {limit} running</span>
+          <span style={{ ...label, flex: 1, whiteSpace: 'nowrap' }}>Subagents · {running} / {limit}</span>
           <Select size="sm" value={s.maxSubagents == null ? 'default' : String(s.maxSubagents)} onChange={(e: any) => guard(api.setSessionMaxSubagents(s.id, e.target.value === 'default' ? null : +e.target.value))}
             options={[{ value: 'default', label: 'Default (' + app.settings.maxSubagentsSession + ')' }, ...[0, 1, 2, 3, 4, 6, 8, 12].map((n) => ({ value: String(n), label: n === 0 ? 'Off' : 'Up to ' + n }))]} />
         </div>
@@ -308,6 +308,14 @@ function SubagentView({ s, subId }: { s: S; subId: string }) {
   const stick = React.useRef(true);
   const [width, grip, resetWidth] = usePaneWidth('usage-panel', 300, 240, 560, -1);
   React.useEffect(() => { void loadTranscript(key); }, [key]);
+  // Claude Code writes a subagent's own messages to disk lazily, so ask for a fresh read while looking at one.
+  const working = a?.status === 'working';
+  React.useEffect(() => {
+    void api.refreshSubagent(s.id, subId);
+    if (!working) return;
+    const t = setInterval(() => void api.refreshSubagent(s.id, subId), 4000);
+    return () => clearInterval(t);
+  }, [s.id, subId, working]);
   React.useEffect(() => { const el = scroller.current; if (el && stick.current) el.scrollTop = el.scrollHeight; }, [items]);
   if (!a) return <div style={{ padding: 24, font: '400 13px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>This subagent is no longer in the session.</div>;
   const parent = a.parentId ? s.subagents.find((x) => x.id === a.parentId) : undefined;
@@ -372,7 +380,7 @@ export function Session({ id, tab, setTab, themeKey, sub }: { id: string; tab: s
 
   let body: React.ReactNode;
   if (sub) body = <SubagentView s={s} subId={sub} />;
-  else if (tab === 'code') body = <CodeView s={s} themeKey={themeKey} />;
+  else if (tab === 'code') body = <CodeView wsId={s.id} session={s} branch={s.branch} themeKey={themeKey} />;
   else if (tab === 'changes') body = <Changes s={s} />;
   else body = (
     <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>

@@ -24,6 +24,7 @@ export class Terminals {
     const win = process.platform === 'win32';
     const shell = process.env.SHELL || (win ? 'powershell.exe' : '/bin/bash');
     const pty = loadPty();
+    let why = pty ? '' : ' (the terminal module did not load)';
     if (pty) {
       try {
         const p = pty.spawn(shell, [], { name: 'xterm-256color', cols, rows, cwd: dir, env: process.env });
@@ -31,10 +32,11 @@ export class Terminals {
         p.onExit(() => { this.terms.delete(id); this.onExit(id); });
         this.terms.set(id, { write: (d) => p.write(d), resize: (c, r) => { try { p.resize(c, r); } catch { /* exited */ } }, kill: () => { try { p.kill(); } catch { /* exited */ } } });
         return id;
-      } catch { /* fall through to piped shell */ }
+      } catch (e: any) { why = ': ' + String(e?.message || e); }
     }
-    const child: ChildProcessWithoutNullStreams = spawn(shell, win ? ['-NoLogo'] : ['-i'], { cwd: dir, env: process.env });
-    this.onData(id, '\x1b[2mNo pseudo-terminal available, using a plain shell.\x1b[0m\r\n');
+    const ps = /powershell|pwsh/i.test(shell);
+    const child: ChildProcessWithoutNullStreams = spawn(shell, ps ? ['-NoLogo'] : ['-i'], { cwd: dir, env: process.env });
+    this.onData(id, `\x1b[2mNo pseudo-terminal available${why}. Using a plain shell.\x1b[0m\r\n`);
     child.stdout.on('data', (d) => this.onData(id, d.toString().replace(/\r?\n/g, '\r\n')));
     child.stderr.on('data', (d) => this.onData(id, d.toString().replace(/\r?\n/g, '\r\n')));
     child.on('exit', () => { this.terms.delete(id); this.onExit(id); });

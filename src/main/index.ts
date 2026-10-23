@@ -191,6 +191,7 @@ const api: HelmApi = {
   deleteSession: (id, rm) => sessions.remove(id, rm),
   setSessionModel: (id, m) => sessions.setModel(id, m),
   setSessionPermMode: (id, m) => sessions.setPermMode(id, m),
+  refreshSubagent: (id, subId) => sessions.refreshSubagent(id, subId),
   async setSessionMaxSubagents(id, max) { sess(id).maxSubagents = max ?? undefined; store.save(); emitState(); },
   async setRepoMaxSubagents(id, max) { repos.must(id).maxSubagents = max ?? undefined; store.save(); emitState(); },
   resolveAsk: (id, askId, answer) => sessions.resolveAsk(id, askId, answer),
@@ -203,6 +204,12 @@ const api: HelmApi = {
     return { root: w.worktree, branch, dirty, session: !!w.sessionId };
   },
   async listFiles(id) { return G.listFiles(ws(id).worktree); },
+  async readBase(id, path) {
+    const w = ws(id);
+    safePath(w, path);
+    const mb = await G.mergeBase(w.worktree, w.base).catch(() => 'HEAD');
+    return G.git(w.worktree, 'show', `${mb}:${path}`).catch(() => '');
+  },
   async searchFiles(id, q, matchCase) { return G.searchFiles(ws(id).worktree, q, !!matchCase); },
   commitDiff: (repoId, hash, path) => G.commitDiff(repos.must(repoId).localPath, hash, path),
   async listTree(id, dir) { return repos.tree(ws(id).worktree, dir); },

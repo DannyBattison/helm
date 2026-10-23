@@ -66,6 +66,8 @@ export class Store {
       const raw = JSON.parse(await readFile(join(this.dir, 'helm.json'), 'utf8'));
       this.data = { ...this.data, ...raw, settings: { ...defaultSettings(), ...raw.settings } };
       if (!this.data.settings.githubClientId) this.data.settings.githubClientId = defaultSettings().githubClientId;
+      // Sessions saved by older versions have no subagents.
+      for (const x of this.data.sessions) x.subagents ||= [];
     } catch { /* first run */ }
   }
 

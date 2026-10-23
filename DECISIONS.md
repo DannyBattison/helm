@@ -110,3 +110,19 @@ Why: user decision.
 ## D-025 · 2026-10-23 · Hands-on code browsing outside sessions
 The repository view gains a Code tab: browse and edit your own checkout or any session worktree with Monaco, with quick open, search across files and a commit box. The Code APIs take a workspace id, either a session id or `repo:<owner/name>` for the checkout. Commit history rows open a diff dialog for each file.
 Why: user asked to see diffs from history and to browse and edit code directly, like a lightweight IDE with a hands-on feel.
+
+## D-026 · 2026-10-23 · Subagent transcripts are read from Claude Code's session file
+Claude Code does not stream a subagent's own messages, only `task_started`, `task_progress` and `task_notification` events. helm uses those for live status, tool counts and tokens, and rebuilds each subagent's transcript with the SDK's `getSubagentMessages`. That file is written lazily, often only once the whole turn is over, so helm re-reads it when the turn ends, when a subagent finishes and every 4 seconds while you are looking at a running subagent. Reads for one subagent run one at a time so an older read cannot overwrite a newer one. Background subagents stay "running" until their task notification arrives.
+Why: found by testing with real sessions. Reading the stream alone gave empty transcripts.
+
+## D-027 · 2026-10-23 · Currency switch rounds limits
+Changing the display currency converts the dollar limits to whole amounts in the new currency ($100 becomes £75, not £74.76). Limits are still stored in USD.
+Why: limits that look like £74.76 are awkward to read and edit.
+
+## D-028 · 2026-10-23 · Code view works on any workspace and refreshes from disk
+A workspace is a session worktree or `repo:<owner/name>`, the repository's own checkout. Open clean files reload from disk when the window regains focus, so edits made in another editor appear. The inline Diff compares against the merge-base with the session's base (HEAD for your checkout), and the working-copy side stays editable. The commit box appears for your own checkout only; sessions commit through the Changes tab.
+Why: user wants to browse and edit code hands-on, alongside other tools such as the VS Code extension.
+
+## D-029 · 2026-10-23 · Cleaning up test sessions
+Testing with real sessions creates worktrees under `~/.helm/worktrees` and project folders in `~/.claude/projects`. These were removed after testing. The same applies to any session you delete in helm: the worktree goes, but Claude Code's own session history under `~/.claude` stays, as it does for any Claude Code session.
+Why: avoid leaving test clutter in the user's Claude history.

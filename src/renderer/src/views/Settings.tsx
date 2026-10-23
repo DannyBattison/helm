@@ -120,7 +120,14 @@ export function Settings({ section }: { section?: string }) {
               <SegmentedControl value={st.billing} onChange={(v: string) => set({ billing: v as any, billingDetected: true })} options={[{ value: 'subscription', label: 'Subscription' }, { value: 'api', label: 'API tokens' }]} />
             </SettingRow>
             <SettingRow title="Currency" desc={`Used wherever an amount is shown. 1 USD = ${rateFor(cur, app.rates).toFixed(rateFor(cur, app.rates) > 20 ? 0 : 2)} ${cur}.`}>
-              <Select value={cur} onChange={(e: any) => set({ currency: e.target.value, currencyDetected: true })} options={CURRENCIES as any} />
+              <Select value={cur} onChange={(e: any) => {
+                // Round limits to whole amounts in the new currency, so $100 becomes £75 rather than £74.76.
+                const next = e.target.value as string;
+                const r = rateFor(next, app.rates);
+                const snap = (usd: number) => Math.max(1, Math.round(usd * r)) / r;
+                set({ currency: next, currencyDetected: true, weeklyLimit: snap(st.weeklyLimit), sessionBudget: snap(st.sessionBudget) });
+                for (const repo of app.repos) void api.setRepoCap(repo.id, snap(repo.cap));
+              }} options={CURRENCIES as any} />
             </SettingRow>
             {st.billing === 'subscription' ? <>
               <SettingRow title="Current plan usage" desc="Reported by Claude Code after each message. A window resets by itself.">

@@ -4,7 +4,9 @@ A desktop app for supervising many Claude Code sessions across many GitHub repos
 
 - Sign in with GitHub, add repositories (clone from your account, from a URL, or register an existing clone), and start sessions.
 - Every session runs in its own git worktree on an `agent/<name>` branch. Your checkout is never touched.
-- One window for what every agent is doing: approve commands, answer questions, watch token and cost budgets, read and lightly edit code (Monaco), review diffs, open pull requests, browse history.
+- One window for what every agent is doing: approve commands, answer questions, watch plan usage or cost budgets, browse and edit code (Monaco) in a session or in your own checkout, review diffs, open pull requests, browse history.
+- Subagents show as a tree under their session, each with its own transcript, and are limited per session and per repository.
+- Works for subscriptions (shows your Claude plan usage, with optional percentage limits) and for API tokens (dollar budgets, in your currency).
 
 Design reference: `design_handoff_helm_desktop/` (not tracked in git). Decisions and deviations are logged in [DECISIONS.md](DECISIONS.md).
 
@@ -19,7 +21,7 @@ npm test           # logic tests
 npm run typecheck
 ```
 
-Requires Node 22+, git on PATH, and a Claude login. helm runs sessions with the Claude Agent SDK, which uses the credentials from your Claude Code login or `ANTHROPIC_API_KEY`. The SDK ships its own Claude Code binary; set a CLI path in Settings to use yours instead.
+Requires Node 22+, git on PATH, and a Claude login. If the terminal reports that `conpty.node` is missing, run `npm rebuild @homebridge/node-pty-prebuilt-multiarch`. helm runs sessions with the Claude Agent SDK, which uses the credentials from your Claude Code login or `ANTHROPIC_API_KEY`. The SDK ships its own Claude Code binary; set a CLI path in Settings to use yours instead.
 
 ## GitHub sign-in
 
@@ -36,6 +38,8 @@ You can also sign in with a personal access token (scopes `repo`, `read:org`, `w
 Worktrees are created at `~/.helm/worktrees/<repo>/<session>`; clones go to `~/code/<owner>/<name>`. Both are configurable.
 
 ## Not built yet
+
+- Listing and resuming Claude Code sessions started outside helm (for example from the VS Code extension). They are stored under `~/.claude/projects` and the SDK can list and read them, but helm does not show them yet.
 
 - Menu-bar or tray dropdown (the taskbar or dock badge shows how many sessions need you).
 - Search across files and commits in the ⌘K palette (it searches sessions, repositories and actions).

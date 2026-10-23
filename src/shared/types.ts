@@ -58,6 +58,8 @@ export interface Subagent {
   tokens: number;
   summary?: string;
   background?: boolean;
+  /** Claude Code's id for the subagent, used to read its transcript. */
+  agentId?: string;
 }
 
 export interface Session {
@@ -360,6 +362,8 @@ export interface HelmApi {
   setSessionModel(sessionId: string, model: ModelAlias): Promise<void>;
   setSessionPermMode(sessionId: string, mode: PermMode): Promise<void>;
   setSessionMaxSubagents(sessionId: string, max: number | null): Promise<void>;
+  /** Re-reads a subagent's transcript from Claude Code's session file. */
+  refreshSubagent(sessionId: string, subId: string): Promise<void>;
   setRepoMaxSubagents(repoId: string, max: number | null): Promise<void>;
   resolveAsk(sessionId: string, askId: string, answer: { decision: 'approve' | 'always' | 'deny'; text?: string } | { answers: Record<string, string> } | { addBudget: number }): Promise<void>;
   getTranscript(sessionId: string): Promise<TranscriptEvent[]>;
@@ -367,6 +371,8 @@ export interface HelmApi {
   /** A workspace id is a session id, or `repo:<owner/name>` for the repository's own checkout. */
   workspaceInfo(ws: string): Promise<WorkspaceInfo>;
   listFiles(ws: string): Promise<string[]>;
+  /** The file as it was at the workspace's base, for diffing. Empty when the file is new. */
+  readBase(ws: string, path: string): Promise<string>;
   searchFiles(ws: string, query: string, matchCase?: boolean): Promise<SearchHit[]>;
   listTree(sessionId: string, dir: string): Promise<TreeEntry[]>;
   readFile(sessionId: string, path: string): Promise<{ text: string; binary: boolean }>;

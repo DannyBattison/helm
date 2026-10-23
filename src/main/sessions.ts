@@ -1,4 +1,4 @@
-import { query, type Query, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import { getSubagentMessages, query, type Query, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { copyFile, mkdir, readFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fmtMoney } from '../shared/money';
@@ -257,6 +257,12 @@ export class SessionManager {
       this.touch();
       return;
     }
+    if (m.type === 'system' && m.subtype === 'task_started' && m.tool_use_id) {
+      const a = s.subagents.find((x) => x.id === m.tool_use_id);
+      if (a) { a.agentId = m.task_id; this.touch(); }
+      return;
+    }
+    if (m.type === 'system' && m.subtype === 'task_progress' && m.tool_use_id) return this.onTaskProgress(s, rt, m);
     if (m.type === 'system' && m.subtype === 'task_notification' && m.tool_use_id) return this.onTaskDone(s, rt, m);
     if (m.type === 'rate_limit_event') return this.onRateLimit(m.rate_limit_info);
     if (m.type === 'assistant') return this.onAssistant(s, rt, m);
@@ -320,9 +326,120 @@ export class SessionManager {
     a.status = status;
     a.endedAt = Date.now();
     rt.admitted.delete(a.id);
+    await this.syncSubagent(s, a);
     await this.patchSubagent(rt, a);
     this.scheduleStats(s, rt);
     this.touch();
+  }
+
+  private subSyncAt = new Map<string, number>();
+
+  private async onTaskProgress(s: Session, rt: Runtime, m: any) {
+    const a = s.subagents.find((x) => x.id === m.tool_use_id);
+    if (!a) return;
+    if (m.usage) { a.tools = m.usage.tool_uses ?? a.tools; a.tokens = m.usage.total_tokens ?? a.tokens; }
+    if (m.last_tool_name && a.status === 'working') s.step = `${a.description}: ${m.last_tool_name}`;
+    this.touch();
+    // Claude Code does not stream a subagent's own messages, so read them from its transcript now and then.
+    const last = this.subSyncAt.get(a.id) ?? 0;
+    if (Date.now() - last > 4000) {
+      this.subSyncAt.set(a.id, Date.now());
+      void this.syncSubagent(s, a);
+    }
+  }
+
+  /** Claude Code writes a subagent's file lazily, often only once the whole turn is over. */
+  async refreshSubagent(id: string, subId: string) {
+    const s = this.get(id);
+    const a = s?.subagents.find((x) => x.id === subId);
+    if (s && a) await this.syncSubagent(s, a);
+  }
+
+  private subSync = new Map<string, Promise<void>>();
+
+  /** Rebuilds a subagent's transcript from Claude Code's saved session file. Runs one at a time per subagent so a slow, older read can't overwrite a newer one. */
+  private syncSubagent(s: Session, a: Subagent): Promise<void> {
+    const prev = this.subSync.get(a.id) ?? Promise.resolve();
+    const next = prev.then(() => this.doSyncSubagent(s, a), () => this.doSyncSubagent(s, a));
+    this.subSync.set(a.id, next);
+    return next;
+  }
+
+  private async doSyncSubagent(s: Session, a: Subagent) {
+    if (!s.claudeSessionId || !a.agentId) return;
+    try {
+      const msgs = await getSubagentMessages(s.claudeSessionId, a.agentId, { dir: s.worktree });
+      const events = this.convertMessages(msgs as any[], s.worktree);
+      const key = `${s.id}~${a.id}`;
+      const t = await this.store.transcript(key);
+      const next: TranscriptEvent[] = [...(t[0]?.k === 'user' ? [t[0]] : []), ...events];
+      for (let i = 0; i < next.length; i++) {
+        if (JSON.stringify(t[i]) !== JSON.stringify(next[i])) { t[i] = next[i]; this.hooks.emitTranscript(key, i, next[i]); }
+      }
+      t.length = next.length;
+      this.store.saveTranscript(key);
+    } catch { /* the session file may not be flushed yet; the next sync will catch up */ }
+  }
+
+  private convertMessages(msgs: any[], wt: string): TranscriptEvent[] {
+    const ev: TranscriptEvent[] = [];
+    const pending = new Map<string, { kind: 'bash' | 'tool'; idx: number; item?: number }>();
+    let group = -1;
+    for (const m of msgs) {
+      const raw = m.message?.content;
+      const content: any[] = Array.isArray(raw) ? raw : typeof raw === 'string' ? [{ type: 'text', text: raw }] : [];
+      if (m.type === 'assistant') {
+        for (const b of content) {
+          if (b.type === 'text' && b.text?.trim()) { ev.push({ k: 'agent', text: b.text.trim() }); continue; }
+          if (b.type !== 'tool_use') continue;
+          const input = b.input || {};
+          if (COMMAND_TOOLS.has(b.name)) {
+            pending.set(b.id, { kind: 'bash', idx: ev.push({ k: 'bash', id: b.id, cmd: String(input.command || ''), out: '', ok: true, meta: '', done: false }) - 1 });
+          } else if (EDIT_TOOLS.has(b.name)) {
+            const file = rel(wt, String(input.file_path || input.notebook_path || ''));
+            const lines: [string, string][] = [];
+            let add = 0, del = 0;
+            const edits = b.name === 'MultiEdit' ? input.edits || [] : b.name === 'Edit' ? [input] : [];
+            if (b.name === 'Write') {
+              const all = String(input.content || '').split('\n');
+              add = all.length;
+              for (const l of all.slice(0, 24)) lines.push(['+', l]);
+            } else for (const e of edits) {
+              const o = String(e.old_string || '').split('\n'), n = String(e.new_string || '').split('\n');
+              if (e.old_string) { del += o.length; for (const l of o.slice(0, 12)) lines.push(['-', l]); }
+              if (e.new_string) { add += n.length; for (const l of n.slice(0, 12)) lines.push(['+', l]); }
+            }
+            ev.push({ k: 'edit', file, add, del, lines: lines.slice(0, 40) });
+            group = -1;
+          } else {
+            const target = trunc(String(input.file_path ?? input.pattern ?? input.path ?? input.url ?? input.query ?? input.description ?? input.prompt ?? ''), 140);
+            const item: [string, string, string] = [b.name, rel(wt, target), ''];
+            const last = ev[ev.length - 1];
+            if (last && last.k === 'tools' && group === ev.length - 1) last.items.push(item);
+            else group = ev.push({ k: 'tools', items: [item] }) - 1;
+            pending.set(b.id, { kind: 'tool', idx: group, item: (ev[group] as any).items.length - 1 });
+          }
+        }
+      } else if (m.type === 'user') {
+        for (const b of content) {
+          if (b.type !== 'tool_result') continue;
+          const p = pending.get(b.tool_use_id);
+          if (!p) continue;
+          const text = typeof b.content === 'string' ? b.content : (b.content || []).map((c: any) => c.text || '').join('\n');
+          if (p.kind === 'bash') {
+            const cur = ev[p.idx] as Extract<TranscriptEvent, { k: 'bash' }>;
+            const lines = text.split('\n').map((l: string) => l.trim()).filter(Boolean);
+            ev[p.idx] = { ...cur, out: b.is_error ? trunc(lines[lines.length - 1] || 'failed', 70) : lines.length ? trunc(lines[lines.length - 1], 70) : '✓', ok: !b.is_error, done: true };
+          } else {
+            const cur = ev[p.idx] as Extract<TranscriptEvent, { k: 'tools' }>;
+            const it = cur.items[p.item!];
+            const n = text.split('\n').filter(Boolean).length;
+            it[2] = b.is_error ? 'failed' : it[0] === 'Read' ? `${text.split('\n').length} lines` : it[0] === 'Grep' || it[0] === 'Glob' ? `${n} ${n === 1 ? 'match' : 'matches'}` : '';
+          }
+        }
+      }
+    }
+    return ev;
   }
 
   private async onTaskDone(s: Session, rt: Runtime, m: any) {
@@ -481,6 +598,7 @@ export class SessionManager {
     }
     rt.toolStart.clear();
     rt.lastTools.clear();
+    for (const a of s.subagents) if (a.agentId) await this.syncSubagent(s, a);
     await this.refreshStats(s);
     if (rt.budgetPaused) {
       rt.interrupted = false;

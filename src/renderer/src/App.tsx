@@ -61,7 +61,7 @@ export function App() {
     body = <Session key={route.id} id={route.id} tab={route.tab || 'conversation'} sub={route.sub} setTab={(t) => go({ screen: 'session', id: route.id, tab: t })} themeKey={theme} />;
   } else if (route.screen === 'repo') {
     crumbs = [{ label: route.id, icon: 'book-bookmark' }];
-    body = <Repo key={route.id} id={route.id} />;
+    body = <Repo key={route.id} id={route.id} themeKey={theme} />;
   } else if (route.screen === 'settings') {
     crumbs = [{ label: 'Settings', icon: 'gear-six' }];
     body = <Settings section={route.section} />;

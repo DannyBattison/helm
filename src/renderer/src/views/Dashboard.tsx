@@ -74,7 +74,7 @@ function SessionRow({ s, now, tpl, sub }: { s: Session; now: number; tpl: string
       <StatusDot status={s.status} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
         <span style={{ font: '500 13px/1.2 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.task}</span>
-        <span style={{ font: '400 11px/1.2 var(--font-mono)', color: 'var(--text-3)', display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}><i className="ph ph-git-branch" style={{ fontSize: 11 }} />{s.branch}{runningSubagents(s) ? <span style={{ color: 'var(--status-working-text)', marginLeft: 6 }}>⑂ {runningSubagents(s)} {runningSubagents(s) === 1 ? 'subagent' : 'subagents'}</span> : null}</span>
+        <span style={{ font: '400 11px/1.2 var(--font-mono)', color: 'var(--text-3)', display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}><i className="ph ph-git-branch" style={{ fontSize: 11 }} />{s.branch}{runningSubagents(s) ? <span style={{ color: 'var(--status-working-text)', marginLeft: 6, display: 'inline-flex', alignItems: 'center', gap: 3 }}><i className="ph ph-tree-structure" style={{ fontSize: 11 }} />{runningSubagents(s)} {runningSubagents(s) === 1 ? 'subagent' : 'subagents'}</span> : null}</span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
         <span style={{ flex: 1, minWidth: 0, font: '400 12px/1.3 var(--font-sans)', color: needs ? 'var(--status-attention-text)' : 'var(--text-2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.step}</span>

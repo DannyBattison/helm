@@ -77,7 +77,7 @@ export function Sidebar() {
                 return (
                   <div key={s.id}>
                     <TreeItem depth={1} status={s.status} label={s.id} expandable={tree.length > 0} expanded={subsOpen}
-                      meta={running ? <span style={{ color: 'var(--status-working-text)' }}>{running}⑂</span> : elapsed(s.startedAt, s.endedAt)}
+                      meta={running ? <span style={{ color: 'var(--status-working-text)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><i className="ph ph-tree-structure" style={{ fontSize: 11 }} />{running}</span> : elapsed(s.startedAt, s.endedAt)}
                       selected={route.screen === 'session' && route.id === s.id && !route.sub}
                       onClick={() => {
                         const here = route.screen === 'session' && route.id === s.id && !route.sub;
@@ -193,8 +193,8 @@ export function TerminalDrawer({ height = 210, onClose, sessionId, themeKey }: {
   return (
     <div style={{ height, flex: 'none', display: 'flex', flexDirection: 'column', borderTop: '1px solid var(--border)', background: 'var(--bg-editor)' }}>
       <div style={{ height: 30, flex: 'none', display: 'flex', alignItems: 'center', gap: 2, padding: '0 6px 0 12px', borderBottom: '1px solid var(--border-subtle)' }}>
-        <span style={tabStyle(tab === 'shell')} onClick={() => setTab('shell')}><i className="ph ph-terminal-window" style={{ fontSize: 13 }} />{sessionId ? 'shell · ' + sessionId : 'shell'}</span>
-        {sessionId ? <span style={tabStyle(tab === 'agent')} onClick={() => setTab('agent')}><i className="ph ph-robot" style={{ fontSize: 13 }} />agent output</span> : null}
+        <span style={tabStyle(tab === 'shell')} onClick={() => setTab('shell')}><i className="ph ph-terminal-window" style={{ fontSize: 13 }} />{sessionId && !sessionId.startsWith('repo:') ? 'shell · ' + sessionId : 'shell'}</span>
+        {sessionId && !sessionId.startsWith('repo:') ? <span style={tabStyle(tab === 'agent')} onClick={() => setTab('agent')}><i className="ph ph-robot" style={{ fontSize: 13 }} />agent output</span> : null}
         <span style={{ flex: 1 }} />
         <IconButton icon="caret-down" label="Minimise" size="sm" onClick={onClose} />
       </div>

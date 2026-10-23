@@ -3,6 +3,7 @@ import type { Session } from '../src/shared/types';
 import { parseDiff, parseGithubUrl, isGenerated } from '../src/main/git';
 import { commandPattern, globMatch, hasShellControl, weekStart } from '../src/main/util';
 import { fmtTokens, laneData, NOW_AT } from '../src/renderer/src/lib';
+import { currencyForRegion, fmtMoney, fromDisplay, toDisplay } from '../src/shared/money';
 
 describe('always-allow patterns', () => {
   it('derives a pattern from a simple command', () => {
@@ -76,5 +77,24 @@ describe('overview helpers', () => {
     const w = new Date(weekStart(new Date(2026, 9, 23, 15).getTime()));
     expect(w.getDay()).toBe(1);
     expect(w.getHours()).toBe(0);
+  });
+});
+
+describe('currency', () => {
+  const rates = { GBP: 0.75, JPY: 150 };
+  it('formats USD amounts in the display currency', () => {
+    expect(fmtMoney(100, 'GBP', rates, { whole: true })).toBe('£75');
+    expect(fmtMoney(3.2, 'GBP', rates)).toBe('£2.40');
+    expect(fmtMoney(2, 'JPY', rates)).toBe('¥300');
+    expect(fmtMoney(5, 'USD')).toBe('$5.00');
+  });
+  it('converts both ways', () => {
+    expect(toDisplay(10, 'GBP', rates)).toBeCloseTo(7.5);
+    expect(fromDisplay(7.5, 'GBP', rates)).toBeCloseTo(10);
+  });
+  it('picks a currency from a region', () => {
+    expect(currencyForRegion('GB')).toBe('GBP');
+    expect(currencyForRegion('de')).toBe('EUR');
+    expect(currencyForRegion('ZZ')).toBeNull();
   });
 });
