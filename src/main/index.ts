@@ -13,7 +13,8 @@ import { SessionManager } from './sessions';
 import { Store } from './store';
 import { Terminals } from './terminal';
 import { expandHome, home, run } from './util';
-import { CURRENCIES, currencyForRegion } from '../shared/money';
+import { CURRENCIES, currencyForRegion, fmtMoney } from '../shared/money';
+import { auditCsv, buildReport, digestMarkdown, sessionsCsv, spendCsv, type ReportInput } from '../shared/reports';
 
 let win: BrowserWindow | null = null;
 let claudeVersion: string | null = null;
@@ -402,6 +403,7 @@ const api: HelmApi = {
     await G.git(s.worktree, 'push', '-u', 'origin', s.branch);
     const url = await GH.createPull(repo.id, { head: s.branch, base: input.base, title: input.title, body: input.body, draft: input.draft });
     s.prUrl = url;
+    s.prAt = Date.now();
     s.removeAfterMerge = input.removeAfterMerge;
     s.deleteBranchAfterMerge = input.deleteBranchAfterMerge;
     store.data.activity.unshift({ id: Math.random().toString(36).slice(2), t: Date.now(), kind: 'ready', who: s.id, what: `opened a pull request`, repo: repo.name, sessionId: s.id });
@@ -501,8 +503,25 @@ const api: HelmApi = {
   async termWrite(id, d) { terms.write(id, d); },
   async termResize(id, c, r) { terms.resize(id, c, r); },
   async termClose(id) { terms.close(id); },
-  async copyText(t) { clipboard.writeText(t); }
+  async copyText(t) { clipboard.writeText(t); },
+
+  async getReport(days) { return buildReport(reportInput(days)); },
+  async reportDigest(days) { return digestMarkdown(reportInput(days), reportMoney); },
+  async exportReport(kind, days) {
+    const input = reportInput(days);
+    const stamp = new Date().toISOString().slice(0, 10);
+    const r = await dialog.showSaveDialog(win!, { defaultPath: join(app.getPath('documents'), `helm-${kind}-${stamp}.${kind === 'digest' ? 'md' : 'csv'}`) });
+    if (r.canceled || !r.filePath) return null;
+    await writeFile(r.filePath, kind === 'spend' ? spendCsv(input) : kind === 'sessions' ? sessionsCsv(input) : kind === 'audit' ? auditCsv(input) : digestMarkdown(input, reportMoney), 'utf8');
+    return r.filePath;
+  }
 };
+
+function reportInput(days: number): ReportInput {
+  const d = store.data;
+  return { sessions: d.sessions, daily: d.daily, audit: d.audit, alwaysAllow: d.settings.alwaysAllow, plan: d.plan, now: Date.now(), days: Math.max(1, Math.min(365, Math.round(days) || 30)) };
+}
+const reportMoney = (v: number) => fmtMoney(v, store.data.settings.currency, store.data.fx.rates);
 
 async function commitFiles(wt: string, files: string[], message: string) {
   await G.git(wt, 'add', '--', ...files);

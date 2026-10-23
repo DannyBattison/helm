@@ -5,7 +5,7 @@ import { Cmd, Hl } from '../Hl';
 import { highlightBlock, langFromPath, langFromTag } from '../highlight';
 import { clock, elapsed, fmtTokens, prettyModel, runningSubagents, STATUS_LABEL, subagentTree, tilde } from '../lib';
 import { go, loadTranscript, setUI, toast, useApp, useMoney, useTranscript } from '../store';
-import { Avatar, Badge, BranchTag, Button, DiffStat, Grip, IconButton, Meter, Select, StatusDot, Tabs, usePaneWidth } from '../ui';
+import { Avatar, Badge, BranchTag, Button, DiffStat, Grip, IconButton, Meter, Select, StatusDot, Tabs, Tooltip, usePaneWidth } from '../ui';
 import { Changes } from './Changes';
 import { TranscriptList } from './TranscriptList';
 import { usePush } from './push';
@@ -33,6 +33,7 @@ function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string
             <span style={{ font: '600 16px/1.2 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={s.task} onDoubleClick={() => setUI({ renaming: s.id })}>{s.customTitle || s.title || s.task}</span>
             <Badge tone={s.status} dot>{STATUS_LABEL[s.status]}</Badge>
             {s.archivedAt ? <Badge>Archived</Badge> : null}
+            {s.stuck ? <Tooltip content={s.stuck}><Badge tone="attention" icon="warning">Looks stuck</Badge></Tooltip> : null}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, font: '400 11.5px/1 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden' }}>
             <BranchTag worktree base={s.base.replace(/^origin\//, '')} name={s.branch} />

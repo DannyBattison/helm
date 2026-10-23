@@ -144,6 +144,7 @@ export function Sidebar() {
         <TreeItem icon="bell-ringing" label="Needs you" selected={route.screen === 'overview' && (route as any).filter === 'attention'} onClick={() => go({ screen: 'overview', filter: 'attention' })}
           trailing={t.attention ? <Badge tone="attention" mono>{t.attention}</Badge> : null} />
         <TreeItem icon="pulse" label="Activity" selected={route.screen === 'activity'} onClick={() => go({ screen: 'activity' })} />
+        <TreeItem icon="chart-line-up" label="Reports" selected={route.screen === 'reports'} onClick={() => go({ screen: 'reports' })} />
         <TreeItem icon="archive" label="Archive" selected={route.screen === 'archive'} onClick={() => go({ screen: 'archive' })} trailing={archivedCount ? <span style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)' }}>{archivedCount}</span> : null} />
         <SectionLabel action={<><IconButton icon="archive" label={showArchived ? 'Hide archived sessions' : 'Show archived sessions'} size="sm" active={showArchived} onClick={toggleArchived} /><IconButton icon="plus" label="Add repository" size="sm" onClick={() => setUI({ adding: true })} /></>}>Repositories</SectionLabel>
         {app.repos.length === 0 ? <div style={{ padding: '4px 10px 6px', font: '400 12px/1.4 var(--font-sans)', color: 'var(--text-3)' }}>No repositories yet. Use + to add one from GitHub.</div> : null}
@@ -165,7 +166,7 @@ export function Sidebar() {
                 return (
                   <div key={s.id} {...target('session', s.id, r.id)} style={line(s.id)}>
                     <div {...dnd('session', s.id, r.id)} onContextMenu={(e) => sessionMenu(e, s)}>
-                    <TreeItem depth={1} status={s.status} label={sessionTitle(s)} expandable={tree.length > 0} expanded={subsOpen} style={s.archivedAt ? { opacity: 0.6 } : undefined} trailing={s.archivedAt ? <i className="ph ph-archive" title="Archived" style={{ fontSize: 12, color: 'var(--text-3)' }} /> : null}
+                    <TreeItem depth={1} status={s.status} label={sessionTitle(s)} expandable={tree.length > 0} expanded={subsOpen} style={s.archivedAt ? { opacity: 0.6 } : undefined} trailing={s.archivedAt ? <i className="ph ph-archive" title="Archived" style={{ fontSize: 12, color: 'var(--text-3)' }} /> : s.stuck ? <i className="ph ph-warning" title={'Looks stuck: ' + s.stuck} style={{ fontSize: 12, color: 'var(--status-attention-text)' }} /> : null}
                       meta={running ? <span style={{ color: 'var(--status-working-text)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><i className="ph ph-tree-structure" style={{ fontSize: 11 }} />{running}</span> : elapsed(s.startedAt, s.endedAt)}
                       selected={route.screen === 'session' && route.id === s.id && !route.sub}
                       onClick={() => {

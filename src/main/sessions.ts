@@ -3,6 +3,8 @@ import { copyFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fmtMoney } from '../shared/money';
+import { auditText } from '../shared/redact';
+import { stuckReason } from '../shared/stuck';
 import type { ActivityEvent, Effort, MessageImage, ModelAlias, NewSessionInput, PendingAsk, PermMode, Session, Status, Subagent, TranscriptEvent } from '../shared/types';
 import * as G from './git';
 import type { Store } from './store';
@@ -66,7 +68,9 @@ interface Runtime {
   baseCost: number;
   interrupted: boolean;
   budgetPaused: boolean;
-  toolStart: Map<string, { t: number; idx: number; kind: string; input: any; tkey: string }>;
+  toolStart: Map<string, { t: number; idx: number; kind: string; input: any; tkey: string; name?: string }>;
+  /** Consecutive failures of the same command, to notice an agent retrying something that cannot work. */
+  fails: Map<string, number>;
   statsTimer?: NodeJS.Timeout;
   /** Index of the open tools group in each transcript, so consecutive reads share one box. */
   lastTools: Map<string, number>;
@@ -215,7 +219,7 @@ export class SessionManager {
     const abort = new AbortController();
     const queue = new InputQueue();
     const settings = this.store.data.settings;
-    const rt: Runtime = { q: null as any, queue, abort, asks: new Map(), turnCost: 0, baseCost: s.cost, interrupted: false, budgetPaused: false, toolStart: new Map(), lastTools: new Map(), subEvent: new Map(), admitted: new Set() };
+    const rt: Runtime = { q: null as any, queue, abort, asks: new Map(), turnCost: 0, baseCost: s.cost, interrupted: false, budgetPaused: false, toolStart: new Map(), fails: new Map(), lastTools: new Map(), subEvent: new Map(), admitted: new Set() };
     const options: any = {
       cwd: s.worktree,
       model: MODEL_ALIAS[s.model],
@@ -310,6 +314,7 @@ export class SessionManager {
       const est = ((u.input_tokens || 0) * pi + (u.cache_creation_input_tokens || 0) * pi * 1.25 + (u.cache_read_input_tokens || 0) * pi * 0.1 + (u.output_tokens || 0) * po) / 1e6;
       rt.turnCost += est;
       this.store.addUsage(s.repoId, est, inp + (u.output_tokens || 0));
+      this.store.addDaily(s.repoId, s.model, { cost: est, input: inp, output: u.output_tokens || 0, cacheRead: u.cache_read_input_tokens || 0 });
       s.cost = rt.baseCost + rt.turnCost;
     }
     for (const b of m.message?.content || []) {
@@ -333,7 +338,7 @@ export class SessionManager {
     s.subagents.push(a);
     const idx = await this.push(tkey, { k: 'subagent', id: a.id, description: a.description, agentType: a.agentType, status: 'working' });
     rt.subEvent.set(a.id, { tkey, idx });
-    rt.toolStart.set(b.id, { t: now, idx, kind: 'subagent', input, tkey });
+    rt.toolStart.set(b.id, { t: now, idx, kind: 'subagent', input, tkey, name: 'Agent' });
     await this.push(`${s.id}~${a.id}`, { k: 'user', t: now, text: String(input.prompt || ''), from: parentSub ? parentSub.description : s.id });
     s.step = 'Subagent: ' + a.description;
     this.activity(s, 'start', `started subagent “${trunc(a.description, 60)}”`);
@@ -482,11 +487,12 @@ export class SessionManager {
     const name: string = b.name;
     if (name === 'AskUserQuestion' || name === 'ExitPlanMode' || name === 'TodoWrite') return;
     if (sub) sub.tools++;
+    this.countTool(s, name);
     if (name === 'Agent' || name === 'Task') return this.startSubagent(s, rt, b, tkey, sub);
     if (COMMAND_TOOLS.has(name)) {
       const cmd = String(input.command || '');
       const idx = await this.push(tkey, { k: 'bash', id: b.id, cmd, out: '', ok: true, meta: '', done: false });
-      rt.toolStart.set(b.id, { t: Date.now(), idx, kind: 'bash', input, tkey });
+      rt.toolStart.set(b.id, { t: Date.now(), idx, kind: 'bash', input, tkey, name });
       s.step = (sub ? `${sub.description}: ` : '') + 'Running ' + trunc(cmd, 80);
       return;
     }
@@ -510,7 +516,7 @@ export class SessionManager {
         }
       }
       const idx = await this.push(tkey, { k: 'edit', file, add, del, lines: lines.slice(0, 40) });
-      rt.toolStart.set(b.id, { t: Date.now(), idx, kind: 'edit', input, tkey });
+      rt.toolStart.set(b.id, { t: Date.now(), idx, kind: 'edit', input, tkey, name });
       s.step = (sub ? `${sub.description}: ` : '') + 'Editing ' + file;
       s.editing = { file, line: 1 };
       return;
@@ -528,7 +534,7 @@ export class SessionManager {
       idx = await this.push(tkey, { k: 'tools', items: [item] });
       rt.lastTools.set(tkey, idx);
     }
-    rt.toolStart.set(b.id, { t: Date.now(), idx: idx * 1000 + ((t[idx] as any).items.length - 1), kind: 'tool', input, tkey });
+    rt.toolStart.set(b.id, { t: Date.now(), idx: idx * 1000 + ((t[idx] as any).items.length - 1), kind: 'tool', input, tkey, name });
     const verb = ({ Read: 'Reading ', Grep: 'Searching ', Glob: 'Listing ', WebFetch: 'Fetching ', WebSearch: 'Searching the web for ' } as any)[name];
     s.step = (sub ? `${sub.description}: ` : '') + (verb ? verb + item[1] : 'Using ' + name);
   }
@@ -543,6 +549,7 @@ export class SessionManager {
       rt.toolStart.delete(b.tool_use_id);
       const text = typeof b.content === 'string' ? b.content : (b.content || []).map((c: any) => c.text || '').join('\n');
       const secs = (Date.now() - start.t) / 1000;
+      if (b.is_error && start.name) this.countTool(s, start.name, true);
       const meta = secs < 1 ? Math.round(secs * 1000) + 'ms' : secs < 60 ? secs.toFixed(1) + 's' : Math.floor(secs / 60) + 'm ' + Math.round(secs % 60) + 's';
       if (start.kind === 'bash') {
         const t = await this.store.transcript(start.tkey);
@@ -550,9 +557,14 @@ export class SessionManager {
         const lines = text.split('\n').map((l: string) => l.trim()).filter(Boolean);
         const out = b.is_error ? trunc(lines[lines.length - 1] || 'failed', 70) : lines.length ? trunc(lines[lines.length - 1], 70) : '✓';
         await this.patch(start.tkey, start.idx, { ...cur, out, ok: !b.is_error, meta, done: true });
+        this.store.addAudit({ t: Date.now(), sessionId: s.id, repoId: s.repoId, kind: 'command', text: auditText(cur.cmd), ok: !b.is_error });
+        this.trackCommand(s, rt, cur.cmd, !b.is_error);
         if (/git\s+commit/.test(cur.cmd)) await this.detectCommit(s, text, start.tkey);
       } else if (start.kind === 'edit') {
         if (!b.is_error) {
+          const file = rel(s.worktree, String(start.input.file_path || start.input.notebook_path || ''));
+          this.store.addAudit({ t: Date.now(), sessionId: s.id, repoId: s.repoId, kind: 'edit', text: auditText(`${start.name} ${file}`) });
+          this.trackEdit(s, file);
           await this.locateEdit(s, start.input);
           this.scheduleStats(s, rt);
         }
@@ -577,11 +589,40 @@ export class SessionManager {
     }
   }
 
+  private countTool(s: Session, name: string, error = false) {
+    const t = ((s.tools ||= {})[name] ||= { n: 0, err: 0 });
+    if (error) t.err++; else t.n++;
+  }
+
+  private trackEdit(s: Session, file: string) {
+    const edits = (s.fileEdits ||= {});
+    if (!(file in edits) && Object.keys(edits).length >= 200) return;
+    edits[file] = (edits[file] || 0) + 1;
+    this.setStuck(s, stuckReason({ file, edits: edits[file] }));
+  }
+
+  private trackCommand(s: Session, rt: Runtime, cmd: string, ok: boolean) {
+    const key = cmd.trim().slice(0, 200);
+    const n = ok ? 0 : (rt.fails.get(key) || 0) + 1;
+    if (ok) rt.fails.delete(key); else rt.fails.set(key, n);
+    if (!ok) this.setStuck(s, stuckReason({ command: key, fails: n }));
+  }
+
+  private setStuck(s: Session, reason: string | undefined) {
+    if (!reason || s.stuck === reason) return;
+    // Say so once; later counts just update the reason shown.
+    if (!s.stuck) this.activity(s, 'attention', 'looks stuck: ' + reason);
+    s.stuck = reason;
+    this.touch();
+  }
+
   private async detectCommit(s: Session, out: string, tkey: string) {
     const m = out.match(/^\[[^\]\s]+(?: \(root-commit\))? ([0-9a-f]{7,40})\] (.+)$/m);
     if (!m) return;
     const now = Date.now();
     s.commits.push({ hash: m[1], at: now });
+    s.stuck = undefined;
+    s.fileEdits = undefined;
     await this.push(tkey, { k: 'commit', hash: m[1], msg: m[2], t: now });
     this.activity(s, 'commit', `committed ${m[1]} “${trunc(m[2], 70)}”`);
     this.touch();
@@ -619,7 +660,7 @@ export class SessionManager {
     if (typeof m.total_cost_usd === 'number') {
       // The SDK total is authoritative: correct the running estimate in either direction.
       const delta = m.total_cost_usd - rt.baseCost - rt.turnCost;
-      if (Math.abs(delta) > 1e-6) this.store.addUsage(s.repoId, delta, 0);
+      if (Math.abs(delta) > 1e-6) { this.store.addUsage(s.repoId, delta, 0); this.store.addDaily(s.repoId, s.model, { cost: delta }); }
       rt.baseCost = Math.max(rt.baseCost, m.total_cost_usd);
       rt.turnCost = 0;
       s.cost = rt.baseCost;
@@ -787,6 +828,10 @@ export class SessionManager {
     });
   }
 
+  private auditAsk(s: Session, ask: PendingAsk, decision: 'approved' | 'always' | 'denied') {
+    this.store.addAudit({ t: Date.now(), sessionId: s.id, repoId: s.repoId, kind: ask.type === 'question' ? 'question' : 'approval', text: auditText(ask.command || ask.head), decision, waitMs: Math.max(0, Date.now() - ask.at) });
+  }
+
   async resolveAsk(sessionId: string, askId: string, answer: any) {
     const s = this.get(sessionId);
     const rt = this.rt.get(sessionId);
@@ -817,6 +862,7 @@ export class SessionManager {
 
     if (w.ask.type === 'question') {
       const answers: Record<string, string> = answer.answers || {};
+      this.auditAsk(s, w.ask, 'approved');
       if (markIdx >= 0) await this.patch(sessionId, markIdx, { ...(t[markIdx] as any), answered: Object.values(answers).join(', ') });
       this.setStatus(s, 'working', 'Continuing');
       w.resolve({ behavior: 'allow', updatedInput: { ...(w.input || {}), answers } });
@@ -824,6 +870,7 @@ export class SessionManager {
     }
 
     const decision = answer.decision as 'approve' | 'always' | 'deny';
+    this.auditAsk(s, w.ask, decision === 'deny' ? 'denied' : decision === 'always' ? 'always' : 'approved');
     if (markIdx >= 0) await this.patch(sessionId, markIdx, { ...(t[markIdx] as any), resolved: decision === 'deny' ? 'denied' : decision === 'always' ? 'always' : 'approved' });
     if (decision === 'always' && w.ask.pattern) {
       const st = this.store.data.settings;
@@ -883,6 +930,7 @@ export class SessionManager {
       message = `helm was restarted while you waited. The user answered your question "${ask.questions?.[0]?.question || ''}": ${Object.values(answers).join(', ')}. Continue.`;
     } else {
       const decision = answer.decision as 'approve' | 'always' | 'deny';
+      this.auditAsk(s, ask, decision === 'deny' ? 'denied' : decision === 'always' ? 'always' : 'approved');
       await mark({ resolved: decision === 'deny' ? 'denied' : decision === 'always' ? 'always' : 'approved' });
       const what = ask.command || ask.head;
       if (decision === 'deny') {
@@ -921,6 +969,7 @@ export class SessionManager {
       if (w?.ask.type === 'approve') return this.resolveAsk(id, w.ask.id, { decision: 'deny', text });
     }
     s.endedAt = undefined;
+    s.stuck = undefined;
     if (!rt) {
       this.setStatus(s, 'working', 'Starting');
       await this.start(s, text, images);

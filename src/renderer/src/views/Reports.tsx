@@ -1,0 +1,300 @@
+import React from 'react';
+import type { Report } from '@shared/types';
+import { fmtDuration } from '@shared/reports';
+import { api } from '../api';
+import { fmtTokens } from '../lib';
+import { go, toast, useApp, useMoney } from '../store';
+import { Badge, Button, Meter, Panel, SegmentedControl, Stat } from '../ui';
+
+const fail = (title: string) => (e: any) => toast({ tone: 'error', title, description: String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '') });
+const head: React.CSSProperties = { font: '500 10.5px/1 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' };
+const mono: React.CSSProperties = { font: '400 12px/1.2 var(--font-mono)' };
+const pct = (x: number) => Math.round(x * 100) + '%';
+const empty = (text: string) => <div style={{ font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-3)', padding: '4px 0' }}>{text}</div>;
+
+/** A row with a name, a bar scaled to the largest value in its list, and a figure. */
+function BarRow({ label, value, max, text, sub, onClick, tone }: { label: React.ReactNode; value: number; max: number; text: React.ReactNode; sub?: React.ReactNode; onClick?: () => void; tone?: string }) {
+  return (
+    <div onClick={onClick} className={onClick ? 'helm-row-hover' : undefined} style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 220px) 1fr auto', gap: 12, alignItems: 'center', padding: '5px 4px', cursor: onClick ? 'pointer' : undefined, borderRadius: 'var(--radius-sm)' }}>
+      <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+        <span style={{ ...mono, color: 'var(--text-1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
+        {sub ? <span style={{ font: '400 11px/1.2 var(--font-sans)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</span> : null}
+      </span>
+      <div style={{ height: 6, borderRadius: 999, background: 'var(--bg-active)', overflow: 'hidden' }}>
+        <div style={{ width: (max ? Math.max(value / max, value > 0 ? 0.01 : 0) * 100 : 0) + '%', height: '100%', borderRadius: 999, background: tone || 'var(--accent)' }} />
+      </div>
+      <span style={{ ...mono, color: 'var(--text-2)', minWidth: 64, textAlign: 'right' }}>{text}</span>
+    </div>
+  );
+}
+
+/** Columns for the last N days; hovering a bar names the day and the amount. */
+function Columns({ data, format, height = 96 }: { data: { key: string; value: number }[]; format: (v: number) => string; height?: number }) {
+  const max = Math.max(...data.map((d) => d.value), 0);
+  const label = (k: string) => new Date(k + 'T12:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: data.length > 45 ? 1 : 3, height }}>
+        {data.map((d) => (
+          <div key={d.key} title={`${label(d.key)}: ${format(d.value)}`} style={{ flex: 1, minWidth: 1, height: Math.max(d.value > 0 ? 3 : 1, max ? (d.value / max) * height : 1), borderRadius: '2px 2px 0 0', background: d.value > 0 ? 'var(--accent)' : 'var(--border)' }} />
+        ))}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, font: '400 10.5px/1 var(--font-mono)', color: 'var(--text-3)' }}>
+        <span>{data[0] ? label(data[0].key) : ''}</span>
+        <span>{data.length ? label(data[data.length - 1].key) : ''}</span>
+      </div>
+    </div>
+  );
+}
+
+const Grid = ({ children, cols = 2 }: { children: React.ReactNode; cols?: number }) => <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gap: 12 }}>{children}</div>;
+
+function Spend({ r, fmt }: { r: Report; fmt: (v: number, whole?: boolean) => string }) {
+  const s = r.spend;
+  const maxRepo = Math.max(...s.byRepo.map((x) => x.cost), 0);
+  const o = r.outcomes;
+  const soon = (w: Report['spend']['weekly']) => (w ? (w.hitsAt ? `At this pace you hit the limit ${new Date(w.hitsAt).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}` : `On course for ${pct(w.projected)} by the reset`) : null);
+  return (
+    <>
+      <Panel>
+        <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap' }}>
+          <Stat label="Spent" value={fmt(s.total.cost)} detail={`${fmt(s.perDay)} a day · about ${fmt(s.perMonth, true)} a month`} />
+          <Stat label="Tokens" value={fmtTokens(s.total.tokens)} detail="all models" />
+          <Stat label="Cache hit" value={pct(s.cacheHit)} detail="of input read from cache" tone={s.cacheHit < 0.5 && s.total.tokens > 0 ? 'attention' : undefined} />
+          <Stat label="Per merged session" value={o.costPerMerged != null ? fmt(o.costPerMerged) : '–'} detail={o.costPer100Lines != null ? `${fmt(o.costPer100Lines)} per 100 changed lines` : 'nothing merged yet'} />
+          <Stat label="Abandoned" value={pct(o.wasteShare)} detail="of spend on sessions never merged" tone={o.wasteShare > 0.25 ? 'attention' : undefined} />
+        </div>
+      </Panel>
+      {s.fiveHour || s.weekly ? (
+        <Panel title="Plan usage pace" icon="gauge">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, font: '400 12.5px/1.4 var(--font-sans)', color: 'var(--text-2)' }}>
+            {s.fiveHour ? <span><b style={{ color: 'var(--text-1)', fontWeight: 600 }}>5-hour window:</b> {soon(s.fiveHour)}.</span> : null}
+            {s.weekly ? <span><b style={{ color: 'var(--text-1)', fontWeight: 600 }}>Weekly:</b> {soon(s.weekly)}.</span> : null}
+          </div>
+        </Panel>
+      ) : null}
+      <Panel title="Spend by day" icon="chart-bar"><Columns data={s.days.map((d) => ({ key: d.day, value: d.cost }))} format={(v) => fmt(v)} /></Panel>
+      <Grid>
+        <Panel title="By repository" icon="book-bookmark">
+          {s.byRepo.length ? s.byRepo.map((x) => <BarRow key={x.id} label={x.id} value={x.cost} max={maxRepo} text={fmt(x.cost)} sub={fmtTokens(x.tokens) + ' tokens'} onClick={() => go({ screen: 'repo', id: x.id })} />) : empty('No usage in this period.')}
+        </Panel>
+        <Panel title="By model and effort" icon="cpu">
+          {s.byModel.map((x) => <BarRow key={x.id} label={x.id} value={x.cost} max={s.byModel[0].cost} text={fmt(x.cost)} sub={fmtTokens(x.tokens) + ' tokens'} />)}
+          {s.byEffort.length ? <div style={{ ...head, margin: '12px 4px 4px' }}>Sessions by effort</div> : null}
+          {s.byEffort.map((x) => <BarRow key={x.id} label={x.id} value={x.cost} max={s.byEffort[0].cost} text={fmt(x.cost)} sub={`${x.sessions} ${x.sessions === 1 ? 'session' : 'sessions'}`} tone="var(--text-2)" />)}
+          {!s.byModel.length ? empty('No usage in this period.') : null}
+        </Panel>
+      </Grid>
+      <Panel title="Most expensive sessions" icon="coins">
+        {s.topSessions.length ? s.topSessions.map((x) => <BarRow key={x.id} label={x.id} value={x.cost} max={s.topSessions[0].cost} text={fmt(x.cost)} sub={`${x.repoId} · ${x.model}`} onClick={() => go({ screen: 'session', id: x.id })} />) : empty('No sessions in this period.')}
+      </Panel>
+      <Panel title="Cost per outcome" icon="target">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12 }}>
+          {(['merged', 'pr', 'open', 'abandoned'] as const).map((k) => (
+            <Stat key={k} label={{ merged: 'Merged', pr: 'In a pull request', open: 'In progress', abandoned: 'Abandoned' }[k]} value={o.counts[k]} detail={fmt(o.cost[k]) + ' spent'} tone={k === 'abandoned' && o.counts[k] ? 'attention' : undefined} />
+          ))}
+        </div>
+      </Panel>
+    </>
+  );
+}
+
+function Throughput({ r }: { r: Report }) {
+  const t = r.throughput;
+  const max = Math.max(...t.weeks.map((w) => Math.max(w.started, w.merged, w.abandoned)), 1);
+  const total = Object.entries(t.statusTime).filter(([k]) => k !== 'idle');
+  const sum = total.reduce((n, [, v]) => n + (v || 0), 0) || 1;
+  const STATUS: Record<string, string> = { working: 'Agents working', attention: 'Waiting on you', ready: 'Ready, not yet reviewed', error: 'Failed' };
+  return (
+    <>
+      <Panel>
+        <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap' }}>
+          <Stat label="Waiting on you" value={fmtDuration(t.waiting.total)} detail={`${pct(t.waiting.share)} of agent time`} tone={t.waiting.share > 0.3 ? 'attention' : undefined} />
+          <Stat label="To first commit" value={fmtDuration(t.leadTime.firstCommit)} detail="median" />
+          <Stat label="To pull request" value={fmtDuration(t.leadTime.pullRequest)} detail="median" />
+          <Stat label="To merge" value={fmtDuration(t.leadTime.merged)} detail="median" />
+        </div>
+      </Panel>
+      <Panel title="Sessions per week" icon="calendar-blank">
+        <div style={{ display: 'flex', gap: 14, marginBottom: 8, font: '400 11.5px/1 var(--font-sans)', color: 'var(--text-3)' }}>
+          <span><i style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: 'var(--text-3)', marginRight: 5 }} />Started</span>
+          <span><i style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: 'var(--status-ready)', marginRight: 5 }} />Merged</span>
+          <span><i style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: 'var(--status-attention)', marginRight: 5 }} />Abandoned</span>
+        </div>
+        {t.weeks.map((w) => (
+          <div key={w.start} style={{ display: 'grid', gridTemplateColumns: '90px 1fr', gap: 12, alignItems: 'center', padding: '3px 4px' }}>
+            <span style={{ ...mono, color: 'var(--text-3)' }}>{new Date(w.start).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {([['started', 'var(--text-3)'], ['merged', 'var(--status-ready)'], ['abandoned', 'var(--status-attention)']] as const).map(([k, c]) => (
+                <div key={k} title={`${w[k]} ${k}`} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ height: 5, width: (w[k] / max) * 100 + '%', minWidth: w[k] ? 3 : 0, borderRadius: 999, background: c }} />
+                  {w[k] ? <span style={{ font: '400 10.5px/1 var(--font-mono)', color: 'var(--text-3)' }}>{w[k]}</span> : null}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </Panel>
+      <Grid>
+        <Panel title="Where the time went" icon="hourglass">
+          {total.length ? total.map(([k, v]) => <BarRow key={k} label={STATUS[k] || k} value={v || 0} max={sum} text={fmtDuration(v || 0)} tone={k === 'attention' ? 'var(--status-attention)' : k === 'error' ? 'var(--status-error)' : undefined} />) : empty('No sessions in this period.')}
+        </Panel>
+        <Panel title="Waited longest for you" icon="bell-ringing">
+          {t.waiting.sessions.length ? t.waiting.sessions.map((x) => <BarRow key={x.id} label={x.id} value={x.ms} max={t.waiting.sessions[0].ms} text={fmtDuration(x.ms)} sub={x.repoId} tone="var(--status-attention)" onClick={() => go({ screen: 'session', id: x.id })} />) : empty('Nothing waited on you.')}
+        </Panel>
+      </Grid>
+    </>
+  );
+}
+
+function Approvals({ r }: { r: Report }) {
+  const a = r.approvals;
+  const app = useApp();
+  const allow = (pattern: string) => api.updateSettings({ alwaysAllow: [...new Set([...app.settings.alwaysAllow, pattern])] }).then(() => toast({ tone: 'ready', title: 'Always allowed', description: pattern })).catch(fail('Could not save'));
+  const max = Math.max(...a.byCommand.map((x) => x.approved + x.always + x.denied), 0);
+  return (
+    <>
+      <Panel>
+        <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap' }}>
+          <Stat label="Asked of you" value={a.total} detail={`${a.commandsRun} commands run in total`} />
+          <Stat label="Approved" value={a.approved + a.always} detail={`${a.always} as always allow`} />
+          <Stat label="Denied" value={a.denied} tone={a.denied ? 'attention' : undefined} />
+          <Stat label="Median wait" value={fmtDuration(a.medianWaitMs)} detail="before you answered" />
+        </div>
+      </Panel>
+      {a.suggestions.length ? (
+        <Panel title="Suggested allow rules" icon="lightbulb" actions={<span style={{ font: '400 11.5px/1 var(--font-sans)', color: 'var(--text-3)', paddingRight: 8 }}>approved often, never denied</span>}>
+          {a.suggestions.map((x) => (
+            <div key={x.pattern} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 4px' }}>
+              <code style={{ ...mono, color: 'var(--text-1)' }}>{x.pattern}</code>
+              <span style={{ flex: 1, font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>approved {x.count} times</span>
+              <Button size="sm" variant="secondary" icon="check" onClick={() => void allow(x.pattern)}>Always allow</Button>
+            </div>
+          ))}
+        </Panel>
+      ) : null}
+      <Panel title="Commands you were asked about" icon="terminal-window">
+        {a.byCommand.length ? a.byCommand.map((x) => (
+          <BarRow key={x.key} label={x.key} value={x.approved + x.always + x.denied} max={max} text={`${x.approved + x.always} ok${x.denied ? ` · ${x.denied} no` : ''}`} tone={x.denied ? 'var(--status-attention)' : undefined} />
+        )) : empty('Nothing asked for approval in this period.')}
+      </Panel>
+    </>
+  );
+}
+
+function Quality({ r }: { r: Report }) {
+  const q = r.quality;
+  const maxTool = Math.max(...q.tools.map((x) => x.n), 0);
+  return (
+    <>
+      <Panel title="Looks stuck" icon="warning">
+        {q.stuck.length ? q.stuck.map((x) => (
+          <div key={x.id} className="helm-row-hover" onClick={() => go({ screen: 'session', id: x.id })} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '6px 4px', cursor: 'pointer', borderRadius: 'var(--radius-sm)' }}>
+            <Badge tone="attention" icon="warning">Stuck</Badge>
+            <span style={{ ...mono }}>{x.id}</span>
+            <span style={{ flex: 1, font: '400 12.5px/1.3 var(--font-sans)', color: 'var(--text-2)' }}>{x.reason}</span>
+            <span style={{ ...mono, color: 'var(--text-3)' }}>{x.repoId}</span>
+          </div>
+        )) : empty('No session looks stuck. A session is flagged when it edits one file 10 times, or fails the same command 3 times in a row, without committing.')}
+      </Panel>
+      <Grid>
+        <Panel title="Context window" icon="database">
+          {q.context.length ? q.context.map((x) => (
+            <div key={x.id} onClick={() => go({ screen: 'session', id: x.id })} style={{ padding: '4px', cursor: 'pointer' }}>
+              <Meter value={x.ctx} max={200_000} warnAt={0.7} label={x.id} detail={`${fmtTokens(x.ctx)} · ${pct(x.pct)}`} />
+            </div>
+          )) : empty('No sessions have used context yet.')}
+        </Panel>
+        <Panel title="Tool calls" icon="wrench">
+          {q.tools.length ? q.tools.slice(0, 12).map((x) => <BarRow key={x.name} label={x.name} value={x.n} max={maxTool} text={`${x.n}${x.err ? ` · ${x.err} failed` : ''}`} tone={x.err / Math.max(1, x.n) > 0.2 ? 'var(--status-attention)' : undefined} />) : empty('Tool use is counted from now on.')}
+        </Panel>
+      </Grid>
+      <Grid>
+        <Panel title="Files agents touch most" icon="file-code">
+          {q.hotFiles.length ? q.hotFiles.map((f) => (
+            <BarRow key={f.repoId + f.path} label={f.path} value={f.sessions} max={q.hotFiles[0].sessions} text={`${f.sessions} ${f.sessions === 1 ? 'session' : 'sessions'}`} sub={`${f.repoId} · +${f.add} −${f.del}`} />
+          )) : empty('No changes recorded.')}
+        </Panel>
+        <Panel title="Edited again and again" icon="arrows-clockwise">
+          {q.churn.length ? q.churn.map((c) => <BarRow key={c.id + c.file} label={c.file} value={c.edits} max={q.churn[0].edits} text={c.edits + ' edits'} sub={c.id} tone="var(--status-attention)" onClick={() => go({ screen: 'session', id: c.id })} />) : empty('No file was edited five times or more in one go.')}
+        </Panel>
+      </Grid>
+    </>
+  );
+}
+
+function Digest({ days }: { days: number }) {
+  const [text, setText] = React.useState<string | null>(null);
+  React.useEffect(() => { setText(null); void api.reportDigest(days).then(setText); }, [days]);
+  return (
+    <Panel title="Digest" icon="newspaper" actions={<>
+      <Button size="sm" variant="ghost" icon="copy" disabled={!text} onClick={() => { void api.copyText(text!); toast({ tone: 'neutral', title: 'Copied the digest' }); }}>Copy</Button>
+      <Button size="sm" variant="ghost" icon="download-simple" onClick={() => void api.exportReport('digest', days).catch(fail('Could not save'))}>Save…</Button>
+    </>}>
+      <pre style={{ margin: 0, whiteSpace: 'pre-wrap', font: '400 12.5px/1.6 var(--font-mono)', color: 'var(--text-2)' }}>{text ?? 'Writing…'}</pre>
+    </Panel>
+  );
+}
+
+function Audit({ days }: { days: number }) {
+  return (
+    <Panel title="Audit log" icon="list-checks">
+      <div style={{ font: '400 12.5px/1.6 var(--font-sans)', color: 'var(--text-2)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <span>Every command an agent ran, every file it edited, and every approval or question you answered, with the time and how long the agent waited. Tokens, keys, passwords and credentials in URLs are masked before anything is stored. helm keeps the last 5,000 entries.</span>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Button size="sm" variant="secondary" icon="download-simple" onClick={() => void api.exportReport('audit', days).catch(fail('Could not save'))}>Export audit log (CSV)…</Button>
+          <Button size="sm" variant="secondary" icon="download-simple" onClick={() => void api.exportReport('spend', days).catch(fail('Could not save'))}>Export spend (CSV)…</Button>
+          <Button size="sm" variant="secondary" icon="download-simple" onClick={() => void api.exportReport('sessions', days).catch(fail('Could not save'))}>Export sessions (CSV)…</Button>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+const TABS = [
+  { value: 'spend', label: 'Spend', icon: 'coins' },
+  { value: 'throughput', label: 'Throughput', icon: 'gauge' },
+  { value: 'approvals', label: 'Approvals', icon: 'shield-check' },
+  { value: 'quality', label: 'Quality', icon: 'heartbeat' },
+  { value: 'digest', label: 'Digest', icon: 'newspaper' },
+  { value: 'audit', label: 'Audit', icon: 'list-checks' }
+];
+
+export function Reports({ tab = 'spend' }: { tab?: string }) {
+  const app = useApp();
+  const { fmt } = useMoney();
+  const [days, setDays] = React.useState(() => { try { return +(localStorage.getItem('helm-report-days') || 30) || 30; } catch { return 30; } });
+  const [report, setReport] = React.useState<Report | null>(null);
+  const [err, setErr] = React.useState('');
+  // Recompute when sessions change, but no more often than every few seconds.
+  const stamp = app.sessions.reduce((n, s) => n + s.commits.length + (s.mergedAt ? 1 : 0) + (s.archivedAt ? 1 : 0), 0) + ':' + Math.round(app.sessions.reduce((n, s) => n + s.cost, 0) * 100);
+  React.useEffect(() => {
+    let live = true;
+    const t = setTimeout(() => api.getReport(days).then((r) => live && (setReport(r), setErr(''))).catch((e) => live && setErr(String(e?.message || e))), 150);
+    return () => { live = false; clearTimeout(t); };
+  }, [days, stamp]);
+  const set = (d: number) => { setDays(d); try { localStorage.setItem('helm-report-days', String(d)); } catch { /* storage unavailable */ } };
+
+  return (
+    <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+      <div style={{ padding: '20px 24px 32px', display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 1200 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12 }}>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <h1 style={{ margin: 0, font: '600 20px/1.2 var(--font-sans)', letterSpacing: 'var(--tracking-tight)' }}>Reports</h1>
+            <span style={{ font: '400 12px/1.4 var(--font-sans)', color: 'var(--text-3)' }}>What your agents cost, how long things take, and where they need you. Spend history starts when this version was first run.</span>
+          </div>
+          <SegmentedControl value={String(days)} onChange={(v: string) => set(+v)} options={[{ value: '7', label: '7 days' }, { value: '30', label: '30 days' }, { value: '90', label: '90 days' }]} />
+        </div>
+        <SegmentedControl value={tab} onChange={(v: string) => go({ screen: 'reports', tab: v })} options={TABS} style={{ alignSelf: 'flex-start' }} />
+        {err ? <div style={{ color: 'var(--status-error-text)', font: '400 12.5px/1.4 var(--font-sans)' }}>Could not build the report: {err}</div> : null}
+        {!report && !err ? <div style={{ ...head }}>Working it out…</div> : null}
+        {report && tab === 'spend' ? <Spend r={report} fmt={fmt} /> : null}
+        {report && tab === 'throughput' ? <Throughput r={report} /> : null}
+        {report && tab === 'approvals' ? <Approvals r={report} /> : null}
+        {report && tab === 'quality' ? <Quality r={report} /> : null}
+        {tab === 'digest' ? <Digest days={days} /> : null}
+        {tab === 'audit' ? <Audit days={days} /> : null}
+      </div>
+    </div>
+  );
+}

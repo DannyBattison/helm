@@ -7,6 +7,7 @@ export type Route =
   | { screen: 'overview'; filter?: string }
   | { screen: 'activity' }
   | { screen: 'archive' }
+  | { screen: 'reports'; tab?: string }
   | { screen: 'repo'; id: string; tab?: string }
   | { screen: 'external'; repoId: string; id: string }
   | { screen: 'session'; id: string; tab?: string; sub?: string; file?: string; line?: number }

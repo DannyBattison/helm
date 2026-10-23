@@ -1,7 +1,7 @@
 import { app } from 'electron';
 import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { ActivityEvent, Lifetime, PlanUsage, Repo, Session, Settings, TranscriptEvent, User } from '../shared/types';
+import type { ActivityEvent, AuditEntry, DailyUsage, Lifetime, ModelAlias, PlanUsage, Repo, Session, Settings, TranscriptEvent, User } from '../shared/types';
 import { dayStart, home, weekStart } from './util';
 
 /** helm's registered GitHub OAuth app. Client IDs are public; the device flow uses no secret. */
@@ -66,10 +66,14 @@ interface Persisted {
   /** Overrides for sessions started outside helm, by Claude session id. */
   extArchive: Record<string, 'archived' | 'restored'>;
   fx: { rates: Record<string, number>; at: number };
+  /** What sessions did and what the user decided, newest last, capped. */
+  audit: AuditEntry[];
+  /** Usage per day, repository and model, kept for good. */
+  daily: DailyUsage[];
 }
 
 export class Store {
-  data: Persisted = { user: null, repos: [], sessions: [], activity: [], settings: defaultSettings(), usage: [], plan: { at: 0 }, totals: {}, extArchive: {}, fx: { rates: {}, at: 0 } };
+  data: Persisted = { user: null, repos: [], sessions: [], activity: [], settings: defaultSettings(), usage: [], plan: { at: 0 }, totals: {}, extArchive: {}, fx: { rates: {}, at: 0 }, audit: [], daily: [] };
   private transcripts = new Map<string, TranscriptEvent[]>();
   private dir = '';
   private timer: NodeJS.Timeout | null = null;
@@ -85,6 +89,8 @@ export class Store {
       // Sessions saved by older versions have no subagents.
       for (const x of this.data.sessions) { x.subagents ||= []; x.lastAccess ||= x.endedAt ?? x.startedAt; }
       this.data.extArchive ||= {};
+      this.data.audit ||= [];
+      this.data.daily ||= [];
       // The copy list used to be one comma-separated line. It is now gitignore patterns, one per line.
       if (!/[\r\n]/.test(this.data.settings.copyFiles) && this.data.settings.copyFiles.includes(',')) this.data.settings.copyFiles = this.data.settings.copyFiles.split(',').map((x) => x.trim()).filter(Boolean).join('\n');
       // Lifetime totals started later than sessions did: seed them from the sessions that exist, once.
@@ -156,6 +162,26 @@ export class Store {
   addLifetimeTokens(repoId: string, input: number, output: number, cacheRead: number) {
     const t = this.life(repoId);
     t.input += input; t.output += output; t.cacheRead += cacheRead;
+    this.save();
+  }
+
+  /** Adds to the per-day ledger the reports read. */
+  addDaily(repoId: string, model: ModelAlias, add: { cost?: number; input?: number; output?: number; cacheRead?: number }) {
+    const d = new Date();
+    const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const list = this.data.daily;
+    let row = list[list.length - 1]?.day === day ? list.slice(-60).reverse().find((x) => x.day === day && x.repoId === repoId && x.model === model) : undefined;
+    if (!row) {
+      row = { day, repoId, model, cost: 0, input: 0, output: 0, cacheRead: 0 };
+      list.push(row);
+    }
+    row.cost += add.cost ?? 0; row.input += add.input ?? 0; row.output += add.output ?? 0; row.cacheRead += add.cacheRead ?? 0;
+    this.save();
+  }
+
+  addAudit(e: AuditEntry) {
+    this.data.audit.push(e);
+    if (this.data.audit.length > 6000) this.data.audit.splice(0, this.data.audit.length - 5000);
     this.save();
   }
 

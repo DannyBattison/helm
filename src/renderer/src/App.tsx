@@ -7,6 +7,7 @@ import { Button, Toast } from './ui';
 import { Activity, Dashboard } from './views/Dashboard';
 import { AddRepo, DeleteSession, MergePr, NewSession, Palette, RemoveRepo, RenameSession, SignIn } from './views/Dialogs';
 import { Archive } from './views/Archive';
+import { Reports } from './views/Reports';
 import { ExternalSessionView, Repo } from './views/Repo';
 import { Session } from './views/Session';
 import { Settings } from './views/Settings';
@@ -85,6 +86,9 @@ export function App() {
   } else if (route.screen === 'archive') {
     crumbs = [{ label: 'Archive', icon: 'archive' }];
     body = <Archive />;
+  } else if (route.screen === 'reports') {
+    crumbs = [{ label: 'Reports', icon: 'chart-line-up' }];
+    body = <Reports tab={route.tab} />;
   } else if (route.screen === 'activity') {
     crumbs = [{ label: 'Activity', icon: 'pulse' }];
     body = <Activity />;

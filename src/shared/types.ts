@@ -1,5 +1,8 @@
 /** Types shared by the main process, preload and renderer. */
 
+import type { Report } from './reports';
+export type { Report };
+
 export type Status = 'working' | 'attention' | 'ready' | 'idle' | 'error';
 /** ask: approve commands; edits: edits go through, commands ask; plan: plan only; all: nothing asks. */
 export type PermMode = 'ask' | 'edits' | 'plan' | 'all';
@@ -120,6 +123,59 @@ export interface Session {
   maxSubagents?: number;
   /** Requests the user approved while helm was closed. The agent re-issues them, and each is allowed once without asking again. */
   preApproved?: string[];
+  /** Tool calls by tool name: how many were made and how many failed. Subagents' calls count too. */
+  tools?: Record<string, { n: number; err: number }>;
+  /** How many times each file was edited, to spot an agent going round in circles. Capped at 200 files. */
+  fileEdits?: Record<string, number>;
+  /** Why the session looks stuck (the same file edited again and again, the same command failing), until it makes progress. */
+  stuck?: string;
+  /** When its pull request was opened. */
+  prAt?: number;
+  /** The session this one was forked or fanned out from, and the group of sessions started from one prompt. */
+  parentId?: string;
+  group?: string;
+  /** Where the work came from, such as a GitHub issue or pull request comment. */
+  source?: { kind: 'issue' | 'pr'; number: number; url: string; title: string };
+  /** Last checkpoint number taken. Checkpoints are git refs named refs/helm/<session>/<n>. */
+  checkpoints?: number;
+  /** The result of the last self-review. */
+  review?: SelfReview;
+}
+
+export interface SelfReview {
+  at: number;
+  /** running while the reviewer works. */
+  state: 'running' | 'done' | 'failed';
+  /** The branch tip the review was of, so a later commit makes it stale. */
+  head: string;
+  summary: string;
+  findings: { severity: 'blocker' | 'warning' | 'note'; file?: string; line?: number; text: string }[];
+}
+
+/** One thing that happened in a session, kept for the audit report. Text is cut short and secrets are masked. */
+export interface AuditEntry {
+  t: number;
+  sessionId: string;
+  repoId: string;
+  kind: 'command' | 'edit' | 'approval' | 'question';
+  text: string;
+  /** Commands: whether it succeeded. */
+  ok?: boolean;
+  /** Approvals: what the user decided, and how long the agent waited. */
+  decision?: 'approved' | 'always' | 'denied';
+  waitMs?: number;
+}
+
+/** Usage for one local day, one repository and one model. Kept for good, so reports reach further back than the session list. */
+export interface DailyUsage {
+  /** YYYY-MM-DD, local time. */
+  day: string;
+  repoId: string;
+  model: ModelAlias;
+  cost: number;
+  input: number;
+  output: number;
+  cacheRead: number;
 }
 
 export type TranscriptEvent =
@@ -633,6 +689,13 @@ export interface HelmApi {
   termClose(id: string): Promise<void>;
 
   copyText(text: string): Promise<void>;
+
+  /** Every report for the last `days` days, computed from sessions, the usage ledger and the audit log. */
+  getReport(days: number): Promise<Report>;
+  /** The period's summary as Markdown. */
+  reportDigest(days: number): Promise<string>;
+  /** Saves a report as a file the user picks (CSV, or Markdown for the digest). Resolves to the path, or null if cancelled. */
+  exportReport(kind: 'spend' | 'sessions' | 'audit' | 'digest', days: number): Promise<string | null>;
 }
 
 /** Push events from main to renderer. */
