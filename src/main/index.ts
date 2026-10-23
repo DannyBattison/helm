@@ -7,6 +7,7 @@ import { join, relative, resolve, isAbsolute } from 'node:path';
 import type { AppState, ExternalTranscript, HelmApi, HelmEvents, Settings, TranscriptEvent } from '../shared/types';
 import * as G from './git';
 import * as GH from './github';
+import { deleteMemory, projectMemory, readMemory, writeMemory } from './memory';
 import { RepoService } from './repos';
 import { SessionManager } from './sessions';
 import { Store } from './store';
@@ -398,6 +399,10 @@ const api: HelmApi = {
     else openExternalEditor(path ? safePath(s, path) : s.worktree, kind);
   },
   async openExternal(url) { if (/^https:\/\//.test(url)) await shell.openExternal(url); },
+  projectMemory: (id) => projectMemory(repos.must(id).localPath),
+  readMemory: (id, path) => readMemory(repos.must(id).localPath, path),
+  writeMemory: (id, path, text) => writeMemory(repos.must(id).localPath, path, text),
+  deleteMemory: (id, path) => deleteMemory(repos.must(id).localPath, path),
   async openFolder(path) { const err = await shell.openPath(path); if (err) throw new Error(err); },
   async openRepoInEditor(id) {
     const r = repos.must(id);

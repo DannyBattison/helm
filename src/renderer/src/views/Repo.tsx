@@ -8,6 +8,7 @@ import { CodeView } from './CodeView';
 import { langFromPath } from '../highlight';
 import { DiffLine, SplitRows } from './Changes';
 import { TranscriptItem } from './Session';
+import { RepoMemory } from './Memory';
 import { TranscriptList } from './TranscriptList';
 
 const ROW = 36;
@@ -471,6 +472,7 @@ export function Repo({ id, themeKey, tab: firstTab }: { id: string; themeKey: 'd
           { value: 'history', label: 'History', icon: 'git-commit' },
           { value: 'code', label: 'Code', icon: 'code' },
           { value: 'external', label: 'Claude sessions', icon: 'chats-circle', count: extCount },
+          { value: 'memory', label: 'Memory', icon: 'brain' },
           { value: 'worktrees', label: 'Branches & worktrees', icon: 'tree-structure', count: wts?.length },
           { value: 'prs', label: 'Pull requests', icon: 'git-pull-request', count: prs?.filter((p) => p.state === 'open').length }]} />
       </div>
@@ -492,6 +494,7 @@ export function Repo({ id, themeKey, tab: firstTab }: { id: string; themeKey: 'd
           {commit ? <CommitDetail repo={repo} c={commit} files={files} onOpen={(path) => setDiff({ path })} /> : null}
         </div>
       ) : tab === 'code' ? <RepoCode repo={repo} themeKey={themeKey} />
+        : tab === 'memory' ? <RepoMemory repo={repo} />
         : tab === 'external' ? <ExternalSessions repo={repo} onCount={setExtCount} />
         : tab === 'worktrees' ? <div style={{ flex: 1, overflow: 'auto' }}><Worktrees repo={repo} list={wts} reload={loadWts} /></div>
         : <PullRequests prs={prs} err={prErr} />}

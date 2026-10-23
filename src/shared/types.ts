@@ -321,6 +321,28 @@ export interface SessionDeleteInfo {
 /** What to call a session: your name for it, else Claude's, else its id. */
 export const sessionTitle = (s: { id: string; title?: string; customTitle?: string }) => s.customTitle || s.title || s.id;
 
+export interface MemoryEntry {
+  kind: 'memory' | 'instructions';
+  path: string;
+  /** File name, or for instructions where it lives. */
+  file: string;
+  name: string;
+  description: string;
+  /** user, feedback, project or reference. */
+  type: string;
+  modified: number;
+  size: number;
+  /** MEMORY.md, the list Claude reads at the start of every session. */
+  index: boolean;
+}
+
+export interface ProjectMemory {
+  /** The memory folder, when Claude Code has made one for this repository. */
+  dir: string | null;
+  memories: MemoryEntry[];
+  instructions: MemoryEntry[];
+}
+
 export interface ExternalTranscript {
   ready: boolean;
   /** Events in the whole conversation. */
@@ -504,6 +526,12 @@ export interface HelmApi {
   requestChanges(sessionId: string, comments: ReviewComment[]): Promise<void>;
   openInEditor(sessionId: string, path?: string): Promise<void>;
   openExternal(url: string): Promise<void>;
+  /** What Claude Code has remembered about this repository, plus the instruction files (CLAUDE.md) that apply to it. */
+  projectMemory(repoId: string): Promise<ProjectMemory>;
+  readMemory(repoId: string, path: string): Promise<string>;
+  writeMemory(repoId: string, path: string, text: string): Promise<void>;
+  /** Deletes a memory file and its line in the index. */
+  deleteMemory(repoId: string, path: string): Promise<void>;
   /** Opens a folder in the system file manager. */
   openFolder(path: string): Promise<void>;
   /** Opens the repository in the editor chosen in Settings. With helm as the editor it opens the Code tab instead. */
