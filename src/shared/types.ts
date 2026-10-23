@@ -2,10 +2,11 @@
 
 import type { Conflict } from './forecast';
 import type { Issue } from './issues';
+import type { Workflow, WorkflowRun } from './workflows';
 import type { SearchResults } from './search';
 import type { HealthIssue, MemoryUsage } from './memoryhealth';
 import type { Report } from './reports';
-export type { Report, Conflict, Issue, SearchResults, HealthIssue, MemoryUsage };
+export type { Workflow, WorkflowRun, Report, Conflict, Issue, SearchResults, HealthIssue, MemoryUsage };
 
 export type Status = 'working' | 'attention' | 'ready' | 'idle' | 'error';
 /** ask: approve commands; edits: edits go through, commands ask; plan: plan only; all: nothing asks. */
@@ -180,7 +181,7 @@ export interface AuditEntry {
   t: number;
   sessionId: string;
   repoId: string;
-  kind: 'command' | 'edit' | 'approval' | 'question';
+  kind: 'command' | 'edit' | 'approval' | 'question' | 'dispatch';
   text: string;
   /** Commands: whether it succeeded. */
   ok?: boolean;
@@ -797,6 +798,11 @@ export interface HelmApi {
   openLogFolder(): Promise<void>;
   /** The window reports an error here so it ends up in the log. */
   logRenderer(message: string): Promise<void>;
+  /** The repository's GitHub Actions workflows on a branch, and which of them can be started by hand with what inputs. */
+  repoWorkflows(repoId: string, ref: string): Promise<Workflow[]>;
+  /** Starts a workflow that has `workflow_dispatch` on a branch. Inputs are checked against the workflow's own declaration first. */
+  runWorkflow(repoId: string, workflowId: number, ref: string, inputs: Record<string, string>): Promise<void>;
+  workflowRuns(repoId: string, workflowId: number): Promise<WorkflowRun[]>;
   startQueued(sessionId: string): Promise<void>;
   /** Takes a session out of the queue without starting it. */
   cancelQueued(sessionId: string): Promise<void>;

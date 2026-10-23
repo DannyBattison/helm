@@ -192,3 +192,55 @@ describe('tray menu', () => {
     expect(entries.some((e) => e.sessionId === 'queued' || e.sessionId === 'stuck')).toBe(false);
   });
 });
+
+import { parseDispatch, prepareInputs, runState } from '../src/shared/workflows';
+
+describe('manual workflows', () => {
+  it('finds workflow_dispatch in every spelling of `on`', () => {
+    expect(parseDispatch('on: workflow_dispatch\njobs: {}').dispatchable).toBe(true);
+    expect(parseDispatch('on: [push, workflow_dispatch]\njobs: {}').dispatchable).toBe(true);
+    expect(parseDispatch('on:\n  push:\n    branches: [main]\n  workflow_dispatch:\njobs: {}').dispatchable).toBe(true);
+    expect(parseDispatch('on: push\njobs: {}').dispatchable).toBe(false);
+    expect(parseDispatch('on:\n  pull_request:\njobs: {}').dispatchable).toBe(false);
+    expect(parseDispatch(': : not yaml [').dispatchable).toBe(false);
+    expect(parseDispatch('').dispatchable).toBe(false);
+  });
+  const yml = `name: Deploy
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Where to deploy
+        required: true
+        type: choice
+        options: [staging, production]
+        default: staging
+      dry_run:
+        type: boolean
+        default: true
+      replicas:
+        type: number
+      note:
+        description: Free text
+`;
+  it('reads inputs with their types, defaults and options', () => {
+    const { inputs } = parseDispatch(yml);
+    expect(inputs.map((i) => [i.name, i.type, i.required, i.default])).toEqual([['environment', 'choice', true, 'staging'], ['dry_run', 'boolean', false, 'true'], ['replicas', 'number', false, ''], ['note', 'string', false, '']]);
+    expect(inputs[0].options).toEqual(['staging', 'production']);
+    expect(inputs[3].description).toBe('Free text');
+  });
+  it('sends strings, uses defaults, leaves empty optional inputs out and says what is wrong', () => {
+    const { inputs } = parseDispatch(yml);
+    expect(prepareInputs(inputs, {})).toEqual({ inputs: { environment: 'staging', dry_run: 'true' }, errors: {} });
+    expect(prepareInputs(inputs, { environment: 'production', dry_run: 'false', replicas: '3', note: ' hi ' }).inputs).toEqual({ environment: 'production', dry_run: 'false', replicas: '3', note: 'hi' });
+    expect(prepareInputs(inputs, { environment: 'moon', replicas: 'many' }).errors).toEqual({ environment: 'Pick one of the options', replicas: 'Must be a number' });
+    expect(prepareInputs(inputs, { environment: '', }).inputs.environment).toBe('staging');
+    expect(prepareInputs([{ ...inputs[0], default: '' }], {}).errors).toEqual({ environment: 'Required' });
+  });
+  it('names run states', () => {
+    expect(runState({ status: 'in_progress', conclusion: null }).label).toBe('Running');
+    expect(runState({ status: 'completed', conclusion: 'success' }).tone).toBe('ready');
+    expect(runState({ status: 'completed', conclusion: 'failure' }).tone).toBe('error');
+    expect(runState({ status: 'waiting', conclusion: null }).tone).toBe('attention');
+  });
+});

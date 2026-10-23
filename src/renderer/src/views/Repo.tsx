@@ -9,6 +9,7 @@ import { langFromPath } from '../highlight';
 import { DiffLine, SplitRows } from './Changes';
 import { TranscriptItem } from './Session';
 import { Issues } from './Issues';
+import { Actions } from './Actions';
 import { RepoMemory } from './Memory';
 import { usePush } from './push';
 import { TranscriptList } from './TranscriptList';
@@ -484,6 +485,7 @@ export function Repo({ id, themeKey, tab: firstTab }: { id: string; themeKey: 'd
           { value: 'memory', label: 'Memory', icon: 'brain' },
           { value: 'worktrees', label: 'Branches & worktrees', icon: 'tree-structure', count: wts?.length },
           { value: 'issues', label: 'Issues', icon: 'circle-dashed' },
+          { value: 'actions', label: 'Actions', icon: 'lightning' },
           { value: 'prs', label: 'Pull requests', icon: 'git-pull-request', count: prs?.filter((p) => p.state === 'open').length }]} />
       </div>
       {tab === 'history' ? (
@@ -506,6 +508,7 @@ export function Repo({ id, themeKey, tab: firstTab }: { id: string; themeKey: 'd
       ) : tab === 'code' ? <RepoCode repo={repo} themeKey={themeKey} />
         : tab === 'memory' ? <RepoMemory repo={repo} />
         : tab === 'issues' ? <Issues repoId={repo.id} />
+        : tab === 'actions' ? <Actions repoId={repo.id} />
         : tab === 'external' ? <ExternalSessions repo={repo} onCount={setExtCount} />
         : tab === 'worktrees' ? <div style={{ flex: 1, overflow: 'auto' }}><Worktrees repo={repo} list={wts} reload={loadWts} /></div>
         : <PullRequests prs={prs} err={prErr} repoId={repo.id} />}

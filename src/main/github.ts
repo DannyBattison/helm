@@ -2,6 +2,7 @@ import { app, safeStorage } from 'electron';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Comment, Issue } from '../shared/issues';
+import { parseDispatch, type Workflow, type WorkflowRun } from '../shared/workflows';
 import type { DeviceCode, GhRepo, PullRequest, User } from '../shared/types';
 
 const SCOPES = 'repo read:org workflow';
@@ -184,4 +185,32 @@ export async function pullReviewComments(slug: string, number: number): Promise<
   const out: Comment[] = inline.map((c) => ({ author: c.user?.login || '', body: c.body || '', path: c.path, line: c.line ?? c.original_line ?? undefined, at: c.created_at }));
   for (const r of reviews) if ((r.body || '').trim() && r.state !== 'PENDING') out.push({ author: r.user?.login || '', body: r.body, at: r.submitted_at || '' });
   return out.sort((a, b) => a.at.localeCompare(b.at));
+}
+
+// ---------------------------------------------------------------- actions
+async function ghText(path: string): Promise<string> {
+  const res = await fetch('https://api.github.com' + path, { headers: { Accept: 'application/vnd.github.raw+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'helm', ...(token ? { Authorization: 'Bearer ' + token } : {}) } });
+  if (!res.ok) throw new Error(`GitHub: ${res.statusText} (${res.status})`);
+  return res.text();
+}
+
+/** The repository's active workflows, each marked with whether it can be started by hand and what inputs it takes (read from the file on `ref`). */
+export async function listWorkflows(slug: string, ref: string): Promise<Workflow[]> {
+  const r = await gh(`/repos/${slug}/actions/workflows?per_page=100`);
+  const active: any[] = (r.workflows || []).filter((w: any) => w.state === 'active');
+  return Promise.all(active.map(async (w) => {
+    let d: { dispatchable: boolean; inputs: Workflow['inputs'] } = { dispatchable: false, inputs: [] };
+    try { d = parseDispatch(await ghText(`/repos/${slug}/contents/${w.path.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(ref)}`)); }
+    catch { /* the file may not exist on this branch: it cannot be dispatched there */ }
+    return { id: w.id, name: w.name, path: w.path, state: w.state, url: w.html_url, ...d };
+  }));
+}
+
+export async function dispatchWorkflow(slug: string, id: number, ref: string, inputs: Record<string, string>): Promise<void> {
+  await gh(`/repos/${slug}/actions/workflows/${id}/dispatches`, { method: 'POST', body: JSON.stringify({ ref, ...(Object.keys(inputs).length ? { inputs } : {}) }), headers: { 'Content-Type': 'application/json' } });
+}
+
+export async function listRuns(slug: string, id: number, limit = 6): Promise<WorkflowRun[]> {
+  const r = await gh(`/repos/${slug}/actions/workflows/${id}/runs?per_page=${limit}`);
+  return (r.workflow_runs || []).map((x: any): WorkflowRun => ({ id: x.id, number: x.run_number, title: x.display_title || x.name || '', status: x.status, conclusion: x.conclusion, branch: x.head_branch || '', event: x.event, actor: x.triggering_actor?.login || x.actor?.login || '', url: x.html_url, at: x.created_at }));
 }

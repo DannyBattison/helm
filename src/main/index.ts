@@ -22,6 +22,8 @@ import { Terminals } from './terminal';
 import { expandHome, home, run } from './util';
 import { CURRENCIES, currencyForRegion, fmtMoney, fromDisplay } from '../shared/money';
 import { notifyDecision } from '../shared/notify';
+import { auditText } from '../shared/redact';
+import { prepareInputs } from '../shared/workflows';
 import { searchEvents, type SearchResults } from '../shared/search';
 import { sessionTitle } from '../shared/types';
 import { feedbackTask, issueTask, pullNumber } from '../shared/issues';
@@ -645,6 +647,24 @@ const api: HelmApi = {
   },
   async openLogFolder() { const f = logFile(); if (f) shell.showItemInFolder(f); },
   async logRenderer(message) { logLine('error', 'window: ' + String(message).slice(0, 2000)); },
+  repoWorkflows: (repoId, ref) => GH.listWorkflows(repoId, ref),
+  workflowRuns: (repoId, id) => GH.listRuns(repoId, id),
+  async runWorkflow(repoId, id, ref, inputs) {
+    repos.must(repoId);
+    // The inputs are checked here against the file on that branch, not trusted from the window.
+    const wf = (await GH.listWorkflows(repoId, ref)).find((w) => w.id === id);
+    if (!wf) throw new Error('That workflow was not found.');
+    if (!wf.dispatchable) throw new Error(`${wf.name} cannot be started by hand on ${ref}: it has no workflow_dispatch trigger there.`);
+    const prepared = prepareInputs(wf.inputs, inputs);
+    const bad = Object.entries(prepared.errors);
+    if (bad.length) throw new Error(bad.map(([k, v]) => `${k}: ${v}`).join('; '));
+    await GH.dispatchWorkflow(repoId, id, ref, prepared.inputs);
+    const what = `${wf.name} on ${ref}${Object.keys(prepared.inputs).length ? ' (' + Object.entries(prepared.inputs).map(([k, v]) => `${k}=${v}`).join(', ') + ')' : ''}`;
+    store.addAudit({ t: Date.now(), sessionId: '-', repoId, kind: 'dispatch', text: auditText(`Ran workflow ${what}`), decision: 'approved' });
+    store.data.activity.unshift({ id: Math.random().toString(36).slice(2), t: Date.now(), kind: 'start', who: store.data.user?.login || 'you', human: true, what: `ran workflow ${what}`, repo: repos.must(repoId).name });
+    store.save();
+    emitState();
+  },
   startQueued: (id) => sessions.startNow(id),
   async searchAll(query, workspace) {
     const q = query.trim();
