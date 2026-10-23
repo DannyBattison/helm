@@ -1,5 +1,6 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Notification, nativeTheme, shell } from 'electron';
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { readFile, stat, writeFile } from 'node:fs/promises';
 import { join, relative, resolve, isAbsolute } from 'node:path';
 import type { AppState, HelmApi, HelmEvents, Settings, TranscriptEvent } from '../shared/types';
@@ -51,7 +52,13 @@ const sessions = new SessionManager(store, {
   emitState,
   emitTranscript: (sessionId, index, event) => send('transcript', { sessionId, index, event }),
   toast: (t) => send('toast', t),
-  claudePath: () => undefined,
+  claudePath: () => {
+    // The SDK resolves its bundled binary inside app.asar, where it cannot be executed.
+    if (!app.isPackaged) return undefined;
+    const exe = process.platform === 'win32' ? 'claude.exe' : 'claude';
+    const p = join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', '@anthropic-ai', `claude-agent-sdk-${process.platform}-${process.arch}`, exe);
+    return existsSync(p) ? p : undefined;
+  },
   notify(kind, title, body, sessionId) {
     const st = store.data.settings;
     const pref = kind === 'attention' ? st.notifyAttention : kind === 'ready' ? st.notifyReady : st.notifyFailed;

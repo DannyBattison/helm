@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",
     "dist": "electron-vite build && electron-builder",
-    "postinstall": "electron-builder install-app-deps"
+    "pack": "electron-vite build && electron-builder --dir"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
@@ -35,5 +35,38 @@
     "monaco-editor": "^0.57.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
+  },
+  "build": {
+    "appId": "dev.helm.app",
+    "productName": "helm",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/@anthropic-ai/**",
+      "node_modules/@homebridge/**"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.developer-tools"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Development"
+    },
+    "npmRebuild": false
   }
 }

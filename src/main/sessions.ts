@@ -199,7 +199,7 @@ export class SessionManager {
       canUseTool: (tool: string, input: Record<string, unknown>, o: any) => this.canUse(s, rt, tool, input, o),
       env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'helm' }
     };
-    const exe = this.hooks.claudePath() || settings.claudePath;
+    const exe = settings.claudePath || this.hooks.claudePath();
     if (exe) options.pathToClaudeCodeExecutable = exe;
     if (s.claudeSessionId) options.resume = s.claudeSessionId;
     rt.q = query({ prompt: queue, options });

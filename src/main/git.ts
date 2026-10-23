@@ -1,4 +1,4 @@
-import { mkdir, readFile, stat } from 'node:fs/promises';
+import { mkdir, readFile, rm, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { ChangesSummary, DiffHunk, FileChange } from '../shared/types';
 import { run } from './util';
@@ -60,6 +60,8 @@ export async function addWorktree(repoPath: string, wt: string, branch: string, 
 export async function removeWorktree(repoPath: string, wt: string, branch?: string) {
   await git(repoPath, 'worktree', 'remove', '--force', wt).catch(() => undefined);
   await git(repoPath, 'worktree', 'prune').catch(() => undefined);
+  // git can leave an empty directory behind on Windows
+  await rm(wt, { recursive: true, force: true }).catch(() => undefined);
   if (branch) await git(repoPath, 'branch', '-D', branch).catch(() => undefined);
 }
 

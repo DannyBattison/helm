@@ -55,3 +55,30 @@ Why: sessions can't keep running when helm is closed, and the status should neve
 ## D-013 · 2026-10-23 · Agent commits carry a Co-authored-by trailer
 The system prompt asks the agent to end commit messages with `Co-authored-by: helm session <id> <noreply@helm.app>`. Commits are authored with the user's git identity because the worktree inherits it.
 Why: the Settings copy promises authorship by the user with the session in a trailer, and the history view uses the trailer to mark agent commits.
+
+## D-014 · 2026-10-23 · Always-allow patterns never match chained commands
+A pattern like `echo *` is a glob, so on its own it would also approve `echo hi && rm -rf …`. Commands containing `; & | < > ` $( ${` or a newline never match an allow pattern or the read-only list, and "Always allow" is not offered for them (they need approval each time).
+Why: found while testing a real approval; the glob made the allowlist a bypass.
+
+## D-015 · 2026-10-23 · Packaging
+`electron-builder` with `npmRebuild: false`, because the prebuilt node-pty is N-API and has no sources to rebuild. `@anthropic-ai/**` and `@homebridge/**` are unpacked from the asar. When packaged, the Claude binary is taken from `app.asar.unpacked` (the SDK resolves a path inside the asar, which cannot be executed). A CLI path set in Settings overrides the bundled binary. Removed the `postinstall` rebuild for the same reason.
+Why: verified by running the packaged app: sessions and the terminal both work.
+
+## D-016 · 2026-10-23 · Deviations from the handoff
+- Search placeholder says "Search sessions and repositories", because file and commit search are not built.
+- The paperclip attach button is left out of the composer; the `@` button remains.
+- The Settings rows "Menu bar icon" and "Density" are left out: there is no tray icon and density changes nothing yet. The taskbar or dock badge shows the count of sessions that need you.
+- "Do not disturb while screen sharing" is left out: there is no reliable way to detect screen sharing.
+- Shortcuts show Ctrl instead of ⌘ outside macOS.
+- Fake traffic lights are replaced by the native window controls (macOS traffic lights, Windows and Linux title bar overlay).
+- Settings gained a GitHub OAuth client ID field, and sign-in gained a client ID input and a personal access token fallback (see D-005).
+- Diff lines can be commented on by clicking the new-file line number; the handoff only showed an existing thread.
+- Opening the Code tab of a session whose file the agent is editing follows it unless "Follow agent" is off.
+
+## D-017 · 2026-10-23 · Editor gutter compares against the session base
+Gutter bars in the Code tab diff against the merge-base with the session's base branch, not HEAD, so they show everything the session changed even after the agent committed.
+Why: with HEAD the bars vanished as soon as the agent committed.
+
+## D-018 · 2026-10-23 · Dev and test aids
+`HELM_DEV_SEED=1` keeps a seeded user and skips the startup status recovery, so a prepared user-data directory can be used for screenshots and manual checks. It has no effect on normal runs. Logic that doesn't need Electron has vitest tests in `tests/`.
+Why: lets the UI be checked against a real git worktree without a GitHub account.
