@@ -134,13 +134,24 @@ function TranscriptItemView({ m, s, onDeny }: { m: TranscriptEvent; s: S; onDeny
       {m.summary && m.status !== 'working' ? <div className="selectable" style={{ padding: '8px 12px 10px', borderTop: '1px solid var(--border-subtle)', font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-2)', whiteSpace: 'pre-wrap' }}>{m.summary}</div> : null}
     </div>
   );
+  // Sessions helm did not start have no `s`; there, set what you said apart from what Claude replied.
+  const external = !s;
   if (m.k === 'user') return (
-    <div style={{ display: 'flex', gap: 10 }}>
+    <div style={{ display: 'flex', gap: 10, ...(external && !m.from ? { background: 'var(--bg-selected)', borderRadius: 'var(--radius-md)', padding: '10px 12px' } : null) }}>
       <Avatar agent={!!m.from} name={m.from || app.user?.login || 'you'} src={m.from ? undefined : app.user?.avatar || undefined} size={22} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
         <span style={{ font: m.from ? '500 12px/1 var(--font-mono)' : '500 12px/1 var(--font-sans)' }}>{m.from ? m.from + ' → subagent' : app.user?.login || 'you'} {m.t ? <span style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)', marginLeft: 6 }}>{clock(m.t)}</span> : null}</span>
         <div className="selectable" style={{ font: '400 13px/1.55 var(--font-sans)', color: 'var(--text-1)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.text}</div>
         {m.images?.length ? <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{m.images.map((im, i) => <img key={i} src={`data:${im.mediaType};base64,${im.data}`} alt={im.name || 'attached image'} title={im.name} style={{ maxWidth: 260, maxHeight: 180, borderRadius: 'var(--radius-md)', boxShadow: 'inset 0 0 0 1px var(--border)', objectFit: 'contain', background: 'var(--bg-editor)' }} />)}</div> : null}
+      </div>
+    </div>
+  );
+  if (m.k === 'agent' && external) return (
+    <div style={{ display: 'flex', gap: 10 }}>
+      <Avatar agent name="Claude" size={22} />
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={{ font: '500 12px/1 var(--font-sans)' }}>Claude</span>
+        <div className="selectable" style={{ font: '400 13px/1.6 var(--font-sans)', color: 'var(--text-1)', display: 'flex', flexDirection: 'column', gap: 6, wordBreak: 'break-word' }}><Rich text={m.text} /></div>
       </div>
     </div>
   );
