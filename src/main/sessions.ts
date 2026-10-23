@@ -222,6 +222,8 @@ export class SessionManager {
       hooks: { PreToolUse: [{ matcher: 'Agent|Task', hooks: [async (input: any) => this.checkSubagentLimit(s, rt, input)] }] },
       env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'helm' }
     };
+    // Only set when on, so a user's own Claude Code setting is never switched off by helm.
+    if (settings.remoteControl) options.settings = { remoteControlAtStartup: true };
     const exe = settings.claudePath || this.hooks.claudePath();
     if (exe) options.pathToClaudeCodeExecutable = exe;
     if (s.claudeSessionId) options.resume = s.claudeSessionId;

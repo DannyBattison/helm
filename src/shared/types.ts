@@ -147,6 +147,8 @@ export interface Settings {
   weeklyLimit: number;
   sessionBudget: number;
   warnAt: number;
+  /** Start Remote Control (`/rc`) in every session, so it can be followed and driven from claude.ai/code or the Claude app. */
+  remoteControl: boolean;
   /** Archive sessions that have not been opened for this many days. 0 never archives. */
   archiveAfterDays: number;
   /** Most subagents one session may run at once. 0 turns subagents off. */
@@ -312,6 +314,16 @@ export interface SessionDeleteInfo {
   running: boolean;
 }
 
+export interface ExternalTranscript {
+  ready: boolean;
+  /** Events in the whole conversation. */
+  total: number;
+  /** Index of the first event returned. */
+  start: number;
+  events: TranscriptEvent[];
+  error?: string;
+}
+
 export interface WorkspaceInfo {
   root: string;
   branch: string;
@@ -433,7 +445,12 @@ export interface HelmApi {
   commitDiff(repoId: string, hash: string, path: string): Promise<DiffHunk[]>;
   /** Claude Code sessions for this repository that helm did not start. */
   listExternalSessions(repoId: string): Promise<ExternalSession[]>;
-  externalTranscript(repoId: string, sessionId: string): Promise<TranscriptEvent[]>;
+  /**
+   * A window of a session's conversation. Without options it returns the last 200 events. `start` and `end` pick a range, so
+   * earlier events can be loaded as you scroll up. Large session files are read once in the background and cached, so `ready`
+   * is false until the first read finishes.
+   */
+  externalTranscript(repoId: string, sessionId: string, opts?: { start?: number; end?: number; tail?: number }): Promise<ExternalTranscript>;
   removeWorktree(repoId: string, path: string): Promise<void>;
 
   createSession(input: NewSessionInput): Promise<string>;

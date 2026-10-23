@@ -1,10 +1,10 @@
-import { getSessionMessages, listSessions, query } from '@anthropic-ai/claude-agent-sdk';
+import { getSessionInfo, getSessionMessages, listSessions, query } from '@anthropic-ai/claude-agent-sdk';
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Notification, nativeTheme, shell } from 'electron';
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { readFile, stat, writeFile } from 'node:fs/promises';
 import { join, relative, resolve, isAbsolute } from 'node:path';
-import type { AppState, HelmApi, HelmEvents, Settings, TranscriptEvent } from '../shared/types';
+import type { AppState, ExternalTranscript, HelmApi, HelmEvents, Settings, TranscriptEvent } from '../shared/types';
 import * as G from './git';
 import * as GH from './github';
 import { RepoService } from './repos';
@@ -103,6 +103,47 @@ async function detectClaude(path: string): Promise<string | null> {
     const out = await run(path || 'claude', ['--version'], { timeout: 8000 });
     return out.trim().split(/\s+/)[0] || null;
   } catch { return null; }
+}
+
+// ------------------------------------------------------------------ external transcripts
+// A session file can be gigabytes (one of the real ones is 1.7 GB, of which 832 lines are the conversation), and reading it
+// takes seconds. So it is read once in the background, kept in memory keyed by file size and modification time, and only
+// read again when that changes, no more often than a few times its own read time. Callers get a window of the result.
+const extCache = new Map<string, { sig: string; events: TranscriptEvent[]; at: number; readMs: number }>();
+const extLoading = new Map<string, Promise<void>>();
+const extError = new Map<string, string>();
+
+async function extSig(id: string): Promise<string> {
+  try { const i = await getSessionInfo(id); return i ? `${i.lastModified}:${i.fileSize}` : ''; } catch { return ''; }
+}
+
+async function externalTranscript(repoId: string, sessionId: string, opts: { start?: number; end?: number; tail?: number } = {}): Promise<ExternalTranscript> {
+  const repo = repos.must(repoId);
+  const sig = await extSig(sessionId);
+  let c = extCache.get(sessionId);
+  const changed = !c || c.sig !== sig;
+  if (changed && !extLoading.has(sessionId) && (!c || Date.now() - c.at > Math.max(4000, c.readMs * 3))) {
+    const t0 = Date.now();
+    const p = getSessionMessages(sessionId)
+      .then((msgs) => {
+        extCache.set(sessionId, { sig, events: sessions.convertMessages(msgs as any[], repo.localPath, true), at: Date.now(), readMs: Date.now() - t0 });
+        extError.delete(sessionId);
+        if (extCache.size > 4) extCache.delete(extCache.keys().next().value as string);
+      })
+      .catch((e) => { extError.set(sessionId, String(e?.message || e)); })
+      .finally(() => extLoading.delete(sessionId));
+    extLoading.set(sessionId, p);
+  }
+  if (!c) {
+    // First read: small sessions finish well inside this wait and come straight back; big ones report "not ready" and are polled.
+    await Promise.race([extLoading.get(sessionId), new Promise((r) => setTimeout(r, 700))]);
+    c = extCache.get(sessionId);
+    if (!c) return { ready: false, total: 0, start: 0, events: [], error: extError.get(sessionId) };
+  }
+  const total = c.events.length;
+  const start = opts.start != null ? Math.max(0, Math.min(opts.start, total)) : Math.max(0, total - (opts.tail ?? 200));
+  const end = opts.end != null ? Math.max(start, Math.min(opts.end, total)) : total;
+  return { ready: true, total, start, events: c.events.slice(start, end) };
 }
 
 /** Claude Code's own list of sessions that have a process running right now, or null when it can't be asked. */
@@ -276,11 +317,7 @@ const api: HelmApi = {
       }))
       .sort((a, b) => b.lastModified - a.lastModified);
   },
-  async externalTranscript(repoId, sessionId) {
-    const r = repos.must(repoId);
-    const msgs = await getSessionMessages(sessionId);
-    return sessions.convertMessages(msgs as any[], r.localPath, true);
-  },
+  externalTranscript: (repoId, sessionId, opts) => externalTranscript(repoId, sessionId, opts),
   async listTree(id, dir) { return repos.tree(ws(id).worktree, dir); },
   async readFile(id, path) {
     const abs = safePath(ws(id), path);

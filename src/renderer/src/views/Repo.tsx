@@ -8,6 +8,7 @@ import { CodeView } from './CodeView';
 import { langFromPath } from '../highlight';
 import { DiffLine, SplitRows } from './Changes';
 import { TranscriptItem } from './Session';
+import { TranscriptList } from './TranscriptList';
 
 const ROW = 36;
 const LANE_X = (l: number) => 14 + l * 16;
@@ -255,19 +256,45 @@ export function ExternalSessionView({ repoId, id }: { repoId: string; id: string
   const app = useApp();
   const repo = app.repos.find((r) => r.id === repoId);
   const known = useUI((u) => u.externals[repoId]?.find((x) => x.id === id));
-  const [events, setEvents] = React.useState<TranscriptEvent[] | null>(null);
-  const scroller = React.useRef<HTMLDivElement>(null);
-  const stick = React.useRef(true);
-  const active = !!known?.active;
+  // Only a window of the conversation is held: the latest events first, earlier ones as you scroll up.
+  const [win, setWin] = React.useState<{ start: number; total: number; events: TranscriptEvent[] } | null>(null);
+  const [err, setErr] = React.useState('');
+  const winRef = React.useRef(win);
+  winRef.current = win;
+  const activeRef = React.useRef(false);
+  activeRef.current = !!known?.active;
+  const busy = React.useRef(false);
   React.useEffect(() => {
     let dead = false;
-    const pull = () => api.externalTranscript(repoId, id).then((e) => !dead && setEvents(e)).catch(() => !dead && setEvents((cur) => cur ?? []));
-    setEvents(null);
-    void pull();
-    const t = setInterval(pull, active ? 4000 : 15000);
-    return () => { dead = true; clearInterval(t); };
-  }, [repoId, id, active]);
-  React.useEffect(() => { const el = scroller.current; if (el && stick.current) el.scrollTop = el.scrollHeight; }, [events]);
+    let timer: ReturnType<typeof setTimeout>;
+    setWin(null); setErr('');
+    const pull = async () => {
+      try {
+        const cur = winRef.current;
+        const r = await api.externalTranscript(repoId, id, cur ? { start: cur.start } : { tail: 200 });
+        if (dead) return;
+        if (!r.ready) { setErr(r.error || ''); return; }
+        setErr('');
+        setWin({ start: r.start, total: r.total, events: r.events });
+      } catch (e) { if (!dead) setErr(errText(e)); }
+    };
+    // Poll quickly until the first read finishes, then every few seconds while it runs, and rarely once it is idle.
+    const loop = async () => { await pull(); if (!dead) timer = setTimeout(loop, winRef.current ? (activeRef.current ? 4000 : 20000) : 1000); };
+    void loop();
+    return () => { dead = true; clearTimeout(timer); };
+  }, [repoId, id]);
+  const loadEarlier = async () => {
+    const cur = winRef.current;
+    if (!cur || cur.start === 0 || busy.current) return;
+    busy.current = true;
+    try {
+      const s0 = Math.max(0, cur.start - 200);
+      const r = await api.externalTranscript(repoId, id, { start: s0, end: cur.start });
+      if (r.ready) setWin((w) => (w ? { ...w, start: s0, events: [...r.events, ...w.events] } : w));
+    } finally { busy.current = false; }
+  };
+  const active = !!known?.active;
+  const mb = known?.size ? known.size / 1e6 : 0;
   if (!repo) return <div style={{ padding: 24, font: '400 13px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>This repository is not in helm.</div>;
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
@@ -280,15 +307,25 @@ export function ExternalSessionView({ repoId, id }: { repoId: string; id: string
           <Badge tone="neutral">External · read-only</Badge>
           {active ? <Badge tone="working" dot>Active now</Badge> : known ? <Badge>Last active {ago(known.lastModified)}</Badge> : null}
         </div>
-        <div style={{ font: '400 11.5px/1.4 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={known?.cwd}>{known?.cwd ? tilde(known.cwd, app.home) + ' · ' : ''}{id}</div>
+        <div style={{ font: '400 11.5px/1.4 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={known?.cwd}>{known?.cwd ? tilde(known.cwd, app.home) + ' · ' : ''}{id}{win ? ` · ${win.total} events` : ''}</div>
       </div>
-      <div ref={scroller} onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }} style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '20px 20px 24px' }}>
-        <div style={{ maxWidth: 860, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {events == null ? <span style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>Loading conversation…</span> : null}
-          {(events || []).map((m, i) => <TranscriptItem key={i} m={m} s={null as any} onDeny={() => undefined} />)}
-          {active ? <div style={{ marginLeft: 32, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1 var(--font-sans)', color: 'var(--status-working-text)' }}><i className="ph ph-circle-notch" style={{ fontSize: 14, animation: 'helm-spin .9s linear infinite' }} />Updating while it runs</div> : null}
-          <div style={{ marginLeft: 32, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>This session was started outside helm, so it is read-only here. To keep going, continue it where it started.</div>
-        </div>
+      <div style={{ flex: 1, minHeight: 0 }}>
+        {win == null ? (
+          <div style={{ maxWidth: 820, margin: '0 auto', padding: '24px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <span style={{ font: '400 12.5px/1.5 var(--font-sans)', color: err ? 'var(--status-error-text)' : 'var(--text-3)' }}>
+              {err || (mb > 100 ? `Reading a ${mb >= 1000 ? (mb / 1000).toFixed(1) + ' GB' : Math.round(mb) + ' MB'} session file. This takes a few seconds the first time, and is remembered after that.` : 'Loading conversation…')}
+            </span>
+            {err ? null : [70, 90, 55, 80].map((w, i) => <div key={i} style={{ display: 'flex', gap: 10 }}><Skeleton w={22} h={22} r={11} /><div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}><Skeleton w="22%" h={9} /><Skeleton w={w + '%'} h={11} /></div></div>)}
+          </div>
+        ) : (
+          <TranscriptList items={win.events} firstIndex={win.start} onStartReached={loadEarlier}
+            renderItem={(m) => <TranscriptItem m={m} s={null as any} onDeny={() => undefined} />}
+            header={win.start > 0 ? <div style={{ font: '400 12px/1.4 var(--font-sans)', color: 'var(--text-3)', textAlign: 'center' }}>{win.start} earlier events. Scroll up to load them.</div> : null}
+            footer={<>
+              {active ? <div style={{ marginLeft: 32, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1 var(--font-sans)', color: 'var(--status-working-text)' }}><i className="ph ph-circle-notch" style={{ fontSize: 14, animation: 'helm-spin .9s linear infinite' }} />Updating while it runs</div> : null}
+              <div style={{ marginLeft: 32, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>This session was started outside helm, so it is read-only here. To keep going, continue it where it started.</div>
+            </>} />
+        )}
       </div>
     </div>
   );

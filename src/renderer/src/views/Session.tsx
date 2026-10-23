@@ -7,6 +7,7 @@ import { clock, elapsed, fmtTokens, prettyModel, runningSubagents, STATUS_LABEL,
 import { go, loadTranscript, setUI, toast, useApp, useMoney, useTranscript } from '../store';
 import { Avatar, Badge, BranchTag, Button, DiffStat, Grip, IconButton, Meter, Select, StatusDot, Tabs, usePaneWidth } from '../ui';
 import { Changes } from './Changes';
+import { TranscriptList } from './TranscriptList';
 import { CodeView } from './CodeView';
 
 const guard = (p: Promise<any>) => p.catch((e: any) => toast({ tone: 'error', title: 'That did not work', description: String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '') }));
@@ -116,7 +117,7 @@ function Rich({ text }: { text: string }) {
   return <>{blocks}</>;
 }
 
-export function TranscriptItem({ m, s, onDeny }: { m: TranscriptEvent; s: S; onDeny(): void }) {
+function TranscriptItemView({ m, s, onDeny }: { m: TranscriptEvent; s: S; onDeny(): void }) {
   const app = useApp();
   if (m.k === 'subagent') return (
     <div style={{ marginLeft: 32, ...box }}>
@@ -241,6 +242,9 @@ export function TranscriptItem({ m, s, onDeny }: { m: TranscriptEvent; s: S; onD
   return null;
 }
 
+/** Re-renders only when its event changes, or the pending request it may be showing does. */
+export const TranscriptItem = React.memo(TranscriptItemView, (a, b) => a.m === b.m && a.s?.ask?.id === b.s?.ask?.id && a.s?.ask?.orphaned === b.s?.ask?.orphaned);
+
 function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAreaElement> }) {
   const [text, setText] = React.useState('');
   const working = s.status === 'working';
@@ -355,13 +359,13 @@ function SubagentView({ s, subId }: { s: S; subId: string }) {
         </div>
       </div>
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-        <div ref={scroller} onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }} style={{ flex: 1, minWidth: 0, overflow: 'auto', padding: '20px 20px 24px' }}>
-          <div style={{ maxWidth: 820, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {!items ? <span style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>Loading transcript…</span> : null}
-            {(items || []).map((m, i) => <TranscriptItem key={i} m={m} s={s} onDeny={() => undefined} />)}
-            {a.status === 'working' ? <div style={{ marginLeft: 32, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1 var(--font-sans)', color: 'var(--status-working-text)' }}><i className="ph ph-circle-notch" style={{ fontSize: 14, animation: 'helm-spin .9s linear infinite' }} />Working</div> : null}
-            <div style={{ marginLeft: 32, font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>This transcript is read-only. Message the parent agent from the session's conversation.</div>
-          </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <TranscriptList items={items || []} renderItem={(m) => <TranscriptItem m={m} s={s} onDeny={() => undefined} />}
+            header={!items ? <span style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>Loading transcript…</span> : null}
+            footer={<>
+              {a.status === 'working' ? <div style={{ marginLeft: 32, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1 var(--font-sans)', color: 'var(--status-working-text)' }}><i className="ph ph-circle-notch" style={{ fontSize: 14, animation: 'helm-spin .9s linear infinite' }} />Working</div> : null}
+              <div style={{ marginLeft: 32, font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>This transcript is read-only. Message the parent agent from the session's conversation.</div>
+            </>} />
         </div>
         <aside style={{ position: 'relative', width, flex: 'none', borderLeft: '1px solid var(--border)', overflow: 'auto', padding: 16, background: 'var(--bg-panel)', display: 'flex', flexDirection: 'column', gap: 10 }}>
           <Grip edge="left" onMouseDown={grip} onDoubleClick={resetWidth} />
@@ -406,17 +410,17 @@ export function Session({ id, tab, setTab, themeKey, sub }: { id: string; tab: s
   else body = (
     <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-        <div ref={scroller} onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }} style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '20px 20px 12px' }}>
-          <div style={{ maxWidth: 820, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {!items ? <span style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>Loading conversation…</span> : null}
-            {(items || []).map((m, i) => <TranscriptItem key={i} m={m} s={s} onDeny={() => input.current?.focus()} />)}
-            {s.status === 'working' ? (
-              <div style={{ marginLeft: 32, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1 var(--font-sans)', color: 'var(--status-working-text)' }}>
-                <i className="ph ph-circle-notch" style={{ fontSize: 14, animation: 'helm-spin .9s linear infinite' }} />{s.step}
-              </div>
-            ) : null}
-            {s.status === 'idle' && s.step ? <div style={{ marginLeft: 32, font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>{s.step}</div> : null}
-          </div>
+        <div style={{ flex: 1, minHeight: 0 }}>
+          <TranscriptList items={items || []} renderItem={(m) => <TranscriptItem m={m} s={s} onDeny={() => input.current?.focus()} />}
+            header={!items ? <span style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>Loading conversation…</span> : null}
+            footer={<>
+              {s.status === 'working' ? (
+                <div style={{ marginLeft: 32, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1 var(--font-sans)', color: 'var(--status-working-text)' }}>
+                  <i className="ph ph-circle-notch" style={{ fontSize: 14, animation: 'helm-spin .9s linear infinite' }} />{s.step}
+                </div>
+              ) : null}
+              {s.status === 'idle' && s.step ? <div style={{ marginLeft: 32, font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>{s.step}</div> : null}
+            </>} />
         </div>
         <Composer s={s} inputRef={input} />
       </div>

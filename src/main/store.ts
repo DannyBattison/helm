@@ -24,6 +24,7 @@ export const defaultSettings = (): Settings => ({
   sessionBudget: 10,
   warnAt: 80,
   archiveAfterDays: 14,
+  remoteControl: false,
   maxSubagentsSession: 4,
   maxSubagentsRepo: 8,
   billing: 'subscription',

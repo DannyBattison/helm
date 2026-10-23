@@ -123,6 +123,7 @@ export function Settings({ section }: { section?: string }) {
                 ))}
               </div>
             ) : null}
+            <SettingRow title="Remote Control for new and resumed sessions" desc="Starts Remote Control (/rc) in every agent, so you can follow and drive it from claude.ai/code or the Claude app. Takes effect when a session next starts. Needs a Claude subscription sign-in, and can be blocked by your organisation."><Switch checked={st.remoteControl} onChange={(v: boolean) => set({ remoteControl: v })} /></SettingRow>
             <SettingRow title="Run tests before marking ready" desc="Asks the agent to run the project's tests (package.json, go.mod, Makefile) before it finishes."><Switch checked={st.runTests} onChange={(v: boolean) => set({ runTests: v })} /></SettingRow>
           </> : null}
           {sec === 'worktrees' ? <>
