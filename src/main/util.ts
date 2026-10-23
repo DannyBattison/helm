@@ -36,8 +36,17 @@ export function dayStart(now = Date.now()): number {
 
 /** Glob-ish match where `*` matches anything. */
 export function globMatch(pattern: string, text: string): boolean {
-  const re = new RegExp('^' + pattern.split('*').map((s) => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$');
-  return re.test(text.trim());
+  // `*` matches anything. Done by walking both strings, so no pattern can make it backtrack for long.
+  const t = text.trim();
+  let p = 0, i = 0, star = -1, mark = 0;
+  while (i < t.length) {
+    if (p < pattern.length && pattern[p] === '*') { star = p++; mark = i; }
+    else if (p < pattern.length && pattern[p] === t[i]) { p++; i++; }
+    else if (star >= 0) { p = star + 1; i = ++mark; }
+    else return false;
+  }
+  while (p < pattern.length && pattern[p] === '*') p++;
+  return p === pattern.length;
 }
 
 /** Shell syntax that can chain, redirect or substitute, so one pattern must never cover a command using it. */

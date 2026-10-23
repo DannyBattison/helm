@@ -47,6 +47,7 @@ export const defaultSettings = (): Settings => ({
   dnd: true,
   editorFontSize: 12.5,
   sendKey: 'mod-enter',
+  interruptKey: 'esc',
   showOwner: true,
   uiFont: 'Mona Sans',
   dataFont: 'Monaspace Neon',

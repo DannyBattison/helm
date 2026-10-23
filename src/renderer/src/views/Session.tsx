@@ -140,7 +140,7 @@ function Rich({ text }: { text: string }) {
 function TranscriptItemView({ m, s, onDeny }: { m: TranscriptEvent; s: S; onDeny(): void }) {
   const app = useApp();
   if (m.k === 'subagent') return (
-    <div style={{ marginLeft: 32, ...box }}>
+    <div style={{ marginLeft: 44, marginRight: 12, ...box }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 34, padding: '4px 10px' }}>
         <i className="ph ph-tree-structure" style={{ fontSize: 14, color: 'var(--accent-text)' }} />
         <span style={{ font: '500 12px/1 var(--font-sans)', color: 'var(--text-2)' }}>Subagent</span>
@@ -163,8 +163,9 @@ function TranscriptItemView({ m, s, onDeny }: { m: TranscriptEvent; s: S; onDeny
       </div>
     </div>
   );
+  // Same padding as your own messages, so the text of every message starts and ends at the same place.
   if (m.k === 'agent') return (
-    <div style={{ display: 'flex', gap: 10 }}>
+    <div style={{ display: 'flex', gap: 10, padding: '10px 12px' }}>
       <Avatar agent name="Claude" size={22} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
         <span style={{ font: '500 12px/1 var(--font-sans)' }}>Claude</span>
@@ -172,9 +173,9 @@ function TranscriptItemView({ m, s, onDeny }: { m: TranscriptEvent; s: S; onDeny
       </div>
     </div>
   );
-  if (m.k === 'tools') return <div style={{ marginLeft: 32, ...box, padding: '3px 0' }}>{m.items.map((t, i) => <ToolRow key={i} tool={t[0]} target={t[1]} meta={t[2]} session={s} />)}</div>;
+  if (m.k === 'tools') return <div style={{ marginLeft: 44, marginRight: 12, ...box, padding: '3px 0' }}>{m.items.map((t, i) => <ToolRow key={i} tool={t[0]} target={t[1]} meta={t[2]} session={s} />)}</div>;
   if (m.k === 'edit') return (
-    <div style={{ marginLeft: 32, ...box }}>
+    <div style={{ marginLeft: 44, marginRight: 12, ...box }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 30, padding: '0 10px', borderBottom: '1px solid var(--border-subtle)' }}>
         <i className="ph ph-pencil-simple" style={{ fontSize: 13, color: 'var(--text-3)' }} />
         <span style={{ font: '500 12px/1 var(--font-sans)', color: 'var(--text-2)' }}>Edit</span>
@@ -191,7 +192,7 @@ function TranscriptItemView({ m, s, onDeny }: { m: TranscriptEvent; s: S; onDeny
     </div>
   );
   if (m.k === 'bash') return (
-    <div style={{ marginLeft: 32, ...box }}>
+    <div style={{ marginLeft: 44, marginRight: 12, ...box }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 30, padding: '0 10px', background: 'var(--bg-editor)' }}>
         <i className="ph ph-terminal" style={{ fontSize: 13, color: 'var(--text-3)' }} />
         <span className="selectable" style={{ font: '400 12px/1 var(--font-mono)', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><span style={{ color: 'var(--text-3)' }}>$ </span><Hl text={m.cmd} lang="bash" /></span>
@@ -202,28 +203,28 @@ function TranscriptItemView({ m, s, onDeny }: { m: TranscriptEvent; s: S; onDeny
     </div>
   );
   if (m.k === 'commit') return (
-    <div style={{ marginLeft: 32, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1 var(--font-sans)', color: 'var(--text-2)' }}>
+    <div style={{ marginLeft: 44, marginRight: 12, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1 var(--font-sans)', color: 'var(--text-2)' }}>
       <i className="ph ph-git-commit" style={{ fontSize: 15, color: 'var(--text-1)' }} />
       Committed <BranchTag kind="commit" name={m.hash} /> <span style={{ color: 'var(--text-1)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.msg}</span>
       <span style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)', marginLeft: 'auto' }}>{clock(m.t)}</span>
     </div>
   );
   if (m.k === 'note') return (
-    <div style={{ marginLeft: 32, display: 'flex', alignItems: 'flex-start', gap: 8, font: '400 12px/1.45 var(--font-sans)', color: m.tone === 'error' ? 'var(--status-error-text)' : m.tone === 'attention' ? 'var(--status-attention-text)' : 'var(--text-3)' }}>
+    <div style={{ marginLeft: 44, marginRight: 12, display: 'flex', alignItems: 'flex-start', gap: 8, font: '400 12px/1.45 var(--font-sans)', color: m.tone === 'error' ? 'var(--status-error-text)' : m.tone === 'attention' ? 'var(--status-attention-text)' : 'var(--text-3)' }}>
       <i className={'ph-fill ph-' + (m.tone === 'error' ? 'warning-circle' : 'info')} style={{ fontSize: 14, marginTop: 1 }} /><span className="selectable">{m.text}</span>
     </div>
   );
   const live = !!s && s.ask?.id === (m as any).askId;
   const restarted = live && !!s?.ask?.orphaned;
   const expired = (what: string) => (
-    <div style={{ marginLeft: 32, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1.3 var(--font-sans)', color: 'var(--text-3)', minWidth: 0 }}>
+    <div style={{ marginLeft: 44, marginRight: 12, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1.3 var(--font-sans)', color: 'var(--text-3)', minWidth: 0 }}>
       <i className="ph ph-clock-countdown" style={{ fontSize: 14 }} />No longer waiting: {what}
     </div>
   );
   if (m.k === 'permission') {
     if (!m.resolved && !live) return expired(m.cmd.length > 70 ? m.cmd.slice(0, 70) + '…' : m.cmd);
     if (m.resolved) return (
-      <div style={{ marginLeft: 32, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1.3 var(--font-sans)', color: 'var(--text-3)', minWidth: 0 }}>
+      <div style={{ marginLeft: 44, marginRight: 12, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1.3 var(--font-sans)', color: 'var(--text-3)', minWidth: 0 }}>
         <i className={'ph-fill ph-' + (m.resolved === 'denied' ? 'x-circle' : 'check-circle')} style={{ fontSize: 14, color: m.resolved === 'denied' ? 'var(--status-error)' : 'var(--status-ready)' }} />
         {m.resolved === 'denied' ? 'Denied' : m.resolved === 'always' ? 'Always allowed' : 'Approved'}
         <code style={{ font: 'var(--type-data)', color: 'var(--text-2)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.cmd}</code>
@@ -231,7 +232,7 @@ function TranscriptItemView({ m, s, onDeny }: { m: TranscriptEvent; s: S; onDeny
     );
     const isCmd = m.tool === 'Bash' || m.tool === 'PowerShell';
     return (
-      <div style={{ marginLeft: 32, borderRadius: 'var(--radius-md)', background: 'var(--status-attention-bg)', boxShadow: 'inset 0 0 0 1px var(--status-attention)', padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ marginLeft: 44, marginRight: 12, borderRadius: 'var(--radius-md)', background: 'var(--status-attention-bg)', boxShadow: 'inset 0 0 0 1px var(--status-attention)', padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, font: '600 13px/1 var(--font-sans)', color: 'var(--status-attention-text)' }}><i className="ph-fill ph-shield-warning" style={{ fontSize: 15 }} />{isCmd ? 'Permission needed to run a command' : m.tool === 'ExitPlanMode' ? 'Plan ready for approval' : 'Permission needed'}</div>
         <code className="selectable" style={{ font: 'var(--type-code)', padding: '6px 10px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-editor)', color: 'var(--text-1)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{isCmd ? <><span style={{ color: 'var(--text-3)' }}>$ </span><Cmd text={m.cmd} /></> : m.cmd}</code>
         <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>{m.why}</div>
@@ -248,7 +249,7 @@ function TranscriptItemView({ m, s, onDeny }: { m: TranscriptEvent; s: S; onDeny
     const q = m.questions[0];
     if (!m.answered && !live) return expired(q?.question || 'question');
     return (
-      <div style={{ marginLeft: 32, borderRadius: 'var(--radius-md)', background: 'var(--status-attention-bg)', boxShadow: 'inset 0 0 0 1px var(--status-attention)', padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ marginLeft: 44, marginRight: 12, borderRadius: 'var(--radius-md)', background: 'var(--status-attention-bg)', boxShadow: 'inset 0 0 0 1px var(--status-attention)', padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, font: '600 13px/1 var(--font-sans)', color: 'var(--status-attention-text)' }}><i className="ph-fill ph-question" style={{ fontSize: 15 }} />{q?.header || 'Question from the agent'}</div>
         <div className="selectable" style={{ font: '500 13px/1.45 var(--font-sans)' }}>{q?.question}</div>
         {m.answered ? <div style={{ font: '400 12px/1.4 var(--font-sans)', color: 'var(--text-2)' }}>Answered: <b style={{ fontWeight: 500, color: 'var(--text-1)' }}>{m.answered}</b></div> : <>
@@ -334,6 +335,7 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
   const picker = React.useRef<HTMLInputElement>(null);
   const working = s.status === 'working';
   const enterSends = useApp().settings.sendKey === 'enter';
+  const interruptKey = useApp().settings.interruptKey;
   const setText = (t: string) => { drafts.set(s.id, t); setTextState(t); };
 
   React.useEffect(() => { setTextState(drafts.get(s.id) || ''); setImages([]); setMention(null); histPos.current = -1; files.current = null; }, [s.id]);
@@ -408,7 +410,7 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
     }
   };
 
-  const placeholder = s.ask?.type === 'question' ? 'Type your answer' : s.ask ? 'Tell the agent what to do instead, or approve above' : working ? 'Add guidance while it works, or press Esc to interrupt' : 'Reply to ' + (s.customTitle || s.title || s.id) + '. @ mentions a file, and you can paste or drop images';
+  const placeholder = s.ask?.type === 'question' ? 'Type your answer' : s.ask ? 'Tell the agent what to do instead, or approve above' : working ? 'Add guidance while it works' + (interruptKey === 'esc' ? ', or press Esc to interrupt' : interruptKey === 'double-esc' ? ', or press Esc twice to interrupt' : '') : 'Reply to ' + (s.customTitle || s.title || s.id) + '. @ mentions a file, and you can paste or drop images';
   const ctxPct = Math.round((s.ctx / 200000) * 100);
   return (
     <div style={{ flex: 'none', padding: '0 20px 16px' }}>
@@ -462,7 +464,7 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
           <Select size="sm" value={s.permMode} onChange={(e: any) => guard(api.setSessionPermMode(s.id, e.target.value as PermMode))} options={[{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits' }, { value: 'plan', label: 'Plan only' }, { value: 'all', label: 'Allow everything' }]} />
           <span style={{ flex: 1 }} />
           {s.ctx ? <span title={`Context window: ${fmtTokens(s.ctx)} of 200k tokens in use`} style={{ font: '400 11.5px/1 var(--font-mono)', color: ctxPct >= 75 ? 'var(--status-attention-text)' : 'var(--text-3)', whiteSpace: 'nowrap' }}>{ctxPct}% context</span> : null}
-          {working ? <Button size="sm" variant="ghost" kbd="Esc" onClick={() => guard(api.interrupt(s.id))}>Interrupt</Button> : null}
+          {working ? <Button size="sm" variant="ghost" kbd={interruptKey === 'esc' ? 'Esc' : interruptKey === 'double-esc' ? 'Esc Esc' : undefined} onClick={() => guard(api.interrupt(s.id))}>Interrupt</Button> : null}
           <Button size="sm" variant="primary" icon="paper-plane-right" kbd={enterSends ? 'Enter' : MOD() + '↵'} disabled={!text.trim() && !images.length} onClick={send}>Send</Button>
         </div>
       </div>
@@ -559,8 +561,8 @@ function SubagentView({ s, subId }: { s: S; subId: string }) {
           <TranscriptList items={items || []} renderItem={(m) => <TranscriptItem m={m} s={s} onDeny={() => undefined} />}
             header={!items ? <span style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>Loading transcript…</span> : null}
             footer={<>
-              {a.status === 'working' ? <div style={{ marginLeft: 32, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1 var(--font-sans)', color: 'var(--status-working-text)' }}><i className="ph ph-circle-notch" style={{ fontSize: 14, animation: 'helm-spin .9s linear infinite' }} />Working</div> : null}
-              <div style={{ marginLeft: 32, font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>This transcript is read-only. Message the parent agent from the session's conversation.</div>
+              {a.status === 'working' ? <div style={{ marginLeft: 44, marginRight: 12, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1 var(--font-sans)', color: 'var(--status-working-text)' }}><i className="ph ph-circle-notch" style={{ fontSize: 14, animation: 'helm-spin .9s linear infinite' }} />Working</div> : null}
+              <div style={{ marginLeft: 44, marginRight: 12, font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>This transcript is read-only. Message the parent agent from the session's conversation.</div>
             </>} />
         </div>
         <aside style={{ position: 'relative', width, flex: 'none', borderLeft: '1px solid var(--border)', overflow: 'auto', padding: 16, background: 'var(--bg-panel)', display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -580,6 +582,8 @@ export function Session({ id, tab, setTab, themeKey, sub, file, line }: { id: st
   const input = React.useRef<HTMLTextAreaElement>(null);
   const scroller = React.useRef<HTMLDivElement>(null);
   const stick = React.useRef(true);
+  const interruptKey = app.settings.interruptKey;
+  const lastEsc = React.useRef(0);
 
   React.useEffect(() => { void loadTranscript(id); }, [id]);
   React.useEffect(() => {
@@ -590,12 +594,16 @@ export function Session({ id, tab, setTab, themeKey, sub, file, line }: { id: st
   React.useEffect(() => {
     if (!s) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && s.status === 'working') { void api.interrupt(s.id); }
+      if (e.key === 'Escape' && s.status === 'working' && !e.defaultPrevented && interruptKey !== 'off') {
+        if (interruptKey === 'esc') void api.interrupt(s.id);
+        else if (Date.now() - lastEsc.current < 1500) { lastEsc.current = 0; void api.interrupt(s.id); }
+        else { lastEsc.current = Date.now(); toast({ tone: 'neutral', title: 'Press Esc again to interrupt' }); }
+      }
       if (e.key === 'Enter' && mod(e) && s.ask?.type === 'approve' && !(e.target as HTMLTextAreaElement).value) { e.preventDefault(); void guard(api.resolveAsk(s.id, s.ask.id, { decision: 'approve' })); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [s?.status, s?.ask?.id, s?.id]);
+  }, [s?.status, s?.ask?.id, s?.id, interruptKey]);
 
   if (!s) return <div style={{ padding: 24, font: '400 13px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>This session no longer exists.</div>;
 
@@ -612,11 +620,11 @@ export function Session({ id, tab, setTab, themeKey, sub, file, line }: { id: st
             header={!items ? <span style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>Loading conversation…</span> : null}
             footer={<>
               {s.status === 'working' ? (
-                <div style={{ marginLeft: 32, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1 var(--font-sans)', color: 'var(--status-working-text)' }}>
+                <div style={{ marginLeft: 44, marginRight: 12, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1 var(--font-sans)', color: 'var(--status-working-text)' }}>
                   <i className="ph ph-circle-notch" style={{ fontSize: 14, animation: 'helm-spin .9s linear infinite' }} />{s.step}
                 </div>
               ) : null}
-              {s.status === 'idle' && s.step ? <div style={{ marginLeft: 32, font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>{s.step}</div> : null}
+              {s.status === 'idle' && s.step ? <div style={{ marginLeft: 44, marginRight: 12, font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>{s.step}</div> : null}
             </>} />
         </div>
         {s.worktreeGone ? <div style={{ ...gone, padding: '0 20px 16px' }}>Merged{s.mergedInto ? ` into ${s.mergedInto}` : ''} and archived. The worktree was removed, so this session cannot be continued.</div> : <Composer s={s} inputRef={input} />}

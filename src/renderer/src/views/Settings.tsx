@@ -131,6 +131,9 @@ export function Settings({ section }: { section?: string }) {
             <SettingRow title="Send messages with" desc={st.sendKey === 'enter' ? 'Enter sends. Shift+Enter starts a new line.' : 'Ctrl+Enter (Cmd+Enter on a Mac) sends. Enter starts a new line.'}>
               <SegmentedControl value={st.sendKey} onChange={(v: string) => set({ sendKey: v as any })} options={[{ value: 'enter', label: 'Enter' }, { value: 'mod-enter', label: platform() === 'darwin' ? 'Cmd+Enter' : 'Ctrl+Enter' }]} />
             </SettingRow>
+            <SettingRow title="Interrupt a working agent with" desc="Pauses the agent where it is. The Interrupt button next to Send always works. Esc closes the @ file list first, without interrupting.">
+              <SegmentedControl value={st.interruptKey} onChange={(v: string) => set({ interruptKey: v as any })} options={[{ value: 'esc', label: 'Esc' }, { value: 'double-esc', label: 'Esc twice' }, { value: 'off', label: 'Button only' }]} />
+            </SettingRow>
             <SettingRow title="Run tests before marking ready" desc="Asks the agent to run the project's tests (package.json, go.mod, Makefile) before it finishes."><Switch checked={st.runTests} onChange={(v: boolean) => set({ runTests: v })} /></SettingRow>
           </> : null}
           {sec === 'worktrees' ? <>

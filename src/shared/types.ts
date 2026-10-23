@@ -210,6 +210,8 @@ export interface Settings {
   dnd: boolean;
   editorFontSize: number;
   /** Font for the interface: labels, titles and prose. */
+  /** What interrupts a working agent from the keyboard: Esc, Esc pressed twice, or nothing (the Interrupt button still works). */
+  interruptKey: 'esc' | 'double-esc' | 'off';
   /** Which key sends a message from the composer. Enter sends and Shift+Enter starts a new line, or Ctrl/Cmd+Enter sends and Enter starts a new line. */
   sendKey: 'enter' | 'mod-enter';
   /** Show the organisation or user before each repository name in the left tree (`acme/` storefront). */
@@ -532,6 +534,8 @@ export interface MergeResult {
 /** Request/response calls from renderer to main. */
 export interface HelmApi {
   getState(): Promise<AppState>;
+  /** The window was unresponsive for `ms`. Written to diagnostics.log, with the page it was on. */
+  reportStall(ms: number, where: string): Promise<void>;
   /** The log of everything helm and its agents did, newest first. `before` is a timestamp to page back from. */
   activityLog(opts?: { before?: number; limit?: number }): Promise<ActivityEvent[]>;
   updateSettings(patch: Partial<Settings>): Promise<void>;

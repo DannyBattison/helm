@@ -2,7 +2,7 @@ import { getSessionInfo, getSessionMessages, listSessions, query } from '@anthro
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Notification, nativeTheme, shell } from 'electron';
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { readFile, stat, writeFile } from 'node:fs/promises';
+import { appendFile, readFile, stat, writeFile } from 'node:fs/promises';
 import { join, relative, resolve, isAbsolute } from 'node:path';
 import type { AppState, ExternalTranscript, HelmApi, HelmEvents, Settings, TranscriptEvent } from '../shared/types';
 import * as G from './git';
@@ -44,14 +44,36 @@ function buildState(): AppState {
     home
   };
 }
+let lastBadge = -1;
 function emitState() {
   if (stateTimer) return;
   stateTimer = setTimeout(() => {
     stateTimer = null;
     send('state', buildState());
+    // The badge is an OS call (on Windows it draws an overlay icon), so only make it when the number changes.
     const need = store.data.sessions.filter((s) => s.status === 'attention').length;
-    try { app.setBadgeCount(need); } catch { /* unsupported */ }
-  }, 60);
+    if (need !== lastBadge) { lastBadge = need; try { app.setBadgeCount(need); } catch { /* unsupported */ } }
+  }, 120);
+}
+
+// Watchdog: if the main process is blocked for more than 400 ms (HELM_DEV_LAG=1: 80 ms), say so in diagnostics.log with what the
+// sessions were doing, so a freeze leaves something to read. The renderer reports its own stalls the same way.
+function diag(line: string) {
+  void appendFile(join(app.getPath('userData'), 'diagnostics.log'), `${new Date().toISOString()} ${line}\n`, 'utf8').catch(() => undefined);
+}
+{
+  let last = Date.now();
+  const limit = process.env.HELM_DEV_LAG ? 80 : 400;
+  setInterval(() => {
+    const now = Date.now();
+    const lag = now - last - 100;
+    last = now;
+    if (lag > limit) {
+      const busy = store.data.sessions.filter((s) => s.status === 'working' || s.status === 'attention').map((s) => `${s.id}:${s.status}:${s.step.slice(0, 60)}`).join(' | ');
+      diag(`main process blocked ${lag} ms; sessions: ${busy || 'none active'}`);
+      if (process.env.HELM_DEV_LAG) console.log(`[lag] main process blocked ${lag} ms`);
+    }
+  }, 100);
 }
 
 const repos = new RepoService(store, emitState);
@@ -197,6 +219,7 @@ const repoName = (id: string) => store.data.repos.find((r) => r.id === id)?.name
 const api: HelmApi = {
   async getState() { return buildState(); },
   activityLog: (opts) => store.readLog(opts?.before, opts?.limit),
+  async reportStall(ms, where) { diag(`window stalled ${ms} ms on ${where}`); },
   async updateSettings(patch: Partial<Settings>) {
     Object.assign(store.data.settings, patch);
     if ('theme' in patch) applyTheme();
@@ -387,7 +410,15 @@ const api: HelmApi = {
     const s = w.sessionId ? sessions.get(w.sessionId) : undefined;
     if (s) await sessions.refreshStats(s);
   },
-  async pushStatus(repoId) { return pushTargets(repoId); },
+  pushStatus(repoId) {
+    // The window asks from several places on a timer. Share one answer instead of running git for each ask.
+    const key = repoId || '*';
+    const hit = pushing.get(key);
+    if (hit) return hit;
+    const p = pushTargets(repoId).finally(() => setTimeout(() => pushing.delete(key), 4000));
+    pushing.set(key, p);
+    return p;
+  },
   async push({ repoId, target }) {
     const pushed: string[] = [], failed: { id: string; error: string }[] = [];
     let uncommitted = 0;
@@ -406,6 +437,7 @@ const api: HelmApi = {
         store.log({ kind: 'push', who: me(), human: true, what: `push of ${t.branch} failed`, repo: repoName(t.repoId), sessionId: t.kind === 'session' ? t.id : undefined, ok: false, detail: error });
       }
     }
+    pushing.clear();
     emitState();
     return { pushed, failed, uncommitted };
   },
@@ -598,6 +630,7 @@ async function aheadOf(cwd: string, branch: string): Promise<{ ahead: number; on
 }
 
 /** Every branch helm knows of that could be pushed: its sessions' branches, and the branch checked out in each repository's own folder. */
+const pushing = new Map<string, Promise<import('../shared/types').PushTarget[]>>();
 async function pushTargets(repoId?: string): Promise<import('../shared/types').PushTarget[]> {
   const out: import('../shared/types').PushTarget[] = [];
   for (const r of store.data.repos.filter((x) => !repoId || x.id === repoId)) {
@@ -608,7 +641,8 @@ async function pushTargets(repoId?: string): Promise<import('../shared/types').P
     }
     for (const s of sessions.sessions.filter((x) => x.repoId === r.id && !x.worktreeGone && !x.archivedAt)) {
       if (!(await G.fileExists(s.worktree))) continue;
-      const dirty = (await G.git(s.worktree, 'status', '--porcelain').catch(() => '')).split('\n').filter(Boolean).length;
+      // Tracked files only: a full status walks every untracked file, which on a big worktree (node_modules, build output) takes seconds.
+      const dirty = (await G.git(s.worktree, 'status', '--porcelain', '--untracked-files=no').catch(() => '')).split('\n').filter(Boolean).length;
       out.push({ id: s.id, kind: 'session', repoId: r.id, branch: s.branch, dirty, ...(await aheadOf(s.worktree, s.branch)) });
     }
   }

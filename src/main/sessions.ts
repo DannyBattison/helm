@@ -552,7 +552,8 @@ export class SessionManager {
       if (start.kind === 'bash') {
         const t = await this.store.transcript(start.tkey);
         const cur = t[start.idx] as Extract<TranscriptEvent, { k: 'bash' }>;
-        const lines = text.split('\n').map((l: string) => l.trim()).filter(Boolean);
+        // Only the last line is shown, so only the end of a huge output is looked at.
+        const lines = (text.length > 20000 ? text.slice(-20000) : text).split('\n').map((l: string) => l.trim()).filter(Boolean);
         const out = b.is_error ? trunc(lines[lines.length - 1] || 'failed', 70) : lines.length ? trunc(lines[lines.length - 1], 70) : '✓';
         await this.patch(start.tkey, start.idx, { ...cur, out, ok: !b.is_error, meta, done: true });
         if (/git\s+commit/.test(cur.cmd)) await this.detectCommit(s, text, start.tkey);
