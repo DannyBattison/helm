@@ -1,6 +1,7 @@
 import React from 'react';
 import type { SearchHit, Session, TreeEntry } from '@shared/types';
 import { api, platform } from '../api';
+import { fontStack } from '../fonts';
 import { langOf } from '../lib';
 import { toast, useApp } from '../store';
 import { Badge, Breadcrumbs, Button, Grip, Input, Kbd, SegmentedControl, Switch, Tabs, TreeItem, usePaneWidth } from '../ui';
@@ -286,12 +287,13 @@ export function CodeView({ wsId, session: s, themeKey, branch }: { wsId: string;
   // editor lifecycle
   React.useEffect(() => {
     let dead = false;
-    loadMonaco().then((mod) => {
+    loadMonaco().then(async (mod) => {
+      await document.fonts.load(`12.5px "${app.settings.editorFont}"`).catch(() => null);
       if (dead || !host.current) return;
       M.current = mod;
       const m = mod.monaco;
       editor.current = m.editor.create(host.current, {
-        model: null, theme: mod.themeName(themeKey), fontFamily: 'Monaspace Neon', fontSize: app.settings.editorFontSize, lineHeight: 20, fontLigatures: true,
+        model: null, theme: mod.themeName(themeKey), fontFamily: fontStack(app.settings.editorFont), fontSize: app.settings.editorFontSize, lineHeight: 20, fontLigatures: app.settings.editorLigatures,
         minimap: { enabled: true, renderCharacters: false, scale: 1 }, scrollBeyondLastLine: false, automaticLayout: true, padding: { top: 8 }, renderLineHighlight: 'line',
         overviewRulerBorder: false, hideCursorInOverviewRuler: true, guides: { indentation: true }, stickyScroll: { enabled: true }, smoothScrolling: true, lineNumbersMinChars: 4
       });
@@ -310,7 +312,14 @@ export function CodeView({ wsId, session: s, themeKey, branch }: { wsId: string;
   }, [wsId]);
 
   React.useEffect(() => { if (M.current) M.current.monaco.editor.setTheme(M.current.themeName(themeKey)); }, [themeKey, ready]);
-  React.useEffect(() => { editor.current?.updateOptions({ fontSize: app.settings.editorFontSize }); diffEd.current?.updateOptions({ fontSize: app.settings.editorFontSize }); }, [app.settings.editorFontSize, ready]);
+  React.useEffect(() => {
+    const o = { fontSize: app.settings.editorFontSize, fontFamily: fontStack(app.settings.editorFont), fontLigatures: app.settings.editorLigatures };
+    document.fonts.load(`12.5px "${app.settings.editorFont}"`).catch(() => null).then(() => {
+      editor.current?.updateOptions(o);
+      diffEd.current?.updateOptions(o);
+      M.current?.monaco.editor.remeasureFonts();
+    });
+  }, [app.settings.editorFontSize, app.settings.editorFont, app.settings.editorLigatures, ready]);
 
   // coming back to the window picks up changes made elsewhere, such as in another editor
   React.useEffect(() => { const f = () => setTick((n) => n + 1); window.addEventListener('focus', f); return () => window.removeEventListener('focus', f); }, []);
@@ -349,7 +358,7 @@ export function CodeView({ wsId, session: s, themeKey, branch }: { wsId: string;
       if (dead || !diffHost.current) return;
       orig = m.editor.createModel(base, langOf(active));
       diffEd.current = m.editor.createDiffEditor(diffHost.current, {
-        theme: M.current!.themeName(themeKey), fontFamily: 'Monaspace Neon', fontSize: app.settings.editorFontSize, lineHeight: 20, automaticLayout: true, renderSideBySide: true,
+        theme: M.current!.themeName(themeKey), fontFamily: fontStack(app.settings.editorFont), fontLigatures: app.settings.editorLigatures, fontSize: app.settings.editorFontSize, lineHeight: 20, automaticLayout: true, renderSideBySide: true,
         originalEditable: false, scrollBeyondLastLine: false, padding: { top: 8 }, overviewRulerBorder: false, lineNumbersMinChars: 4
       });
       diffEd.current.setModel({ original: orig, modified: model });

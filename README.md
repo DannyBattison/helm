@@ -5,7 +5,7 @@ A desktop app for supervising many Claude Code sessions across many GitHub repos
 - Sign in with GitHub, add repositories (clone from your account, from a URL, or register an existing clone), and start sessions.
 - Every session runs in its own git worktree on an `agent/<name>` branch. Your checkout is never touched.
 - One window for what every agent is doing: approve commands, answer questions, watch plan usage or cost budgets, browse and edit code (Monaco) in a session or in your own checkout, review diffs, open pull requests, browse history.
-- Claude Code sessions started elsewhere (VS Code, the CLI, cloud) show up read-only per repository.
+- Local Claude Code sessions started elsewhere (VS Code, the CLI) show up read-only per repository.
 - Subagents show as a tree under their session, each with its own transcript, and are limited per session and per repository.
 - Works for subscriptions (shows your Claude plan usage, with optional percentage limits) and for API tokens (dollar budgets, in your currency).
 
@@ -40,7 +40,7 @@ Worktrees are created at `~/.helm/worktrees/<repo>/<session>`; clones go to `~/c
 
 ## Not built yet
 
-- Continuing a session that was started outside helm. The Claude sessions tab shows local and cloud ones read-only.
+- Continuing a session that was started outside helm. The Claude sessions tab shows local ones read-only.
 
 - Menu-bar or tray dropdown (the taskbar or dock badge shows how many sessions need you).
 - Search across files and commits in the ⌘K palette (it searches sessions, repositories and actions).

@@ -159,6 +159,13 @@ export interface Settings {
   notifyChecks: { desktop: boolean; sound: boolean };
   dnd: boolean;
   editorFontSize: number;
+  /** Font for the interface: labels, titles and prose. */
+  uiFont: string;
+  /** Monospaced font for data in the interface: paths, branches, hashes and numbers. */
+  dataFont: string;
+  /** Font family for code: the editor, terminal and diffs. */
+  editorFont: string;
+  editorLigatures: boolean;
   density: 'Compact' | 'Comfortable';
   openIn: 'helm' | 'VS Code' | 'Cursor' | 'Zed';
 }
@@ -253,19 +260,6 @@ export interface ExternalSession {
   createdAt?: number;
   size?: number;
   /** Written to in the last minute or so, so probably still running. */
-  active: boolean;
-}
-
-/** A Claude Code cloud session, found through the branch and pull request it pushed to GitHub. */
-export interface CloudSession {
-  branch: string;
-  title: string;
-  /** https://claude.ai/code/session_..., when the pull request or a commit links to it. */
-  sessionUrl?: string;
-  pr?: { number: number; url: string; state: 'open' | 'closed' | 'merged'; draft: boolean };
-  /** Last push or pull request update, epoch ms. */
-  lastActivity: number;
-  /** Pushed to in the last few minutes and not merged or closed. Cloud sessions are always read-only in helm. */
   active: boolean;
 }
 
@@ -373,7 +367,15 @@ export interface HelmApi {
   chooseFolder(): Promise<string | null>;
   fetchRepo(id: string): Promise<void>;
   repoBranches(id: string): Promise<string[]>;
-  repoHistory(id: string): Promise<HistoryCommit[]>;
+  /** `limit` is how many commits to read. Repeats are served from a cache until a ref changes. */
+  repoHistory(id: string, limit?: number): Promise<HistoryCommit[]>;
+  /** The last history read for this repository, instantly and possibly stale, or null if there is none yet. */
+  repoHistoryCached(id: string, limit?: number): Promise<HistoryCommit[] | null>;
+  reorderRepos(ids: string[]): Promise<void>;
+  /** Orders the sessions of one repository. Subagents always stay with their parent session. */
+  reorderSessions(repoId: string, ids: string[]): Promise<void>;
+  /** Asks Claude Code for plan usage now, without sending a message. */
+  refreshPlanUsage(): Promise<void>;
   repoWorktrees(id: string): Promise<WorktreeInfo[]>;
   repoPulls(id: string): Promise<PullRequest[]>;
   commitFiles(id: string, hash: string): Promise<FileChange[]>;
@@ -381,8 +383,6 @@ export interface HelmApi {
   /** Claude Code sessions for this repository that helm did not start. */
   listExternalSessions(repoId: string): Promise<ExternalSession[]>;
   externalTranscript(repoId: string, sessionId: string): Promise<TranscriptEvent[]>;
-  /** Claude Code cloud sessions for this repository, found through GitHub. */
-  listCloudSessions(repoId: string): Promise<CloudSession[]>;
   removeWorktree(repoId: string, path: string): Promise<void>;
 
   createSession(input: NewSessionInput): Promise<string>;

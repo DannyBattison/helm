@@ -1,4 +1,5 @@
-import { mkdir, readdir } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, join, normalize } from 'node:path';
 import type { FileChange, HistoryCommit, Repo, Session, WorktreeInfo } from '../shared/types';
 import * as G from './git';
@@ -83,27 +84,64 @@ export class RepoService {
     return [...set];
   }
 
-  async history(id: string, sessions: Session[]): Promise<HistoryCommit[]> {
+  private histMem = new Map<string, { sig: string; limit: number; complete: boolean; raw: HistoryCommit[] }>();
+  private histDir = '';
+  private filesMem = new Map<string, FileChange[]>();
+  setCacheDir(dir: string) { this.histDir = dir; }
+  private histFile(r: Repo) { return join(this.histDir, r.id.replace('/', '__') + '.json'); }
+
+  /** Changes whenever any ref moves, which is exactly when the history can differ. */
+  private async refsSig(path: string): Promise<string> {
+    const refs = await G.git(path, 'for-each-ref', '--format=%(objectname) %(refname)');
+    const head = (await G.git(path, 'rev-parse', 'HEAD').catch(() => '')).trim();
+    return createHash('sha1').update(refs + head).digest('hex');
+  }
+
+  private async loadCache(r: Repo) {
+    const mem = this.histMem.get(r.id);
+    if (mem) return mem;
+    if (!this.histDir) return null;
+    try {
+      const c = JSON.parse(await readFile(this.histFile(r), 'utf8'));
+      this.histMem.set(r.id, c);
+      return c as { sig: string; limit: number; complete: boolean; raw: HistoryCommit[] };
+    } catch { return null; }
+  }
+
+  /** What is on disk or in memory, however old. Lets the view paint at once while a fresh read runs. */
+  async cachedHistory(id: string, sessions: Session[], limit = 150): Promise<HistoryCommit[] | null> {
     const r = this.must(id);
+    const c = await this.loadCache(r);
+    return c ? this.decorate(r, c.raw.slice(0, limit), sessions) : null;
+  }
+
+  async history(id: string, sessions: Session[], limit = 150): Promise<HistoryCommit[]> {
+    const r = this.must(id);
+    const sig = await this.refsSig(r.localPath);
+    let c = await this.loadCache(r);
+    if (!c || c.sig !== sig || (c.limit < limit && !c.complete)) {
+      const raw = await this.readLog(r, limit);
+      c = { sig, limit, complete: raw.length < limit, raw };
+      this.histMem.set(id, c);
+      if (this.histDir) void mkdir(this.histDir, { recursive: true }).then(() => writeFile(this.histFile(r), JSON.stringify(c))).catch(() => undefined);
+    }
+    return this.decorate(r, c.raw.slice(0, limit), sessions);
+  }
+
+  /** The slow part: git log and lane assignment. No per-commit stats, those are read when a commit is opened. */
+  private async readLog(r: Repo, limit: number): Promise<HistoryCommit[]> {
     const SEP = '\x1e', F = '\x1f';
-    const raw = await G.git(r.localPath, 'log', '--all', '--topo-order', '-n', '120', '--shortstat', `--format=${SEP}%H${F}%P${F}%an${F}%ct${F}%D${F}%s${F}%b`);
-    const entries = raw.split(SEP).filter((x) => x.trim());
+    const raw = await G.git(r.localPath, 'log', '--all', '--topo-order', '-n', String(limit), `--format=${SEP}%H${F}%P${F}%an${F}%ct${F}%D${F}%s${F}%b`);
     const commits: HistoryCommit[] = [];
-    for (const e of entries) {
-      const [hash, parents, who, ct, refs, msg, rest] = e.split(F);
-      const body = rest ?? '';
-      const stat = body.match(/(\d+) insertions?\(\+\)/);
-      const stat2 = body.match(/(\d+) deletions?\(-\)/);
+    for (const e of raw.split(SEP).filter((x) => x.trim())) {
+      const [hash, parents, who, ct, refs, msg, body = ''] = e.split(F);
       const trailer = body.match(/Co-authored-by: helm session ([\w-]+)/i);
       commits.push({
-        hash, parents: parents ? parents.split(' ') : [], lane: 0, kind: 'main', msg, who, agent: !!trailer, sessionId: trailer?.[1],
+        hash, parents: parents ? parents.split(' ') : [], lane: 0, kind: 'idle', msg, who, agent: !!trailer, sessionId: trailer?.[1],
         refs: refs ? refs.split(', ').map((x) => x.replace(/^HEAD -> /, '').replace(/^tag: /, '')).filter((x) => x && x !== 'HEAD') : [],
-        at: +ct * 1000, add: stat ? +stat[1] : 0, del: stat2 ? +stat2[1] : 0
+        at: +ct * 1000, add: 0, del: 0
       });
     }
-    const byHash = new Map(commits.map((c) => [c.hash, c]));
-
-    // lanes
     const active: (string | null)[] = [];
     for (const c of commits) {
       let lane = active.indexOf(c.hash);
@@ -116,8 +154,13 @@ export class RepoService {
         else { let l = active.indexOf(null); if (l < 0) l = active.length; active[l] = p; }
       });
     }
+    return commits;
+  }
 
-    // kinds: the default branch's first-parent chain is main; agent branches take their session's status
+  /** Colours and names that depend on current sessions, so they are applied on every read rather than cached. */
+  private decorate(r: Repo, raw: HistoryCommit[], sessions: Session[]): HistoryCommit[] {
+    const commits = raw.map((c) => ({ ...c, kind: 'idle' as HistoryCommit['kind'], agent: !!c.sessionId && c.agent }));
+    const byHash = new Map(commits.map((c) => [c.hash, c]));
     const def = commits.find((c) => c.refs.includes('origin/' + r.defaultBranch)) || commits.find((c) => c.refs.includes(r.defaultBranch));
     const claimed = new Set<string>();
     const claim = (start: HistoryCommit | undefined, kind: HistoryCommit['kind']) => {
@@ -134,14 +177,14 @@ export class RepoService {
       for (const ref of c.refs) {
         const name = ref.replace(/^origin\//, '');
         if (!name.startsWith(prefix)) continue;
-        const s = sessions.find((x) => x.repoId === id && x.branch === name);
+        const s = sessions.find((x) => x.repoId === r.id && x.branch === name);
         claim(c, s ? s.status === 'error' ? 'idle' : s.status : 'idle');
         if (s) c.sessionId = c.sessionId || s.id;
       }
     }
-    for (const c of commits) if (!claimed.has(c.hash)) c.kind = 'idle';
     for (const c of commits) {
       if (c.kind !== 'main' && c.kind !== 'idle') c.agent = true;
+      if (c.sessionId) c.agent = true;
       const s = c.sessionId ? sessions.find((x) => x.id === c.sessionId) : undefined;
       if (s) c.who = s.id;
     }
@@ -149,12 +192,18 @@ export class RepoService {
   }
 
   async commitFiles(id: string, hash: string): Promise<FileChange[]> {
+    const key = id + ':' + hash;
+    const hit = this.filesMem.get(key);
+    if (hit) return hit;
     const r = this.must(id);
     const out = await G.git(r.localPath, 'show', '--numstat', '--format=', hash);
-    return out.split('\n').filter(Boolean).map((l) => {
+    const files = out.split('\n').filter(Boolean).map((l) => {
       const [a, d, ...p] = l.split('\t');
       return { path: p.join('\t'), add: a === '-' ? 0 : +a, del: d === '-' ? 0 : +d, status: 'M' as const };
     });
+    if (this.filesMem.size > 500) this.filesMem.clear();
+    this.filesMem.set(key, files);
+    return files;
   }
 
   async worktrees(id: string, sessions: Session[]): Promise<WorktreeInfo[]> {

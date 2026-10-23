@@ -32,6 +32,9 @@ select,
 textarea {
   font-family: inherit;
 }
+:root {
+  --font-code: var(--font-mono);
+}
 .drag {
   -webkit-app-region: drag;
 }

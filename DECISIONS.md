@@ -133,3 +133,23 @@ Each repository has a "Claude sessions" tab listing Claude Code sessions helm di
 - **Cloud** sessions run on Anthropic's servers and have no supported listing, so they are found by repository through GitHub: `claude/*` branches, and pull requests that link to `claude.ai/code/session_…`. helm shows the branch and PR and opens the real session or PR on click. Their conversations cannot be read from helm.
 - helm does not call claude.ai's internal session API with the user's Claude login token. That login is for Claude Code itself, not for other apps.
 Why: the user wanted to see sessions started elsewhere, local ones by project folder and cloud ones by repository.
+
+## D-031 · 2026-10-23 · Cloud sessions removed
+The cloud half of D-030 is removed. Finding cloud sessions through GitHub branches and pull requests did not work well enough to keep: it shows the output of a session, not the session. helm lists local Claude Code sessions only, found by project folder, and the live flag still comes from `claude agents --json`.
+Why: user decision.
+
+## D-032 · 2026-10-23 · Plan usage is probed, not waited for
+helm asks Claude Code for the data behind `/usage` (the SDK's experimental `usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET`) at launch, every 5 minutes, and when the window is focused, so the meters show real numbers without a session having produced a rate-limit event. It also detects billing mode (a subscription type means subscription). The method is marked unstable by the SDK, so failures are ignored and the rate-limit events from sessions keep the meters up to date as before.
+Why: the meters read "no data yet" until the first message of a session.
+
+## D-033 · 2026-10-23 · Fonts
+Three font settings: interface (replaces `--font-sans`), data (replaces `--font-mono`, used for paths, hashes and numbers) and code (editor, terminal and diffs). Bundled via Fontsource so they work offline everywhere: Mona Sans, Inter, IBM Plex Sans, Source Sans 3, Roboto, Open Sans for the interface, and Monaspace Neon, JetBrains Mono, Fira Code, Cascadia Code, Source Code Pro, IBM Plex Mono, Inconsolata, Roboto Mono for monospace. Fonts installed on the computer are offered too, found by measuring text against fallbacks, and any family name can be typed. Hack is not bundled because Fontsource has no package for it.
+Why: user asked for common IDE fonts, and then for the rest of the interface to be switchable too.
+
+## D-034 · 2026-10-23 · Logo
+The Phosphor steering wheel is a car's, so the logo is a drawn ship's wheel (rim, hub, eight spokes with handles) and is larger in the sidebar and on the sign-in screen.
+Why: user feedback.
+
+## D-035 · 2026-10-23 · External sessions in the sidebar
+Local Claude Code sessions started outside helm appear under their repository in the left tree: italic titles, an eye icon, a "read-only" tooltip, and "live" for running ones. The most recent four and any live ones are shown, with a link to the rest. They open as a full page with a live transcript. They are refreshed every 15 seconds while the window is focused.
+Why: user wanted them visible alongside helm's own sessions, clearly marked as external.

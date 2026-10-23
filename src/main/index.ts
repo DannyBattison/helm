@@ -1,4 +1,4 @@
-import { getSessionMessages, listSessions } from '@anthropic-ai/claude-agent-sdk';
+import { getSessionMessages, listSessions, query } from '@anthropic-ai/claude-agent-sdk';
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Notification, nativeTheme, shell } from 'electron';
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -105,12 +105,17 @@ async function detectClaude(path: string): Promise<string | null> {
 }
 
 /** Claude Code's own list of sessions that have a process running right now, or null when it can't be asked. */
+function claudeExe(): string | undefined {
+  const bin = process.platform === 'win32' ? 'claude.exe' : 'claude';
+  const dir = `claude-agent-sdk-${process.platform}-${process.arch}`;
+  const exe = store.data.settings.claudePath || join(app.isPackaged ? join(process.resourcesPath, 'app.asar.unpacked') : app.getAppPath(), 'node_modules', '@anthropic-ai', dir, bin);
+  return existsSync(exe) ? exe : undefined;
+}
+
 async function liveClaudeSessions(): Promise<Set<string> | null> {
-  const exe = store.data.settings.claudePath || (app.isPackaged
-    ? join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', '@anthropic-ai', `claude-agent-sdk-${process.platform}-${process.arch}`, process.platform === 'win32' ? 'claude.exe' : 'claude')
-    : join(app.getAppPath(), 'node_modules', '@anthropic-ai', `claude-agent-sdk-${process.platform}-${process.arch}`, process.platform === 'win32' ? 'claude.exe' : 'claude'));
+  const exe = claudeExe();
   try {
-    const out = await run(existsSync(exe) ? exe : 'claude', ['agents', '--json'], { timeout: 8000 });
+    const out = await run(exe || 'claude', ['agents', '--json'], { timeout: 8000 });
     return new Set((JSON.parse(out) as any[]).map((x) => x.sessionId));
   } catch { return null; }
 }
@@ -136,6 +141,7 @@ const api: HelmApi = {
   async updateSettings(patch: Partial<Settings>) {
     Object.assign(store.data.settings, patch);
     if ('theme' in patch) applyTheme();
+    if ('billing' in patch && patch.billing === 'subscription') void refreshPlan(true);
     if ('planPause5h' in patch || 'planPauseWeek' in patch || 'billing' in patch) void sessions.enforcePlan();
     if ('claudePath' in patch) claudeVersion = await detectClaude(store.data.settings.claudePath);
     store.save();
@@ -184,7 +190,23 @@ const api: HelmApi = {
   },
   async fetchRepo(id) { await repos.fetch(id); },
   repoBranches: (id) => repos.branches(id),
-  repoHistory: (id) => repos.history(id, store.data.sessions),
+  repoHistory: (id, limit) => repos.history(id, store.data.sessions, limit),
+  repoHistoryCached: (id, limit) => repos.cachedHistory(id, store.data.sessions, limit),
+  async reorderRepos(ids) {
+    const rank = new Map(ids.map((id, i) => [id, i]));
+    store.data.repos.sort((a, b) => (rank.get(a.id) ?? 1e9) - (rank.get(b.id) ?? 1e9));
+    store.save();
+    emitState();
+  },
+  async reorderSessions(repoId, ids) {
+    const rank = new Map(ids.map((id, i) => [id, i]));
+    const mine = store.data.sessions.filter((s) => s.repoId === repoId).sort((a, b) => (rank.get(a.id) ?? 1e9) - (rank.get(b.id) ?? 1e9));
+    let k = 0;
+    store.data.sessions = store.data.sessions.map((s) => (s.repoId === repoId ? mine[k++] : s));
+    store.save();
+    emitState();
+  },
+  refreshPlanUsage: () => refreshPlan(true),
   repoWorktrees: (id) => repos.worktrees(id, store.data.sessions),
   repoPulls: async (id) => GH.listPulls(id),
   commitFiles: (id, hash) => repos.commitFiles(id, hash),
@@ -224,7 +246,6 @@ const api: HelmApi = {
   },
   async searchFiles(id, q, matchCase) { return G.searchFiles(ws(id).worktree, q, !!matchCase); },
   commitDiff: (repoId, hash, path) => G.commitDiff(repos.must(repoId).localPath, hash, path),
-  async listCloudSessions(repoId) { return GH.listCloudSessions(repos.must(repoId).id); },
   async listExternalSessions(repoId) {
     const r = repos.must(repoId);
     const live = await liveClaudeSessions();
@@ -340,6 +361,43 @@ async function commitFiles(wt: string, files: string[], message: string) {
   if (staged) await G.git(wt, 'commit', '-m', message);
 }
 
+// ------------------------------------------------------------------ plan usage
+let lastPlanProbe = 0;
+const idleInput = { [Symbol.asyncIterator]: () => ({ next: () => new Promise<IteratorResult<never>>(() => undefined) }) };
+
+/**
+ * Asks Claude Code for the data behind its /usage command. It answers without a message being sent, so the meters
+ * can show real numbers at launch instead of waiting for a session to produce a rate-limit event.
+ */
+async function refreshPlan(force = false) {
+  const st = store.data.settings;
+  if (st.billingDetected && st.billing !== 'subscription') return;
+  if (!force && Date.now() - lastPlanProbe < 60_000) return;
+  lastPlanProbe = Date.now();
+  let q: any;
+  try {
+    q = query({ prompt: idleInput as any, options: { cwd: home, settingSources: [], ...(claudeExe() ? { pathToClaudeCodeExecutable: claudeExe() } : {}) } as any });
+    const u: any = await Promise.race([
+      q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timed out')), 20_000))
+    ]);
+    if (!st.billingDetected) { st.billing = u.subscription_type ? 'subscription' : 'api'; st.billingDetected = true; }
+    const rl = u.rate_limits;
+    if (u.rate_limits_available && rl) {
+      const win = (w: any) => (w && w.utilization != null && w.resets_at ? { util: w.utilization / 100, resetsAt: Date.parse(w.resets_at) / 1000 } : undefined);
+      const plan = store.data.plan;
+      plan.fiveHour = win(rl.five_hour) ?? plan.fiveHour;
+      plan.weekly = win(rl.seven_day) ?? plan.weekly;
+      plan.at = Date.now();
+    }
+    store.save();
+    emitState();
+    void sessions.enforcePlan();
+  } catch { /* experimental API, or Claude Code isn't signed in: the events from sessions still update the meters */ } finally {
+    try { q?.close(); } catch { /* already closed */ }
+  }
+}
+
 // ------------------------------------------------------------------ currency
 /** First launch only: pick a display currency from the IP address, falling back to the OS locale. */
 async function detectCurrency() {
@@ -423,6 +481,10 @@ else {
     createWindow();
     setInterval(pollMerges, 120_000);
     void detectCurrency().then(refreshRates);
+    repos.setCacheDir(join(app.getPath('userData'), 'history-cache'));
+    void refreshPlan(true);
+    setInterval(() => void refreshPlan(), 5 * 60_000);
+    win?.on('focus', () => void refreshPlan());
     setInterval(refreshRates, 6 * 3600_000);
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
   });

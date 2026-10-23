@@ -1,12 +1,13 @@
 import { useSyncExternalStore } from 'react';
-import type { AppState, HelmEvents, Session, TranscriptEvent } from '@shared/types';
+import type { AppState, ExternalSession, HelmEvents, Session, TranscriptEvent } from '@shared/types';
 import { currencySymbol, fmtMoney, fromDisplay, toDisplay } from '@shared/money';
 import { api, on } from './api';
 
 export type Route =
   | { screen: 'overview'; filter?: string }
   | { screen: 'activity' }
-  | { screen: 'repo'; id: string }
+  | { screen: 'repo'; id: string; tab?: string }
+  | { screen: 'external'; repoId: string; id: string }
   | { screen: 'session'; id: string; tab?: string; sub?: string }
   | { screen: 'settings'; section?: string };
 
@@ -23,6 +24,8 @@ export interface UI {
   app: AppState | null;
   route: Route;
   transcripts: Record<string, TranscriptEvent[]>;
+  /** Claude Code sessions helm did not start, per repository id. */
+  externals: Record<string, ExternalSession[]>;
   toasts: ToastItem[];
   adding: boolean;
   newSession: { repoId?: string } | null;
@@ -36,7 +39,7 @@ function loadRoute(): Route {
   try { return JSON.parse(localStorage.getItem('helm-route') || '') || { screen: 'overview' }; } catch { return { screen: 'overview' }; }
 }
 
-let ui: UI = { app: null, route: loadRoute(), transcripts: {}, toasts: [], adding: false, newSession: null, palette: false, term: false };
+let ui: UI = { app: null, route: loadRoute(), transcripts: {}, externals: {}, toasts: [], adding: false, newSession: null, palette: false, term: false };
 const listeners = new Set<() => void>();
 
 export function setUI(patch: Partial<UI> | ((u: UI) => Partial<UI>)) {
@@ -66,6 +69,18 @@ export async function loadTranscript(id: string) {
   setUI((u) => ({ transcripts: { ...u.transcripts, [id]: t } }));
 }
 
+/** Local Claude Code sessions from outside helm, for every repository. Cheap enough to repeat while the window is in use. */
+let externalsBusy = false;
+export async function refreshExternals() {
+  const repos = ui.app?.repos;
+  if (!repos?.length || externalsBusy) return;
+  externalsBusy = true;
+  try {
+    const entries = await Promise.all(repos.map(async (r) => [r.id, await api.listExternalSessions(r.id).catch(() => [] as ExternalSession[])] as const));
+    setUI({ externals: Object.fromEntries(entries) });
+  } finally { externalsBusy = false; }
+}
+
 export async function init() {
   on('state', (app) => setUI({ app }));
   on('transcript', ({ sessionId, index, event }) => {
@@ -79,8 +94,11 @@ export async function init() {
   });
   on('toast', (t: HelmEvents['toast']) => toast(t));
   on('navigate', (n) => go(n as Route));
+  setInterval(() => { if (document.hasFocus()) void refreshExternals(); }, 15000);
+  window.addEventListener('focus', () => void refreshExternals());
   try {
     setUI({ app: await api.getState() });
+    void refreshExternals();
   } catch (e: any) {
     setUI({ fatal: String(e?.message || e) });
   }

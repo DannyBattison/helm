@@ -21,7 +21,7 @@ export function DiffLine({ l, onComment }: { l: Row; onComment(line: number): vo
   const gut = t === '+' ? 'var(--diff-add-gutter)' : t === '-' ? 'var(--diff-del-gutter)' : 'transparent';
   const fg = t === '+' ? 'var(--diff-add-fg)' : t === '-' ? 'var(--diff-del-fg)' : 'var(--text-3)';
   return (
-    <div className="helm-diff-line" style={{ display: 'grid', gridTemplateColumns: '44px 44px 20px minmax(0,1fr)', background: bg, font: '400 12px/20px var(--font-mono)' }}>
+    <div className="helm-diff-line" style={{ display: 'grid', gridTemplateColumns: '44px 44px 20px minmax(0,1fr)', background: bg, font: '400 12px/20px var(--font-code)' }}>
       <span style={{ textAlign: 'right', paddingRight: 8, color: 'var(--text-disabled)', background: gut }}>{o || ''}</span>
       <span title={n ? 'Comment on this line' : undefined} onClick={() => n && onComment(n)} style={{ textAlign: 'right', paddingRight: 8, color: 'var(--text-disabled)', background: gut, cursor: n ? 'pointer' : 'default' }}>{n || ''}</span>
       <span style={{ textAlign: 'center', color: fg }}>{t === '-' ? '−' : t === '+' ? '+' : ''}</span>
@@ -45,11 +45,11 @@ export function SplitRows({ lines, onComment }: { lines: Row[]; onComment(line: 
     );
   };
   while (i < lines.length) {
-    if (lines[i][0] === ' ') { out.push(<div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', font: '400 12px/20px var(--font-mono)' }}>{cell(lines[i], 'l')}{cell(lines[i], 'r')}</div>); i++; continue; }
+    if (lines[i][0] === ' ') { out.push(<div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', font: '400 12px/20px var(--font-code)' }}>{cell(lines[i], 'l')}{cell(lines[i], 'r')}</div>); i++; continue; }
     const dels: Row[] = [], adds: Row[] = [];
     while (i < lines.length && lines[i][0] === '-') dels.push(lines[i++]);
     while (i < lines.length && lines[i][0] === '+') adds.push(lines[i++]);
-    for (let k = 0; k < Math.max(dels.length, adds.length); k++) out.push(<div key={i + '-' + k} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', font: '400 12px/20px var(--font-mono)' }}>{cell(dels[k] || null, 'l')}{cell(adds[k] || null, 'r')}</div>);
+    for (let k = 0; k < Math.max(dels.length, adds.length); k++) out.push(<div key={i + '-' + k} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', font: '400 12px/20px var(--font-code)' }}>{cell(dels[k] || null, 'l')}{cell(adds[k] || null, 'r')}</div>);
   }
   return <>{out}</>;
 }

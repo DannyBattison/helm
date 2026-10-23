@@ -37,6 +37,10 @@ export const defaultSettings = (): Settings => ({
   notifyChecks: { desktop: false, sound: false },
   dnd: true,
   editorFontSize: 12.5,
+  uiFont: 'Mona Sans',
+  dataFont: 'Monaspace Neon',
+  editorFont: 'Monaspace Neon',
+  editorLigatures: true,
   density: 'Compact',
   openIn: 'helm'
 });

@@ -2,8 +2,9 @@ import React from 'react';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
 import { api, on, platform } from '../api';
+import { fontStack } from '../fonts';
 import glyph from '../assets/helm-glyph-violet.svg';
-import { elapsed, livePlan, reposWithSessions, runningSubagents, subagentTree, totals, untilReset } from '../lib';
+import { ago, elapsed, livePlan, reposWithSessions, runningSubagents, subagentTree, totals, untilReset } from '../lib';
 import { go, setUI, useApp, useMoney, useUI, useTranscript, type Route } from '../store';
 import { Avatar, Badge, Breadcrumbs, Grip, IconButton, Kbd, Meter, TreeItem, usePaneWidth } from '../ui';
 
@@ -45,14 +46,15 @@ export function Sidebar() {
   const [subsClosed, setSubsClosed] = React.useState<Record<string, boolean>>({});
   const [width, grip, resetWidth] = usePaneWidth('sidebar', 240, 180, 440);
   const t = totals(app);
+  const externals = useUI((u) => u.externals);
   const subStatus = (st: string) => (st === 'working' ? 'working' : st === 'failed' ? 'error' : 'idle');
   return (
     <aside style={{ position: 'relative', width, flex: 'none', display: 'flex', flexDirection: 'column', background: 'var(--bg-sidebar)', borderRight: '1px solid var(--border)' }}>
       <Grip onMouseDown={grip} onDoubleClick={resetWidth} />
       <div className="drag" style={{ height: 'var(--titlebar-h)', flex: 'none', display: 'flex', alignItems: 'center', gap: 10, padding: '0 14px 0 ' + (mac() ? 78 : 14) + 'px' }}>
         <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
-          <img src={glyph} width="16" height="16" alt="" />
-          <span style={{ font: '600 13px/1 var(--font-mono)', letterSpacing: '-0.02em' }}>helm</span>
+          <img src={glyph} width="22" height="22" alt="" />
+          <span style={{ font: '600 14px/1 var(--font-mono)', letterSpacing: '-0.02em' }}>helm</span>
         </span>
       </div>
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: '4px 6px 8px' }}>
@@ -92,7 +94,23 @@ export function Sidebar() {
                   </div>
                 );
               }) : null}
-              {sessions.length === 0 ? <div style={{ padding: '4px 0 6px 42px', font: '400 12px/1.3 var(--font-sans)', color: 'var(--text-3)' }}>No sessions</div> : null}
+              {open ? (() => {
+                // Sessions started outside helm: read-only. Live ones and the latest few; the rest are in the repository's tab.
+                const all = externals[r.id] || [];
+                const shown = all.filter((x, i) => x.active || i < 4);
+                return <>
+                  {shown.map((x) => (
+                    <TreeItem key={x.id} depth={1} status={x.active ? 'working' : 'idle'}
+                      label={<span style={{ fontStyle: 'italic' }} title={`${x.title}\nStarted outside helm. Read-only.`}>{x.title}</span>}
+                      meta={x.active ? 'live' : ago(x.lastModified)}
+                      trailing={<i className="ph ph-eye" title="Read-only: started outside helm" style={{ fontSize: 12, color: 'var(--text-3)' }} />}
+                      selected={route.screen === 'external' && route.id === x.id}
+                      onClick={() => go({ screen: 'external', repoId: r.id, id: x.id })} />
+                  ))}
+                  {all.length > shown.length ? <div onClick={() => go({ screen: 'repo', id: r.id, tab: 'external' })} className="helm-row-hover" style={{ padding: '4px 8px 6px 40px', font: '400 11.5px/1.3 var(--font-sans)', color: 'var(--text-3)', cursor: 'pointer', borderRadius: 4 }}>{all.length - shown.length} more external</div> : null}
+                </>;
+              })() : null}
+              {sessions.length === 0 && !(externals[r.id]?.length) ? <div style={{ padding: '4px 0 6px 42px', font: '400 12px/1.3 var(--font-sans)', color: 'var(--text-3)' }}>No sessions</div> : null}
             </div>
           );
         })}
@@ -150,10 +168,11 @@ function cssVar(n: string) { return getComputedStyle(document.documentElement).g
 
 /** A real shell in a pty, rooted in the session's worktree when there is one. */
 export function XTerm({ sessionId, themeKey }: { sessionId: string | null; themeKey: string }) {
+  const font = useApp().settings.editorFont;
   const el = React.useRef<HTMLDivElement>(null);
   const term = React.useRef<Terminal | null>(null);
   React.useEffect(() => {
-    const t = new Terminal({ fontFamily: 'Monaspace Neon, monospace', fontSize: 12, lineHeight: 1.4, cursorBlink: true, allowProposedApi: true, theme: {} });
+    const t = new Terminal({ fontFamily: fontStack(font), fontSize: 12, lineHeight: 1.4, cursorBlink: true, allowProposedApi: true, theme: {} });
     const fit = new FitAddon();
     t.loadAddon(fit);
     t.open(el.current!);
@@ -174,6 +193,9 @@ export function XTerm({ sessionId, themeKey }: { sessionId: string | null; theme
     ro.observe(el.current!);
     return () => { dead = true; offD(); offE(); ro.disconnect(); if (id) void api.termClose(id); t.dispose(); };
   }, [sessionId]);
+  React.useEffect(() => {
+    if (term.current) { term.current.options.fontFamily = fontStack(font); }
+  }, [font]);
   React.useEffect(() => {
     // Parent effects set data-theme after this one runs, so read the tokens on the next tick.
     const t = setTimeout(() => {

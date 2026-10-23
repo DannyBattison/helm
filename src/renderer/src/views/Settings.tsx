@@ -3,6 +3,7 @@ import type { ModelAlias, PermMode, Settings as SettingsT } from '@shared/types'
 import { api } from '../api';
 import { livePlan, untilReset } from '../lib';
 import { CURRENCIES, rateFor } from '@shared/money';
+import { BUNDLED_FONTS, fontStack, SYSTEM_DEFAULT, systemFonts, systemUiFonts, uiStack, UI_BUNDLED_FONTS, dataStack } from '../fonts';
 import { toast, useApp, useMoney } from '../store';
 import { Avatar, Badge, Button, Input, Meter, SegmentedControl, Select, Switch, TreeItem, useColumns } from '../ui';
 
@@ -38,6 +39,22 @@ const H = ({ children, sub }: { children: React.ReactNode; sub?: string }) => (
   </div>
 );
 
+/** A font choice: bundled fonts, fonts installed on this computer, or any family typed in. */
+function FontRow({ title, desc, value, onChange, bundled, system, stack }: { title: string; desc: string; value: string; onChange(v: string): void; bundled: string[]; system: string[]; stack(n: string): string }) {
+  const known = bundled.includes(value) || system.includes(value);
+  const [typed, setTyped] = React.useState('');
+  return (
+    <>
+      <SettingRow title={title} desc={desc}>
+        <span style={{ font: '400 14px/1 ' + stack(value), color: 'var(--text-3)', maxWidth: 120, whiteSpace: 'nowrap', overflow: 'hidden' }}>Aa 0123</span>
+        <Select value={known ? value : '__custom'} onChange={(e: any) => onChange(e.target.value === '__custom' ? (typed || value) : e.target.value)}
+          options={[...bundled.map((f) => ({ value: f, label: f })), ...system.map((f) => ({ value: f, label: f === SYSTEM_DEFAULT ? f : f + ' (installed)' })), { value: '__custom', label: 'Custom…' }]} />
+      </SettingRow>
+      {!known ? <SettingRow title="Font family" desc="The name of any font installed on this computer."><Field value={value} onCommit={(v: string) => { setTyped(v); if (v.trim()) onChange(v.trim()); }} style={{ width: 220 }} /></SettingRow> : null}
+    </>
+  );
+}
+
 export function Settings({ section }: { section?: string }) {
   const app = useApp();
   const st = app.settings;
@@ -46,6 +63,8 @@ export function Settings({ section }: { section?: string }) {
   const plan = livePlan(app);
   const money0 = { format: (v: number) => sym + String(Math.round(v * 100) / 100), parse: (x: string) => { const n = parseFloat(x.replace(/[^0-9.]/g, '')); return Number.isFinite(n) && n >= 0 ? n : undefined; } };
   const repoCols = useColumns('budget-repos', [{ w: 1, min: 160, flex: true }, { w: 220, min: 120 }, { w: 90, min: 70, fixed: true }]);
+  const monoSystem = React.useMemo(() => systemFonts(), []);
+  const uiSystem = React.useMemo(() => systemUiFonts(), []);
   const subCols = useColumns('subagent-repos', [{ w: 1, min: 160, flex: true }, { w: 170, min: 110, fixed: true }]);
   const pctOptions = [{ value: '0', label: 'Off' }, { value: '50', label: '50%' }, { value: '70', label: '70%' }, { value: '80', label: '80%' }, { value: '90', label: '90%' }];
   const subLimits = (extra: number[]) => [...new Set([0, 1, 2, 3, 4, 6, 8, 12, ...extra])].sort((a, b) => a - b).map((n) => ({ value: String(n), label: n === 0 ? 'Off' : String(n) }));
@@ -169,6 +188,14 @@ export function Settings({ section }: { section?: string }) {
           {sec === 'appearance' ? <>
             <H>Appearance</H>
             <SettingRow title="Theme"><SegmentedControl value={st.theme} onChange={(v: string) => set({ theme: v as any })} options={[{ value: 'dark', label: 'Dark', icon: 'moon' }, { value: 'light', label: 'Light', icon: 'sun' }, { value: 'system', label: 'System', icon: 'desktop' }]} /></SettingRow>
+            <FontRow title="Interface font" desc="Labels, titles and prose throughout helm." value={st.uiFont} onChange={(v: string) => set({ uiFont: v })} bundled={UI_BUNDLED_FONTS} system={[SYSTEM_DEFAULT, ...uiSystem]} stack={uiStack} />
+            <FontRow title="Data font" desc="Monospaced text in the interface: paths, branches, hashes, counts and costs." value={st.dataFont} onChange={(v: string) => set({ dataFont: v })} bundled={BUNDLED_FONTS} system={monoSystem} stack={dataStack} />
+            <FontRow title="Code font" desc="The editor, terminal and diffs." value={st.editorFont} onChange={(v: string) => set({ editorFont: v })} bundled={BUNDLED_FONTS} system={monoSystem} stack={fontStack} />
+            <SettingRow title="Ligatures" desc="Draw combinations such as => and !== as single symbols, in code fonts that have them."><Switch checked={st.editorLigatures} onChange={(v: boolean) => set({ editorLigatures: v })} /></SettingRow>
+            <div style={{ margin: '4px 0 10px', padding: '12px 14px', borderRadius: 'var(--radius-md)', background: 'var(--bg-editor)', boxShadow: 'inset 0 0 0 1px var(--border-subtle)', fontFamily: fontStack(st.editorFont), fontSize: st.editorFontSize, lineHeight: '20px', fontVariantLigatures: st.editorLigatures ? 'normal' : 'none', color: 'var(--text-1)', whiteSpace: 'pre', overflow: 'auto' }} className="selectable">
+{`const total = items.filter((i) => i.price >= 0 && i.id !== null)
+  .reduce((sum, i) => sum + i.price, 0); // => 0O 1lI {}[]()`}
+            </div>
             <SettingRow title="Editor font size"><Select value={String(st.editorFontSize)} onChange={(e: any) => set({ editorFontSize: +e.target.value })} options={['12', '12.5', '13', '14']} /></SettingRow>
             <SettingRow title="Open files in" desc="Used by Open in editor."><Select value={st.openIn} onChange={(e: any) => set({ openIn: e.target.value })} options={['helm', 'VS Code', 'Cursor', 'Zed']} /></SettingRow>
           </> : null}

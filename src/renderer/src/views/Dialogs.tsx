@@ -42,8 +42,8 @@ export function SignIn() {
       <div style={{ flex: 1, display: 'grid', placeItems: 'center', padding: 24, overflow: 'auto' }}>
         <div style={{ width: 380, display: 'flex', flexDirection: 'column', gap: 24 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <img src={glyph} width="28" height="28" alt="" />
-            <span style={{ font: '600 24px/1 var(--font-mono)', letterSpacing: '-0.02em' }}>helm</span>
+            <img src={glyph} width="38" height="38" alt="" />
+            <span style={{ font: '600 26px/1 var(--font-mono)', letterSpacing: '-0.02em' }}>helm</span>
           </div>
           {step === 0 ? <>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

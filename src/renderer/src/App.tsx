@@ -1,11 +1,12 @@
 import React from 'react';
 import { api, platform } from './api';
+import { dataStack, fontStack, uiStack } from './fonts';
 import { theme as resolveTheme } from './lib';
 import { dismissToast, getUI, go, init, setUI, useUI } from './store';
 import { Button, Toast } from './ui';
 import { Activity, Dashboard } from './views/Dashboard';
 import { AddRepo, NewSession, Palette, SignIn } from './views/Dialogs';
-import { Repo } from './views/Repo';
+import { ExternalSessionView, Repo } from './views/Repo';
 import { Session } from './views/Session';
 import { Settings } from './views/Settings';
 import { Sidebar, StatusBar, TerminalDrawer, TitleBar } from './views/Shell';
@@ -32,6 +33,10 @@ export function App() {
   const pref = app?.settings.theme || 'dark';
   const theme = React.useMemo(() => resolveTheme(pref), [pref, sysDark]);
   React.useEffect(() => { document.documentElement.dataset.theme = theme; }, [theme]);
+  const codeFont = app?.settings.editorFont, uiFont = app?.settings.uiFont, dataFont = app?.settings.dataFont;
+  React.useEffect(() => { if (codeFont) document.documentElement.style.setProperty('--font-code', fontStack(codeFont)); }, [codeFont]);
+  React.useEffect(() => { if (uiFont) document.documentElement.style.setProperty('--font-sans', uiStack(uiFont)); }, [uiFont]);
+  React.useEffect(() => { if (dataFont) document.documentElement.style.setProperty('--font-mono', dataStack(dataFont)); }, [dataFont]);
   const toggleTheme = () => void api.updateSettings({ theme: theme === 'dark' ? 'light' : 'dark' });
 
   React.useEffect(() => {
@@ -59,9 +64,13 @@ export function App() {
     const subA = route.sub ? s?.subagents.find((x) => x.id === route.sub) : undefined;
     crumbs = [{ label: r?.id || 'Session', icon: 'book-bookmark', onClick: r && (() => go({ screen: 'repo', id: r.id })) }, subA ? { label: route.id, onClick: () => go({ screen: 'session', id: route.id, tab: 'conversation' }) } : route.id, ...(subA ? [{ label: subA.description, icon: 'tree-structure' }] : [])];
     body = <Session key={route.id} id={route.id} tab={route.tab || 'conversation'} sub={route.sub} setTab={(t) => go({ screen: 'session', id: route.id, tab: t })} themeKey={theme} />;
+  } else if (route.screen === 'external') {
+    const x = getUI().externals[route.repoId]?.find((e) => e.id === route.id);
+    crumbs = [{ label: route.repoId, icon: 'book-bookmark', onClick: () => go({ screen: 'repo', id: route.repoId, tab: 'external' }) }, { label: x?.title || 'Claude Code session', icon: 'eye' }];
+    body = <ExternalSessionView key={route.id} repoId={route.repoId} id={route.id} />;
   } else if (route.screen === 'repo') {
     crumbs = [{ label: route.id, icon: 'book-bookmark' }];
-    body = <Repo key={route.id} id={route.id} themeKey={theme} />;
+    body = <Repo key={route.id} id={route.id} tab={route.tab} themeKey={theme} />;
   } else if (route.screen === 'settings') {
     crumbs = [{ label: 'Settings', icon: 'gear-six' }];
     body = <Settings section={route.section} />;
