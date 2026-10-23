@@ -79,20 +79,40 @@ export function useColumns(key: string, cols: Col[]) {
 
   const template = cols.map((c, i) => (c.flex ? `minmax(${c.min}px,1fr)` : `${c.fixed ? c.w : ws[i]}px`)).join(' ');
 
-  /** Dragging a flexible column's edge resizes the nearest sized column to its right, the other way round. */
+  const flexAt = cols.findIndex((c) => c.flex);
+  const sized = (j: number) => j >= 0 && j < cols.length && !cols[j].fixed && !cols[j].flex;
+  /**
+   * What a drag on column i's right edge changes, so that the edge itself always follows the mouse:
+   * - before the flexible column, or in a table with none: column i alone. The flexible column absorbs the change, or the table grows to the right.
+   * - the flexible column: the column to its right, the other way round, so the flexible column's edge moves with the mouse.
+   * - after the flexible column: column i and its right neighbour trade width. Resizing column i alone would move its left edge instead,
+   *   because everything right of the flexible column is anchored to the table's right edge.
+   * Returns null when the edge cannot move (nothing to take the space from).
+   */
+  const plan = (i: number): { grow?: number; take?: number } | null => {
+    if (cols[i].fixed) return null;
+    if (flexAt < 0 || i < flexAt) return { grow: i };
+    if (i === flexAt) return sized(i + 1) ? { take: i + 1 } : null;
+    return sized(i + 1) ? { grow: i, take: i + 1 } : null;
+  };
   const start = (i: number) => (e: React.MouseEvent) => {
-    const target = cols[i].flex ? cols.findIndex((c, j) => j > i && !c.fixed && !c.flex) : i;
-    if (target < 0) return;
-    const sign = cols[i].flex ? -1 : 1;
-    const w0 = ref.current[target];
+    const pl = plan(i);
+    if (!pl) return;
+    const w0 = [...ref.current];
+    // Limits on how far the edge may move: neither column may drop below its minimum or pass 1200px.
+    const lo = pl.grow != null ? cols[pl.grow].min - w0[pl.grow] : pl.take != null ? w0[pl.take] - 1200 : 0;
+    const hi = Math.min(pl.grow != null ? 1200 - w0[pl.grow] : Infinity, pl.take != null ? w0[pl.take] - cols[pl.take].min : Infinity);
     track(
-      (dx) => setWs((cur) => cur.map((v, j) => (j === target ? clamp(w0 + sign * dx, cols[target].min, 1200) : v))),
+      (dx) => {
+        const d = clamp(dx, Math.min(lo, hi), hi);
+        setWs(w0.map((v, j) => (j === pl.grow ? v + d : j === pl.take ? v - d : v)));
+      },
       () => write(key, JSON.stringify(ref.current))
     )(e);
   };
   const reset = () => { const d = cols.map((c) => c.w); setWs(d); write(key, JSON.stringify(d)); };
 
-  const resizable = (i: number) => !cols[i].fixed && i < cols.length - 1 && (!cols[i].flex ? true : cols.some((c, j) => j > i && !c.fixed && !c.flex));
+  const resizable = (i: number) => i < cols.length - 1 && plan(i) !== null;
   // A plain function, not a component: a component declared here would remount on every render and drop the drag.
   const cell = (i: number, children?: React.ReactNode, style?: React.CSSProperties) => (
     <span key={i} style={{ position: 'relative', minWidth: 0, ...style }}>
