@@ -40,8 +40,12 @@ export function globMatch(pattern: string, text: string): boolean {
   return re.test(text.trim());
 }
 
-/** Turn `pnpm test --update-snapshots` into `pnpm test *`. */
-export function commandPattern(cmd: string): string {
+/** Shell syntax that can chain, redirect or substitute, so one pattern must never cover a command using it. */
+export const hasShellControl = (cmd: string) => /[;&|`<>\r\n]|\$\(|\$\{/.test(cmd);
+
+/** Turn `pnpm test --update-snapshots` into `pnpm test *`. Compound commands get no pattern. */
+export function commandPattern(cmd: string): string | undefined {
+  if (hasShellControl(cmd)) return undefined;
   const words = cmd.trim().split(/\s+/);
   if (words.length <= 1) return words[0] + ' *';
   const take = ['git', 'npm', 'pnpm', 'yarn', 'go', 'cargo', 'make', 'docker', 'terraform', 'kubectl'].includes(words[0]) ? 2 : 1;

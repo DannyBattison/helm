@@ -134,9 +134,13 @@ export function XTerm({ sessionId, themeKey }: { sessionId: string | null; theme
     return () => { dead = true; offD(); offE(); ro.disconnect(); if (id) void api.termClose(id); t.dispose(); };
   }, [sessionId]);
   React.useEffect(() => {
-    if (!term.current) return;
-    term.current.options.theme = { background: cssVar('--bg-editor'), foreground: cssVar('--text-1'), cursor: cssVar('--text-2'), selectionBackground: cssVar('--accent-muted') };
-  }, [themeKey]);
+    // Parent effects set data-theme after this one runs, so read the tokens on the next tick.
+    const t = setTimeout(() => {
+      if (!term.current) return;
+      term.current.options.theme = { background: cssVar('--bg-editor'), foreground: cssVar('--text-1'), cursor: cssVar('--text-2'), selectionBackground: cssVar('--accent-muted') };
+    }, 0);
+    return () => clearTimeout(t);
+  }, [themeKey, sessionId]);
   return <div ref={el} style={{ flex: 1, minHeight: 0, overflow: 'hidden', background: 'var(--bg-editor)' }} />;
 }
 

@@ -22,7 +22,7 @@ function Explorer({ s, active, open }: { s: Session; active: string | null; open
   const load = React.useCallback(async (dir: string) => {
     try { const t = await api.listTree(s.id, dir); setKids((k) => ({ ...k, [dir]: t })); } catch { /* removed */ }
   }, [s.id]);
-  React.useEffect(() => { void Promise.all(Object.keys(expanded).filter((d) => expanded[d]).map(load)); api.changedFiles(s.id).then(setChanged).catch(() => undefined); }, [sig, s.id]);
+  React.useEffect(() => { void Promise.all(Object.keys(expanded).filter((d) => expanded[d]).map(load)); api.changes(s.id).then((c) => setChanged(c.files.map((f) => ({ path: f.path, status: f.status })))).catch(() => undefined); }, [sig, s.id]);
 
   const toggle = (e: TreeEntry) => {
     const on = !expanded[e.path];
@@ -110,6 +110,7 @@ export function CodeView({ s, themeKey }: { s: Session; themeKey: 'dark' | 'ligh
 
   const openFile = React.useCallback(async (path: string, line?: number) => {
     setTabs((t) => (t.includes(path) ? t : [...t, path]));
+    activeRef.current = path;
     setActive(path);
     const m = M.current?.monaco;
     if (!m || !editor.current) return;

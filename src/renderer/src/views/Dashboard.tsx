@@ -1,6 +1,6 @@
 import React from 'react';
 import type { Session } from '@shared/types';
-import { api } from '../api';
+import { api, platform } from '../api';
 import { ago, clock, fmtTokens, laneAxis, laneData, LANE_MIN, money, repoOf, reposWithSessions, sessionTokens, totals } from '../lib';
 import { go, setUI, useApp, toast } from '../store';
 import { Avatar, Button, DiffStat, Meter, SegmentedControl, Stat, StatusDot } from '../ui';
@@ -127,7 +127,7 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
             <span style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>{date} · {app.sessions.length} {app.sessions.length === 1 ? 'session' : 'sessions'} across {withSessions} {withSessions === 1 ? 'repository' : 'repositories'}</span>
           </div>
           <Button variant="ghost" icon="book-bookmark" onClick={() => setUI({ adding: true })}>Add repository</Button>
-          <Button variant="primary" icon="plus" kbd="⌘N" disabled={app.repos.length === 0} onClick={() => setUI({ newSession: {} })}>New session</Button>
+          <Button variant="primary" icon="plus" kbd={platform() === 'darwin' ? '⌘N' : 'Ctrl+N'} disabled={app.repos.length === 0} onClick={() => setUI({ newSession: {} })}>New session</Button>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr)) minmax(0,1.6fr)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-panel)', boxShadow: 'inset 0 0 0 1px var(--border)' }}>

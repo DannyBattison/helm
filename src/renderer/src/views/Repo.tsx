@@ -1,6 +1,6 @@
 import React from 'react';
 import type { FileChange, HistoryCommit, PullRequest, Repo as R, WorktreeInfo } from '@shared/types';
-import { api } from '../api';
+import { api, platform } from '../api';
 import { relTime, tilde } from '../lib';
 import { go, setUI, toast, useApp } from '../store';
 import { Avatar, Badge, BranchTag, Button, DiffStat, StatusDot, Tabs } from '../ui';
@@ -161,11 +161,11 @@ export function Repo({ id }: { id: string }) {
           <span style={{ font: '600 16px/1 var(--font-sans)' }}><span style={{ fontWeight: 400, color: 'var(--text-3)' }}>{repo.owner}/</span>{repo.name}</span>
           <Badge>{repo.private ? 'Private' : 'Public'}</Badge>
           <BranchTag name={repo.defaultBranch} />
-          <span style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>{fetched ? 'Fetched just now' : tilde(repo.localPath, app.home)}</span>
+          <span title={repo.localPath} style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fetched ? 'Fetched just now' : tilde(repo.localPath, app.home)}</span>
           <span style={{ flex: 1 }} />
           <Button variant="ghost" icon="arrows-clockwise" loading={fetching} onClick={fetchNow}>Fetch</Button>
           <Button variant="ghost" iconRight="arrow-square-out" onClick={() => api.openExternal(`https://github.com/${repo.id}`)}>GitHub</Button>
-          <Button variant="primary" icon="plus" kbd="⌘N" onClick={() => setUI({ newSession: { repoId: repo.id } })}>New session</Button>
+          <Button variant="primary" icon="plus" kbd={platform() === 'darwin' ? '⌘N' : 'Ctrl+N'} onClick={() => setUI({ newSession: { repoId: repo.id } })}>New session</Button>
         </div>
         <Tabs value={tab} onChange={setTab} style={{ borderBottom: 'none', padding: 0 }} tabs={[
           { value: 'history', label: 'History', icon: 'git-commit' },

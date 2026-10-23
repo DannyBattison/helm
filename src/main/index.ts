@@ -201,7 +201,8 @@ const api: HelmApi = {
       for (let i = 1; i <= n; i++) added.push(i);
       return { added, modified };
     }
-    const out = await G.git(s.worktree, 'diff', '-U0', 'HEAD', '--', path);
+    const mb = await G.mergeBase(s.worktree, s.base).catch(() => 'HEAD');
+    const out = await G.git(s.worktree, 'diff', '-U0', mb, '--', path);
     for (const m of out.matchAll(/^@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/gm)) {
       const oldN = m[1] === undefined ? 1 : +m[1], start = +m[2], len = m[3] === undefined ? 1 : +m[3];
       for (let i = 0; i < len; i++) (oldN === 0 ? added : modified).push(start + i);
@@ -316,7 +317,7 @@ else {
   app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
   app.whenReady().then(async () => {
     await store.load();
-    sessions.recover();
+    if (!process.env.HELM_DEV_SEED) sessions.recover();
     await GH.loadToken();
     G.setGitToken(GH.getToken());
     if (!GH.getToken() && !process.env.HELM_DEV_SEED) store.data.user = null;

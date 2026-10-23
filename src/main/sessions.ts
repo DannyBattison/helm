@@ -4,7 +4,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { ActivityEvent, ModelAlias, NewSessionInput, PendingAsk, PermMode, Session, Status, TranscriptEvent } from '../shared/types';
 import * as G from './git';
 import type { Store } from './store';
-import { commandPattern, expandHome, globMatch, uid } from './util';
+import { commandPattern, expandHome, globMatch, hasShellControl, uid } from './util';
 
 export interface Hooks {
   emitState(): void;
@@ -395,8 +395,9 @@ export class SessionManager {
 
   private async onResult(s: Session, rt: Runtime, m: any) {
     if (typeof m.total_cost_usd === 'number') {
-      const delta = Math.max(0, m.total_cost_usd - rt.baseCost - rt.turnCost);
-      if (delta > 0) this.store.addUsage(s.repoId, delta, 0);
+      // The SDK total is authoritative: correct the running estimate in either direction.
+      const delta = m.total_cost_usd - rt.baseCost - rt.turnCost;
+      if (Math.abs(delta) > 1e-6) this.store.addUsage(s.repoId, delta, 0);
       rt.baseCost = Math.max(rt.baseCost, m.total_cost_usd);
       rt.turnCost = 0;
       s.cost = rt.baseCost;
@@ -470,8 +471,9 @@ export class SessionManager {
     }
     if (COMMAND_TOOLS.has(tool)) {
       const cmd = String(input.command || '');
-      if (SAFE_CMD.test(cmd.trim()) && !/[;&|`$><]/.test(cmd)) return { behavior: 'allow', updatedInput: input };
-      if ([...st.alwaysAllow].some((p) => globMatch(p, cmd))) return { behavior: 'allow', updatedInput: input };
+      const plain = !hasShellControl(cmd);
+      if (plain && SAFE_CMD.test(cmd.trim())) return { behavior: 'allow', updatedInput: input };
+      if (plain && st.alwaysAllow.some((p) => globMatch(p, cmd))) return { behavior: 'allow', updatedInput: input };
       const pattern = commandPattern(cmd);
       const ask: PendingAsk = { id: uid(), type: 'approve', at: Date.now(), tool, command: cmd, pattern, head: 'Wants to run a command', note: o?.decisionReason || o?.description || `Runs inside ${s.worktree}. Your checkout is untouched.` };
       await this.push(s.id, { k: 'permission', askId: ask.id, cmd, tool, why: ask.note, pattern });
