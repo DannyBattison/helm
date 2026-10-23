@@ -15,6 +15,8 @@ export const defaultSettings = (): Settings => ({
   permMode: 'ask',
   alwaysAllow: [],
   runTests: true,
+  pushOnCommit: false,
+  commitAuthor: 'coauthor',
   worktreeRoot: join(home, '.helm', 'worktrees'),
   cloneRoot: join(home, 'code'),
   branchPrefix: 'agent/',

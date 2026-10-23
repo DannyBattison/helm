@@ -160,7 +160,7 @@ export class RepoService {
     const commits: HistoryCommit[] = [];
     for (const e of raw.split(SEP).filter((x) => x.trim())) {
       const [hash, parents, who, ct, refs, msg, body = ''] = e.split(F);
-      const trailer = body.match(/Co-authored-by: helm session ([\w-]+)/i);
+      const trailer = body.match(/(?:Co-authored-by: helm session|Helm-Session:) ([\w-]+)/i);
       commits.push({
         hash, parents: parents ? parents.split(' ') : [], lane: 0, kind: 'idle', msg, who, agent: !!trailer, sessionId: trailer?.[1],
         refs: refs ? refs.split(', ').map((x) => x.replace(/^HEAD -> /, '').replace(/^tag: /, '')).filter((x) => x && x !== 'HEAD') : [],
