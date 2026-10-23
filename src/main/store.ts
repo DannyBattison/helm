@@ -4,9 +4,12 @@ import { join } from 'node:path';
 import type { ActivityEvent, Repo, Session, Settings, TranscriptEvent, User } from '../shared/types';
 import { dayStart, home, weekStart } from './util';
 
+/** helm's registered GitHub OAuth app. Client IDs are public; the device flow uses no secret. */
+export const DEFAULT_GITHUB_CLIENT_ID = 'Ov23liTYcKE5lBWCEAAV';
+
 export const defaultSettings = (): Settings => ({
   theme: 'dark',
-  githubClientId: process.env.HELM_GITHUB_CLIENT_ID || '',
+  githubClientId: process.env.HELM_GITHUB_CLIENT_ID || DEFAULT_GITHUB_CLIENT_ID,
   claudePath: '',
   defaultModel: 'sonnet',
   permMode: 'ask',
@@ -52,6 +55,7 @@ export class Store {
     try {
       const raw = JSON.parse(await readFile(join(this.dir, 'helm.json'), 'utf8'));
       this.data = { ...this.data, ...raw, settings: { ...defaultSettings(), ...raw.settings } };
+      if (!this.data.settings.githubClientId) this.data.settings.githubClientId = defaultSettings().githubClientId;
     } catch { /* first run */ }
   }
 

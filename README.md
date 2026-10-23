@@ -23,12 +23,9 @@ Requires Node 22+, git on PATH, and a Claude login. helm runs sessions with the 
 
 ## GitHub sign-in
 
-helm uses GitHub's OAuth device flow. A GitHub OAuth app has to exist for that, and only you can create it:
+helm signs in with GitHub's OAuth device flow, using a registered OAuth app whose public client ID is built in (`src/main/store.ts`). Click Continue with GitHub, enter the code in your browser, approve. To use your own OAuth app (device flow enabled, no secret needed), set `HELM_GITHUB_CLIENT_ID` or change it in Settings → Account.
 
-1. github.com/settings/developers → New OAuth App, tick "Enable Device Flow".
-2. Paste its client ID on the sign-in screen (or set `HELM_GITHUB_CLIENT_ID`). No client secret is needed.
-
-Alternatively, sign in with a personal access token (scopes `repo`, `read:org`, `workflow`). The token is stored encrypted with the OS keychain via Electron `safeStorage`.
+You can also sign in with a personal access token (scopes `repo`, `read:org`, `workflow`). The token is stored encrypted with the OS keychain via Electron `safeStorage`.
 
 ## How it works
 

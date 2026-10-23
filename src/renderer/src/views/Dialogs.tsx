@@ -50,7 +50,7 @@ export function SignIn() {
               <h1 style={{ margin: 0, font: '600 20px/1.25 var(--font-sans)' }}>Run Claude Code across all your repositories</h1>
               <p style={{ margin: 0, font: '400 13px/1.55 var(--font-sans)', color: 'var(--text-2)' }}>helm uses your GitHub account to list repositories, open pull requests and show history. A GitHub account is required.</p>
             </div>
-            {needsClient || usingToken === false && err.includes('client ID') ? (
+            {needsClient ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <span style={{ font: '500 12px/1 var(--font-sans)', color: 'var(--text-2)' }}>GitHub OAuth app client ID</span>
                 <Input mono value={clientId} onChange={(e: any) => setClientId(e.target.value)} placeholder="Ov23li…" />
