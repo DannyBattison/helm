@@ -1,11 +1,12 @@
 import React from 'react';
-import type { DiffHunk, FileChange, HistoryCommit, PullRequest, Repo as R, WorktreeInfo } from '@shared/types';
+import type { CloudSession, DiffHunk, ExternalSession, FileChange, HistoryCommit, PullRequest, Repo as R, TranscriptEvent, WorktreeInfo } from '@shared/types';
 import { api, platform } from '../api';
 import { relTime, tilde } from '../lib';
 import { go, setUI, toast, useApp } from '../store';
 import { Avatar, Badge, BranchTag, Button, Dialog, DiffStat, Grip, SegmentedControl, Select, StatusDot, Tabs, useColumns, usePaneWidth } from '../ui';
 import { CodeView } from './CodeView';
 import { DiffLine, SplitRows } from './Changes';
+import { TranscriptItem } from './Session';
 
 const ROW = 36;
 const LANE_X = (l: number) => 14 + l * 16;
@@ -209,6 +210,126 @@ function PullRequests({ prs, err }: { prs: PullRequest[] | null; err: string }) 
   );
 }
 
+function ago(t: number): string {
+  const s = (Date.now() - t) / 1000;
+  if (s < 60) return 'just now';
+  if (s < 3600) return Math.floor(s / 60) + 'm ago';
+  if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+  return relTime(t);
+}
+
+/** Claude Code sessions for this repository that helm did not start: VS Code, the CLI, anything that writes to ~/.claude. */
+function ExternalSessions({ repo, onCount }: { repo: R; onCount(n: number): void }) {
+  const app = useApp();
+  const [list, setList] = React.useState<ExternalSession[] | null>(null);
+  const [err, setErr] = React.useState('');
+  const [cloud, setCloud] = React.useState<CloudSession[]>([]);
+  const [cloudErr, setCloudErr] = React.useState('');
+  const [kind, setKind] = React.useState('all');
+  const [open, setOpen] = React.useState<ExternalSession | null>(null);
+  const [events, setEvents] = React.useState<TranscriptEvent[] | null>(null);
+  const scroller = React.useRef<HTMLDivElement>(null);
+  const stick = React.useRef(true);
+  const col = useColumns('external-sessions', [{ w: 20, min: 20, fixed: true }, { w: 1, min: 240, flex: true }, { w: 230, min: 120 }, { w: 120, min: 90 }, { w: 90, min: 70, fixed: true }]);
+
+  const load = React.useCallback(() => {
+    api.listExternalSessions(repo.id).then((l) => { setList(l); setErr(''); }).catch((e) => { setList([]); setErr(errText(e)); });
+    api.listCloudSessions(repo.id).then((c) => { setCloud(c); setCloudErr(''); }).catch((e) => { setCloud([]); setCloudErr(errText(e)); });
+  }, [repo.id]);
+  React.useEffect(() => onCount((list?.length || 0) + cloud.length), [list, cloud]);
+  React.useEffect(() => { load(); const t = setInterval(load, 10000); return () => clearInterval(t); }, [load]);
+
+  const live = list?.find((x) => x.id === open?.id);
+  const active = !!live?.active;
+  React.useEffect(() => {
+    if (!open) return;
+    let dead = false;
+    const pull = () => api.externalTranscript(repo.id, open.id).then((e) => !dead && setEvents(e)).catch(() => !dead && setEvents((cur) => cur ?? []));
+    setEvents(null);
+    void pull();
+    const t = setInterval(pull, active ? 4000 : 15000);
+    return () => { dead = true; clearInterval(t); };
+  }, [open?.id, active]);
+  React.useEffect(() => { const el = scroller.current; if (el && stick.current) el.scrollTop = el.scrollHeight; }, [events]);
+
+  const rows = [
+    ...(kind === 'cloud' ? [] : (list || []).map((x) => ({ kind: 'local' as const, t: x.lastModified, x }))),
+    ...(kind === 'local' ? [] : cloud.map((x) => ({ kind: 'cloud' as const, t: x.lastActivity, x })))
+  ].sort((a, b) => b.t - a.t) as ({ kind: 'local'; t: number; x: ExternalSession } | { kind: 'cloud'; t: number; x: CloudSession })[];
+
+  if (open) {
+    const cur = live || open;
+    return (
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ flex: 'none', padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 8, borderBottom: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+            <Button size="sm" variant="ghost" icon="arrow-left" onClick={() => { setOpen(null); setEvents(null); }}>All sessions</Button>
+            <span style={{ font: '600 15px/1.2 var(--font-sans)', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cur.title}</span>
+            {cur.branch ? <BranchTag name={cur.branch} /> : null}
+            {active ? <Badge tone="working" dot>Active now</Badge> : <Badge>Last active {ago(cur.lastModified)}</Badge>}
+          </div>
+          <div style={{ font: '400 11.5px/1.4 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={cur.cwd}>{cur.cwd ? tilde(cur.cwd, app.home) + ' · ' : ''}{cur.id}</div>
+        </div>
+        <div ref={scroller} onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }} style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '20px 20px 24px' }}>
+          <div style={{ maxWidth: 860, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {events == null ? <span style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>Loading conversation…</span> : null}
+            {(events || []).map((m, i) => <TranscriptItem key={i} m={m} s={null as any} onDeny={() => undefined} />)}
+            {active ? <div style={{ marginLeft: 32, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1 var(--font-sans)', color: 'var(--status-working-text)' }}><i className="ph ph-circle-notch" style={{ fontSize: 14, animation: 'helm-spin .9s linear infinite' }} />Updating while it runs</div> : null}
+            <div style={{ marginLeft: 32, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>This session was started outside helm, so it is read-only here. To keep going, continue it where it started.</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div style={{ flex: 1, overflow: 'auto', padding: '0 20px 12px' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, padding: '12px 0 4px' }}>
+        <div style={{ flex: 1, font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-3)', maxWidth: 760 }}>
+          Claude Code sessions for this repository that helm did not start. <b style={{ fontWeight: 500, color: 'var(--text-2)' }}>Local</b> ones, from the VS Code extension or the command line, are found by project folder in <code style={{ font: 'var(--type-data)' }}>~/.claude</code>.{' '}
+          <b style={{ fontWeight: 500, color: 'var(--text-2)' }}>Cloud</b> ones run on Anthropic's servers, so they are found by repository through the branch and pull request they pushed. All of them are read-only here.
+        </div>
+        <SegmentedControl size="sm" value={kind} onChange={setKind} options={[{ value: 'all', label: 'All', count: (list?.length || 0) + cloud.length }, { value: 'local', label: 'Local', count: list?.length || 0 }, { value: 'cloud', label: 'Cloud', count: cloud.length }]} />
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: col.template, gap: 12, padding: '10px 0', ...head }}>
+        <span />{col.cell(1, 'Session')}{col.cell(2, 'Branch')}{col.cell(3, 'Last active')}<span style={{ textAlign: 'right' }}>Size · PR</span>
+      </div>
+      {list == null ? <div style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)', padding: '8px 0' }}>Looking for sessions…</div> : null}
+      {err && kind !== 'cloud' ? <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--status-error-text)', padding: '8px 0' }}>{err}</div> : null}
+      {cloudErr && kind !== 'local' ? <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)', padding: '8px 0' }}>Cloud sessions could not be checked: {cloudErr}</div> : null}
+      {list && !err && rows.length === 0 ? <div style={{ font: '400 13px/1.5 var(--font-sans)', color: 'var(--text-3)', padding: '8px 0' }}>No {kind === 'all' ? '' : kind + ' '}sessions from outside helm for this repository.</div> : null}
+      {rows.map((r) => r.kind === 'local' ? (
+        <div key={'l' + r.x.id} onClick={() => setOpen(r.x)} className="helm-row-hover" style={{ display: 'grid', gridTemplateColumns: col.template, gap: 12, alignItems: 'center', minHeight: 44, borderTop: '1px solid var(--border-subtle)', cursor: 'pointer' }}>
+          <StatusDot status={r.x.active ? 'working' : 'idle'} />
+          <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+              <i className="ph ph-desktop" title="Local session" style={{ fontSize: 13, color: 'var(--text-3)', flex: 'none' }} />
+              <span style={{ font: '500 13px/1.2 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.x.title}</span>
+              {r.x.active ? <Badge tone="working">Active · read-only</Badge> : null}
+            </span>
+            {r.x.cwd && r.x.cwd !== repo.localPath ? <span style={{ font: '400 11px/1.2 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', paddingLeft: 19 }}>{tilde(r.x.cwd, app.home)}</span> : null}
+          </span>
+          <span style={{ minWidth: 0 }}>{r.x.branch ? <BranchTag name={r.x.branch} /> : null}</span>
+          <span style={{ font: '400 11.5px/1 var(--font-mono)', color: r.x.active ? 'var(--status-working-text)' : 'var(--text-3)' }}>{r.x.active ? 'active now' : ago(r.x.lastModified)}</span>
+          <span style={{ font: '400 11.5px/1 var(--font-mono)', color: 'var(--text-3)', textAlign: 'right' }}>{r.x.size ? (r.x.size > 1e6 ? (r.x.size / 1e6).toFixed(1) + ' MB' : Math.max(1, Math.round(r.x.size / 1e3)) + ' kB') : ''}</span>
+        </div>
+      ) : (
+        <div key={'c' + r.x.branch} onClick={() => api.openExternal(r.x.sessionUrl || r.x.pr?.url || `https://github.com/${repo.id}/tree/${r.x.branch}`)} className="helm-row-hover"
+          title={r.x.sessionUrl ? 'Open this cloud session on claude.ai' : 'Open on GitHub'} style={{ display: 'grid', gridTemplateColumns: col.template, gap: 12, alignItems: 'center', minHeight: 44, borderTop: '1px solid var(--border-subtle)', cursor: 'pointer' }}>
+          <StatusDot status={r.x.active ? 'working' : 'idle'} />
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+            <i className="ph ph-cloud" title="Cloud session" style={{ fontSize: 13, color: 'var(--accent-text)', flex: 'none' }} />
+            <span style={{ font: '500 13px/1.2 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.x.title}</span>
+            {r.x.active ? <Badge tone="working">Active · read-only</Badge> : <Badge>Read-only</Badge>}
+          </span>
+          <span style={{ minWidth: 0 }}><BranchTag name={r.x.branch} /></span>
+          <span style={{ font: '400 11.5px/1 var(--font-mono)', color: r.x.active ? 'var(--status-working-text)' : 'var(--text-3)' }}>{r.x.active ? 'active now' : ago(r.x.lastActivity)}</span>
+          <span style={{ textAlign: 'right' }}>{r.x.pr ? <Badge tone={r.x.pr.state === 'merged' ? 'accent' : r.x.pr.state === 'open' ? 'ready' : 'idle'}>#{r.x.pr.number} {r.x.pr.state === 'merged' ? 'merged' : r.x.pr.state === 'open' ? (r.x.pr.draft ? 'draft' : 'open') : 'closed'}</Badge> : <span style={{ font: '400 11.5px/1 var(--font-mono)', color: 'var(--text-3)' }}>branch only</span>}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** Browse and edit the repository's own checkout, or any session's worktree. */
 function RepoCode({ repo, themeKey }: { repo: R; themeKey: 'dark' | 'light' }) {
   const app = useApp();
@@ -245,6 +366,7 @@ export function Repo({ id, themeKey }: { id: string; themeKey: 'dark' | 'light' 
   const [fetching, setFetching] = React.useState(false);
   const [fetched, setFetched] = React.useState<number | null>(null);
   const [prErr, setPrErr] = React.useState('');
+  const [extCount, setExtCount] = React.useState<number | undefined>(undefined);
   const sessSig = app.sessions.filter((s) => s.repoId === id).map((s) => s.id + s.status).join();
   const maxLane = (history || []).reduce((m, c) => Math.max(m, c.lane), 0);
   const gutter = Math.max(78, LANE_X(maxLane) + 26);
@@ -285,6 +407,7 @@ export function Repo({ id, themeKey }: { id: string; themeKey: 'dark' | 'light' 
         <Tabs value={tab} onChange={setTab} style={{ borderBottom: 'none', padding: 0 }} tabs={[
           { value: 'history', label: 'History', icon: 'git-commit' },
           { value: 'code', label: 'Code', icon: 'code' },
+          { value: 'external', label: 'Claude sessions', icon: 'chats-circle', count: extCount },
           { value: 'worktrees', label: 'Branches & worktrees', icon: 'tree-structure', count: wts?.length },
           { value: 'prs', label: 'Pull requests', icon: 'git-pull-request', count: prs?.filter((p) => p.state === 'open').length }]} />
       </div>
@@ -301,6 +424,7 @@ export function Repo({ id, themeKey }: { id: string; themeKey: 'dark' | 'light' 
           {commit ? <CommitDetail repo={repo} c={commit} files={files} onOpen={(path) => setDiff({ path })} /> : null}
         </div>
       ) : tab === 'code' ? <RepoCode repo={repo} themeKey={themeKey} />
+        : tab === 'external' ? <ExternalSessions repo={repo} onCount={setExtCount} />
         : tab === 'worktrees' ? <div style={{ flex: 1, overflow: 'auto' }}><Worktrees repo={repo} list={wts} reload={loadAll} /></div>
         : <PullRequests prs={prs} err={prErr} />}
       {diff && commit && files?.length ? <CommitDiff repo={repo} commit={commit} files={files} start={diff.path} onClose={() => setDiff(null)} /> : null}

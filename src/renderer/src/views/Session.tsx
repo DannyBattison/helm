@@ -106,7 +106,7 @@ function Rich({ text }: { text: string }) {
   return <>{blocks}</>;
 }
 
-function TranscriptItem({ m, s, onDeny }: { m: TranscriptEvent; s: S; onDeny(): void }) {
+export function TranscriptItem({ m, s, onDeny }: { m: TranscriptEvent; s: S; onDeny(): void }) {
   const app = useApp();
   if (m.k === 'subagent') return (
     <div style={{ marginLeft: 32, ...box }}>
@@ -126,7 +126,7 @@ function TranscriptItem({ m, s, onDeny }: { m: TranscriptEvent; s: S; onDeny(): 
     <div style={{ display: 'flex', gap: 10 }}>
       <Avatar agent={!!m.from} name={m.from || app.user?.login || 'you'} src={m.from ? undefined : app.user?.avatar || undefined} size={22} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <span style={{ font: m.from ? '500 12px/1 var(--font-mono)' : '500 12px/1 var(--font-sans)' }}>{m.from ? m.from + ' → subagent' : app.user?.login || 'you'} <span style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)', marginLeft: 6 }}>{clock(m.t)}</span></span>
+        <span style={{ font: m.from ? '500 12px/1 var(--font-mono)' : '500 12px/1 var(--font-sans)' }}>{m.from ? m.from + ' → subagent' : app.user?.login || 'you'} {m.t ? <span style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)', marginLeft: 6 }}>{clock(m.t)}</span> : null}</span>
         <div className="selectable" style={{ font: '400 13px/1.55 var(--font-sans)', color: 'var(--text-1)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.text}</div>
       </div>
     </div>

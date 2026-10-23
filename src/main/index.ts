@@ -1,3 +1,4 @@
+import { getSessionMessages, listSessions } from '@anthropic-ai/claude-agent-sdk';
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Notification, nativeTheme, shell } from 'electron';
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -100,6 +101,17 @@ async function detectClaude(path: string): Promise<string | null> {
   try {
     const out = await run(path || 'claude', ['--version'], { timeout: 8000 });
     return out.trim().split(/\s+/)[0] || null;
+  } catch { return null; }
+}
+
+/** Claude Code's own list of sessions that have a process running right now, or null when it can't be asked. */
+async function liveClaudeSessions(): Promise<Set<string> | null> {
+  const exe = store.data.settings.claudePath || (app.isPackaged
+    ? join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', '@anthropic-ai', `claude-agent-sdk-${process.platform}-${process.arch}`, process.platform === 'win32' ? 'claude.exe' : 'claude')
+    : join(app.getAppPath(), 'node_modules', '@anthropic-ai', `claude-agent-sdk-${process.platform}-${process.arch}`, process.platform === 'win32' ? 'claude.exe' : 'claude'));
+  try {
+    const out = await run(existsSync(exe) ? exe : 'claude', ['agents', '--json'], { timeout: 8000 });
+    return new Set((JSON.parse(out) as any[]).map((x) => x.sessionId));
   } catch { return null; }
 }
 
@@ -212,6 +224,25 @@ const api: HelmApi = {
   },
   async searchFiles(id, q, matchCase) { return G.searchFiles(ws(id).worktree, q, !!matchCase); },
   commitDiff: (repoId, hash, path) => G.commitDiff(repos.must(repoId).localPath, hash, path),
+  async listCloudSessions(repoId) { return GH.listCloudSessions(repos.must(repoId).id); },
+  async listExternalSessions(repoId) {
+    const r = repos.must(repoId);
+    const live = await liveClaudeSessions();
+    const own = new Set(store.data.sessions.map((s) => s.claudeSessionId).filter(Boolean));
+    const list = await listSessions({ dir: r.localPath, includeWorktrees: true });
+    return list
+      .filter((x) => !own.has(x.sessionId))
+      .map((x) => ({
+        id: x.sessionId, title: x.customTitle || x.summary || x.firstPrompt || 'Untitled session', firstPrompt: x.firstPrompt, branch: x.gitBranch, cwd: x.cwd,
+        lastModified: x.lastModified, createdAt: x.createdAt, size: x.fileSize, active: live ? live.has(x.sessionId) : Date.now() - x.lastModified < 90_000
+      }))
+      .sort((a, b) => b.lastModified - a.lastModified);
+  },
+  async externalTranscript(repoId, sessionId) {
+    const r = repos.must(repoId);
+    const msgs = await getSessionMessages(sessionId);
+    return sessions.convertMessages(msgs as any[], r.localPath, true);
+  },
   async listTree(id, dir) { return repos.tree(ws(id).worktree, dir); },
   async readFile(id, path) {
     const abs = safePath(ws(id), path);

@@ -242,6 +242,33 @@ export interface ChangesSummary {
   dirty: number;
 }
 
+/** A Claude Code session started outside helm, such as from the VS Code extension or the CLI. */
+export interface ExternalSession {
+  id: string;
+  title: string;
+  firstPrompt?: string;
+  branch?: string;
+  cwd?: string;
+  lastModified: number;
+  createdAt?: number;
+  size?: number;
+  /** Written to in the last minute or so, so probably still running. */
+  active: boolean;
+}
+
+/** A Claude Code cloud session, found through the branch and pull request it pushed to GitHub. */
+export interface CloudSession {
+  branch: string;
+  title: string;
+  /** https://claude.ai/code/session_..., when the pull request or a commit links to it. */
+  sessionUrl?: string;
+  pr?: { number: number; url: string; state: 'open' | 'closed' | 'merged'; draft: boolean };
+  /** Last push or pull request update, epoch ms. */
+  lastActivity: number;
+  /** Pushed to in the last few minutes and not merged or closed. Cloud sessions are always read-only in helm. */
+  active: boolean;
+}
+
 export interface WorkspaceInfo {
   root: string;
   branch: string;
@@ -351,6 +378,11 @@ export interface HelmApi {
   repoPulls(id: string): Promise<PullRequest[]>;
   commitFiles(id: string, hash: string): Promise<FileChange[]>;
   commitDiff(repoId: string, hash: string, path: string): Promise<DiffHunk[]>;
+  /** Claude Code sessions for this repository that helm did not start. */
+  listExternalSessions(repoId: string): Promise<ExternalSession[]>;
+  externalTranscript(repoId: string, sessionId: string): Promise<TranscriptEvent[]>;
+  /** Claude Code cloud sessions for this repository, found through GitHub. */
+  listCloudSessions(repoId: string): Promise<CloudSession[]>;
   removeWorktree(repoId: string, path: string): Promise<void>;
 
   createSession(input: NewSessionInput): Promise<string>;

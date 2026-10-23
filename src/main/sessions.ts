@@ -381,7 +381,7 @@ export class SessionManager {
     } catch { /* the session file may not be flushed yet; the next sync will catch up */ }
   }
 
-  private convertMessages(msgs: any[], wt: string): TranscriptEvent[] {
+  convertMessages(msgs: any[], wt: string, withUser = false): TranscriptEvent[] {
     const ev: TranscriptEvent[] = [];
     const pending = new Map<string, { kind: 'bash' | 'tool'; idx: number; item?: number }>();
     let group = -1;
@@ -421,6 +421,10 @@ export class SessionManager {
           }
         }
       } else if (m.type === 'user') {
+        if (withUser) {
+          const text = content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
+          if (text && !/^<(local-command|command-|system-reminder|ide_)/.test(text)) ev.push({ k: 'user', t: 0, text });
+        }
         for (const b of content) {
           if (b.type !== 'tool_result') continue;
           const p = pending.get(b.tool_use_id);

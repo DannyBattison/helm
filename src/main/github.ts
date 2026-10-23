@@ -1,7 +1,7 @@
 import { app, safeStorage } from 'electron';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { DeviceCode, GhRepo, PullRequest, User } from '../shared/types';
+import type { CloudSession, DeviceCode, GhRepo, PullRequest, User } from '../shared/types';
 
 const SCOPES = 'repo read:org workflow';
 let token: string | null = null;
@@ -145,4 +145,36 @@ export async function listPulls(slug: string): Promise<PullRequest[]> {
     }
     return { number: p.number, title: p.title, branch: p.head.ref, base: p.base.ref, state: p.merged_at ? 'merged' : p.state, draft: p.draft, url: p.html_url, checks } as PullRequest;
   }));
+}
+
+const SESSION_LINK = /https:\/\/claude\.ai\/code\/(?:session_|ses_)[A-Za-z0-9_]+/;
+
+/**
+ * Claude Code cloud sessions run on Anthropic's servers and can't be listed directly, but they push a `claude/...`
+ * branch and usually open a pull request that links back to the session. Both are visible through GitHub.
+ */
+export async function listCloudSessions(slug: string): Promise<CloudSession[]> {
+  const [branches, pulls] = await Promise.all([
+    gh(`/repos/${slug}/branches?per_page=100`) as Promise<any[]>,
+    gh(`/repos/${slug}/pulls?state=all&per_page=50&sort=updated&direction=desc`) as Promise<any[]>
+  ]);
+  const out = new Map<string, CloudSession>();
+  const fresh = (t: number, state?: string) => Date.now() - t < 10 * 60_000 && state !== 'merged' && state !== 'closed';
+  for (const p of pulls) {
+    const link = String(p.body || '').match(SESSION_LINK)?.[0];
+    if (!String(p.head.ref).startsWith('claude/') && !link) continue;
+    const state = p.merged_at ? 'merged' : p.state;
+    const t = new Date(p.updated_at).getTime();
+    out.set(p.head.ref, { branch: p.head.ref, title: p.title, sessionUrl: link, pr: { number: p.number, url: p.html_url, state, draft: !!p.draft }, lastActivity: t, active: fresh(t, state) });
+  }
+  const loose = branches.filter((b) => String(b.name).startsWith('claude/') && !out.has(b.name)).slice(0, 15);
+  await Promise.all(loose.map(async (b) => {
+    try {
+      const c = await gh(`/repos/${slug}/commits/${b.commit.sha}`);
+      const msg = String(c.commit?.message || '');
+      const t = new Date(c.commit?.committer?.date || c.commit?.author?.date).getTime();
+      out.set(b.name, { branch: b.name, title: msg.split('\n')[0] || b.name, sessionUrl: msg.match(SESSION_LINK)?.[0], lastActivity: t, active: fresh(t) });
+    } catch { /* the branch may have been deleted meanwhile */ }
+  }));
+  return [...out.values()].sort((a, b) => b.lastActivity - a.lastActivity);
 }
