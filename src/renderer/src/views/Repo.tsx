@@ -180,7 +180,10 @@ function CommitDetail({ repo, c, files, onOpen }: { repo: R; c: HistoryCommit; f
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <Button size="sm" icon="git-diff" disabled={!files?.length} onClick={() => onOpen()}>View diff</Button>
-        <Button size="sm" variant="ghost" iconRight="arrow-square-out" onClick={() => api.openExternal(`https://github.com/${repo.id}/commit/${c.hash}`)}>GitHub</Button>
+        <Button size="sm" variant="ghost" iconRight="arrow-square-out" onClick={async () => {
+          if (await api.commitPushed(repo.id, c.hash).catch(() => true)) void api.openExternal(`https://github.com/${repo.id}/commit/${c.hash}`);
+          else toast({ tone: 'neutral', title: 'Not on GitHub yet', description: `${c.hash.slice(0, 7)} only exists on this computer, so GitHub has no page for it. Push the branch first.` });
+        }}>GitHub</Button>
         {session ? <Button size="sm" variant="ghost" icon="chats-circle" onClick={() => go({ screen: 'session', id: session.id, tab: 'conversation' })}>Session</Button> : null}
       </div>
     </aside>

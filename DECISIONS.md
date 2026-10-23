@@ -247,3 +247,7 @@ Why: helm cannot hook the agent's own `git commit`, so the system prompt and env
 ## D-058 · 2026-10-23 · Column drag follows the mouse
 Dragging a column's right edge moves that edge, and only to where the mouse goes. Before the flexible column (or in a table with none) the column itself grows and the flexible column absorbs it. The flexible column's edge takes width from the column on its right. After the flexible column, which is anchored to the table's right edge, a column and its right neighbour trade width, because growing it alone moved its left edge instead. Where a column has no sized neighbour to trade with (the last column before a fixed one), there is no handle, since its edge cannot move.
 Why: user report that dragging right could expand a column to the left.
+
+## D-059 · 2026-10-23 · GitHub link on a commit checks the commit is pushed
+The GitHub button in the commit panel first checks that the commit is reachable from a remote branch (`git branch -r --contains`). A commit that only exists on this computer has no page on GitHub, which showed as a 404; helm now says it is not on GitHub yet and to push the branch. History lists every local branch, so unpushed commits are common.
+Why: user report of a 404.

@@ -471,6 +471,10 @@ const api: HelmApi = {
   readMemory: (id, path) => readMemory(repos.must(id).localPath, path),
   writeMemory: (id, path, text) => writeMemory(repos.must(id).localPath, path, text),
   deleteMemory: (id, path) => deleteMemory(repos.must(id).localPath, path),
+  async commitPushed(id, hash) {
+    const out = await G.git(repos.must(id).localPath, 'branch', '-r', '--contains', hash).catch(() => '');
+    return out.split(/\r?\n/).some((l) => l.trim() && !l.includes('->'));
+  },
   async openFolder(path) { const err = await shell.openPath(path); if (err) throw new Error(err); },
   async openRepoInEditor(id) {
     const r = repos.must(id);

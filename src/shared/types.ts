@@ -587,6 +587,8 @@ export interface HelmApi {
   writeMemory(repoId: string, path: string, text: string): Promise<void>;
   /** Deletes a memory file and its line in the index. */
   deleteMemory(repoId: string, path: string): Promise<void>;
+  /** Whether a commit is on GitHub (reachable from a remote branch). A commit that only exists locally is a 404 there. */
+  commitPushed(repoId: string, hash: string): Promise<boolean>;
   /** Opens a folder in the system file manager. */
   openFolder(path: string): Promise<void>;
   /** Opens the repository in the editor chosen in Settings. With helm as the editor it opens the Code tab instead. */
