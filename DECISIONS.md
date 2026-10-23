@@ -190,3 +190,12 @@ Why: user request. The old behaviour could silently discard unpushed commits.
 ## D-044 · 2026-10-23 · Repository context menu
 Right-clicking a repository in the left tree opens a menu: new session, jump to History, Code, Branches & worktrees or Pull requests, fetch from GitHub, open on GitHub, open in the editor chosen in Settings (or the Code tab when that is helm), show in the file manager, copy the path or GitHub URL, and remove from helm. Removing asks for confirmation and is refused while the repository still has sessions, so no worktrees are orphaned; the folder on disk and GitHub are never touched, and usage history is kept. The repository page is now keyed by its tab as well as its id, so jumping to a tab works when already on that repository.
 Why: user request for common repository tasks one click away.
+
+## D-045 · 2026-10-23 · Pending approvals survive closing helm
+Quitting used to cancel every pending approval and mark the session stopped, and an unresolved Approve button in the transcript then did nothing. Now quitting ends the agent processes but leaves each session as it was. On launch a session that was waiting on the user stays in Needs you, marked as restarted, in the Overview, the sidebar badge and the transcript. Answering it starts the session again from its saved Claude conversation (`resume`) with the answer as the next message: an approved command is pre-approved once so it runs when the agent re-issues it, a denial or answer is explained to the agent, a plan approval switches the session to "Allow edits", and a raised limit lets it continue. Sessions that were simply working are marked stopped with a Resume button. Transcript buttons now appear only while something is really waiting; otherwise the row reads "No longer waiting".
+Why: reported bug. A session waiting for approval at close showed an Approve button that did nothing, and was missing from the dashboard.
+Verified by killing helm hard and by quitting normally while an approval was pending, then approving after relaunch: the command ran, once.
+
+## D-046 · 2026-10-23 · Logo text is optically centred
+"helm" is nudged down by 0.14em so its painted letters, not its line box, are centred on the wheel. Measured from screenshots: before, the word's ink centre was 2px above the wheel's; after, they match, in the sidebar and on the sign-in screen.
+Why: lowercase text without descenders looks high inside a centred line box.

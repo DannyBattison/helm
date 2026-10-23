@@ -93,6 +93,8 @@ export const MODEL_ALIAS: Record<ModelAlias, string> = { sonnet: 'sonnet', opus:
 
 export class SessionManager {
   private rt = new Map<string, Runtime>();
+  /** True while helm is quitting: ending the agents must not rewrite what the sessions were doing. */
+  private quitting = false;
   /** Plan windows the user chose to continue past, keyed to the window's reset time so it lapses on reset. */
   private planOverride: Partial<Record<'fiveHour' | 'weekly', number>> = {};
   constructor(private store: Store, private hooks: Hooks) {}
@@ -109,7 +111,10 @@ export class SessionManager {
     for (const s of this.sessions) {
       s.subagents ||= [];
       for (const a of s.subagents) if (a.status === 'working') { a.status = 'stopped'; a.endedAt = a.endedAt ?? Date.now(); }
-      if (s.status === 'working' || s.status === 'attention') {
+      if (s.status === 'attention' && s.ask) {
+        // Still waiting on the user. Its process is gone, but the question stands: answering it resumes the session.
+        s.ask.orphaned = true;
+      } else if (s.status === 'working' || s.status === 'attention') {
         s.status = 'idle';
         s.step = 'Stopped when helm closed';
         s.ask = undefined;
@@ -141,6 +146,7 @@ export class SessionManager {
 
   private setStatus(s: Session, status: Status, step?: string) {
     if (s.status !== status) {
+      s.lastAccess = Date.now();
       s.status = status;
       s.timeline.push({ t: Date.now(), status });
       if (status === 'ready' || status === 'idle' || status === 'error') s.endedAt = Date.now();
@@ -177,7 +183,7 @@ export class SessionManager {
     const s: Session = {
       id, repoId: repo.id, status: 'working', task: input.task, step: 'Starting', branch, base: remoteBase, worktree: wt,
       model: input.model, permMode: input.permMode, startedAt: now, tokens: { input: 0, output: 0, cacheRead: 0 }, cost: 0, budget: input.budget,
-      ctx: 0, add: 0, del: 0, files: 0, filesTouched: {}, timeline: [{ t: now, status: 'working' }], commits: [], removeAfterMerge: st.removeAfterMerge, subagents: []
+      lastAccess: now, ctx: 0, add: 0, del: 0, files: 0, filesTouched: {}, timeline: [{ t: now, status: 'working' }], commits: [], removeAfterMerge: st.removeAfterMerge, subagents: []
     };
     this.sessions.push(s);
     this.activity(s, 'start', `started on ${branch}`);
@@ -238,6 +244,7 @@ export class SessionManager {
       }
     } finally {
       if (this.rt.get(s.id) === rt) this.rt.delete(s.id);
+      if (this.quitting) return;
       this.stopSubagents(s);
       for (const w of rt.asks.values()) w.resolve({ behavior: 'deny', message: 'Session ended' });
       if (s.status === 'working' || s.status === 'attention') this.setStatus(s, 'idle', 'Stopped');
@@ -710,6 +717,12 @@ export class SessionManager {
   // ---------------------------------------------------------------- permissions
   private async canUse(s: Session, rt: Runtime, tool: string, input: Record<string, unknown>, o: any): Promise<any> {
     const st = this.store.data.settings;
+    // A request the user approved while helm was closed: the agent has re-issued it, so let it through once.
+    const key = COMMAND_TOOLS.has(tool) ? String(input.command || '') : EDIT_TOOLS.has(tool) ? `${tool}:${String(input.file_path || input.notebook_path || '')}` : '';
+    if (key && s.preApproved?.includes(key)) {
+      s.preApproved = s.preApproved.filter((k) => k !== key);
+      return { behavior: 'allow', updatedInput: input };
+    }
     if (tool === 'AskUserQuestion') {
       const questions = (input.questions as any[]) || [];
       const ask: PendingAsk = { id: uid(), type: 'question', at: Date.now(), head: questions[0]?.question || 'The agent has a question', note: questions[0]?.options?.[0]?.description || '', questions };
@@ -764,7 +777,7 @@ export class SessionManager {
     const rt = this.rt.get(sessionId);
     if (!s) return;
     const w = rt?.asks.get(askId);
-    if (!w || !rt) { s.ask = undefined; this.touch(); return; }
+    if (!w || !rt) return this.resolveOrphan(s, askId, answer);
     rt.asks.delete(askId);
     s.ask = undefined;
     const t = await this.store.transcript(sessionId);
@@ -806,11 +819,64 @@ export class SessionManager {
     else w.resolve({ behavior: 'allow', updatedInput: w.input });
   }
 
+  /**
+   * An approval, question or limit that was pending when helm closed. The agent's process is gone, so answering starts
+   * the session again from its saved conversation, with the answer as the next message.
+   */
+  private async resolveOrphan(s: Session, askId: string, answer: any) {
+    const ask = s.ask;
+    if (!ask || ask.id !== askId) { s.ask = undefined; this.touch(); return; }
+    const t = await this.store.transcript(s.id);
+    const markIdx = t.findIndex((e) => (e.k === 'permission' || e.k === 'question') && e.askId === askId);
+    const mark = async (patch: any) => { if (markIdx >= 0) await this.patch(s.id, markIdx, { ...(t[markIdx] as any), ...patch }); };
+    s.ask = undefined;
+    let message: string;
+    if (ask.type === 'budget') {
+      if (ask.scope === 'plan') {
+        const p = this.store.data.plan;
+        if (p.fiveHour) this.planOverride.fiveHour = p.fiveHour.resetsAt;
+        if (p.weekly) this.planOverride.weekly = p.weekly.resetsAt;
+        message = 'You were paused at a plan usage limit the user set, and they chose to continue. Continue where you left off.';
+      } else {
+        const add = Number(answer.addBudget) || 5; // USD
+        if (ask.scope === 'repo') this.repoOf(s).cap += add; else s.budget += add;
+        message = 'You were paused at a spending limit and it has been raised. Continue where you left off.';
+      }
+    } else if (ask.type === 'question') {
+      const answers: Record<string, string> = answer.answers || {};
+      await mark({ answered: Object.values(answers).join(', ') });
+      message = `helm was restarted while you waited. The user answered your question "${ask.questions?.[0]?.question || ''}": ${Object.values(answers).join(', ')}. Continue.`;
+    } else {
+      const decision = answer.decision as 'approve' | 'always' | 'deny';
+      await mark({ resolved: decision === 'deny' ? 'denied' : decision === 'always' ? 'always' : 'approved' });
+      const what = ask.command || ask.head;
+      if (decision === 'deny') {
+        message = `helm was restarted while you waited for approval to run "${what}". The user denied it${answer.text ? `: ${answer.text}` : ''}. Do not run it; ask what they would prefer.`;
+      } else {
+        if (decision === 'always' && ask.pattern && !this.store.data.settings.alwaysAllow.includes(ask.pattern)) this.store.data.settings.alwaysAllow.push(ask.pattern);
+        if (ask.tool === 'ExitPlanMode') {
+          s.permMode = 'edits';
+          message = 'helm was restarted while you waited. The user approved your plan. Go ahead and start.';
+        } else {
+          (s.preApproved ||= []).push(ask.tool && EDIT_TOOLS.has(ask.tool) ? `${ask.tool}:${ask.command}` : String(ask.command));
+          message = `helm was restarted while you waited for approval. The user approved this, so go ahead and run it now: ${what}`;
+        }
+      }
+    }
+    await this.push(s.id, { k: 'note', tone: 'neutral', text: 'helm was restarted while this waited. The session is resuming with your answer.' });
+    this.setStatus(s, 'working', 'Resuming');
+    await this.start(s, message);
+  }
+
   // ---------------------------------------------------------------- controls
   async send(id: string, text: string) {
     const s = this.get(id);
     if (!s) throw new Error('Session not found');
     let rt = this.rt.get(id);
+    // Talking to a session brings it back from the archive.
+    s.lastAccess = Date.now();
+    s.archivedAt = undefined;
+    s.archivedAuto = undefined;
     await this.push(id, { k: 'user', t: Date.now(), text });
     if (s.ask && rt) {
       // Replying while it waits counts as answering a question, or as a denial with an explanation.
@@ -865,6 +931,43 @@ export class SessionManager {
     s.permMode = mode;
     await this.rt.get(id)?.q.setPermissionMode(mode === 'plan' ? 'plan' : mode === 'edits' ? 'acceptEdits' : 'default').catch(() => undefined);
     this.touch();
+  }
+
+  archive(id: string, archived: boolean) {
+    const s = this.get(id);
+    if (!s) return;
+    if (archived && (this.rt.has(id) || s.status === 'working' || s.status === 'attention')) throw new Error('Stop the session before archiving it.');
+    s.archivedAt = archived ? Date.now() : undefined;
+    s.archivedAuto = undefined;
+    if (!archived) s.lastAccess = Date.now();
+    this.touch();
+  }
+
+  touchAccess(id: string) {
+    const s = this.get(id);
+    if (!s) return;
+    s.lastAccess = Date.now();
+    this.store.save();
+  }
+
+  /**
+   * Archives sessions nobody has opened for the configured number of days. Anything running, waiting on the user,
+   * or finished but not yet reviewed (no pull request) is left alone, because hiding it would hide work that needs attention.
+   */
+  autoArchive() {
+    const days = this.store.data.settings.archiveAfterDays;
+    if (!days) return;
+    const cutoff = Date.now() - days * 86_400_000;
+    let any = false;
+    for (const s of this.sessions) {
+      if (s.archivedAt || this.rt.has(s.id) || s.status === 'working' || s.status === 'attention' || s.ask) continue;
+      if (s.status === 'ready' && !s.prUrl) continue;
+      if ((s.lastAccess || s.startedAt) > cutoff) continue;
+      s.archivedAt = Date.now();
+      s.archivedAuto = true;
+      any = true;
+    }
+    if (any) this.touch();
   }
 
   /** What deleting would lose: uncommitted work in the worktree, and commits that exist nowhere else. */
@@ -930,6 +1033,13 @@ export class SessionManager {
     if (!s || !rt || s.status !== 'working') return;
     await this.push(id, { k: 'note', tone: 'neutral', text: `You edited ${file}. The agent was told.` });
     rt.queue.push(`Note from the user: they edited ${file} directly in the worktree. Re-read it before changing it again.`);
+  }
+
+  /** helm is quitting: end the agent processes but leave each session as it was, so a pending approval survives to the next launch. */
+  shutdown() {
+    this.quitting = true;
+    for (const rt of this.rt.values()) { rt.queue.close(); rt.abort.abort(); }
+    this.rt.clear();
   }
 
   async stopAll() {

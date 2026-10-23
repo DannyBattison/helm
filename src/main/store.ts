@@ -23,6 +23,7 @@ export const defaultSettings = (): Settings => ({
   weeklyLimit: 100,
   sessionBudget: 10,
   warnAt: 80,
+  archiveAfterDays: 14,
   maxSubagentsSession: 4,
   maxSubagentsRepo: 8,
   billing: 'subscription',
@@ -55,11 +56,13 @@ interface Persisted {
   plan: PlanUsage;
   /** Lifetime usage per repository id. */
   totals: Record<string, Lifetime>;
+  /** Overrides for sessions started outside helm, by Claude session id. */
+  extArchive: Record<string, 'archived' | 'restored'>;
   fx: { rates: Record<string, number>; at: number };
 }
 
 export class Store {
-  data: Persisted = { user: null, repos: [], sessions: [], activity: [], settings: defaultSettings(), usage: [], plan: { at: 0 }, totals: {}, fx: { rates: {}, at: 0 } };
+  data: Persisted = { user: null, repos: [], sessions: [], activity: [], settings: defaultSettings(), usage: [], plan: { at: 0 }, totals: {}, extArchive: {}, fx: { rates: {}, at: 0 } };
   private transcripts = new Map<string, TranscriptEvent[]>();
   private dir = '';
   private timer: NodeJS.Timeout | null = null;
@@ -73,7 +76,8 @@ export class Store {
       this.data = { ...this.data, ...raw, settings: { ...defaultSettings(), ...raw.settings } };
       if (!this.data.settings.githubClientId) this.data.settings.githubClientId = defaultSettings().githubClientId;
       // Sessions saved by older versions have no subagents.
-      for (const x of this.data.sessions) x.subagents ||= [];
+      for (const x of this.data.sessions) { x.subagents ||= []; x.lastAccess ||= x.endedAt ?? x.startedAt; }
+      this.data.extArchive ||= {};
       // Lifetime totals started later than sessions did: seed them from the sessions that exist, once.
       if (!raw.totals) {
         this.data.totals = {};

@@ -34,6 +34,7 @@ function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string
             <span>{prettyModel(s)}</span><span>·</span><span>started {clock(s.startedAt)}</span><span>·</span><span>{fmtTokens(s.tokens.input + s.tokens.output + s.tokens.cacheRead)} tokens</span>{sub ? null : <><span>·</span><span>{fmt(s.cost)}</span></>}
           </div>
         </div>
+        {s.status === 'idle' && /^Stopped/.test(s.step) ? <Button variant="secondary" icon="play" onClick={() => guard(api.resumeSession(s.id))}>Resume</Button> : null}
         {s.status === 'working' ? <Button variant="ghost" icon="pause" onClick={() => guard(api.interrupt(s.id))}>Pause</Button> : null}
         {running ? <Button variant="ghost" icon="stop" onClick={() => guard(api.stopSession(s.id))}>Stop</Button> : null}
         <Button variant="secondary" icon="arrow-square-out" onClick={() => guard(api.openInEditor(s.id))}>Open in editor</Button>
@@ -183,7 +184,15 @@ export function TranscriptItem({ m, s, onDeny }: { m: TranscriptEvent; s: S; onD
       <i className={'ph-fill ph-' + (m.tone === 'error' ? 'warning-circle' : 'info')} style={{ fontSize: 14, marginTop: 1 }} /><span className="selectable">{m.text}</span>
     </div>
   );
+  const live = !!s && s.ask?.id === (m as any).askId;
+  const restarted = live && !!s?.ask?.orphaned;
+  const expired = (what: string) => (
+    <div style={{ marginLeft: 32, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1.3 var(--font-sans)', color: 'var(--text-3)', minWidth: 0 }}>
+      <i className="ph ph-clock-countdown" style={{ fontSize: 14 }} />No longer waiting: {what}
+    </div>
+  );
   if (m.k === 'permission') {
+    if (!m.resolved && !live) return expired(m.cmd.length > 70 ? m.cmd.slice(0, 70) + '…' : m.cmd);
     if (m.resolved) return (
       <div style={{ marginLeft: 32, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1.3 var(--font-sans)', color: 'var(--text-3)', minWidth: 0 }}>
         <i className={'ph-fill ph-' + (m.resolved === 'denied' ? 'x-circle' : 'check-circle')} style={{ fontSize: 14, color: m.resolved === 'denied' ? 'var(--status-error)' : 'var(--status-ready)' }} />
@@ -197,6 +206,7 @@ export function TranscriptItem({ m, s, onDeny }: { m: TranscriptEvent; s: S; onD
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, font: '600 13px/1 var(--font-sans)', color: 'var(--status-attention-text)' }}><i className="ph-fill ph-shield-warning" style={{ fontSize: 15 }} />{isCmd ? 'Permission needed to run a command' : m.tool === 'ExitPlanMode' ? 'Plan ready for approval' : 'Permission needed'}</div>
         <code className="selectable" style={{ font: 'var(--type-code)', padding: '6px 10px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-editor)', color: 'var(--text-1)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{isCmd ? <><span style={{ color: 'var(--text-3)' }}>$ </span><Cmd text={m.cmd} /></> : m.cmd}</code>
         <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>{m.why}</div>
+        {restarted ? <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>helm was restarted while this waited. Approving starts the session again and has the agent run it.</div> : null}
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <Button size="sm" variant="primary" kbd={MOD() + '↵'} onClick={() => guard(api.resolveAsk(s.id, m.askId, { decision: 'approve' }))}>Approve once</Button>
           {m.pattern ? <Button size="sm" onClick={() => guard(api.resolveAsk(s.id, m.askId, { decision: 'always' }))}>Always allow <span style={{ font: '400 11px var(--font-mono)', color: 'var(--text-3)' }}>{m.pattern}</span></Button> : null}
@@ -207,6 +217,7 @@ export function TranscriptItem({ m, s, onDeny }: { m: TranscriptEvent; s: S; onD
   }
   if (m.k === 'question') {
     const q = m.questions[0];
+    if (!m.answered && !live) return expired(q?.question || 'question');
     return (
       <div style={{ marginLeft: 32, borderRadius: 'var(--radius-md)', background: 'var(--status-attention-bg)', boxShadow: 'inset 0 0 0 1px var(--status-attention)', padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, font: '600 13px/1 var(--font-sans)', color: 'var(--status-attention-text)' }}><i className="ph-fill ph-question" style={{ fontSize: 15 }} />{q?.header || 'Question from the agent'}</div>

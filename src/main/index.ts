@@ -121,6 +121,15 @@ async function liveClaudeSessions(): Promise<Set<string> | null> {
   } catch { return null; }
 }
 
+/** A session from outside helm is archived by hand, or when it has been idle longer than the archive setting. A restore overrides the age rule. */
+function externalArchiveState(id: string, lastModified: number, active: boolean): { archived: boolean; archiveReason?: 'manual' | 'age' } {
+  const o = store.data.extArchive[id];
+  if (o === 'archived') return { archived: true, archiveReason: 'manual' };
+  const days = store.data.settings.archiveAfterDays;
+  if (o !== 'restored' && !active && days > 0 && Date.now() - lastModified > days * 86_400_000) return { archived: true, archiveReason: 'age' };
+  return { archived: false };
+}
+
 function applyTheme() {
   const t = store.data.settings.theme;
   nativeTheme.themeSource = t;
@@ -143,6 +152,7 @@ const api: HelmApi = {
     Object.assign(store.data.settings, patch);
     if ('theme' in patch) applyTheme();
     if ('billing' in patch && patch.billing === 'subscription') void refreshPlan(true);
+    if ('archiveAfterDays' in patch) sessions.autoArchive();
     if ('planPause5h' in patch || 'planPauseWeek' in patch || 'billing' in patch) void sessions.enforcePlan();
     if ('claudePath' in patch) claudeVersion = await detectClaude(store.data.settings.claudePath);
     store.save();
@@ -225,6 +235,9 @@ const api: HelmApi = {
   stopSession: (id) => sessions.stop(id),
   async resumeSession(id) { await sessions.send(id, 'Continue where you left off.'); },
   sessionDeleteInfo: (id) => sessions.deleteInfo(id),
+  async archiveSession(id, archived) { sessions.archive(id, archived); },
+  async touchSession(id) { sessions.touchAccess(id); },
+  async archiveExternal(id, archived) { store.data.extArchive[id] = archived ? 'archived' : 'restored'; store.save(); },
   deleteSession: (id, opts) => sessions.remove(id, opts),
   setSessionModel: (id, m) => sessions.setModel(id, m),
   setSessionPermMode: (id, m) => sessions.setPermMode(id, m),
@@ -258,7 +271,8 @@ const api: HelmApi = {
       .filter((x) => !own.has(x.sessionId))
       .map((x) => ({
         id: x.sessionId, title: x.customTitle || x.summary || x.firstPrompt || 'Untitled session', firstPrompt: x.firstPrompt, branch: x.gitBranch, cwd: x.cwd,
-        lastModified: x.lastModified, createdAt: x.createdAt, size: x.fileSize, active: live ? live.has(x.sessionId) : Date.now() - x.lastModified < 90_000
+        lastModified: x.lastModified, createdAt: x.createdAt, size: x.fileSize, active: live ? live.has(x.sessionId) : Date.now() - x.lastModified < 90_000,
+        ...externalArchiveState(x.sessionId, x.lastModified, live ? live.has(x.sessionId) : Date.now() - x.lastModified < 90_000)
       }))
       .sort((a, b) => b.lastModified - a.lastModified);
   },
@@ -479,7 +493,7 @@ else {
   app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
   app.whenReady().then(async () => {
     await store.load();
-    if (!process.env.HELM_DEV_SEED) sessions.recover();
+    if (!process.env.HELM_DEV_NO_RECOVER) sessions.recover();
     await GH.loadToken();
     G.setGitToken(GH.getToken());
     if (!GH.getToken() && !process.env.HELM_DEV_SEED) store.data.user = null;
@@ -491,6 +505,8 @@ else {
     createWindow();
     setInterval(pollMerges, 120_000);
     void detectCurrency().then(refreshRates);
+    sessions.autoArchive();
+    setInterval(() => sessions.autoArchive(), 3600_000);
     repos.setCacheDir(join(app.getPath('userData'), 'history-cache'));
     void refreshPlan(true);
     setInterval(() => void refreshPlan(), 5 * 60_000);
@@ -503,7 +519,7 @@ else {
     e.preventDefault();
     (app as any).__closing = true;
     terms.closeAll();
-    await sessions.stopAll().catch(() => undefined);
+    sessions.shutdown();
     await store.flushAll().catch(() => undefined);
     app.quit();
   });

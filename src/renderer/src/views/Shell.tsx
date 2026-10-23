@@ -120,7 +120,7 @@ export function Sidebar() {
       <div className="drag" style={{ height: 'var(--titlebar-h)', flex: 'none', display: 'flex', alignItems: 'center', gap: 10, padding: '0 14px 0 ' + (mac() ? 78 : 14) + 'px' }}>
         <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
           <img src={glyph} width="22" height="22" alt="" />
-          <span style={{ font: '600 14px/1 var(--font-mono)', letterSpacing: '-0.02em' }}>helm</span>
+          <span style={{ font: '600 14px/1 var(--font-mono)', letterSpacing: '-0.02em', position: 'relative', top: '0.14em' }}>helm</span>
         </span>
       </div>
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: '4px 6px 8px' }}>

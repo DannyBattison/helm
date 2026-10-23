@@ -42,6 +42,8 @@ export interface PendingAsk {
   questions?: AskQuestion[];
   /** Which limit paused the session, for budget asks. */
   scope?: 'session' | 'repo' | 'plan';
+  /** helm was closed while this waited, so the agent's process is gone. Answering it starts the session again. */
+  orphaned?: boolean;
 }
 
 export interface Subagent {
@@ -93,9 +95,17 @@ export interface Session {
   error?: string;
   prUrl?: string;
   removeAfterMerge: boolean;
+  /** When it was archived. Archived sessions are hidden from the left tree and Overview, and kept. */
+  archivedAt?: number;
+  /** Archived by the idle timer rather than by hand. */
+  archivedAuto?: boolean;
+  /** Last time it was opened, messaged or changed state. The idle timer counts from here. */
+  lastAccess: number;
   subagents: Subagent[];
   /** Overrides the default limit on subagents running at once in this session. */
   maxSubagents?: number;
+  /** Requests the user approved while helm was closed. The agent re-issues them, and each is allowed once without asking again. */
+  preApproved?: string[];
 }
 
 export type TranscriptEvent =
@@ -137,6 +147,8 @@ export interface Settings {
   weeklyLimit: number;
   sessionBudget: number;
   warnAt: number;
+  /** Archive sessions that have not been opened for this many days. 0 never archives. */
+  archiveAfterDays: number;
   /** Most subagents one session may run at once. 0 turns subagents off. */
   maxSubagentsSession: number;
   /** Most subagents that may run at once across all sessions of a repository. */
@@ -271,6 +283,9 @@ export interface ExternalSession {
   size?: number;
   /** Written to in the last minute or so, so probably still running. */
   active: boolean;
+  /** Hidden from the left tree and Overview: archived by hand, or idle for longer than the archive setting. */
+  archived: boolean;
+  archiveReason?: 'manual' | 'age';
 }
 
 /** Somewhere a new session can start from: a local branch, or a branch on GitHub. */
@@ -428,6 +443,11 @@ export interface HelmApi {
   resumeSession(sessionId: string): Promise<void>;
   /** What deleting a session would remove or lose, so the dialog can say so. */
   sessionDeleteInfo(sessionId: string): Promise<SessionDeleteInfo>;
+  archiveSession(sessionId: string, archived: boolean): Promise<void>;
+  /** Records that a session was opened, which restarts its idle timer. */
+  touchSession(sessionId: string): Promise<void>;
+  /** Archives or restores a session started outside helm. Restoring also overrides the age rule. */
+  archiveExternal(sessionId: string, archived: boolean): Promise<void>;
   /** Deletes the session. The branch can only go with the worktree, because git won't delete a branch that is checked out. */
   deleteSession(sessionId: string, opts: { worktree: boolean; branch: boolean }): Promise<void>;
   setSessionModel(sessionId: string, model: ModelAlias): Promise<void>;
