@@ -3,8 +3,9 @@ import type { DiffHunk, ExternalSession, FileChange, HistoryCommit, PullRequest,
 import { api, platform } from '../api';
 import { relTime, tilde } from '../lib';
 import { go, setUI, toast, useApp, useUI } from '../store';
-import { Avatar, Badge, BranchTag, Button, Dialog, DiffStat, Grip, SegmentedControl, Select, StatusDot, Tabs, useColumns, usePaneWidth } from '../ui';
+import { Avatar, Badge, BranchTag, Button, Dialog, DiffStat, Grip, SegmentedControl, Select, Skeleton, StatusDot, Tabs, useColumns, usePaneWidth } from '../ui';
 import { CodeView } from './CodeView';
+import { langFromPath } from '../highlight';
 import { DiffLine, SplitRows } from './Changes';
 import { TranscriptItem } from './Session';
 
@@ -45,6 +46,36 @@ function Graph({ commits }: { commits: HistoryCommit[] }) {
 
 type Cols = ReturnType<typeof useColumns>;
 
+/** Placeholder rows for a table, in the table's own grid so nothing moves when the data arrives. */
+function SkeletonRows({ n = 6, template, widths, height = 40, lead }: { n?: number; template: string; widths: (number | null)[]; height?: number; lead?: boolean }) {
+  return (
+    <>
+      {Array.from({ length: n }).map((_, i) => (
+        <div key={i} style={{ display: 'grid', gridTemplateColumns: template, gap: 12, alignItems: 'center', minHeight: height, borderTop: '1px solid var(--border-subtle)' }}>
+          {widths.map((w, j) => <span key={j} style={{ minWidth: 0 }}>{w ? <Skeleton w={Math.max(28, w - ((i * 13 + j * 7) % 32)) + '%'} /> : lead && j === 0 ? <Skeleton w={8} h={8} r={4} /> : null}</span>)}
+        </div>
+      ))}
+    </>
+  );
+}
+
+/** The commit list while history is read: a lane dot and bars where the message, author and hash will be. */
+function HistorySkeleton({ col, n = 14 }: { col: Cols; n?: number }) {
+  return (
+    <div>
+      {Array.from({ length: n }).map((_, i) => (
+        <div key={i} style={{ height: ROW, display: 'grid', gridTemplateColumns: col.template, gap: 12, alignItems: 'center', padding: '0 16px 0 0', borderBottom: '1px solid var(--border-subtle)' }}>
+          <span style={{ display: 'flex', justifyContent: 'flex-start', paddingLeft: LANE_X(0) - 4 }}><Skeleton w={8} h={8} r={4} /></span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>{i % 4 === 0 ? <Skeleton w={74} h={16} r={3} /> : null}<Skeleton w={(30 + ((i * 17) % 50)) + '%'} h={10} /></span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Skeleton w={16} h={16} r={8} /><Skeleton w="50%" h={9} /></span>
+          <Skeleton w={52} h={9} />
+          <Skeleton w={44} h={9} style={{ marginLeft: 'auto' }} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function HistoryList({ commits, sel, setSel, col, onOpen }: { commits: HistoryCommit[]; sel: number; setSel(i: number): void; col: Cols; onOpen(i: number): void }) {
   return (
     <div style={{ position: 'relative' }}>
@@ -81,6 +112,7 @@ function CommitDiff({ repo, commit, files, start, onClose }: { repo: R; commit: 
     return () => { dead = true; };
   }, [sel, commit.hash]);
   const noop = () => undefined;
+  const lang = langFromPath(sel);
   return (
     <Dialog width={1180} title={commit.msg} description={`${commit.hash.slice(0, 7)} · ${commit.who} · ${files.length} ${files.length === 1 ? 'file' : 'files'}`} onClose={onClose}>
       <div style={{ display: 'flex', height: 'min(68vh, 640px)', margin: '-8px -20px -16px', borderTop: '1px solid var(--border-subtle)' }}>
@@ -109,7 +141,7 @@ function CommitDiff({ repo, commit, files, start, onClose }: { repo: R; commit: 
               : hunks.map((h, i) => (
                 <div key={i}>
                   <div style={{ padding: '6px 16px', font: '400 11.5px/1.4 var(--font-mono)', color: 'var(--accent-text)', background: 'var(--accent-muted)' }}>{h.header}</div>
-                  {mode === 's' ? <SplitRows lines={h.lines} onComment={noop} /> : h.lines.map((l, j) => <DiffLine key={j} l={l} onComment={noop} />)}
+                  {mode === 's' ? <SplitRows lines={h.lines} onComment={noop} lang={lang} /> : h.lines.map((l, j) => <DiffLine key={j} l={l} onComment={noop} lang={lang} />)}
                 </div>
               ))}
           </div>
@@ -134,8 +166,8 @@ function CommitDetail({ repo, c, files, onOpen }: { repo: R; c: HistoryCommit; f
         <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}><BranchTag kind="commit" name={c.hash.slice(0, 7)} />{c.refs.map((r) => <BranchTag key={r} name={r} />)}</span>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}><span style={head}>Files</span><DiffStat additions={c.add} deletions={c.del} /></div>
-        {files == null ? <span style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>Loading…</span> : null}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}><span style={head}>Files</span>{files ? <DiffStat additions={files.reduce((a, f) => a + f.add, 0)} deletions={files.reduce((a, f) => a + f.del, 0)} /> : <Skeleton w={70} h={9} />}</div>
+        {files == null ? [78, 60, 70].map((w, i) => <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 26 }}><Skeleton w={13} h={13} r={3} /><Skeleton w={w + '%'} h={9} /></div>) : null}
         {(files || []).slice(0, 80).map((f) => (
           <div key={f.path} onClick={() => onOpen(f.path)} className="helm-row-hover" title="Show diff" style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 26, padding: '0 6px', margin: '0 -6px', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }}>
             <i className="ph ph-file-code" style={{ fontSize: 13, color: 'var(--text-3)' }} />
@@ -161,7 +193,7 @@ function Worktrees({ repo, list, reload }: { repo: R; list: WorktreeInfo[] | nul
       <div style={{ display: 'grid', gridTemplateColumns: col.template, gap: 12, padding: '10px 0', ...head }}>
         {col.cell(0, 'Branch')}{col.cell(1, 'Worktree')}{col.cell(2, 'Session')}{col.cell(3, 'Ahead / behind')}{col.cell(4, 'Uncommitted')}<span />
       </div>
-      {list == null ? <div style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)', padding: '8px 0' }}>Loading…</div> : null}
+      {list == null ? <SkeletonRows n={4} template={col.template} widths={[70, 60, 55, 40, 40, null]} /> : null}
       {(list || []).map((w) => {
         const s = w.sessionId ? app.sessions.find((x) => x.id === w.sessionId) : undefined;
         return (
@@ -192,7 +224,7 @@ function PullRequests({ prs, err }: { prs: PullRequest[] | null; err: string }) 
       <div style={{ display: 'grid', gridTemplateColumns: '20px ' + col.template, gap: 12, padding: '10px 0', ...head }}>
         <span />{col.cell(0, 'Pull request')}{col.cell(1, 'Number')}{col.cell(2, 'Branch')}<span style={{ textAlign: 'right' }}>Status</span>
       </div>
-      {prs == null ? <div style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)', padding: '8px 0' }}>Loading…</div> : null}
+      {prs == null ? <SkeletonRows n={5} template={'20px ' + col.template} widths={[null, 75, 30, 55, 50]} height={44} lead /> : null}
       {err ? <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--status-error-text)', padding: '8px 0' }}>{err}</div> : null}
       {prs && !err && prs.length === 0 ? <div style={{ font: '400 13px/1.5 var(--font-sans)', color: 'var(--text-3)', padding: '8px 0' }}>No pull requests yet.</div> : null}
       {(prs || []).map((p) => (
@@ -283,7 +315,7 @@ function ExternalSessions({ repo, onCount }: { repo: R; onCount(n: number): void
       <div style={{ display: 'grid', gridTemplateColumns: col.template, gap: 12, padding: '10px 0', ...head }}>
         <span />{col.cell(1, 'Session')}{col.cell(2, 'Branch')}{col.cell(3, 'Last active')}<span style={{ textAlign: 'right' }}>Size</span>
       </div>
-      {list == null ? <div style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)', padding: '8px 0' }}>Looking for sessions…</div> : null}
+      {list == null ? <SkeletonRows n={5} template={col.template} widths={[null, 70, 50, 40, 30]} height={44} lead /> : null}
       {err ? <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--status-error-text)', padding: '8px 0' }}>{err}</div> : null}
       {list && !err && list.length === 0 ? <div style={{ font: '400 13px/1.5 var(--font-sans)', color: 'var(--text-3)', padding: '8px 0' }}>No sessions from outside helm for this repository.</div> : null}
       {(list || []).map((x) => (
@@ -347,11 +379,21 @@ export function Repo({ id, themeKey, tab: firstTab }: { id: string; themeKey: 'd
   const gutter = Math.max(78, LANE_X(maxLane) + 26);
   const col = useColumns('history', [{ w: gutter, min: gutter, fixed: true }, { w: 1, min: 200, flex: true }, { w: 160, min: 90 }, { w: 80, min: 60 }, { w: 80, min: 60, fixed: true }]);
 
-  const loadAll = React.useCallback(() => {
-    api.repoHistory(id).then(setHistory).catch((e) => { setHistory([]); toast({ tone: 'error', title: 'Could not read history', description: errText(e) }); });
-    api.repoWorktrees(id).then(setWts).catch(() => setWts([]));
+  const [limit, setLimit] = React.useState(150);
+  const [more, setMore] = React.useState(false);
+  const loadHistory = React.useCallback((lim: number) => api.repoHistory(id, lim).then((h) => { setHistory(h); setMore(false); }).catch((e) => { setHistory((cur) => cur ?? []); setMore(false); toast({ tone: 'error', title: 'Could not read history', description: errText(e) }); }), [id]);
+  const loadWts = React.useCallback(() => api.repoWorktrees(id).then(setWts).catch(() => setWts([])), [id]);
+  const loadAll = React.useCallback(() => { void loadHistory(limit); if (tab === 'worktrees' || wts) void loadWts(); }, [loadHistory, loadWts, limit, tab, wts]);
+  // Opening a repository paints the last history read straight away, then checks whether anything changed.
+  React.useEffect(() => {
+    let dead = false;
+    setHistory(null); setLimit(150); setWts(null); setMore(false);
+    api.repoHistoryCached(id, 150).then((c) => { if (!dead && c) setHistory((cur) => cur ?? c); }).catch(() => undefined);
+    return () => { dead = true; };
   }, [id]);
-  React.useEffect(() => { loadAll(); }, [id, sessSig]);
+  React.useEffect(() => { void loadHistory(limit); }, [id, limit, sessSig]);
+  // Worktrees take a git call each, so they are only read once their tab is opened.
+  React.useEffect(() => { if (tab === 'worktrees' || wts) void loadWts(); }, [tab, id, sessSig]);
   React.useEffect(() => { setPrs(null); setPrErr(''); api.repoPulls(id).then(setPrs).catch((e) => { setPrs([]); setPrErr(errText(e)); }); }, [id]);
 
   const commit = history?.[Math.min(sel, (history?.length || 1) - 1)];
@@ -392,15 +434,20 @@ export function Repo({ id, themeKey, tab: firstTab }: { id: string; themeKey: 'd
             <div style={{ display: 'grid', gridTemplateColumns: col.template, gap: 12, alignItems: 'center', height: 30, flex: 'none', padding: '0 16px 0 0', borderBottom: '1px solid var(--border)', ...head }}>
               <span />{col.cell(1, 'Message')}{col.cell(2, 'Author')}{col.cell(3, 'Commit')}<span style={{ textAlign: 'right' }}>When</span>
             </div>
-            <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-              {history == null ? <div style={{ padding: 16, font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>Loading history…</div> : <HistoryList commits={history} sel={sel} setSel={setSel} col={col} onOpen={() => setDiff({})} />}
+            <div onScroll={(e) => {
+              const el = e.currentTarget;
+              if (history && history.length >= limit && limit < 3000 && !more && el.scrollHeight - el.scrollTop - el.clientHeight < 500) { setMore(true); setLimit((l) => l + 300); }
+            }} style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+              {history == null ? <HistorySkeleton col={col} /> : <HistoryList commits={history} sel={sel} setSel={setSel} col={col} onOpen={() => setDiff({})} />}
+              {more ? <HistorySkeleton col={col} n={3} /> : null}
+              {history && history.length > 0 && history.length < limit ? <div style={{ padding: '12px 16px', font: '400 11.5px/1 var(--font-sans)', color: 'var(--text-3)' }}>Start of history · {history.length} commits</div> : null}
             </div>
           </div>
           {commit ? <CommitDetail repo={repo} c={commit} files={files} onOpen={(path) => setDiff({ path })} /> : null}
         </div>
       ) : tab === 'code' ? <RepoCode repo={repo} themeKey={themeKey} />
         : tab === 'external' ? <ExternalSessions repo={repo} onCount={setExtCount} />
-        : tab === 'worktrees' ? <div style={{ flex: 1, overflow: 'auto' }}><Worktrees repo={repo} list={wts} reload={loadAll} /></div>
+        : tab === 'worktrees' ? <div style={{ flex: 1, overflow: 'auto' }}><Worktrees repo={repo} list={wts} reload={loadWts} /></div>
         : <PullRequests prs={prs} err={prErr} />}
       {diff && commit && files?.length ? <CommitDiff repo={repo} commit={commit} files={files} start={diff.path} onClose={() => setDiff(null)} /> : null}
     </div>

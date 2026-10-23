@@ -4,7 +4,7 @@ import { api, platform } from '../api';
 import { fontStack } from '../fonts';
 import { langOf } from '../lib';
 import { toast, useApp } from '../store';
-import { Badge, Breadcrumbs, Button, Grip, Input, Kbd, SegmentedControl, Switch, Tabs, TreeItem, usePaneWidth } from '../ui';
+import { Badge, Breadcrumbs, Button, Grip, Input, Kbd, SegmentedControl, Skeleton, Switch, Tabs, TreeItem, usePaneWidth } from '../ui';
 import { TerminalDrawer } from './Shell';
 
 type MonacoNS = typeof import('../monaco');
@@ -164,7 +164,7 @@ function Explorer({ ws, s, sig, active, open, branch }: { ws: string; s?: Sessio
           {only === 'changed' ? changed.map((c) => (
             <TreeItem key={c.path} mono icon="file-code" selected={active === c.path} label={c.path} onClick={() => open(c.path)}
               trailing={<span style={{ font: '500 11px/1 var(--font-mono)', color: gColor[c.status], width: 10, textAlign: 'center' }}>{c.status}</span>} />
-          )) : rows.map(({ e, d }) => (
+          )) : !kids[''] ? [60, 40, 70, 50, 65, 45, 55].map((w, i) => <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, height: 26, padding: '0 8px 0 ' + (20 + (i % 3 === 1 ? 14 : 0)) + 'px' }}><Skeleton w={13} h={13} r={3} /><Skeleton w={w + '%'} h={9} /></div>) : rows.map(({ e, d }) => (
             <TreeItem key={e.path} depth={d} mono selected={active === e.path} icon={e.dir ? (expanded[e.path] ? 'folder-open' : 'folder-simple') : 'file-code'}
               expandable={e.dir} expanded={!!expanded[e.path]} label={e.name} onClick={() => (e.dir ? toggle(e) : open(e.path))}
               trailing={<span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

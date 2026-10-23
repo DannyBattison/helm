@@ -153,3 +153,19 @@ Why: user feedback.
 ## D-035 · 2026-10-23 · External sessions in the sidebar
 Local Claude Code sessions started outside helm appear under their repository in the left tree: italic titles, an eye icon, a "read-only" tooltip, and "live" for running ones. The most recent four and any live ones are shown, with a link to the rest. They open as a full page with a live transcript. They are refreshed every 15 seconds while the window is focused.
 Why: user wanted them visible alongside helm's own sessions, clearly marked as external.
+
+## D-036 · 2026-10-23 · Syntax highlighting outside the editor, only when confident
+Code outside Monaco is highlighted with highlight.js (a small core with about 25 languages), coloured by the same `--syn-*` tokens as the editor themes, so it follows the theme and fonts. Where the language is known it is used: from the file name for diffs and edit blocks, from the fence tag for code in messages, and bash for commands. Where it is not, helm detects it only with strong evidence: valid JSON, a decisive marker such as a shebang or `package main`, or at least two separate language-specific signals with a clear lead over the next language. Anything else stays plain. highlight.js's own auto-detection was tried first and rejected: on test snippets it labelled Python as Ruby and barely separated Go from Java. Detection is covered by tests, including prose, command output and short fragments staying plain.
+Why: user asked for highlighting wherever code is visible, but only when confident.
+
+## D-037 · 2026-10-23 · History is cached and read lazily
+Git history is read in two parts. A cache holds the raw log, keyed by a hash of every ref, in memory and on disk, so opening a repository paints the last read at once while a fresh check runs; only the colours that depend on current sessions are recomputed each time. The log reads 150 commits first and 300 more each time you scroll near the bottom, up to 3,000. Per-commit stats were dropped from the list and are read when a commit is opened (and cached). Worktrees are read only when their tab is opened. While data loads, tables show skeleton rows in their own grid so nothing shifts. On a 30,000-commit test repository a cached paint takes about 1 ms and a first read of 150 commits about 46 ms. Dropping the stats made no measurable difference on that repository, whose commits are tiny.
+Why: user asked for caching, lazy loading and placeholders for slow, large histories.
+
+## D-038 · 2026-10-23 · Reordering the sidebar
+Repositories can be dragged to reorder, and sessions within their repository. Subagents have no handle of their own and always travel with their parent. The order is the order of the stored lists, so the Overview ledger follows it. Dragging a session onto another repository is not supported.
+Why: user request.
+
+## D-039 · 2026-10-23 · External sessions on the Overview
+Sessions started outside helm also appear in the Overview ledger under their repository, in italics with an eye icon and "external · read-only", with an External filter, a count in the summary line and an "external live" item in the status bar. Live ones also show under the Working filter. The most recent five and any live ones are listed per repository.
+Why: user asked for them to be visible there as well as in the sidebar.

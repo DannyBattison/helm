@@ -47,6 +47,38 @@ export function Sidebar() {
   const [width, grip, resetWidth] = usePaneWidth('sidebar', 240, 180, 440);
   const t = totals(app);
   const externals = useUI((u) => u.externals);
+  // Reordering: repositories among themselves, and sessions within their repository. Subagents are never dragged on their own.
+  const drag = React.useRef<{ kind: 'repo' | 'session'; id: string; repoId?: string } | null>(null);
+  const [over, setOver] = React.useState<{ key: string; pos: 'before' | 'after' } | null>(null);
+  const dnd = (kind: 'repo' | 'session', id: string, repoId?: string) => ({
+    draggable: true as const,
+    onDragStart: (e: React.DragEvent) => { drag.current = { kind, id, repoId }; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', id); e.stopPropagation(); },
+    onDragEnd: () => { drag.current = null; setOver(null); }
+  });
+  const target = (kind: 'repo' | 'session', id: string, repoId?: string) => ({
+    onDragOver: (e: React.DragEvent) => {
+      const d = drag.current;
+      if (!d || d.kind !== kind || d.repoId !== repoId) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const r = e.currentTarget.getBoundingClientRect();
+      const pos = e.clientY < r.top + r.height / 2 ? 'before' : 'after';
+      setOver((cur) => (cur && cur.key === id && cur.pos === pos ? cur : { key: id, pos }));
+    },
+    onDrop: (e: React.DragEvent) => {
+      const d = drag.current;
+      if (!d || d.kind !== kind || d.repoId !== repoId || d.id === id) { setOver(null); return; }
+      e.preventDefault();
+      e.stopPropagation();
+      const ids = (kind === 'repo' ? app.repos.map((r) => r.id) : app.sessions.filter((s) => s.repoId === repoId).map((s) => s.id)).filter((x) => x !== d.id);
+      const at = ids.indexOf(id) + (over?.pos === 'after' ? 1 : 0);
+      ids.splice(at, 0, d.id);
+      void (kind === 'repo' ? api.reorderRepos(ids) : api.reorderSessions(repoId!, ids));
+      drag.current = null;
+      setOver(null);
+    }
+  });
+  const line = (id: string): React.CSSProperties => (over?.key === id ? { boxShadow: over.pos === 'before' ? 'inset 0 2px 0 var(--accent)' : 'inset 0 -2px 0 var(--accent)', borderRadius: 3 } : {});
   const subStatus = (st: string) => (st === 'working' ? 'working' : st === 'failed' ? 'error' : 'idle');
   return (
     <aside style={{ position: 'relative', width, flex: 'none', display: 'flex', flexDirection: 'column', background: 'var(--bg-sidebar)', borderRight: '1px solid var(--border)' }}>
@@ -67,17 +99,20 @@ export function Sidebar() {
         {reposWithSessions(app).map(({ repo: r, sessions }) => {
           const open = !closed[r.id];
           return (
-            <div key={r.id}>
+            <div key={r.id} {...target('repo', r.id)} style={line(r.id)}>
+              <div {...dnd('repo', r.id)}>
               <TreeItem icon="book-bookmark" expandable={sessions.length > 0} expanded={open}
                 label={<span><span style={{ color: 'var(--text-3)' }}>{r.owner}/</span>{r.name}</span>}
                 selected={route.screen === 'repo' && route.id === r.id} meta={sessions.length || null}
                 onClick={() => { if (route.screen === 'repo' && route.id === r.id) setClosed({ ...closed, [r.id]: open }); else go({ screen: 'repo', id: r.id }); }} />
+              </div>
               {open ? sessions.map((s) => {
                 const tree = subagentTree(s);
                 const running = runningSubagents(s);
                 const subsOpen = !subsClosed[s.id];
                 return (
-                  <div key={s.id}>
+                  <div key={s.id} {...target('session', s.id, r.id)} style={line(s.id)}>
+                    <div {...dnd('session', s.id, r.id)}>
                     <TreeItem depth={1} status={s.status} label={s.id} expandable={tree.length > 0} expanded={subsOpen}
                       meta={running ? <span style={{ color: 'var(--status-working-text)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><i className="ph ph-tree-structure" style={{ fontSize: 11 }} />{running}</span> : elapsed(s.startedAt, s.endedAt)}
                       selected={route.screen === 'session' && route.id === s.id && !route.sub}
@@ -86,6 +121,7 @@ export function Sidebar() {
                         if (here && tree.length) setSubsClosed({ ...subsClosed, [s.id]: subsOpen });
                         else go({ screen: 'session', id: s.id, tab: s.status === 'ready' ? 'changes' : 'conversation' });
                       }} />
+                    </div>
                     {subsOpen ? tree.map(({ a, depth }) => (
                       <TreeItem key={a.id} depth={2 + depth} status={subStatus(a.status)} label={a.description} meta={a.tools + ' tools'}
                         selected={route.screen === 'session' && route.id === s.id && route.sub === a.id}
@@ -148,6 +184,7 @@ export function StatusBar() {
   const app = useApp();
   const term = useUI((u) => u.term);
   const t = totals(app);
+  const extLive = useUI((u) => Object.values(u.externals).reduce((n, l) => n + l.filter((x) => x.active).length, 0));
   const item: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, height: '100%', padding: '0 8px', color: 'var(--text-3)' };
   const dot = (c: string) => <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--status-' + c + ')' }} />;
   const tok = t.tokens >= 1e6 ? (t.tokens / 1e6).toFixed(2) + 'M' : t.tokens >= 1e3 ? Math.round(t.tokens / 1e3) + 'k' : String(t.tokens);
@@ -156,6 +193,7 @@ export function StatusBar() {
       <span style={item}>{dot('working')}{t.working} working</span>
       <span style={item}>{dot('attention')}{t.attention} need you</span>
       <span style={item}>{dot('ready')}{t.ready} ready</span>
+      {extLive ? <span style={item} title="Claude Code sessions running outside helm. Read-only."><i className="ph ph-eye" style={{ fontSize: 12 }} />{extLive} external live</span> : null}
       <span style={{ flex: 1 }} />
       <span style={item}>{tok} tokens today</span>
       <span style={item} title={app.claudeVersion ? 'Claude Code CLI found' : 'Using the Claude Code bundled with helm'}><i className="ph ph-plugs-connected" style={{ fontSize: 12 }} />{app.claudeVersion ? 'claude ' + app.claudeVersion : 'claude (bundled)'}</span>

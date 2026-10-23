@@ -1,6 +1,8 @@
 import React from 'react';
 import type { ChangesSummary, DiffHunk, ReviewComment, Session } from '@shared/types';
 import { api, platform } from '../api';
+import { Hl } from '../Hl';
+import { langFromPath } from '../highlight';
 import { CHECK_RE } from '../lib';
 import { go, toast, useApp, useTranscript } from '../store';
 import { Avatar, BranchTag, Button, Checkbox, DiffStat, Grip, IconButton, Input, SegmentedControl, Select, usePaneWidth } from '../ui';
@@ -15,7 +17,7 @@ const pending = new Map<string, ReviewComment[]>();
 
 type Row = [string, number | null, number | null, string];
 
-export function DiffLine({ l, onComment }: { l: Row; onComment(line: number): void }) {
+export function DiffLine({ l, onComment, lang }: { l: Row; onComment(line: number): void; lang?: string | null }) {
   const [t, o, n, text] = l;
   const bg = t === '+' ? 'var(--diff-add-bg)' : t === '-' ? 'var(--diff-del-bg)' : 'transparent';
   const gut = t === '+' ? 'var(--diff-add-gutter)' : t === '-' ? 'var(--diff-del-gutter)' : 'transparent';
@@ -25,12 +27,12 @@ export function DiffLine({ l, onComment }: { l: Row; onComment(line: number): vo
       <span style={{ textAlign: 'right', paddingRight: 8, color: 'var(--text-disabled)', background: gut }}>{o || ''}</span>
       <span title={n ? 'Comment on this line' : undefined} onClick={() => n && onComment(n)} style={{ textAlign: 'right', paddingRight: 8, color: 'var(--text-disabled)', background: gut, cursor: n ? 'pointer' : 'default' }}>{n || ''}</span>
       <span style={{ textAlign: 'center', color: fg }}>{t === '-' ? '−' : t === '+' ? '+' : ''}</span>
-      <span className="selectable" style={{ whiteSpace: 'pre', color: t === ' ' ? 'var(--text-2)' : 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', tabSize: 4 }}>{text}</span>
+      <span className="selectable" style={{ whiteSpace: 'pre', color: t === ' ' ? 'var(--text-2)' : 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', tabSize: 4 }}><Hl text={text} lang={lang} /></span>
     </div>
   );
 }
 
-export function SplitRows({ lines, onComment }: { lines: Row[]; onComment(line: number): void }) {
+export function SplitRows({ lines, onComment, lang }: { lines: Row[]; onComment(line: number): void; lang?: string | null }) {
   const out: React.ReactNode[] = [];
   let i = 0;
   const cell = (l: Row | null, side: 'l' | 'r') => {
@@ -40,7 +42,7 @@ export function SplitRows({ lines, onComment }: { lines: Row[]; onComment(line: 
     return (
       <div style={{ display: 'grid', gridTemplateColumns: '44px minmax(0,1fr)', background: bg, minWidth: 0 }}>
         <span onClick={() => side === 'r' && num && onComment(num)} style={{ textAlign: 'right', paddingRight: 8, color: 'var(--text-disabled)', cursor: side === 'r' && num ? 'pointer' : 'default' }}>{num || ''}</span>
-        <span className="selectable" style={{ whiteSpace: 'pre', overflow: 'hidden', textOverflow: 'ellipsis', tabSize: 4, color: t === ' ' ? 'var(--text-2)' : 'var(--text-1)' }}>{l?.[3] ?? ''}</span>
+        <span className="selectable" style={{ whiteSpace: 'pre', overflow: 'hidden', textOverflow: 'ellipsis', tabSize: 4, color: t === ' ' ? 'var(--text-2)' : 'var(--text-1)' }}><Hl text={l?.[3] ?? ''} lang={lang} /></span>
       </div>
     );
   };
@@ -129,6 +131,7 @@ export function Changes({ s }: { s: Session }) {
   React.useEffect(() => { api.repoBranches(s.repoId).then(setBranches).catch(() => undefined); }, [s.repoId]);
 
   const file = sum?.files.find((f) => f.path === sel);
+  const fileLang = sel ? langFromPath(sel) : null;
   const collapsed = !!file && (file.generated || file.add + file.del > 1500 || file.binary) && !shown.has(file.path);
   React.useEffect(() => {
     setHunks(null);
@@ -233,8 +236,8 @@ export function Changes({ s }: { s: Session }) {
             : hunks.map((h, i) => (
               <div key={i}>
                 <div style={{ padding: '6px 16px', font: '400 11.5px/1.4 var(--font-mono)', color: 'var(--accent-text)', background: 'var(--accent-muted)' }}>{h.header}</div>
-                {mode === 's' ? <SplitRows lines={h.lines} onComment={setComposing} />
-                  : h.lines.map((l, j) => <React.Fragment key={j}><DiffLine l={l} onComment={setComposing} />{renderThreads(l[2])}</React.Fragment>)}
+                {mode === 's' ? <SplitRows lines={h.lines} onComment={setComposing} lang={fileLang} />
+                  : h.lines.map((l, j) => <React.Fragment key={j}><DiffLine l={l} onComment={setComposing} lang={fileLang} />{renderThreads(l[2])}</React.Fragment>)}
               </div>
             ))}
         </div>

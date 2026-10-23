@@ -1,8 +1,9 @@
 import React from 'react';
-import type { Session } from '@shared/types';
+import type { ExternalSession, Session } from '@shared/types';
 import { api, platform } from '../api';
 import { ago, clock, fmtTokens, laneAxis, laneData, LANE_MIN, livePlan, repoOf, reposWithSessions, runningSubagents, sessionTokens, totals, untilReset } from '../lib';
-import { go, setUI, useApp, useMoney, toast } from '../store';
+import { Hl } from '../Hl';
+import { go, setUI, useApp, useMoney, toast, useUI } from '../store';
 import { Avatar, Button, DiffStat, Meter, SegmentedControl, Stat, StatusDot, useColumns } from '../ui';
 import { PlanMeters } from './Shell';
 
@@ -38,7 +39,7 @@ export function AttentionCard({ s }: { s: Session }) {
         <span style={{ marginLeft: 'auto' }}>{ago(a.at)}</span>
       </div>
       <div style={{ font: '600 13px/1.35 var(--font-sans)', textWrap: 'pretty' as any }}>{a.head}</div>
-      {a.command ? <code className="selectable" style={{ font: 'var(--type-data)', padding: '6px 8px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-editor)', boxShadow: 'inset 0 0 0 1px var(--border-subtle)', color: 'var(--text-1)', wordBreak: 'break-all' }}>{a.tool === 'Bash' || a.tool === 'PowerShell' ? '$ ' : ''}{a.command}</code> : null}
+      {a.command ? <code className="selectable" style={{ font: 'var(--type-data)', padding: '6px 8px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-editor)', boxShadow: 'inset 0 0 0 1px var(--border-subtle)', color: 'var(--text-1)', wordBreak: 'break-all' }}>{a.tool === 'Bash' || a.tool === 'PowerShell' ? <><span style={{ color: 'var(--text-3)' }}>$ </span><Hl text={a.command} lang="bash" /></> : a.command}</code> : null}
       {a.type === 'budget' && a.scope === 'plan' ? <PlanMeters /> : null}
       {a.type === 'budget' && a.scope !== 'plan' ? <Meter value={s.cost} max={s.budget} detail={fmt(s.cost) + ' / ' + fmt(s.budget)} label="Session budget" /> : null}
       {a.note ? <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)', flex: 1, textWrap: 'pretty' as any }}>{a.note}</div> : null}
@@ -58,6 +59,32 @@ export function AttentionCard({ s }: { s: Session }) {
         </> : null}
         {a.type === 'approve' ? <Button size="sm" variant="ghost" onClick={open}>Open session</Button> : null}
       </div>
+    </div>
+  );
+}
+
+/** A Claude Code session that helm did not start. It sits among the others, marked read-only, and opens its transcript. */
+function ExternalRow({ x, repoId, tpl, sub }: { x: ExternalSession; repoId: string; tpl: string; sub: boolean }) {
+  const [hover, setHover] = React.useState(false);
+  const size = x.size ? (x.size > 1e6 ? (x.size / 1e6).toFixed(1) + ' MB' : Math.max(1, Math.round(x.size / 1e3)) + ' kB') : '';
+  const last = ago(x.lastModified);
+  return (
+    <div onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} onClick={() => go({ screen: 'external', repoId, id: x.id })} title="Started outside helm. Read-only."
+      style={{ display: 'grid', gridTemplateColumns: tpl, gap: 12, alignItems: 'center', minHeight: 44, padding: '0 12px', borderTop: '1px solid var(--border-subtle)', background: hover ? 'var(--bg-hover)' : 'transparent', cursor: 'pointer' }}>
+      <StatusDot status={x.active ? 'working' : 'idle'} />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+          <i className="ph ph-eye" style={{ fontSize: 13, color: 'var(--text-3)', flex: 'none' }} />
+          <span style={{ font: 'italic 500 13px/1.2 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{x.title}</span>
+        </span>
+        <span style={{ font: '400 11px/1.2 var(--font-mono)', color: 'var(--text-3)', display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
+          {x.branch ? <><i className="ph ph-git-branch" style={{ fontSize: 11 }} />{x.branch} · </> : null}external · read-only
+        </span>
+      </div>
+      <span style={{ font: 'italic 400 12px/1.3 var(--font-sans)', color: x.active ? 'var(--status-working-text)' : 'var(--text-3)' }}>{x.active ? 'Active now' : 'Last active ' + (last === 'now' ? 'just now' : last + ' ago')}</span>
+      <span /><span /><span />
+      {sub ? null : <span />}
+      <span style={{ font: 'var(--type-data)', color: 'var(--text-3)', textAlign: 'right' }}>{size}</span>
     </div>
   );
 }
@@ -114,6 +141,8 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
   const [now, setNow] = React.useState(Date.now());
   React.useEffect(() => { const i = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(i); }, []);
   const t = totals(app);
+  const externals = useUI((u) => u.externals);
+  const totalExt = Object.values(externals).reduce((n, l) => n + l.length, 0);
   const { fmt } = useMoney();
   const sub = app.settings.billing === 'subscription';
   const plan = livePlan(app);
@@ -121,11 +150,14 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
     { w: 20, min: 20, fixed: true }, { w: 270, min: 150 }, { w: 200, min: 150, flex: true }, { w: 300, min: 180 }, { w: 88, min: 60 }, { w: 56, min: 44 },
     ...(sub ? [] : [{ w: 56, min: 44 }]), { w: 104, min: 80, fixed: true }
   ]);
-  const visible = (s: Session) => filter === 'all' || s.status === filter;
+  const visible = (s: Session) => filter !== 'external' && (filter === 'all' || s.status === filter);
+  const extVisible = (x: ExternalSession) => filter === 'all' || filter === 'external' || (filter === 'working' && x.active);
+  const extFor = (id: string) => (externals[id] || []).filter(extVisible);
+  const extShown = (id: string) => extFor(id).filter((x, i) => filter === 'external' || x.active || i < 5);
   const axis = laneAxis(now);
   const asks = app.sessions.filter((s) => s.ask).sort((a, b) => a.ask!.at - b.ask!.at);
   const cell: React.CSSProperties = { padding: '14px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'center', borderLeft: '1px solid var(--border-subtle)' };
-  const groups = reposWithSessions(app).filter(({ sessions }) => sessions.some(visible));
+  const groups = reposWithSessions(app).filter(({ repo: r, sessions }) => sessions.some(visible) || extFor(r.id).length > 0);
   const date = new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
   const withSessions = new Set(app.sessions.map((s) => s.repoId)).size;
   return (
@@ -134,7 +166,7 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12 }}>
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
             <h1 style={{ margin: 0, font: '600 20px/1.2 var(--font-sans)', letterSpacing: 'var(--tracking-tight)' }}>{filter === 'attention' ? 'Needs you' : 'Overview'}</h1>
-            <span style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>{date} · {app.sessions.length} {app.sessions.length === 1 ? 'session' : 'sessions'} across {withSessions} {withSessions === 1 ? 'repository' : 'repositories'}</span>
+            <span style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>{date} · {app.sessions.length} {app.sessions.length === 1 ? 'session' : 'sessions'} across {withSessions} {withSessions === 1 ? 'repository' : 'repositories'}{totalExt ? ` · ${totalExt} external, read-only` : ''}</span>
           </div>
           <Button variant="ghost" icon="book-bookmark" onClick={() => setUI({ adding: true })}>Add repository</Button>
           <Button variant="primary" icon="plus" kbd={platform() === 'darwin' ? '⌘N' : 'Ctrl+N'} disabled={app.repos.length === 0} onClick={() => setUI({ newSession: {} })}>New session</Button>
@@ -156,7 +188,7 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
           </div>
         </div>
 
-        {app.sessions.length === 0 ? <FirstRun /> : null}
+        {app.sessions.length === 0 && totalExt === 0 ? <FirstRun /> : null}
 
         {asks.length > 0 ? (
           <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -173,7 +205,7 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
           <div style={{ font: '400 13px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Nothing is waiting on you.</div>
         ) : null}
 
-        {app.sessions.length > 0 ? (
+        {app.sessions.length > 0 || totalExt > 0 ? (
           <section style={{ borderRadius: 'var(--radius-lg)', background: 'var(--bg-panel)', boxShadow: 'inset 0 0 0 1px var(--border)', overflow: 'hidden' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px' }}>
               <span style={{ font: '600 13px/1 var(--font-sans)' }}>Sessions</span>
@@ -181,7 +213,8 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
                 { value: 'all', label: 'All', count: app.sessions.length },
                 { value: 'attention', label: 'Needs you', count: t.attention },
                 { value: 'working', label: 'Working', count: t.working },
-                { value: 'ready', label: 'Review', count: t.ready }]} />
+                { value: 'ready', label: 'Review', count: t.ready },
+                { value: 'external', label: 'External', count: totalExt }]} />
               <span style={{ flex: 1 }} />
               {[['working', 'Working'], ['attention', 'Waiting on you'], ['ready', 'Ready']].map(([k, l]) => (
                 <span key={k} style={{ display: 'flex', alignItems: 'center', gap: 5, font: '400 11px/1 var(--font-sans)', color: 'var(--text-3)' }}><span style={{ width: 12, height: 6, borderRadius: 2, background: LANE_COLOR[k] }} />{l}</span>
@@ -207,6 +240,8 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
                   <Button size="sm" variant="ghost" icon="plus" onClick={() => setUI({ newSession: { repoId: r.id } })}>New session</Button>
                 </div>
                 {sessions.filter(visible).map((s) => <SessionRow key={s.id} s={s} now={now} tpl={col.template} sub={sub} />)}
+                {extShown(r.id).map((x) => <ExternalRow key={x.id} x={x} repoId={r.id} tpl={col.template} sub={sub} />)}
+                {extFor(r.id).length > extShown(r.id).length ? <div onClick={() => go({ screen: 'repo', id: r.id, tab: 'external' })} className="helm-row-hover" style={{ padding: '8px 12px', borderTop: '1px solid var(--border-subtle)', font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)', cursor: 'pointer' }}>{extFor(r.id).length - extShown(r.id).length} more external sessions</div> : null}
               </div>
             ))}
           </section>

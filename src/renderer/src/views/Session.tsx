@@ -1,6 +1,8 @@
 import React from 'react';
 import type { Session as S, TranscriptEvent, ModelAlias, PermMode } from '@shared/types';
 import { api, platform } from '../api';
+import { Hl } from '../Hl';
+import { highlightBlock, langFromPath, langFromTag } from '../highlight';
 import { clock, elapsed, fmtTokens, prettyModel, runningSubagents, STATUS_LABEL, subagentTree, tilde } from '../lib';
 import { go, loadTranscript, toast, useApp, useMoney, useTranscript } from '../store';
 import { Avatar, Badge, BranchTag, Button, DiffStat, Grip, IconButton, Meter, Select, StatusDot, Tabs, usePaneWidth } from '../ui';
@@ -87,12 +89,18 @@ function Rich({ text }: { text: string }) {
   let list: { ordered: boolean; items: string[] } | null = null;
   let para: string[] = [];
   let fence: string[] | null = null;
+  let fenceTag = '';
+  const codeBlock = (lines: string[], tag: string, key: number) => {
+    const hb = highlightBlock(lines.join('\n'), langFromTag(tag));
+    const st: React.CSSProperties = { margin: 0, padding: '8px 10px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-editor)', boxShadow: 'inset 0 0 0 1px var(--border-subtle)', font: 'var(--type-data)', overflow: 'auto' };
+    return hb ? <pre key={key} className="selectable" style={st} dangerouslySetInnerHTML={{ __html: hb.html }} /> : <pre key={key} className="selectable" style={st}>{lines.join('\n')}</pre>;
+  };
   const flushPara = () => { if (para.length) { blocks.push(<div key={blocks.length}>{inline(para.join(' '))}</div>); para = []; } };
   const flushList = () => { if (list) { const L = list; blocks.push(React.createElement(L.ordered ? 'ol' : 'ul', { key: blocks.length, style: { margin: 0, paddingLeft: 20, color: 'var(--text-2)' } }, L.items.map((x, i) => <li key={i}>{inline(x)}</li>))); list = null; } };
   for (const line of text.split('\n')) {
     if (line.trim().startsWith('```')) {
-      if (fence) { blocks.push(<pre key={blocks.length} className="selectable" style={{ margin: 0, padding: '8px 10px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-editor)', boxShadow: 'inset 0 0 0 1px var(--border-subtle)', font: 'var(--type-data)', overflow: 'auto' }}>{fence.join('\n')}</pre>); fence = null; }
-      else { flushPara(); flushList(); fence = []; }
+      if (fence) { blocks.push(codeBlock(fence, fenceTag, blocks.length)); fence = null; }
+      else { flushPara(); flushList(); fence = []; fenceTag = line.trim().slice(3); }
       continue;
     }
     if (fence) { fence.push(line); continue; }
@@ -101,7 +109,7 @@ function Rich({ text }: { text: string }) {
     else if (!line.trim()) { flushPara(); flushList(); }
     else { flushList(); para.push(line.trim().replace(/^#+\s*/, '')); }
   }
-  if (fence) blocks.push(<pre key={blocks.length} style={{ margin: 0 }}>{fence.join('\n')}</pre>);
+  if (fence) blocks.push(codeBlock(fence, fenceTag, blocks.length));
   flushPara(); flushList();
   return <>{blocks}</>;
 }
@@ -146,7 +154,7 @@ export function TranscriptItem({ m, s, onDeny }: { m: TranscriptEvent; s: S; onD
       <pre className="selectable" style={{ margin: 0, padding: '4px 0', background: 'var(--bg-editor)', font: '400 12px/1.65 var(--font-mono)', overflow: 'auto' }}>
         {m.lines.map(([t, l], i) => (
           <div key={i} style={{ display: 'grid', gridTemplateColumns: '24px 1fr', background: t === '+' ? 'var(--diff-add-bg)' : t === '-' ? 'var(--diff-del-bg)' : 'transparent', color: t === ' ' ? 'var(--text-2)' : 'var(--text-1)' }}>
-            <span style={{ textAlign: 'center', color: t === '+' ? 'var(--diff-add-fg)' : t === '-' ? 'var(--diff-del-fg)' : 'var(--text-3)' }}>{t === '-' ? '−' : t}</span><span>{'  ' + l}</span>
+            <span style={{ textAlign: 'center', color: t === '+' ? 'var(--diff-add-fg)' : t === '-' ? 'var(--diff-del-fg)' : 'var(--text-3)' }}>{t === '-' ? '−' : t}</span><Hl text={l} lang={langFromPath(m.file)} pad="  " />
           </div>
         ))}
       </pre>
@@ -156,7 +164,7 @@ export function TranscriptItem({ m, s, onDeny }: { m: TranscriptEvent; s: S; onD
     <div style={{ marginLeft: 32, ...box }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 30, padding: '0 10px', background: 'var(--bg-editor)' }}>
         <i className="ph ph-terminal" style={{ fontSize: 13, color: 'var(--text-3)' }} />
-        <span className="selectable" style={{ font: '400 12px/1 var(--font-mono)', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><span style={{ color: 'var(--text-3)' }}>$ </span>{m.cmd}</span>
+        <span className="selectable" style={{ font: '400 12px/1 var(--font-mono)', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><span style={{ color: 'var(--text-3)' }}>$ </span><Hl text={m.cmd} lang="bash" /></span>
         {m.done ? <span style={{ font: '400 12px/1 var(--font-mono)', color: m.ok ? 'var(--diff-add-fg)' : 'var(--diff-del-fg)', maxWidth: 260, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.ok && m.out === '✓' ? '✓ done' : m.out}</span>
           : <i className="ph ph-circle-notch" style={{ fontSize: 13, color: 'var(--status-working-text)', animation: 'helm-spin .9s linear infinite' }} />}
         <span style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)' }}>{m.meta}</span>
@@ -187,7 +195,7 @@ export function TranscriptItem({ m, s, onDeny }: { m: TranscriptEvent; s: S; onD
     return (
       <div style={{ marginLeft: 32, borderRadius: 'var(--radius-md)', background: 'var(--status-attention-bg)', boxShadow: 'inset 0 0 0 1px var(--status-attention)', padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, font: '600 13px/1 var(--font-sans)', color: 'var(--status-attention-text)' }}><i className="ph-fill ph-shield-warning" style={{ fontSize: 15 }} />{isCmd ? 'Permission needed to run a command' : m.tool === 'ExitPlanMode' ? 'Plan ready for approval' : 'Permission needed'}</div>
-        <code className="selectable" style={{ font: 'var(--type-code)', padding: '6px 10px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-editor)', color: 'var(--text-1)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{isCmd ? '$ ' : ''}{m.cmd}</code>
+        <code className="selectable" style={{ font: 'var(--type-code)', padding: '6px 10px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-editor)', color: 'var(--text-1)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{isCmd ? <><span style={{ color: 'var(--text-3)' }}>$ </span><Hl text={m.cmd} lang="bash" /></> : m.cmd}</code>
         <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>{m.why}</div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <Button size="sm" variant="primary" kbd={MOD() + '↵'} onClick={() => guard(api.resolveAsk(s.id, m.askId, { decision: 'approve' }))}>Approve once</Button>
