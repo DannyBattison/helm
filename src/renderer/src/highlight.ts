@@ -105,3 +105,38 @@ export function highlightBlock(code: string, lang?: string | null): { html: stri
   if (!use) return null;
   try { return { html: hljs.highlight(code, { language: use, ignoreIllegals: true }).value, lang: use }; } catch { return null; }
 }
+
+const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const sh = (t: string) => { try { return hljs.highlight(t, { language: 'bash', ignoreIllegals: true }).value; } catch { return esc(t); } };
+
+/** What a heredoc feeds: the file it is written to, or the interpreter it is piped into. Null when the command does not say. */
+function heredocLanguage(head: string): string | null {
+  const target = head.match(/(?:>>?|\btee(?:\s+-a)?)\s+["']?([^\s"'|&;<>]+)/);
+  const fromFile = target ? langFromPath(target[1]) : null;
+  if (fromFile) return fromFile;
+  const interp = head.match(/\b(python3?|node|ruby|php|bash|zsh|sh|psql|sqlite3|mysql)\b[^\n]*<</);
+  const map: Record<string, string> = { python: 'python', python3: 'python', node: 'javascript', ruby: 'ruby', php: 'php', bash: 'bash', zsh: 'bash', sh: 'bash', psql: 'sql', sqlite3: 'sql', mysql: 'sql' };
+  return interp ? map[interp[1]] ?? null : null;
+}
+
+/**
+ * Highlights a shell command for display. A heredoc body is highlighted as the language it is written in (from the
+ * target file's extension or the interpreter), else only if the language can be detected confidently; the shell around
+ * it is highlighted as shell. Returns null when nothing is worth highlighting.
+ */
+export function highlightCommand(cmd: string): string | null {
+  if (cmd.length > 20000) return null;
+  const lines = cmd.split('\n');
+  const at = lines.findIndex((l) => /<<-?\s*(['"]?)\w+\1/.test(l));
+  if (at < 0) return sh(cmd);
+  const delim = lines[at].match(/<<-?\s*(['"]?)(\w+)\1/)![2];
+  const end = lines.findIndex((l, i) => i > at && l.trim() === delim);
+  const bodyEnd = end < 0 ? lines.length : end;
+  const head = lines.slice(0, at + 1).join('\n');
+  const body = lines.slice(at + 1, bodyEnd).join('\n');
+  const tail = lines.slice(bodyEnd).join('\n');
+  const lang = heredocLanguage(head) ?? detectLanguage(body);
+  let bodyHtml: string;
+  try { bodyHtml = lang && LANGS[lang] ? hljs.highlight(body, { language: lang, ignoreIllegals: true }).value : esc(body); } catch { bodyHtml = esc(body); }
+  return sh(head) + '\n' + bodyHtml + (tail ? '\n' + sh(tail) : '');
+}

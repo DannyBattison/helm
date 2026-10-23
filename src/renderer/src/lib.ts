@@ -10,6 +10,8 @@ export function fmtTokens(n: number): string {
   return String(n);
 }
 
+export const lifetimeTokens = (l?: { input: number; output: number; cacheRead: number }) => (l ? l.input + l.output + l.cacheRead : 0);
+
 export const money = (n: number) => '$' + n.toFixed(2);
 
 export function elapsed(from: number, to?: number): string {

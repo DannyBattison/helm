@@ -1,7 +1,7 @@
 import React from 'react';
 import type { DiffHunk, ExternalSession, FileChange, HistoryCommit, PullRequest, Repo as R, TranscriptEvent, WorktreeInfo } from '@shared/types';
 import { api, platform } from '../api';
-import { relTime, tilde } from '../lib';
+import { fmtTokens, lifetimeTokens, money, relTime, tilde } from '../lib';
 import { go, setUI, toast, useApp, useUI } from '../store';
 import { Avatar, Badge, BranchTag, Button, Dialog, DiffStat, Grip, SegmentedControl, Select, Skeleton, StatusDot, Tabs, useColumns, usePaneWidth } from '../ui';
 import { CodeView } from './CodeView';
@@ -416,6 +416,13 @@ export function Repo({ id, themeKey, tab: firstTab }: { id: string; themeKey: 'd
           <Badge>{repo.private ? 'Private' : 'Public'}</Badge>
           <BranchTag name={repo.defaultBranch} />
           <span title={repo.localPath} style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fetched ? 'Fetched just now' : tilde(repo.localPath, app.home)}</span>
+          {(() => {
+            const l = app.lifetime[repo.id];
+            const n = lifetimeTokens(l);
+            if (!n) return null;
+            const tip = `Lifetime usage in this repository, across every session including deleted ones.\nInput ${fmtTokens(l.input)} · Output ${fmtTokens(l.output)} · Cache read ${fmtTokens(l.cacheRead)}` + (app.settings.billing === 'api' ? `\nCost ${money(l.cost)} (API prices)` : '');
+            return <span title={tip} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, height: 20, padding: '0 7px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-raised)', boxShadow: 'inset 0 0 0 1px var(--border)', font: '400 11.5px/1 var(--font-mono)', color: 'var(--text-2)', whiteSpace: 'nowrap' }}><i className="ph ph-coins" style={{ fontSize: 12, color: 'var(--text-3)' }} />{fmtTokens(n)} tokens lifetime</span>;
+          })()}
           <span style={{ flex: 1 }} />
           <Button variant="ghost" icon="arrows-clockwise" loading={fetching} onClick={fetchNow}>Fetch</Button>
           <Button variant="ghost" iconRight="arrow-square-out" onClick={() => api.openExternal(`https://github.com/${repo.id}`)}>GitHub</Button>

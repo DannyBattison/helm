@@ -33,6 +33,7 @@ function buildState(): AppState {
     activity: store.data.activity,
     settings: store.data.settings,
     weekSpend: store.weekSpend(),
+    lifetime: store.data.totals,
     tokensToday: store.tokensToday(),
     claudeVersion,
     plan: store.data.plan,

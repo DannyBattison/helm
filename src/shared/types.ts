@@ -193,6 +193,14 @@ export interface PlanUsage {
   at: number;
 }
 
+/** Everything a repository has ever used, kept even after its sessions are deleted. Cost is the API-priced estimate. */
+export interface Lifetime {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cost: number;
+}
+
 export interface AppState {
   ready: boolean;
   user: User | null;
@@ -202,6 +210,8 @@ export interface AppState {
   settings: Settings;
   /** Spend per repo id since the start of the current week (Monday). */
   weekSpend: Record<string, number>;
+  /** Lifetime usage per repository id. */
+  lifetime: Record<string, Lifetime>;
   tokensToday: number;
   claudeVersion: string | null;
   plan: PlanUsage;

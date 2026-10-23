@@ -283,6 +283,7 @@ export class SessionManager {
       s.tokens.input += inp;
       s.tokens.output += u.output_tokens || 0;
       s.tokens.cacheRead += u.cache_read_input_tokens || 0;
+      this.store.addLifetimeTokens(s.repoId, inp, u.output_tokens || 0, u.cache_read_input_tokens || 0);
       if (!sub) s.ctx = inp + (u.cache_read_input_tokens || 0);
       else sub.tokens += inp + (u.output_tokens || 0);
       const [pi, po] = PRICE[s.model] || PRICE.sonnet;

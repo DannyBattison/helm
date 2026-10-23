@@ -1,8 +1,8 @@
 import React from 'react';
 import type { ExternalSession, Session } from '@shared/types';
 import { api, platform } from '../api';
-import { ago, clock, fmtTokens, laneAxis, laneData, LANE_MIN, livePlan, repoOf, reposWithSessions, runningSubagents, sessionTokens, totals, untilReset } from '../lib';
-import { Hl } from '../Hl';
+import { ago, clock, fmtTokens, lifetimeTokens, laneAxis, laneData, LANE_MIN, livePlan, repoOf, reposWithSessions, runningSubagents, sessionTokens, totals, untilReset } from '../lib';
+import { Cmd } from '../Hl';
 import { go, setUI, useApp, useMoney, toast, useUI } from '../store';
 import { Avatar, Button, DiffStat, Meter, SegmentedControl, Stat, StatusDot, useColumns } from '../ui';
 import { PlanMeters } from './Shell';
@@ -39,7 +39,7 @@ export function AttentionCard({ s }: { s: Session }) {
         <span style={{ marginLeft: 'auto' }}>{ago(a.at)}</span>
       </div>
       <div style={{ font: '600 13px/1.35 var(--font-sans)', textWrap: 'pretty' as any }}>{a.head}</div>
-      {a.command ? <code className="selectable" style={{ font: 'var(--type-data)', padding: '6px 8px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-editor)', boxShadow: 'inset 0 0 0 1px var(--border-subtle)', color: 'var(--text-1)', wordBreak: 'break-all' }}>{a.tool === 'Bash' || a.tool === 'PowerShell' ? <><span style={{ color: 'var(--text-3)' }}>$ </span><Hl text={a.command} lang="bash" /></> : a.command}</code> : null}
+      {a.command ? <code className="selectable" style={{ font: 'var(--type-data)', padding: '6px 8px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-editor)', boxShadow: 'inset 0 0 0 1px var(--border-subtle)', color: 'var(--text-1)', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 180, overflow: 'auto' }}>{a.tool === 'Bash' || a.tool === 'PowerShell' ? <><span style={{ color: 'var(--text-3)' }}>$ </span><Cmd text={a.command} /></> : a.command}</code> : null}
       {a.type === 'budget' && a.scope === 'plan' ? <PlanMeters /> : null}
       {a.type === 'budget' && a.scope !== 'plan' ? <Meter value={s.cost} max={s.budget} detail={fmt(s.cost) + ' / ' + fmt(s.budget)} label="Session budget" /> : null}
       {a.note ? <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)', flex: 1, textWrap: 'pretty' as any }}>{a.note}</div> : null}
@@ -231,6 +231,7 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, height: 34, padding: '0 8px 0 12px', borderTop: '1px solid var(--border)', background: 'var(--bg-raised)' }}>
                   <i className="ph ph-book-bookmark" style={{ fontSize: 14, color: 'var(--text-3)' }} />
                   <span style={{ font: '600 12.5px/1 var(--font-sans)', cursor: 'pointer' }} onClick={() => go({ screen: 'repo', id: r.id })}><span style={{ fontWeight: 400, color: 'var(--text-3)' }}>{r.owner}/</span>{r.name}</span>
+                  {lifetimeTokens(app.lifetime[r.id]) ? <span title="Lifetime tokens in this repository, including deleted sessions" style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)' }}>{fmtTokens(lifetimeTokens(app.lifetime[r.id]))} lifetime</span> : null}
                   {sub ? null : <>
                     <Meter value={app.weekSpend[r.id] || 0} max={r.cap} style={{ width: 90, marginLeft: 6 }} warnAt={app.settings.warnAt / 100} />
                     <span style={{ font: '400 11px/1 var(--font-mono)', color: (app.weekSpend[r.id] || 0) / r.cap >= app.settings.warnAt / 100 ? 'var(--status-attention-text)' : 'var(--text-3)' }}>{fmt(app.weekSpend[r.id] || 0)} / {fmt(r.cap, true)}</span>

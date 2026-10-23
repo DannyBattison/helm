@@ -1,7 +1,7 @@
 import { app } from 'electron';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { ActivityEvent, PlanUsage, Repo, Session, Settings, TranscriptEvent, User } from '../shared/types';
+import type { ActivityEvent, Lifetime, PlanUsage, Repo, Session, Settings, TranscriptEvent, User } from '../shared/types';
 import { dayStart, home, weekStart } from './util';
 
 /** helm's registered GitHub OAuth app. Client IDs are public; the device flow uses no secret. */
@@ -53,11 +53,13 @@ interface Persisted {
   settings: Settings;
   usage: { t: number; repoId: string; cost: number; tokens: number }[];
   plan: PlanUsage;
+  /** Lifetime usage per repository id. */
+  totals: Record<string, Lifetime>;
   fx: { rates: Record<string, number>; at: number };
 }
 
 export class Store {
-  data: Persisted = { user: null, repos: [], sessions: [], activity: [], settings: defaultSettings(), usage: [], plan: { at: 0 }, fx: { rates: {}, at: 0 } };
+  data: Persisted = { user: null, repos: [], sessions: [], activity: [], settings: defaultSettings(), usage: [], plan: { at: 0 }, totals: {}, fx: { rates: {}, at: 0 } };
   private transcripts = new Map<string, TranscriptEvent[]>();
   private dir = '';
   private timer: NodeJS.Timeout | null = null;
@@ -72,6 +74,14 @@ export class Store {
       if (!this.data.settings.githubClientId) this.data.settings.githubClientId = defaultSettings().githubClientId;
       // Sessions saved by older versions have no subagents.
       for (const x of this.data.sessions) x.subagents ||= [];
+      // Lifetime totals started later than sessions did: seed them from the sessions that exist, once.
+      if (!raw.totals) {
+        this.data.totals = {};
+        for (const x of this.data.sessions) {
+          const t = (this.data.totals[x.repoId] ||= { input: 0, output: 0, cacheRead: 0, cost: 0 });
+          t.input += x.tokens.input; t.output += x.tokens.output; t.cacheRead += x.tokens.cacheRead; t.cost += x.cost;
+        }
+      }
     } catch { /* first run */ }
   }
 
@@ -117,7 +127,18 @@ export class Store {
     await this.flush();
   }
 
+  private life(repoId: string): Lifetime {
+    return (this.data.totals[repoId] ||= { input: 0, output: 0, cacheRead: 0, cost: 0 });
+  }
+
+  addLifetimeTokens(repoId: string, input: number, output: number, cacheRead: number) {
+    const t = this.life(repoId);
+    t.input += input; t.output += output; t.cacheRead += cacheRead;
+    this.save();
+  }
+
   addUsage(repoId: string, cost: number, tokens: number) {
+    this.life(repoId).cost += cost;
     this.data.usage.push({ t: Date.now(), repoId, cost, tokens });
     const cutoff = Date.now() - 15 * 86400_000;
     if (this.data.usage.length > 5000) this.data.usage = this.data.usage.filter((u) => u.t >= cutoff);
