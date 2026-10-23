@@ -9,7 +9,7 @@ import { AddRepo, DeleteSession, MergePr, NewSession, Palette, RemoveRepo, Renam
 import { Archive } from './views/Archive';
 import { Reports } from './views/Reports';
 import { Inbox } from './views/Inbox';
-import { Compare, CheckpointsDialog, ContinueDialog, ForkDialog, RestoreDialog } from './views/Review';
+import { Compare, CheckpointsDialog, ContinueDialog, ForkDialog, RememberDialog, RestoreDialog } from './views/Review';
 import { ExternalSessionView, Repo } from './views/Repo';
 import { Session } from './views/Session';
 import { Settings } from './views/Settings';
@@ -28,6 +28,7 @@ export function App() {
   const restoring = useUI((u) => u.restoring);
   const forking = useUI((u) => u.forking);
   const continuing = useUI((u) => u.continuing);
+  const remembering = useUI((u) => u.remembering);
   const mergingPr = useUI((u) => u.mergingPr);
   const removingRepo = useUI((u) => u.removingRepo);
   const term = useUI((u) => u.term);
@@ -128,6 +129,7 @@ export function App() {
       {checkpointsOf ? <CheckpointsDialog key={checkpointsOf} id={checkpointsOf} onClose={() => setUI({ checkpointsOf: null })} /> : null}
       {restoring ? <RestoreDialog key={restoring.sessionId + restoring.n} target={restoring} onClose={() => setUI({ restoring: null })} /> : null}
       {forking ? <ForkDialog key={forking.sessionId + forking.index} target={forking} onClose={() => setUI({ forking: null })} /> : null}
+      {remembering ? <RememberDialog key={remembering.text} target={remembering} onClose={() => setUI({ remembering: null })} /> : null}
       {continuing ? <ContinueDialog key={continuing.externalId} target={continuing} onClose={() => setUI({ continuing: null })} /> : null}
       {renaming ? <RenameSession key={renaming} id={renaming} onClose={() => setUI({ renaming: null })} /> : null}
       {deleting ? <DeleteSession key={deleting} id={deleting} onClose={() => setUI({ deleting: null })} /> : null}

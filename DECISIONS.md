@@ -311,3 +311,27 @@ Why: user request.
 ## D-074 · 2026-10-23 · Notification rules
 Settings → Notifications adds quiet hours (a window that may cross midnight; sound is always off inside it; an approval or question can still notify, which is a switch), a rule per repository (everything, only things that need you, nothing), and a tray switch. Decided in `src/shared/notify.ts` so it is tested. The per-kind desktop and sound switches still apply first.
 Why: user request.
+
+## D-075 · 2026-10-23 · ⌘K searches conversations, commits and code
+Typing in the palette (two or more characters, after a short pause) also searches what you and Claude said and the commands and files in the 80 most recently used sessions, commit messages in every repository (plus a commit hash), and, from inside a session or repository, its code with `git grep` (three or more characters). Conversations are read from disk and not kept in memory, so searching does not grow helm's memory. Results are grouped under the sessions, repositories and actions that already matched; a conversation result opens that session (not the exact message), a commit opens the repository's history, and a code result opens the file at its line in a session.
+Why: user request.
+
+## D-076 · 2026-10-23 · Memory: who read it, what looks wrong, and "Remember this"
+The Memory tab shows how many sessions read each memory (found from the Read tool calls and `cat` commands in the saved conversations) and flags, by heuristic, memories not read by any recent session and not changed for 45 days (only once at least 3 sessions are in that window), memories that mention files no longer in the repository, and memories of one type that read alike (word overlap of 60% or more), which may duplicate or contradict each other. A banner filters to the flagged ones. The flags are hints: helm cannot tell that two memories truly contradict each other. Hovering one of your messages in a conversation offers Remember, which adds it as a line under "Learned in helm" in the repository's CLAUDE.md, its CLAUDE.local.md, or your own ~/.claude/CLAUDE.md, creating the section or file if needed and never adding a line twice.
+Why: user request.
+
+## D-077 · 2026-10-23 · Disk use and cleaning
+Reports → Disk lists every session worktree with its size (`du -sk`, or a bounded walk on Windows) and how much of that is build output that can go, remembered for five minutes. Clean deletes node_modules, dist, build, out, .next, target, .venv and a few similar folders at the top of a worktree, and only where git ignores the folder and nothing in it is tracked, so ignored files that are not build output, such as the copied .env, are never touched. It is refused while the agent is working. Remove takes an archived or merged session's worktree away (the branch and conversation stay), and is refused with uncommitted files or unpushed commits.
+Why: user request. Each worktree carries its own node_modules.
+
+## D-078 · 2026-10-23 · Tray, notification buttons, icons, updates and releases
+The tray (menu bar on macOS) shows a count and a menu of what is waiting, each with the actions that fit (approve, always allow, deny, pick an answer, resume), and only acts on the question the menu was built for. On macOS an approval notification has Approve and Deny buttons. Closing the window hides it to the tray on Windows only: some Linux desktops show no tray, and the window would be unreachable. The app and tray icons are drawn from the existing helm glyph (`build/icon.png`, `resources/`). Updates use electron-updater against GitHub Releases, check at launch and every six hours, and are switched off in a development build; Settings → About and support shows the state. `npm run release` and `.github/workflows/release.yml` build for the three platforms on a version tag; the mac build uses the hardened runtime with entitlements for the bundled Claude Code binary and the terminal module. Signing and notarization read their certificates from repository secrets listed in the workflow and the README. None of the updater, signing or tray could be exercised here (no Electron binary, no display, no certificates), so they are written to the documentation but unverified.
+Why: user request.
+
+## D-079 · 2026-10-23 · Diagnostics bundle, and a log
+Errors and warnings from the main process, uncaught exceptions, crashed processes and errors in the window are written to `helm.log` in the user data folder (rolled at 1 MB) and kept in memory. Settings → About and support saves a Markdown support bundle: versions, a summary of settings, repositories, each session's state and the recent log. It leaves out task text, conversations, file contents and repository paths, masks tokens and keys, and replaces the home folder with ~.
+Why: user request.
+
+## D-080 · 2026-10-23 · Windows paths in session files are understood anywhere
+`rel()` now treats a path or worktree that starts with a drive letter as a Windows path, whatever platform helm runs on. This makes `tests/subagent.test.ts`, whose fixture came from a Windows machine, pass on Linux, which the release workflow needs; behaviour on a single platform is unchanged. A hunk sent from the window to be reverted is also checked in the main process to have the shape the diff reader produces, so it can only touch the one file named.
+Why: the test failed on Linux before this work; hardening found in review.

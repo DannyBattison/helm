@@ -1,7 +1,7 @@
 import { forkSession, getSessionInfo, getSessionMessages, getSubagentMessages, query, renameSession, type Query, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, join, posix, relative, resolve, win32 } from 'node:path';
 import { fmtMoney } from '../shared/money';
 import { auditText } from '../shared/redact';
 import { queueBlock, queueOrder } from '../shared/queue';
@@ -90,10 +90,13 @@ const SAFE_CMD = /^(ls|dir|pwd|cat|head|tail|wc|echo|which|where|type|tree|file|
 const COMMAND_TOOLS = new Set(['Bash', 'PowerShell']);
 const EDIT_TOOLS = new Set(['Edit', 'MultiEdit', 'Write', 'NotebookEdit']);
 
+const isWin = (p: string) => /^[A-Za-z]:[\\/]/.test(p);
+/** A path relative to the worktree, with forward slashes. Windows-style paths are understood on any platform, as session files can come from another machine. */
 const rel = (wt: string, p: string) => {
   if (!p) return p;
-  const r = isAbsolute(p) ? relative(wt, p) : p;
-  return (r.startsWith('..') ? p : r).split(sep).join('/');
+  const api = isWin(wt) || isWin(p) ? win32 : posix;
+  const r = api.isAbsolute(p) ? api.relative(wt, p) : p;
+  return (r.startsWith('..') ? p : r).split(api.sep).join('/');
 };
 const inside = (wt: string, p: string) => {
   const r = relative(wt, resolve(wt, p));

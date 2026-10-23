@@ -1,5 +1,5 @@
 import React from 'react';
-import type { Report } from '@shared/types';
+import type { Report, WorktreeUsage } from '@shared/types';
 import { fmtDuration } from '@shared/reports';
 import { api } from '../api';
 import { fmtTokens } from '../lib';
@@ -251,13 +251,76 @@ function Audit({ days }: { days: number }) {
   );
 }
 
+const gb = (n: number) => (n >= 1e9 ? (n / 1e9).toFixed(2) + ' GB' : n >= 1e6 ? Math.round(n / 1e6) + ' MB' : Math.max(1, Math.round(n / 1e3)) + ' kB');
+
+/** Disk used by session worktrees, with the build output and packages that can be deleted without losing work. */
+function Disk() {
+  const [rows, setRows] = React.useState<WorktreeUsage[] | null>(null);
+  const [busy, setBusy] = React.useState('');
+  const load = (refresh = false) => { setRows(null); api.worktreeUsage(refresh).then(setRows).catch((e) => { fail('Could not measure the worktrees')(e); setRows([]); }); };
+  React.useEffect(() => load(), []);
+  const total = (rows || []).reduce((n, r) => n + r.bytes, 0);
+  const free = (rows || []).filter((r) => !r.running).reduce((n, r) => n + r.reclaimable, 0);
+  const max = Math.max(...(rows || []).map((r) => r.bytes), 0);
+  const act = async (key: string, fn: () => Promise<unknown>, done: (r: any) => string) => {
+    setBusy(key);
+    try { const r = await fn(); toast({ tone: 'ready', title: done(r) }); load(true); } catch (e) { fail('That did not work')(e); } finally { setBusy(''); }
+  };
+  const cleanAll = async () => {
+    setBusy('all');
+    let freed = 0;
+    for (const r of (rows || []).filter((x) => !x.running && x.reclaimable > 0)) { try { freed += await api.cleanWorktree(r.sessionId); } catch { /* one that cannot be cleaned does not stop the rest */ } }
+    toast({ tone: 'ready', title: `Freed ${gb(freed)}` });
+    setBusy('');
+    load(true);
+  };
+  return (
+    <>
+      <Panel>
+        <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <Stat label="Worktrees" value={rows ? gb(total) : '…'} detail={rows ? `${rows.length} ${rows.length === 1 ? 'worktree' : 'worktrees'}` : 'measuring…'} />
+          <Stat label="Can be freed" value={rows ? gb(free) : '…'} detail="ignored build output and packages, in sessions not running" tone={free > 2e9 ? 'attention' : undefined} />
+          <span style={{ flex: 1 }} />
+          <Button variant="ghost" icon="arrows-clockwise" onClick={() => load(true)}>Measure again</Button>
+          <Button variant="primary" icon="broom" disabled={!free || !!busy} loading={busy === 'all'} onClick={() => void cleanAll()}>Free {gb(free)}</Button>
+        </div>
+      </Panel>
+      <Panel title="Worktrees, largest first" icon="hard-drives">
+        {rows == null ? empty('Measuring. The first time can take a while for big repositories.') : null}
+        {rows && !rows.length ? empty('No session has a worktree.') : null}
+        {(rows || []).map((r) => (
+          <div key={r.sessionId} style={{ display: 'grid', gridTemplateColumns: 'minmax(140px, 240px) 1fr auto', gap: 12, alignItems: 'center', padding: '7px 4px', borderTop: '1px solid var(--border-subtle)' }}>
+            <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+              <span style={{ ...mono, cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} onClick={() => go({ screen: 'session', id: r.sessionId })}>{r.sessionId}</span>
+              <span style={{ font: '400 11px/1.2 var(--font-sans)', color: 'var(--text-3)' }}>{r.repoId} · {r.running ? 'running' : r.merged ? 'merged' : r.archived ? 'archived' : r.status}{r.dirty ? ` · ${r.dirty} uncommitted` : ''}{r.unpushed ? ` · ${r.unpushed} unpushed` : ''}</span>
+            </span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ height: 6, borderRadius: 999, background: 'var(--bg-active)', overflow: 'hidden', display: 'flex' }} title={`${gb(r.bytes)}, of which ${gb(r.reclaimable)} can be freed (${r.reclaimDirs.join(', ') || 'nothing'})`}>
+                <div style={{ width: (max ? ((r.bytes - r.reclaimable) / max) * 100 : 0) + '%', background: 'var(--text-3)' }} />
+                <div style={{ width: (max ? (r.reclaimable / max) * 100 : 0) + '%', background: 'var(--accent)' }} />
+              </div>
+              <span style={{ font: '400 11px/1.2 var(--font-mono)', color: 'var(--text-3)' }}>{gb(r.bytes)}{r.partial ? '+' : ''}{r.reclaimable ? ` · ${gb(r.reclaimable)} in ${r.reclaimDirs.join(', ')}` : ''}</span>
+            </div>
+            <span style={{ display: 'flex', gap: 4 }}>
+              <Button size="sm" variant="secondary" icon="broom" disabled={!r.reclaimable || r.running || !!busy} loading={busy === 'c' + r.sessionId} title={r.running ? 'Stop the session first' : undefined} onClick={() => void act('c' + r.sessionId, () => api.cleanWorktree(r.sessionId), (b) => `Freed ${gb(b)}`)}>Clean</Button>
+              {r.archived || r.merged ? <Button size="sm" variant="ghost" icon="trash" disabled={!!busy} loading={busy === 'd' + r.sessionId} title="Remove the worktree. The branch and the conversation stay." onClick={() => void act('d' + r.sessionId, () => api.dropWorktree(r.sessionId), () => 'Worktree removed')}>Remove</Button> : null}
+            </span>
+          </div>
+        ))}
+      </Panel>
+      <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)', maxWidth: 760 }}>Clean deletes node_modules, dist, build, .next, target, .venv and similar folders at the top of a worktree, and only where git ignores them and tracks nothing inside, so it can be rebuilt by installing again. Your copied .env files are not touched.</span>
+    </>
+  );
+}
+
 const TABS = [
   { value: 'spend', label: 'Spend', icon: 'coins' },
   { value: 'throughput', label: 'Throughput', icon: 'gauge' },
   { value: 'approvals', label: 'Approvals', icon: 'shield-check' },
   { value: 'quality', label: 'Quality', icon: 'heartbeat' },
   { value: 'digest', label: 'Digest', icon: 'newspaper' },
-  { value: 'audit', label: 'Audit', icon: 'list-checks' }
+  { value: 'audit', label: 'Audit', icon: 'list-checks' },
+  { value: 'disk', label: 'Disk', icon: 'hard-drives' }
 ];
 
 export function Reports({ tab = 'spend' }: { tab?: string }) {
@@ -287,13 +350,14 @@ export function Reports({ tab = 'spend' }: { tab?: string }) {
         </div>
         <SegmentedControl value={tab} onChange={(v: string) => go({ screen: 'reports', tab: v })} options={TABS} style={{ alignSelf: 'flex-start' }} />
         {err ? <div style={{ color: 'var(--status-error-text)', font: '400 12.5px/1.4 var(--font-sans)' }}>Could not build the report: {err}</div> : null}
-        {!report && !err ? <div style={{ ...head }}>Working it out…</div> : null}
+        {!report && !err && tab !== 'disk' && tab !== 'digest' && tab !== 'audit' ? <div style={{ ...head }}>Working it out…</div> : null}
         {report && tab === 'spend' ? <Spend r={report} fmt={fmt} /> : null}
         {report && tab === 'throughput' ? <Throughput r={report} /> : null}
         {report && tab === 'approvals' ? <Approvals r={report} /> : null}
         {report && tab === 'quality' ? <Quality r={report} /> : null}
         {tab === 'digest' ? <Digest days={days} /> : null}
         {tab === 'audit' ? <Audit days={days} /> : null}
+        {tab === 'disk' ? <Disk /> : null}
       </div>
     </div>
   );

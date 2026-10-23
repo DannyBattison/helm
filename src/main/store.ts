@@ -129,6 +129,13 @@ export class Store {
     return t!;
   }
 
+  /** A transcript for searching: the one in memory if there is one, else read from disk without keeping it. */
+  async peekTranscript(id: string): Promise<TranscriptEvent[]> {
+    const cached = this.transcripts.get(id);
+    if (cached) return cached;
+    try { return JSON.parse(await readFile(join(this.dir, 'transcripts', id + '.json'), 'utf8')); } catch { return []; }
+  }
+
   /** A session's transcript and those of its subagents (`<id>~<subagent>`). */
   async deleteTranscripts(id: string) {
     for (const [k, tm] of this.tTimers) if (k === id || k.startsWith(id + '~')) { clearTimeout(tm); this.tTimers.delete(k); }

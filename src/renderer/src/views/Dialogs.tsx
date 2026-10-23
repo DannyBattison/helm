@@ -421,7 +421,20 @@ export function Palette({ onClose, toggleTheme }: { onClose(): void; toggleTheme
   const app = useApp();
   const [q, setQ] = React.useState('');
   const [i, setI] = React.useState(0);
-  type Item = { key: string; label: string; hint?: string; icon: string; run(): void };
+  type Item = { key: string; label: string; hint?: string; icon: string; section?: string; run(): void };
+  const [deep, setDeep] = React.useState<import('@shared/types').SearchResults | null>(null);
+  const [searching, setSearching] = React.useState(false);
+  // Search what was said in conversations, commit messages and, inside a session or repository, its code.
+  React.useEffect(() => {
+    setDeep(null);
+    if (q.trim().length < 2) { setSearching(false); return; }
+    setSearching(true);
+    let live = true;
+    const r = getUI().route;
+    const workspace = r.screen === 'session' ? r.id : r.screen === 'repo' ? 'repo:' + r.id : undefined;
+    const t = setTimeout(() => api.searchAll(q, workspace).then((x) => { if (live) { setDeep(x); setSearching(false); } }).catch(() => live && setSearching(false)), 250);
+    return () => { live = false; clearTimeout(t); };
+  }, [q]);
   const items: Item[] = [
     { key: 'a-overview', label: 'Overview', icon: 'squares-four', run: () => go({ screen: 'overview' }) },
     { key: 'a-need', label: 'Inbox: what needs you', icon: 'tray', run: () => go({ screen: 'inbox' }) },
@@ -434,13 +447,19 @@ export function Palette({ onClose, toggleTheme }: { onClose(): void; toggleTheme
     ...app.sessions.map((s) => ({ key: 's-' + s.id, label: s.id, hint: s.task, icon: 'robot', run: () => go({ screen: 'session', id: s.id, tab: s.status === 'ready' ? 'changes' : 'conversation' }) })),
     ...app.repos.map((r) => ({ key: 'r-' + r.id, label: r.id, hint: 'Repository', icon: 'book-bookmark', run: () => go({ screen: 'repo', id: r.id }) }))
   ];
-  const f = items.filter((x) => (x.label + ' ' + (x.hint || '')).toLowerCase().includes(q.toLowerCase())).slice(0, 12);
+  const KIND_HINT = { you: 'you', claude: 'Claude', command: 'command', edit: 'edit', note: 'note' } as const;
+  const deepItems: Item[] = deep ? [
+    ...deep.transcripts.map((h, n) => ({ key: `t-${h.sessionId}-${h.index}-${n}`, section: 'In conversations', label: h.snippet, hint: `${h.title} · ${KIND_HINT[h.kind]}`, icon: 'chats-circle', run: () => go({ screen: 'session', id: h.sessionId, tab: 'conversation' }) })),
+    ...deep.commits.map((c) => ({ key: `c-${c.repoId}-${c.hash}`, section: 'Commits', label: c.msg, hint: `${c.hash} · ${c.who} · ${c.repoId}`, icon: 'git-commit', run: () => go({ screen: 'repo', id: c.repoId, tab: 'history' }) })),
+    ...deep.code.map((h, n) => ({ key: `f-${h.path}-${h.line}-${n}`, section: 'In code', label: h.text.trim() || h.path, hint: `${h.path}:${h.line}`, icon: 'code', run: () => (h.ws.startsWith('repo:') ? go({ screen: 'repo', id: h.ws.slice(5), tab: 'code' }) : go({ screen: 'session', id: h.ws, tab: 'code', file: h.path, line: h.line })) }))
+  ] : [];
+  const f = [...items.filter((x) => (x.label + ' ' + (x.hint || '')).toLowerCase().includes(q.toLowerCase())).slice(0, 8), ...deepItems];
   const go_ = (it?: Item) => { if (!it) return; onClose(); it.run(); };
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 120, background: 'var(--scrim)', display: 'flex', justifyContent: 'center', paddingTop: 90 }} onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: 560, alignSelf: 'flex-start', borderRadius: 'var(--radius-xl)', background: 'var(--bg-overlay)', boxShadow: 'var(--shadow-dialog)', overflow: 'hidden', animation: 'helm-in var(--dur-slow) var(--ease-out)' }}>
         <div style={{ padding: 10, borderBottom: '1px solid var(--border-subtle)' }}>
-          <Input autoFocus icon="magnifying-glass" size="lg" placeholder="Search sessions, repositories and actions" value={q} onChange={(e: any) => { setQ(e.target.value); setI(0); }}
+          <Input autoFocus icon="magnifying-glass" size="lg" placeholder="Search sessions, conversations, commits and code" value={q} onChange={(e: any) => { setQ(e.target.value); setI(0); }}
             onKeyDown={(e: any) => {
               if (e.key === 'ArrowDown') { e.preventDefault(); setI(Math.min(i + 1, f.length - 1)); }
               else if (e.key === 'ArrowUp') { e.preventDefault(); setI(Math.max(i - 1, 0)); }
@@ -449,14 +468,18 @@ export function Palette({ onClose, toggleTheme }: { onClose(): void; toggleTheme
             }} />
         </div>
         <div style={{ maxHeight: 360, overflow: 'auto', padding: 6 }}>
-          {f.length === 0 ? <div style={{ padding: 14, font: '400 13px/1 var(--font-sans)', color: 'var(--text-3)' }}>Nothing matches.</div> : null}
+          {f.length === 0 ? <div style={{ padding: 14, font: '400 13px/1 var(--font-sans)', color: 'var(--text-3)' }}>{searching ? 'Searching…' : 'Nothing matches.'}</div> : null}
           {f.map((it, n) => (
-            <div key={it.key} onMouseEnter={() => setI(n)} onClick={() => go_(it)} style={{ display: 'flex', alignItems: 'center', gap: 10, height: 34, padding: '0 10px', borderRadius: 'var(--radius-md)', cursor: 'pointer', background: n === i ? 'var(--bg-selected)' : 'transparent' }}>
+            <React.Fragment key={it.key}>
+            {it.section && f[n - 1]?.section !== it.section ? <div style={{ padding: '10px 10px 4px', font: '500 10.5px/1 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>{it.section}</div> : null}
+            <div onMouseEnter={() => setI(n)} onClick={() => go_(it)} style={{ display: 'flex', alignItems: 'center', gap: 10, height: 34, padding: '0 10px', borderRadius: 'var(--radius-md)', cursor: 'pointer', background: n === i ? 'var(--bg-selected)' : 'transparent' }}>
               <i className={'ph ph-' + it.icon} style={{ fontSize: 15, color: 'var(--text-3)' }} />
-              <span style={{ font: '500 13px/1 var(--font-sans)', whiteSpace: 'nowrap' }}>{it.label}</span>
-              <span style={{ flex: 1, minWidth: 0, font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.hint}</span>
+              <span style={{ font: it.section ? '400 12.5px/1.2 var(--font-sans)' : '500 13px/1 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: it.section ? '66%' : undefined, flex: it.section ? '0 1 auto' : 'none' }}>{it.label}</span>
+              <span style={{ flex: 1, minWidth: 0, font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textAlign: it.section ? 'right' : undefined }}>{it.hint}</span>
             </div>
+            </React.Fragment>
           ))}
+          {searching && f.length > 0 ? <div style={{ padding: '8px 10px', font: '400 11.5px/1 var(--font-sans)', color: 'var(--text-3)' }}>Searching conversations, commits and code…</div> : null}
         </div>
         <div style={{ display: 'flex', gap: 14, padding: '8px 12px', borderTop: '1px solid var(--border-subtle)', font: '400 11px/1 var(--font-sans)', color: 'var(--text-3)' }}>
           <span style={{ display: 'flex', gap: 5, alignItems: 'center' }}><Kbd keys={['↑', '↓']} /> move</span>

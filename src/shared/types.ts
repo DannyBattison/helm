@@ -2,8 +2,10 @@
 
 import type { Conflict } from './forecast';
 import type { Issue } from './issues';
+import type { SearchResults } from './search';
+import type { HealthIssue, MemoryUsage } from './memoryhealth';
 import type { Report } from './reports';
-export type { Report, Conflict, Issue };
+export type { Report, Conflict, Issue, SearchResults, HealthIssue, MemoryUsage };
 
 export type Status = 'working' | 'attention' | 'ready' | 'idle' | 'error';
 /** ask: approve commands; edits: edits go through, commands ask; plan: plan only; all: nothing asks. */
@@ -329,6 +331,36 @@ export interface Lifetime {
   cost: number;
 }
 
+export interface UpdateStatus {
+  /** dev: a development build, which never updates. */
+  state: 'dev' | 'idle' | 'checking' | 'downloading' | 'ready' | 'current' | 'error';
+  version?: string;
+  percent?: number;
+  checkedAt?: number;
+  error?: string;
+}
+
+/** A session's worktree and what it costs in disk space. */
+export interface WorktreeUsage {
+  sessionId: string;
+  repoId: string;
+  branch: string;
+  path: string;
+  /** Size of the whole worktree. */
+  bytes: number;
+  /** Of that, what could be deleted without losing anything: ignored build output and installed packages. */
+  reclaimable: number;
+  reclaimDirs: string[];
+  partial: boolean;
+  status: Status;
+  running: boolean;
+  archived: boolean;
+  merged: boolean;
+  lastAccess: number;
+  dirty: number;
+  unpushed: number;
+}
+
 export interface AppState {
   ready: boolean;
   user: User | null;
@@ -343,6 +375,7 @@ export interface AppState {
   tokensToday: number;
   /** Live sessions that would conflict with each other or with their base. */
   forecast: Conflict[];
+  update: UpdateStatus;
   claudeVersion: string | null;
   plan: PlanUsage;
   /** USD to other currencies. */
@@ -745,6 +778,25 @@ export interface HelmApi {
   /** Has a read-only reviewer go through the branch's diff. The result lands on the session. */
   startReview(sessionId: string): Promise<void>;
   /** Starts a queued session now, whatever it is waiting for. */
+  /** Searches conversations, commit messages and (for a session or repository) code. A workspace id is a session id, or `repo:<owner/name>`. */
+  searchAll(query: string, workspace?: string): Promise<SearchResults>;
+  /** Which memories sessions have read, and what looks wrong with them: stale, mentioning files that are gone, or reading alike. */
+  memoryInsights(repoId: string): Promise<{ usage: Record<string, MemoryUsage>; issues: HealthIssue[]; sessions: number }>;
+  /** Adds a line to the "Learned in helm" list in the repository's CLAUDE.md, its CLAUDE.local.md, or your own ~/.claude/CLAUDE.md. Resolves to the file. */
+  rememberInstruction(repoId: string, target: 'repo' | 'local' | 'user', text: string): Promise<string>;
+  /** Every session worktree with its size, and how much of it is build output that can go. Slow the first time; remembered for a few minutes. */
+  worktreeUsage(refresh?: boolean): Promise<WorktreeUsage[]>;
+  /** Deletes node_modules, build output and the like from a worktree, only where git ignores them. Resolves to bytes freed. */
+  cleanWorktree(sessionId: string): Promise<number>;
+  /** Removes a finished session's worktree (the branch and the conversation stay). Refused with uncommitted or unpushed work. */
+  dropWorktree(sessionId: string): Promise<void>;
+  checkForUpdates(): Promise<UpdateStatus>;
+  installUpdate(): Promise<void>;
+  /** Saves a support bundle: versions, settings, session states and the recent log, with private text left out and secrets masked. */
+  saveDiagnostics(): Promise<string | null>;
+  openLogFolder(): Promise<void>;
+  /** The window reports an error here so it ends up in the log. */
+  logRenderer(message: string): Promise<void>;
   startQueued(sessionId: string): Promise<void>;
   /** Takes a session out of the queue without starting it. */
   cancelQueued(sessionId: string): Promise<void>;

@@ -42,6 +42,7 @@ export interface UI {
   restoring: { sessionId: string; n: number; label: string } | null;
   forking: { sessionId: string; index: number | null; text: string } | null;
   continuing: { repoId: string; externalId: string; title: string } | null;
+  remembering: { repoId: string; text: string } | null;
   /** The repository whose remove dialog is open. */
   removingRepo: string | null;
   /** Show archived sessions in the left tree. Off by default. */
@@ -56,7 +57,7 @@ function loadRoute(): Route {
   try { return JSON.parse(localStorage.getItem('helm-route') || '') || { screen: 'overview' }; } catch { return { screen: 'overview' }; }
 }
 
-let ui: UI = { app: null, route: loadRoute(), transcripts: {}, externals: {}, toasts: [], adding: false, newSession: null, deleting: null, mergingPr: null, renaming: null, checkpointsOf: null, restoring: null, forking: null, continuing: null, removingRepo: null, showArchived: (() => { try { return localStorage.getItem('helm-show-archived') === '1'; } catch { return false; } })(), palette: false, term: false };
+let ui: UI = { app: null, route: loadRoute(), transcripts: {}, externals: {}, toasts: [], adding: false, newSession: null, deleting: null, mergingPr: null, renaming: null, checkpointsOf: null, restoring: null, forking: null, continuing: null, remembering: null, removingRepo: null, showArchived: (() => { try { return localStorage.getItem('helm-show-archived') === '1'; } catch { return false; } })(), palette: false, term: false };
 const listeners = new Set<() => void>();
 
 export function setUI(patch: Partial<UI> | ((u: UI) => Partial<UI>)) {

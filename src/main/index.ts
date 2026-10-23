@@ -4,24 +4,33 @@ import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { readFile, stat, writeFile } from 'node:fs/promises';
 import { join, relative, resolve, isAbsolute } from 'node:path';
-import type { AppState, ExternalTranscript, HelmApi, HelmEvents, Settings, TranscriptEvent } from '../shared/types';
+import type { AppState, ExternalTranscript, WorktreeUsage, HelmApi, HelmEvents, Settings, TranscriptEvent } from '../shared/types';
 import * as G from './git';
 import * as GH from './github';
-import { deleteMemory, projectMemory, readMemory, writeMemory } from './memory';
+import { AppTray } from './tray';
+import { checkForUpdates, initUpdater, installUpdate, updateStatus } from './updater';
+import { installLogging, logFile, logLine, recentLog } from './log';
+import { cleanHeavy, dirSize, reclaimableBytes } from './disk';
+import { diagnostics } from '../shared/diagnostics';
+import { appendInstruction, deleteMemory, projectMemory, readMemory, writeMemory } from './memory';
+import { memoryHealth, memoryReads, STALE_DAYS, type MemoryFile, type MemoryUsage } from '../shared/memoryhealth';
 import { RepoService } from './repos';
 import { forecastRepo, revertHunk } from './review';
 import { SessionManager } from './sessions';
 import { Store } from './store';
 import { Terminals } from './terminal';
 import { expandHome, home, run } from './util';
-import { CURRENCIES, currencyForRegion, fmtMoney } from '../shared/money';
+import { CURRENCIES, currencyForRegion, fmtMoney, fromDisplay } from '../shared/money';
 import { notifyDecision } from '../shared/notify';
+import { searchEvents, type SearchResults } from '../shared/search';
+import { sessionTitle } from '../shared/types';
 import { feedbackTask, issueTask, pullNumber } from '../shared/issues';
 import { auditCsv, buildReport, digestMarkdown, sessionsCsv, spendCsv, type ReportInput } from '../shared/reports';
 
 let win: BrowserWindow | null = null;
 let claudeVersion: string | null = null;
 let forecast: import('../shared/forecast').Conflict[] = [];
+const usageCache = new Map<string, { at: number; bytes: number; partial: boolean; reclaimable: number; dirs: string[]; dirty: number; unpushed: number }>();
 const store = new Store();
 
 function send<K extends keyof HelmEvents>(channel: K, payload: HelmEvents[K]) {
@@ -42,6 +51,7 @@ function buildState(): AppState {
     lifetime: store.data.totals,
     tokensToday: store.tokensToday(),
     forecast,
+    update: updateStatus(),
     claudeVersion,
     plan: store.data.plan,
     rates: store.data.fx.rates,
@@ -56,6 +66,7 @@ function emitState() {
     send('state', buildState());
     const need = store.data.sessions.filter((s) => s.status === 'attention').length;
     try { app.setBadgeCount(need); } catch { /* unsupported */ }
+    tray.update();
   }, 60);
 }
 
@@ -76,13 +87,40 @@ const sessions = new SessionManager(store, {
     const repoId = sessions.get(sessionId)?.repoId || '';
     const d = notifyDecision(st, kind, repoId);
     if (!d.show || !Notification.isSupported() || (win && win.isFocused())) return;
-    const n = new Notification({ title, body, silent: !d.sound });
+    const ask = kind === 'attention' ? sessions.get(sessionId)?.ask : undefined;
+    // macOS can show buttons on a notification, so a plain approval can be answered without opening helm.
+    const buttons = process.platform === 'darwin' && ask?.type === 'approve';
+    const n = new Notification({ title, body, silent: !d.sound, ...(buttons ? { actions: [{ type: 'button', text: 'Approve' }, { type: 'button', text: 'Deny' }] } : {}) });
+    if (buttons) n.on('action', (_e, i) => { if (sessions.get(sessionId)?.ask?.id === ask!.id) void sessions.resolveAsk(sessionId, ask!.id, { decision: i === 0 ? 'approve' : 'deny' }); });
     n.on('click', () => {
       win?.show();
       win?.focus();
       send('navigate', { screen: 'session', id: sessionId, tab: kind === 'ready' ? 'changes' : 'conversation' });
     });
     n.show();
+  }
+});
+const hidesToTray = () => store.data.settings.tray && process.platform === 'win32';
+const showWindow = () => { if (!win) createWindow(); win?.show(); win?.focus(); };
+const tray = new AppTray({
+  sessions: () => store.data.sessions,
+  enabled: () => store.data.settings.tray,
+  show: showWindow,
+  inbox: () => { showWindow(); send('navigate', { screen: 'inbox' }); },
+  newSession: () => { showWindow(); send('toast', { tone: 'neutral', title: 'Press ' + (process.platform === 'darwin' ? '⌘N' : 'Ctrl+N') + ' to start a session' }); },
+  quit: () => app.quit(),
+  act(sessionId, askId, action) {
+    const s = sessions.get(sessionId);
+    if (!s) return;
+    const ask = s.ask;
+    if (action.do === 'open') { showWindow(); send('navigate', { screen: 'session', id: sessionId, tab: s.status === 'ready' ? 'changes' : 'conversation' }); return; }
+    if (action.do === 'resume') { void sessions.send(sessionId, 'Continue where you left off.').catch(() => undefined); return; }
+    // The menu may be older than the question: only answer the one it was built for.
+    if (!ask || ask.id !== askId) { showWindow(); send('navigate', { screen: 'inbox' }); return; }
+    const answer = action.do === 'approve' ? { decision: 'approve' as const } : action.do === 'always' ? { decision: 'always' as const } : action.do === 'deny' ? { decision: 'deny' as const }
+      : action.do === 'answer' && ask.questions?.[0]?.options[action.option] ? { answers: { [ask.questions[0].question]: ask.questions[0].options[action.option].label } }
+      : action.do === 'continue' ? { addBudget: ask.scope === 'plan' ? 0 : fromDisplay(5, store.data.settings.currency, store.data.fx.rates) } : null;
+    if (answer) void sessions.resolveAsk(sessionId, ask.id, answer).catch((e) => logLine('error', 'tray action failed: ' + String(e?.message || e)));
   }
 });
 const terms = new Terminals((id, data) => send('termData', { id, data }), (id) => send('termExit', { id }));
@@ -204,6 +242,7 @@ const api: HelmApi = {
     if ('theme' in patch) applyTheme();
     if ('billing' in patch && patch.billing === 'subscription') void refreshPlan(true);
     if ('archiveAfterDays' in patch) sessions.autoArchive();
+    if ('tray' in patch) tray.update();
     if ('planPause5h' in patch || 'planPauseWeek' in patch || 'billing' in patch) void sessions.enforcePlan();
     if ('claudePath' in patch) claudeVersion = await detectClaude(store.data.settings.claudePath);
     store.save();
@@ -527,7 +566,110 @@ const api: HelmApi = {
   },
   async setHunksReviewed(id, ids, reviewed) { sessions.setReviewed(id, ids, reviewed); },
   startReview: (id) => sessions.review(id),
+  async memoryInsights(repoId) {
+    const repo = repos.must(repoId);
+    const mine = store.data.sessions.filter((s) => s.repoId === repoId);
+    const usage: Record<string, MemoryUsage> = {};
+    for (const s of mine) {
+      for (const f of memoryReads(await store.peekTranscript(s.id))) {
+        const u = (usage[f] ||= { sessions: 0, last: 0 });
+        u.sessions++; u.last = Math.max(u.last, s.endedAt ?? s.lastAccess);
+      }
+    }
+    const pm = await projectMemory(repo.localPath);
+    const files: MemoryFile[] = await Promise.all(pm.memories.map(async (m) => ({ path: m.path, file: m.path.split(/[\\/]/).pop()!, name: m.name, description: m.description, type: m.type, modified: m.modified, index: m.index, text: await readFile(m.path, 'utf8').catch(() => '') })));
+    const known = new Set(await G.listFiles(repo.localPath).catch(() => [] as string[]));
+    const since = Date.now() - STALE_DAYS * 86_400_000;
+    const issues = memoryHealth({ memories: files, usage, now: Date.now(), recentSessions: mine.filter((s) => s.startedAt >= since).length, exists: (p) => known.has(p) || [...known].some((k) => k.startsWith(p.replace(/\/$/, '') + '/')) });
+    return { usage, issues, sessions: mine.length };
+  },
+  async rememberInstruction(repoId, target, text) {
+    const repo = repos.must(repoId);
+    const file = target === 'user' ? join(home, '.claude', 'CLAUDE.md') : join(repo.localPath, target === 'local' ? 'CLAUDE.local.md' : 'CLAUDE.md');
+    await appendInstruction(file, text);
+    return file;
+  },
+  async worktreeUsage(refresh) {
+    const out: WorktreeUsage[] = [];
+    const live = store.data.sessions.filter((s) => !s.worktreeGone);
+    const todo = live.filter((s) => refresh || !usageCache.has(s.id) || Date.now() - usageCache.get(s.id)!.at > 5 * 60_000);
+    // Three at a time: sizing a worktree reads every file in it.
+    for (let i = 0; i < todo.length; i += 3) {
+      await Promise.all(todo.slice(i, i + 3).map(async (s) => {
+        if (!(await G.fileExists(s.worktree))) { usageCache.delete(s.id); return; }
+        const [size, rec, info] = await Promise.all([dirSize(s.worktree), reclaimableBytes(s.worktree), sessions.deleteInfo(s.id).catch(() => null)]);
+        usageCache.set(s.id, { at: Date.now(), bytes: size.bytes, partial: size.partial, reclaimable: rec.bytes, dirs: rec.dirs, dirty: info?.dirty ?? 0, unpushed: info?.unpushed ?? 0 });
+      }));
+    }
+    for (const s of live) {
+      const c = usageCache.get(s.id);
+      if (!c) continue;
+      out.push({ sessionId: s.id, repoId: s.repoId, branch: s.branch, path: s.worktree, bytes: c.bytes, reclaimable: c.reclaimable, reclaimDirs: c.dirs, partial: c.partial, status: s.status, running: sessions.isRunning(s.id), archived: !!s.archivedAt, merged: !!s.mergedAt, lastAccess: s.lastAccess, dirty: c.dirty, unpushed: c.unpushed });
+    }
+    return out.sort((a, b) => b.bytes - a.bytes);
+  },
+  async cleanWorktree(id) {
+    const s = sess(id);
+    if (sessions.isRunning(id) && (s.status === 'working' || s.status === 'attention')) throw new Error('Stop the session first: removing packages under a running agent breaks its commands.');
+    const r = await cleanHeavy(s.worktree);
+    usageCache.delete(id);
+    if (r.removed.length) store.data.activity.unshift({ id: Math.random().toString(36).slice(2), t: Date.now(), kind: 'done', who: s.id, what: `cleaned ${r.removed.join(', ')} (${(r.bytes / 1e6).toFixed(0)} MB)`, repo: repos.must(s.repoId).name, sessionId: s.id });
+    store.save();
+    return r.bytes;
+  },
+  async dropWorktree(id) {
+    const s = sess(id);
+    if (!s.archivedAt && !s.mergedAt) throw new Error('Only archived or merged sessions can lose their worktree.');
+    const info = await sessions.deleteInfo(id);
+    if (info.dirty) throw new Error(`It has ${info.dirty} uncommitted ${info.dirty === 1 ? 'file' : 'files'}. Commit or discard them first.`);
+    if (info.unpushed) throw new Error(`It has ${info.unpushed} ${info.unpushed === 1 ? 'commit' : 'commits'} that are not on GitHub. Push them first.`);
+    await sessions.stop(id);
+    await G.removeWorktree(repos.must(s.repoId).localPath, s.worktree);
+    s.worktreeGone = true;
+    usageCache.delete(id);
+    store.save();
+    emitState();
+  },
+  checkForUpdates: () => checkForUpdates(),
+  async installUpdate() { installUpdate(); },
+  async saveDiagnostics() {
+    const gitVersion = (await run('git', ['--version']).catch(() => '')).replace(/^git version\s*/, '').trim() || null;
+    const text = diagnostics({
+      now: Date.now(), claudeVersion, gitVersion, home, settings: store.data.settings, repos: store.data.repos, sessions: store.data.sessions, log: recentLog(),
+      app: { version: app.getVersion(), electron: process.versions.electron, node: process.versions.node, chrome: process.versions.chrome, platform: process.platform, arch: process.arch, os: (await import('node:os')).release(), packaged: app.isPackaged }
+    });
+    const r = await dialog.showSaveDialog(win!, { defaultPath: join(app.getPath('documents'), `helm-diagnostics-${new Date().toISOString().slice(0, 10)}.md`) });
+    if (r.canceled || !r.filePath) return null;
+    await writeFile(r.filePath, text, 'utf8');
+    return r.filePath;
+  },
+  async openLogFolder() { const f = logFile(); if (f) shell.showItemInFolder(f); },
+  async logRenderer(message) { logLine('error', 'window: ' + String(message).slice(0, 2000)); },
   startQueued: (id) => sessions.startNow(id),
+  async searchAll(query, workspace) {
+    const q = query.trim();
+    const out: SearchResults = { query: q, transcripts: [], commits: [], code: [] };
+    if (q.length < 2) return out;
+    const recent = [...store.data.sessions].sort((a, b) => b.lastAccess - a.lastAccess).slice(0, 80);
+    for (const s of recent) {
+      if (out.transcripts.length >= 24) break;
+      for (const h of searchEvents(await store.peekTranscript(s.id), q, 2)) out.transcripts.push({ ...h, sessionId: s.id, repoId: s.repoId, title: sessionTitle(s) });
+    }
+    await Promise.all(store.data.repos.map(async (r) => {
+      const log = await G.git(r.localPath, 'log', '--exclude=refs/helm/*', '--all', '-i', '--fixed-strings', `--grep=${q}`, '-n', '8', '--format=%h%x1f%s%x1f%an%x1f%ct').catch(() => '');
+      for (const l of log.split('\n').filter(Boolean)) { const [hash, msg, who, ct] = l.split('\x1f'); out.commits.push({ repoId: r.id, hash, msg, who, at: +ct * 1000 }); }
+      if (/^[0-9a-f]{5,40}$/i.test(q)) {
+        const one = await G.git(r.localPath, 'log', '-n', '1', '--format=%h%x1f%s%x1f%an%x1f%ct', q).catch(() => '');
+        const [hash, msg, who, ct] = one.trim().split('\x1f');
+        if (hash && !out.commits.some((c) => c.repoId === r.id && c.hash === hash)) out.commits.unshift({ repoId: r.id, hash, msg, who, at: +ct * 1000 });
+      }
+    }));
+    out.commits = out.commits.sort((a, b) => b.at - a.at).slice(0, 15);
+    if (workspace && q.length >= 3) {
+      try { out.code = (await G.searchFiles(ws(workspace).worktree, q, false)).slice(0, 20).map((h) => ({ ws: workspace, ...h })); } catch { /* workspace gone */ }
+    }
+    return out;
+  },
   cancelQueued: (id) => sessions.dequeue(id),
   repoIssues: (id) => GH.listIssues(id),
   async issueTask(repoId, number) {
@@ -720,6 +862,9 @@ function createWindow() {
   win.once('ready-to-show', () => win?.show());
   win.webContents.setWindowOpenHandler(({ url }) => { if (/^https:\/\//.test(url)) void shell.openExternal(url); return { action: 'deny' }; });
   win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('file://') && !url.startsWith(process.env['ELECTRON_RENDERER_URL'] || 'x://')) e.preventDefault(); });
+  // With the tray on, closing the window hides helm and leaves the sessions running.
+  // Only on Windows, where the tray is reliable: some Linux desktops show no tray, and the window would be unreachable.
+  win.on('close', (e) => { if (hidesToTray() && !(app as any).__closing) { e.preventDefault(); win?.hide(); } });
   win.on('closed', () => { win = null; });
   if (process.env['ELECTRON_RENDERER_URL']) void win.loadURL(process.env['ELECTRON_RENDERER_URL']);
   else void win.loadFile(join(__dirname, '../renderer/index.html'));
@@ -730,6 +875,7 @@ if (!lock) app.quit();
 else {
   app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
   app.whenReady().then(async () => {
+    await installLogging(app.getPath('userData'));
     await store.load();
     if (!process.env.HELM_DEV_NO_RECOVER) sessions.recover();
     await GH.loadToken();
@@ -741,6 +887,10 @@ else {
     }
     nativeTheme.themeSource = store.data.settings.theme;
     createWindow();
+    initUpdater({ enabled: () => store.data.settings.autoUpdate, changed: emitState });
+    tray.update();
+    app.on('render-process-gone', (_e, _wc, d) => logLine('error', `window process gone: ${d.reason} (exit ${d.exitCode})`));
+    app.on('child-process-gone', (_e, d) => logLine('error', `${d.type} process gone: ${d.reason} (exit ${d.exitCode})`));
     setInterval(pollMerges, 120_000);
     setInterval(() => void refreshForecast(), 20_000);
     setTimeout(() => void refreshForecast(), 4000);
@@ -759,11 +909,12 @@ else {
     e.preventDefault();
     (app as any).__closing = true;
     terms.closeAll();
+    tray.destroy();
     sessions.shutdown();
     await store.flushAll().catch(() => undefined);
     app.quit();
   });
-  app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+  app.on('window-all-closed', () => { if (process.platform !== 'darwin' && !hidesToTray()) app.quit(); });
 }
 
 export type { TranscriptEvent };

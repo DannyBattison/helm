@@ -9,6 +9,14 @@ export function hunkId(path: string, h: DiffHunk): string {
   return x.toString(36) + h.lines.filter((l) => l[0] !== ' ').length.toString(36);
 }
 
+const HEADER = /^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@[^\n\r]*$/;
+
+/** Whether a hunk has the shape the diff reader produces: one header line, and only context, added and removed single lines. */
+export function validHunk(h: DiffHunk): boolean {
+  return !!h && typeof h.header === 'string' && HEADER.test(h.header) && Array.isArray(h.lines) && h.lines.length > 0 && h.lines.length < 20000
+    && h.lines.every((l) => Array.isArray(l) && (l[0] === ' ' || l[0] === '+' || l[0] === '-') && typeof l[3] === 'string' && !/[\n\r]/.test(l[3]));
+}
+
 /** A patch that applies this one hunk to `a/<path>`, to be applied in reverse to throw the hunk away. */
 export function hunkPatch(path: string, h: DiffHunk): string {
   const isNew = /^@@ -0,0 /.test(h.header);

@@ -172,7 +172,7 @@ describe('digest', () => {
   });
 });
 
-import { hunkId, hunkPatch } from '../src/shared/hunks';
+import { hunkId, hunkPatch, validHunk } from '../src/shared/hunks';
 import { forecastable, overlap, parseMergeTree } from '../src/shared/forecast';
 import { blockers, parseReview } from '../src/shared/selfreview';
 import type { DiffHunk } from '../src/shared/types';
@@ -188,6 +188,15 @@ describe('hunks', () => {
   it('builds a patch git can apply', () => {
     const p = hunkPatch('src/f.ts', h);
     expect(p).toContain('--- a/src/f.ts\n+++ b/src/f.ts\n@@ -3,4 +3,4 @@ fn\n a\n-old\n+new\n b\n');
+  });
+  it('accepts the shape the diff reader makes and nothing else', () => {
+    expect(validHunk(h)).toBe(true);
+    expect(validHunk({ ...h, header: '@@ -1 +1 @@\ndiff --git a/../../etc/passwd b/../../etc/passwd' })).toBe(false);
+    expect(validHunk({ ...h, header: 'diff --git a/x b/x' })).toBe(false);
+    expect(validHunk({ ...h, lines: [['+', null, 1, 'a\n--- a/other']] })).toBe(false);
+    expect(validHunk({ ...h, lines: [['!', null, 1, 'a']] as any })).toBe(false);
+    expect(validHunk({ ...h, lines: [] })).toBe(false);
+    expect(validHunk(null as any)).toBe(false);
   });
   it('marks added and removed files', () => {
     expect(hunkPatch('n.ts', { header: '@@ -0,0 +1,1 @@ new file', lines: [['+', null, 1, 'x']] })).toContain('new file mode 100644\n--- /dev/null\n+++ b/n.ts\n@@ -0,0 +1,1 @@\n+x');

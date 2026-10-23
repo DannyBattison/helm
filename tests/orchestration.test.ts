@@ -143,3 +143,52 @@ describe('notification rules', () => {
     expect(notifyDecision({ ...s, quiet: { ...quiet, allowAttention: false } }, 'attention', 'o/r', at(23)).show).toBe(false);
   });
 });
+
+import { searchEvents, snippet } from '../src/shared/search';
+
+describe('search', () => {
+  it('cuts a snippet around the match, case-insensitively', () => {
+    const t = 'x'.repeat(100) + ' The Cart total is wrong ' + 'y'.repeat(100);
+    const s = snippet(t, 'cart total');
+    expect(s.startsWith('…')).toBe(true);
+    expect(s.endsWith('…')).toBe(true);
+    expect(s).toContain('Cart total is wrong');
+    expect(s.length).toBeLessThan(140);
+    expect(snippet('nothing here', 'cart')).toBe('');
+    expect(snippet('short cart text', 'cart')).toBe('short cart text');
+  });
+  it('finds mentions in what was said, run and edited, and skips subagent prompts', () => {
+    const events: any[] = [
+      { k: 'user', t: 0, text: 'fix the cart rounding' },
+      { k: 'user', t: 0, text: 'cart prompt for subagent', from: 'main' },
+      { k: 'agent', text: 'Looking at cart.ts' },
+      { k: 'bash', id: '1', cmd: 'grep cart src', out: '', ok: true, meta: '', done: true },
+      { k: 'edit', file: 'src/cart.ts', add: 1, del: 0, lines: [] },
+      { k: 'tools', items: [['Read', 'cart.ts', '']] },
+      { k: 'note', tone: 'neutral', text: 'unrelated' }
+    ];
+    expect(searchEvents(events, 'cart').map((h) => [h.index, h.kind])).toEqual([[0, 'you'], [2, 'claude'], [3, 'command']]);
+    expect(searchEvents(events, 'cart', 10).map((h) => h.kind)).toEqual(['you', 'claude', 'command', 'edit']);
+    expect(searchEvents(events, '  ')).toEqual([]);
+  });
+});
+
+import { trayEntries } from '../src/shared/tray';
+
+describe('tray menu', () => {
+  it('lists what waits on you with the actions that fit each, and counts them all', () => {
+    const many = Array.from({ length: 10 }, (_, i) => s('r' + i, { status: 'ready', endedAt: i }));
+    const { entries, total } = trayEntries([
+      s('appr', { status: 'attention', ask: ask('approve', 1, { pattern: 'npm test *', command: 'npm test' }) }),
+      s('quest', { status: 'attention', ask: ask('question', 2, { questions: [{ question: 'Q?', options: [{ label: 'Yes' }, { label: 'No' }] }] }) }),
+      s('multi', { status: 'attention', ask: ask('question', 3, { questions: [{ question: 'A?', options: [{ label: 'x' }] }, { question: 'B?', options: [{ label: 'y' }] }] }) }),
+      s('queued', { queued: { since: 1 } }), s('stuck', { status: 'working', stuck: 'x' }), ...many
+    ], 4);
+    expect(total).toBe(13);
+    expect(entries).toHaveLength(4);
+    expect(entries[0].actions.map((a) => a.label)).toEqual(['Approve once', 'Always allow npm test *', 'Deny', 'Open session']);
+    expect(entries[1].actions.map((a) => a.action)).toEqual([{ do: 'answer', option: 0 }, { do: 'answer', option: 1 }, { do: 'open' }]);
+    expect(entries[2].actions.map((a) => a.action.do)).toEqual(['open']);
+    expect(entries.some((e) => e.sessionId === 'queued' || e.sessionId === 'stuck')).toBe(false);
+  });
+});

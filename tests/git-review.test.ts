@@ -155,3 +155,10 @@ describe('conflict forecast', () => {
     expect(found).toEqual([expect.objectContaining({ a: 'fd', b: 'origin/main', kind: 'conflict', files: ['a.txt'] })]);
   });
 });
+
+describe('reverting a forged hunk', () => {
+  it('refuses a header that smuggles in another file', async () => {
+    const wt = worktree('forged');
+    await expect(revertHunk(wt, 'a.txt', { header: '@@ -1 +1 @@\ndiff --git a/b.txt b/b.txt', lines: [['-', 1, null, 'bee']] })).rejects.toThrow(/not a hunk/);
+  });
+});

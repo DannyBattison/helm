@@ -2,7 +2,7 @@ import { rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { forecastable, overlap, parseMergeTree, type Conflict } from '../shared/forecast';
-import { hunkPatch } from '../shared/hunks';
+import { hunkPatch, validHunk } from '../shared/hunks';
 import type { Checkpoint, DiffHunk, Repo, Session } from '../shared/types';
 import { git, gitOk } from './git';
 import { run, uid } from './util';
@@ -68,6 +68,8 @@ export async function checkpointParent(repoPath: string, commit: string): Promis
 // ---------------------------------------------------------------- hunks
 /** Throws one hunk of the change away by applying it backwards to the working tree. */
 export async function revertHunk(wt: string, path: string, hunk: DiffHunk): Promise<void> {
+  // The hunk comes from the window: build a patch only from something shaped like a real one, so it can only touch `path`.
+  if (!validHunk(hunk) || /[\n\r]/.test(path)) throw new Error('That is not a hunk of this diff.');
   const patch = hunkPatch(path, hunk);
   try {
     await run('git', ['apply', '-R', '--recount', '--whitespace=nowarn', '-'], { cwd: wt, input: patch });

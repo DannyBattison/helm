@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
-import { readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import type { ProjectMemory, MemoryEntry } from '../shared/types';
 
 /** Claude Code keeps a project's notes under ~/.claude/projects/<path with every non-alphanumeric turned into a dash>/memory. */
@@ -81,4 +81,35 @@ export async function deleteMemory(repoPath: string, path: string): Promise<void
     const text = await readFile(idx, 'utf8');
     await writeFile(idx, text.split('\n').filter((l) => !l.includes(`(${base})`)).join('\n'), 'utf8');
   }
+}
+
+const NOTES = '## Learned in helm';
+
+/**
+ * Adds a line to the "Learned in helm" list at the end of an instructions file, making the file and the list if they do not
+ * exist. A line that is already there is not added twice. Returns whether anything was written.
+ */
+export async function appendInstruction(file: string, line: string): Promise<boolean> {
+  const bullet = '- ' + line.replace(/\s*\n\s*/g, ' ').trim();
+  if (bullet.length < 3) throw new Error('There is nothing to add.');
+  let text = '';
+  try { text = await readFile(file, 'utf8'); } catch { /* new file */ }
+  const lines = text.split(/\r?\n/);
+  if (lines.some((l) => l.trim() === bullet)) return false;
+  const at = lines.findIndex((l) => l.trim() === NOTES);
+  if (at < 0) {
+    text = (text.replace(/\s+$/, '') + (text.trim() ? '\n\n' : '') + `${NOTES}\n\n${bullet}\n`);
+  } else {
+    let end = lines.length;
+    for (let i = at + 1; i < lines.length; i++) if (/^#{1,6}\s/.test(lines[i])) { end = i; break; }
+    // Insert after the last non-blank line of the section.
+    let last = end - 1;
+    while (last > at && !lines[last].trim()) last--;
+    lines.splice(last + 1, 0, bullet);
+    text = lines.join('\n');
+    if (!text.endsWith('\n')) text += '\n';
+  }
+  await mkdir(dirname(file), { recursive: true });
+  await writeFile(file, text, 'utf8');
+  return true;
 }

@@ -68,7 +68,7 @@ export function Settings({ section }: { section?: string }) {
   const subCols = useColumns('subagent-repos', [{ w: 1, min: 160, flex: true }, { w: 170, min: 110, fixed: true }]);
   const pctOptions = [{ value: '0', label: 'Off' }, { value: '50', label: '50%' }, { value: '70', label: '70%' }, { value: '80', label: '80%' }, { value: '90', label: '90%' }];
   const subLimits = (extra: number[]) => [...new Set([0, 1, 2, 3, 4, 6, 8, 12, ...extra])].sort((a, b) => a - b).map((n) => ({ value: String(n), label: n === 0 ? 'Off' : String(n) }));
-  const nav = [['account', 'Account', 'github-logo'], ['agents', 'Claude Code', 'robot'], ['worktrees', 'Worktrees', 'tree-structure'], ['budgets', 'Usage', 'coins'], ['notifications', 'Notifications', 'bell'], ['appearance', 'Appearance', 'paint-brush']];
+  const nav = [['account', 'Account', 'github-logo'], ['agents', 'Claude Code', 'robot'], ['worktrees', 'Worktrees', 'tree-structure'], ['budgets', 'Usage', 'coins'], ['notifications', 'Notifications', 'bell'], ['appearance', 'Appearance', 'paint-brush'], ['about', 'About and support', 'info']];
   const notif = (key: 'notifyAttention' | 'notifyReady' | 'notifyFailed' | 'notifyChecks', title: string) => (
     <SettingRow title={title}>
       <Switch checked={st[key].desktop} onChange={(v: boolean) => set({ [key]: { ...st[key], desktop: v } })} label="Desktop" />
@@ -226,6 +226,17 @@ export function Settings({ section }: { section?: string }) {
             </> : null}
             <H>System</H>
             <SettingRow title="Tray icon" desc="Keep helm in the system tray or menu bar, with a count of what needs you and a menu to jump to it."><Switch checked={st.tray} onChange={(v: boolean) => set({ tray: v })} /></SettingRow>
+          </> : null}
+          {sec === 'about' ? <>
+            <H sub="Updates, and what to send if something goes wrong.">About and support</H>
+            <SettingRow title="Version" desc={app.update.state === 'dev' ? 'This is a development build, which does not update itself.' : app.update.state === 'ready' ? `Version ${app.update.version} is downloaded and installs when helm restarts.` : app.update.state === 'downloading' ? `Downloading ${app.update.version ?? 'an update'}${app.update.percent != null ? ' · ' + app.update.percent + '%' : ''}` : app.update.state === 'error' ? 'Could not check for updates: ' + app.update.error : app.update.state === 'current' ? 'helm is up to date.' : app.update.state === 'checking' ? 'Checking…' : undefined}>
+              {app.update.state === 'ready' ? <Button variant="primary" icon="arrow-clockwise" onClick={() => void api.installUpdate()}>Restart to update</Button> : <Button icon="arrows-clockwise" disabled={app.update.state === 'dev' || app.update.state === 'checking' || app.update.state === 'downloading'} onClick={() => void api.checkForUpdates()}>Check for updates</Button>}
+            </SettingRow>
+            <SettingRow title="Update automatically" desc="Look for a new version when helm starts and every few hours, download it in the background, and install it the next time helm quits."><Switch checked={st.autoUpdate} onChange={(v: boolean) => set({ autoUpdate: v })} /></SettingRow>
+            <SettingRow title="Diagnostics" desc="Saves versions, settings, the state of each session and the recent log as one Markdown file you can attach to a bug report. Task text, conversations, file contents and repository paths are left out, and tokens and your home folder are masked.">
+              <Button icon="download-simple" onClick={() => void api.saveDiagnostics().then((f) => f && toast({ tone: 'ready', title: 'Saved diagnostics', description: f })).catch((e) => toast({ tone: 'error', title: 'Could not save', description: errText(e) }))}>Save diagnostics…</Button>
+            </SettingRow>
+            <SettingRow title="Log" desc="Errors and warnings from helm, kept up to about 2 MB."><Button icon="folder-open" onClick={() => void api.openLogFolder()}>Show in folder</Button></SettingRow>
           </> : null}
           {sec === 'appearance' ? <>
             <H>Appearance</H>
