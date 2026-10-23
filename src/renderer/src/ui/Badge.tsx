@@ -10,7 +10,7 @@ const TONES = {
   error: ['var(--status-error-bg)', 'var(--status-error-text)'],
 };
 
-export function Badge({ tone = 'neutral', dot = false, mono = false, icon, children, style }) {
+export function Badge({ tone = 'neutral', dot = false, mono = false, icon, children, style }: any) {
   const [bg, fg] = TONES[tone] || TONES.neutral;
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, height: 18, padding: '0 6px', borderRadius: 'var(--radius-xs)', background: bg, color: fg,

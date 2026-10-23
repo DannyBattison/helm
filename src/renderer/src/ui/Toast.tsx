@@ -2,7 +2,7 @@ import React from 'react';
 
 const ICON = { attention: 'bell-ringing', ready: 'check-circle', error: 'warning-circle', working: 'robot', neutral: 'info' };
 
-export function Toast({ tone = 'neutral', title, description, actions, onClose, style }) {
+export function Toast({ tone = 'neutral', title, description, actions, onClose, style }: any) {
   const color = tone === 'neutral' ? 'var(--text-2)' : 'var(--status-' + tone + ')';
   return (
     <div role="status" style={{ width: 360, display: 'flex', gap: 10, padding: '10px 10px 10px 12px', borderRadius: 'var(--radius-lg)', background: 'var(--bg-overlay)', boxShadow: 'var(--shadow-toast)', animation: 'helm-in var(--dur-slow) var(--ease-out)', ...style }}>

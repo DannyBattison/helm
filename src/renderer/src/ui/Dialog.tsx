@@ -1,6 +1,6 @@
 import React from 'react';
 
-export function Dialog({ open = true, title, description, children, footer, width = 520, onClose, inline = false, style }) {
+export function Dialog({ open = true, title, description, children, footer, width = 520, onClose, inline = false, style }: any) {
   if (!open) return null;
   const box = (
     <div role="dialog" aria-modal="true" style={{ width, maxWidth: '100%', maxHeight: inline ? undefined : 'calc(100vh - 48px)', display: 'flex', flexDirection: 'column', borderRadius: 'var(--radius-xl)', background: 'var(--bg-overlay)', boxShadow: 'var(--shadow-dialog)', animation: 'helm-in var(--dur-slow) var(--ease-out)', ...style }}>

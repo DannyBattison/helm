@@ -140,7 +140,7 @@ export interface AppState {
   weekSpend: Record<string, number>;
   tokensToday: number;
   claudeVersion: string | null;
-  platform: NodeJS.Platform;
+  platform: string;
   home: string;
 }
 

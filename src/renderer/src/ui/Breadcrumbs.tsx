@@ -1,6 +1,6 @@
 import React from 'react';
 
-export function Breadcrumbs({ items = [], mono = false, style }) {
+export function Breadcrumbs({ items = [], mono = false, style }: any) {
   return (
     <nav style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, font: mono ? '400 12px/1 var(--font-mono)' : '400 12px/1 var(--font-sans)', color: 'var(--text-3)', ...style }}>
       {items.map((it, i) => {

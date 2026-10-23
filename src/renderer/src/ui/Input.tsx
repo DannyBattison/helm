@@ -1,6 +1,6 @@
 import React from 'react';
 
-export function Input({ value, defaultValue, placeholder, icon, kbd, mono = false, size = 'md', invalid = false, disabled = false, onChange, onKeyDown, autoFocus, style, inputStyle, type = 'text' }) {
+export function Input({ value, defaultValue, placeholder, icon, kbd, mono = false, size = 'md', invalid = false, disabled = false, onChange, onKeyDown, autoFocus, style, inputStyle, type = 'text' }: any) {
   const [focus, setFocus] = React.useState(false);
   const h = size === 'sm' ? 24 : size === 'lg' ? 32 : 28;
   return (

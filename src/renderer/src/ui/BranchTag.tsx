@@ -1,6 +1,6 @@
 import React from 'react';
 
-export function BranchTag({ name, base, worktree = false, kind = 'branch', style }) {
+export function BranchTag({ name, base, worktree = false, kind = 'branch', style }: any) {
   const icon = kind === 'commit' ? 'git-commit' : kind === 'pr' ? 'git-pull-request' : worktree ? 'tree-structure' : 'git-branch';
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, height: 20, padding: '0 6px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-raised)', boxShadow: 'inset 0 0 0 1px var(--border)',

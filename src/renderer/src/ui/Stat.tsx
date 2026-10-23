@@ -1,6 +1,6 @@
 import React from 'react';
 
-export function Stat({ label, value, detail, tone, style }) {
+export function Stat({ label, value, detail, tone, style }: any) {
   const color = tone ? 'var(--status-' + tone + '-text)' : 'var(--text-1)';
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, ...style }}>

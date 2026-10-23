@@ -72,7 +72,7 @@ export function TitleBar({ crumbs, theme, setTheme }: { crumbs: any[]; theme: 'd
       <div style={{ flex: 1, minWidth: 0 }}><Breadcrumbs items={crumbs || []} /></div>
       <button type="button" onClick={() => setUI({ palette: true })} style={{ width: 340, height: 26, flex: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '0 6px 0 10px', border: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border)', color: 'var(--text-3)', font: '400 12px/1 var(--font-sans)', cursor: 'pointer' }}>
         <i className="ph ph-magnifying-glass" style={{ fontSize: 13 }} />
-        <span style={{ flex: 1, textAlign: 'left' }}>Search sessions, files and commits</span>
+        <span style={{ flex: 1, textAlign: 'left' }}>Search sessions and repositories</span>
         <Kbd keys={[mac() ? '⌘' : 'Ctrl', 'K']} />
       </button>
       <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 2 }}>

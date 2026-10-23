@@ -1,6 +1,6 @@
 import React from 'react';
 
-export function Select({ value, defaultValue, options = [], icon, mono = false, size = 'md', disabled = false, onChange, style }) {
+export function Select({ value, defaultValue, options = [], icon, mono = false, size = 'md', disabled = false, onChange, style }: any) {
   const h = size === 'sm' ? 24 : size === 'lg' ? 32 : 28;
   return (
     <label style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 6, height: h, padding: '0 26px 0 8px', borderRadius: 'var(--radius-md)',

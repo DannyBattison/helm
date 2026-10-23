@@ -319,7 +319,7 @@ else {
     sessions.recover();
     await GH.loadToken();
     G.setGitToken(GH.getToken());
-    if (!GH.getToken()) store.data.user = null;
+    if (!GH.getToken() && !process.env.HELM_DEV_SEED) store.data.user = null;
     claudeVersion = await detectClaude(store.data.settings.claudePath);
     for (const name of Object.keys(api) as (keyof HelmApi)[]) {
       ipcMain.handle(name, async (_e, ...args) => (api[name] as any)(...args));

@@ -8,7 +8,7 @@ const VARIANTS = {
   danger: { bg: 'var(--status-error-bg)', hover: 'var(--status-error-bg)', press: 'var(--status-error-bg)', fg: 'var(--status-error-text)', ring: 'inset 0 0 0 1px var(--status-error)' },
 };
 
-export function Button({ variant = 'secondary', size = 'md', icon, iconRight, kbd, loading = false, disabled = false, fullWidth = false, children, style, onClick, type = 'button', ...rest }) {
+export function Button({ variant = 'secondary', size = 'md', icon, iconRight, kbd, loading = false, disabled = false, fullWidth = false, children, style, onClick, type = 'button', ...rest }: any) {
   const [hover, setHover] = React.useState(false);
   const [press, setPress] = React.useState(false);
   const s = SIZES[size] || SIZES.md;

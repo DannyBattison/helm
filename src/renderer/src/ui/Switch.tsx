@@ -1,6 +1,6 @@
 import React from 'react';
 
-export function Switch({ checked, defaultChecked = false, label, disabled = false, onChange, style }) {
+export function Switch({ checked, defaultChecked = false, label, disabled = false, onChange, style }: any) {
   const [inner, setInner] = React.useState(defaultChecked);
   const on = checked ?? inner;
   const toggle = () => { if (disabled) return; setInner(!on); onChange && onChange(!on); };

@@ -1,6 +1,6 @@
 import React from 'react';
 
-export function Kbd({ keys = [], style }) {
+export function Kbd({ keys = [], style }: any) {
   const list = Array.isArray(keys) ? keys : [keys];
   return (
     <span style={{ display: 'inline-flex', gap: 3, ...style }}>

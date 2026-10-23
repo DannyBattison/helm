@@ -1,6 +1,6 @@
 import React from 'react';
 
-export function SegmentedControl({ options = [], value, defaultValue, size = 'md', onChange, style }) {
+export function SegmentedControl({ options = [], value, defaultValue, size = 'md', onChange, style }: any) {
   const norm = options.map(o => (typeof o === 'string' ? { value: o, label: o } : o));
   const [inner, setInner] = React.useState(defaultValue ?? (norm[0] && norm[0].value));
   const cur = value ?? inner;

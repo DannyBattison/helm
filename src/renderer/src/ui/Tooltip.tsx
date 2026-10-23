@@ -1,6 +1,6 @@
 import React from 'react';
 
-export function Tooltip({ content, kbd, side = 'top', open, children, style }) {
+export function Tooltip({ content, kbd, side = 'top', open, children, style }: any) {
   const [hover, setHover] = React.useState(false);
   const show = open ?? hover;
   const pos = side === 'bottom' ? { top: '100%', marginTop: 6 } : { bottom: '100%', marginBottom: 6 };

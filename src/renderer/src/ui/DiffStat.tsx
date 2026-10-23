@@ -1,6 +1,6 @@
 import React from 'react';
 
-export function DiffStat({ additions = 0, deletions = 0, files, blocks = true, style }) {
+export function DiffStat({ additions = 0, deletions = 0, files, blocks = true, style }: any) {
   const total = additions + deletions;
   const n = 5;
   const g = total ? Math.round((additions / total) * n) : 0;

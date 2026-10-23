@@ -208,9 +208,8 @@ export function CodeView({ s, themeKey }: { s: Session; themeKey: 'dark' | 'ligh
         <style>{`.helm-blame{color:var(--text-disabled);font-style:italic}`}</style>
         {tabs.length ? (
           <div style={{ display: 'flex', background: 'var(--bg-panel)', flex: 'none', overflow: 'hidden' }}>
-            <Tabs variant="editor" value={active || undefined} onChange={(p) => void openFile(p)} style={{ background: 'var(--bg-panel)', flex: 1, minWidth: 0 }}
+            <Tabs variant="editor" closable onClose={closeTab} value={active || undefined} onChange={(p) => void openFile(p)} style={{ background: 'var(--bg-panel)', flex: 1, minWidth: 0 }}
               tabs={tabs.map((p) => ({ value: p, label: p.split('/').pop(), icon: 'file-code', dirty: dirty[p] }))} />
-            {active ? <button type="button" title="Close tab" onClick={() => closeTab(active)} style={{ width: 30, border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer' }}><i className="ph ph-x" style={{ fontSize: 12 }} /></button> : null}
           </div>
         ) : <div style={{ height: 34, flex: 'none', background: 'var(--bg-panel)', borderBottom: '1px solid var(--border)' }} />}
         <div style={{ height: 30, flex: 'none', display: 'flex', alignItems: 'center', gap: 10, padding: '0 10px 0 16px', borderBottom: '1px solid var(--border-subtle)' }}>

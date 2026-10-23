@@ -199,7 +199,7 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
     <div style={{ flex: 'none', padding: '0 20px 16px' }}>
       <div style={{ maxWidth: 820, margin: '0 auto', borderRadius: 'var(--radius-lg)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border-strong)' }}>
         <textarea ref={inputRef} value={text} onChange={(e) => setText(e.target.value)} placeholder={placeholder} rows={2}
-          onKeyDown={(e) => { if (e.key === 'Enter' && (mod(e) || (!e.shiftKey && !e.nativeEvent.isComposing && false))) { e.preventDefault(); send(); } }}
+          onKeyDown={(e) => { if (e.key === 'Enter' && mod(e)) { e.preventDefault(); send(); } }}
           style={{ width: '100%', resize: 'none', border: 'none', outline: 'none', background: 'transparent', color: 'var(--text-1)', font: '400 13px/1.5 var(--font-sans)', padding: '10px 12px 4px' }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px 6px 8px' }}>
           <IconButton icon="at" label="Mention a file" size="sm" onClick={() => { setText((t) => t + '@'); inputRef.current?.focus(); }} />

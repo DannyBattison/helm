@@ -1,6 +1,6 @@
 import React from 'react';
 
-export function Panel({ title, icon, actions, padded = true, children, style, bodyStyle }) {
+export function Panel({ title, icon, actions, padded = true, children, style, bodyStyle }: any) {
   return (
     <section style={{ display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, background: 'var(--bg-panel)', borderRadius: 'var(--radius-lg)', boxShadow: 'inset 0 0 0 1px var(--border)', ...style }}>
       {title || actions ? (

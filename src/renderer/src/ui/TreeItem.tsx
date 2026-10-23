@@ -1,6 +1,6 @@
 import React from 'react';
 
-export function TreeItem({ label, icon, depth = 0, expandable = false, expanded = false, selected = false, status, meta, mono = false, trailing, onClick, style }) {
+export function TreeItem({ label, icon, depth = 0, expandable = false, expanded = false, selected = false, status, meta, mono = false, trailing, onClick, style }: any) {
   const [hover, setHover] = React.useState(false);
   return (
     <div role="treeitem" aria-selected={selected} onClick={onClick} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}

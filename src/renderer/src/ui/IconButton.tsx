@@ -1,6 +1,6 @@
 import React from 'react';
 
-export function IconButton({ icon, label, size = 'md', active = false, badge = false, disabled = false, onClick, style }) {
+export function IconButton({ icon, label, size = 'md', active = false, badge = false, disabled = false, onClick, style }: any) {
   const [hover, setHover] = React.useState(false);
   const d = size === 'sm' ? 22 : size === 'lg' ? 32 : 28;
   const ic = size === 'sm' ? 14 : size === 'lg' ? 18 : 16;
