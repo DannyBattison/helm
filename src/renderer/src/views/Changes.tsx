@@ -171,7 +171,7 @@ export function Changes({ s }: { s: Session }) {
     const r = await api.mergeDirect({ sessionId: s.id, base, message: title || s.task, files: filesToStage, removeAfterMerge: rm });
     setArmed(false);
     toast({ tone: 'ready', title: `Merged into ${base}`, description: [`${r.sha} is on GitHub`, r.localUpdated ? `local ${base} updated` : r.localNote].filter(Boolean).join(' · ') });
-    if (rm) go({ screen: 'overview' });
+    if (rm && app.settings.afterMerge === 'delete') go({ screen: 'overview' });
   });
   const commitOnly = () => run('commit', async () => { await api.commitOnly(s.id, filesToStage, title); toast({ tone: 'ready', title: 'Committed', description: `${filesToStage.length} files on ${s.branch}` }); });
   const requestChanges = () => run('req', async () => { await api.requestChanges(s.id, comments); setC([]); go({ screen: 'session', id: s.id, tab: 'conversation' }); });

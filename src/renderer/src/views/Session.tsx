@@ -247,6 +247,8 @@ function TranscriptItemView({ m, s, onDeny }: { m: TranscriptEvent; s: S; onDeny
 /** Re-renders only when its event changes, or the pending request it may be showing does. */
 export const TranscriptItem = React.memo(TranscriptItemView, (a, b) => a.m === b.m && a.s?.ask?.id === b.s?.ask?.id && a.s?.ask?.orphaned === b.s?.ask?.orphaned);
 
+const gone: React.CSSProperties = { font: '400 13px/1.5 var(--font-sans)', color: 'var(--text-3)', textAlign: 'center', display: 'grid', placeItems: 'center' };
+
 // Drafts and sent messages are kept per session for as long as helm is open, so switching away never loses what you were typing
 // and the up arrow can bring back the last thing you said.
 const drafts = new Map<string, string>();
@@ -571,6 +573,7 @@ export function Session({ id, tab, setTab, themeKey, sub }: { id: string; tab: s
 
   let body: React.ReactNode;
   if (sub) body = <SubagentView s={s} subId={sub} />;
+  else if (s.worktreeGone && (tab === 'code' || tab === 'changes')) body = <div style={{ ...gone, flex: 1 }}>The worktree was removed after this was merged{s.mergedInto ? ` into ${s.mergedInto}` : ''}, so there is no code to browse here. The conversation is kept.</div>;
   else if (tab === 'code') body = <CodeView wsId={s.id} session={s} branch={s.branch} themeKey={themeKey} />;
   else if (tab === 'changes') body = <Changes s={s} />;
   else body = (
@@ -588,7 +591,7 @@ export function Session({ id, tab, setTab, themeKey, sub }: { id: string; tab: s
               {s.status === 'idle' && s.step ? <div style={{ marginLeft: 32, font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>{s.step}</div> : null}
             </>} />
         </div>
-        <Composer s={s} inputRef={input} />
+        {s.worktreeGone ? <div style={{ ...gone, padding: '0 20px 16px' }}>Merged{s.mergedInto ? ` into ${s.mergedInto}` : ''} and archived. The worktree was removed, so this session cannot be continued.</div> : <Composer s={s} inputRef={input} />}
       </div>
       <UsagePanel s={s} />
     </div>

@@ -1,5 +1,6 @@
 import { getSessionInfo, getSubagentMessages, query, renameSession, type Query, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
-import { copyFile, mkdir, readFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fmtMoney } from '../shared/money';
 import type { ActivityEvent, Effort, MessageImage, ModelAlias, NewSessionInput, PendingAsk, PermMode, Session, Status, Subagent, TranscriptEvent } from '../shared/types';
@@ -174,13 +175,7 @@ export class SessionManager {
     const isLocal = !input.base.startsWith('origin/') && (await G.gitOk(repo.localPath, 'rev-parse', '--verify', '--quiet', 'refs/heads/' + input.base));
     const remoteBase = input.base.startsWith('origin/') || isLocal ? input.base : (await G.gitOk(repo.localPath, 'rev-parse', '--verify', 'origin/' + input.base)) ? 'origin/' + input.base : input.base;
     await G.addWorktree(repo.localPath, wt, branch, remoteBase);
-    for (const f of st.copyFiles.split(',').map((x) => x.trim()).filter(Boolean)) {
-      const from = join(repo.localPath, f);
-      if (await G.fileExists(from)) {
-        await mkdir(dirname(join(wt, f)), { recursive: true });
-        await copyFile(from, join(wt, f)).catch(() => undefined);
-      }
-    }
+    await this.copyUntracked(repo.localPath, wt, st.copyFiles);
 
     const now = Date.now();
     const s: Session = {
@@ -597,6 +592,7 @@ export class SessionManager {
   }
 
   async refreshStats(s: Session) {
+    if (s.worktreeGone) return;
     try {
       const c = await G.changes(s.worktree, s.base);
       s.add = c.files.reduce((a, f) => a + f.add, 0);
@@ -827,6 +823,26 @@ export class SessionManager {
   }
 
   /**
+   * Copies the untracked files that match the gitignore-style patterns from the checkout into a new worktree. git does the
+   * matching (`--exclude-from`), so negation, folders, `**` and comments all behave as they do in a .gitignore.
+   */
+  private async copyUntracked(from: string, to: string, patterns: string) {
+    if (!patterns.split(/\r?\n/).some((l) => l.trim() && !l.trim().startsWith('#'))) return;
+    const file = join(tmpdir(), `helm-copy-${uid()}.txt`);
+    try {
+      await writeFile(file, patterns.replace(/\r\n/g, '\n') + '\n', 'utf8');
+      const out = await G.git(from, 'ls-files', '-z', '--others', '--ignored', `--exclude-from=${file}`);
+      for (const rel of out.split('\0').filter(Boolean).slice(0, 500)) {
+        const src = join(from, rel);
+        if ((await stat(src).catch(() => null))?.size! > 50 * 1024 * 1024) continue;
+        await mkdir(dirname(join(to, rel)), { recursive: true });
+        await copyFile(src, join(to, rel)).catch(() => undefined);
+      }
+    } catch { /* a bad pattern or an unreadable file must not stop the session starting */ }
+    finally { await rm(file, { force: true }).catch(() => undefined); }
+  }
+
+  /**
    * An approval, question or limit that was pending when helm closed. The agent's process is gone, so answering starts
    * the session again from its saved conversation, with the answer as the next message.
    */
@@ -879,6 +895,7 @@ export class SessionManager {
   async send(id: string, text: string, images: MessageImage[] = []) {
     const s = this.get(id);
     if (!s) throw new Error('Session not found');
+    if (s.worktreeGone) throw new Error('This session\'s work was merged and its worktree removed, so it cannot be continued. Start a new session.');
     let rt = this.rt.get(id);
     // Talking to a session brings it back from the archive.
     s.lastAccess = Date.now();
@@ -1022,6 +1039,27 @@ export class SessionManager {
   }
 
   /** Deletes the session. A branch can only be deleted together with its worktree, since git refuses to delete a checked-out branch. */
+  /**
+   * The work was merged. Clean up the worktree and branch as asked, then deal with the session as the setting says: archived
+   * (kept with its conversation, usage and change counts, found in the Archive), deleted, or left as it is.
+   */
+  async finishMerged(id: string, merged: { into: string; at?: number }, opts: { worktree: boolean; branch: boolean }) {
+    const s = this.get(id);
+    if (!s) return;
+    const record = this.store.data.settings.afterMerge;
+    if (record === 'delete') return this.remove(id, opts);
+    await this.refreshStats(s);
+    await this.stop(id);
+    if (opts.worktree || opts.branch) {
+      await G.removeWorktree(this.repoOf(s).localPath, s.worktree, opts.branch ? s.branch : undefined).catch(() => undefined);
+      s.worktreeGone = true;
+    }
+    s.mergedInto = merged.into;
+    s.mergedAt = merged.at ?? Date.now();
+    if (record === 'archive') { s.archivedAt = Date.now(); s.archivedAuto = undefined; }
+    this.touch();
+  }
+
   async remove(id: string, opts: { worktree: boolean; branch: boolean }) {
     const s = this.get(id);
     if (!s) return;

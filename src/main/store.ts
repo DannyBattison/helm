@@ -20,7 +20,8 @@ export const defaultSettings = (): Settings => ({
   branchPrefix: 'agent/',
   removeAfterMerge: true,
   deliver: 'pr',
-  copyFiles: '.env, .env.local',
+  afterMerge: 'archive',
+  copyFiles: '.env\n.env.local',
   weeklyLimit: 100,
   sessionBudget: 10,
   warnAt: 80,
@@ -80,6 +81,8 @@ export class Store {
       // Sessions saved by older versions have no subagents.
       for (const x of this.data.sessions) { x.subagents ||= []; x.lastAccess ||= x.endedAt ?? x.startedAt; }
       this.data.extArchive ||= {};
+      // The copy list used to be one comma-separated line. It is now gitignore patterns, one per line.
+      if (!/[\r\n]/.test(this.data.settings.copyFiles) && this.data.settings.copyFiles.includes(',')) this.data.settings.copyFiles = this.data.settings.copyFiles.split(',').map((x) => x.trim()).filter(Boolean).join('\n');
       // Lifetime totals started later than sessions did: seed them from the sessions that exist, once.
       if (!raw.totals) {
         this.data.totals = {};

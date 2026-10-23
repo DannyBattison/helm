@@ -138,8 +138,14 @@ export function Settings({ section }: { section?: string }) {
             <SettingRow title="When a session is ready" desc="Open a pull request for review, or skip it and push the branch straight onto the default branch. You can still choose per session on its Changes tab. A protected branch refuses direct pushes.">
               <SegmentedControl value={st.deliver} onChange={(v: string) => set({ deliver: v as any })} options={[{ value: 'pr', label: 'Pull request' }, { value: 'merge', label: 'Merge directly' }]} />
             </SettingRow>
+            <SettingRow title="When its work is merged" desc="What happens to the session once its pull request is merged or it is merged directly. Archiving keeps the conversation and numbers in the Archive; the worktree is removed separately, below.">
+              <Select value={st.afterMerge} onChange={(e: any) => set({ afterMerge: e.target.value })} options={[{ value: 'archive', label: 'Archive it' }, { value: 'delete', label: 'Delete it' }, { value: 'keep', label: 'Leave it' }]} />
+            </SettingRow>
             <SettingRow title="Remove worktree after merge" desc="Applies to pull requests opened from helm."><Switch checked={st.removeAfterMerge} onChange={(v: boolean) => set({ removeAfterMerge: v })} /></SettingRow>
-            <SettingRow title="Copy untracked files" desc="Files like .env are copied into each new worktree."><Field value={st.copyFiles} onCommit={(v: string) => set({ copyFiles: v })} style={{ width: 200 }} /></SettingRow>
+            <SettingRow title="Copy untracked files" desc={<>Files from your checkout that git does not track, copied into each new worktree. One pattern per line, in .gitignore format: <code>.env</code>, <code>config/*.local.json</code>, <code>**/secrets.*</code>, <code>!keep.env</code> to exclude, <code>#</code> for a comment. Tracked files are never copied.</>}>
+              <textarea className="selectable" value={st.copyFiles} rows={5} spellCheck={false} placeholder={'.env\n.env.local'} onChange={(e) => set({ copyFiles: e.target.value })}
+                style={{ width: 280, resize: 'vertical', border: 'none', outline: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border)', color: 'var(--text-1)', font: '400 12px/1.55 var(--font-mono)', padding: '8px 10px', boxSizing: 'border-box' }} />
+            </SettingRow>
           </> : null}
           {sec === 'budgets' ? <>
             <H sub="How helm measures and limits usage. Pick the option that matches how you pay for Claude.">Usage</H>

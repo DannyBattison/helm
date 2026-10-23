@@ -66,6 +66,8 @@ export interface Subagent {
 
 export interface Session {
   id: string;
+  /** The worktree (and maybe the branch) was removed after the work was merged. The conversation and numbers stay; it cannot be continued. */
+  worktreeGone?: boolean;
   /** Merged straight into this branch without a pull request, and when. */
   mergedInto?: string;
   mergedAt?: number;
@@ -152,10 +154,13 @@ export interface Settings {
   cloneRoot: string;
   branchPrefix: string;
   removeAfterMerge: boolean;
+  /** Files from your checkout to copy into each new worktree, as gitignore patterns, one per line (`.env`, `config/*.local.json`, `!keep.env`, `# comment`). Only files git does not track are copied. */
   copyFiles: string;
   weeklyLimit: number;
   sessionBudget: number;
   warnAt: number;
+  /** What happens to a session's record once its work is merged: archived (the default), deleted, or left where it is. */
+  afterMerge: 'archive' | 'delete' | 'keep';
   /** How finished work is delivered: as a pull request, or merged straight into the default branch. The Changes tab can override it per session. */
   deliver: 'pr' | 'merge';
   /** Start Remote Control (`/rc`) in every session, so it can be followed and driven from claude.ai/code or the Claude app. */

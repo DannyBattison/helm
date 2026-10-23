@@ -423,7 +423,7 @@ const api: HelmApi = {
     store.data.activity.unshift({ id: Math.random().toString(36).slice(2), t: Date.now(), kind: 'merge', who: store.data.user?.login || 'you', human: true, what: `merged ${s.branch} into ${base}`, repo: repo.name, sessionId: s.id });
     store.save();
     emitState();
-    if (input.removeAfterMerge) await sessions.remove(s.id, { worktree: true, branch: true });
+    await sessions.finishMerged(s.id, { into: base, at: s.mergedAt }, { worktree: input.removeAfterMerge, branch: input.removeAfterMerge });
     return { sha, localUpdated, localNote };
   },
   async requestChanges(id, comments) {
@@ -532,7 +532,7 @@ async function refreshRates() {
 
 // ------------------------------------------------------------------ merged PR cleanup
 async function pollMerges() {
-  const open = store.data.sessions.filter((s) => s.prUrl && s.removeAfterMerge);
+  const open = store.data.sessions.filter((s) => s.prUrl && !s.mergedAt);
   const byRepo = new Map<string, typeof open>();
   for (const s of open) byRepo.set(s.repoId, [...(byRepo.get(s.repoId) || []), s]);
   for (const [repoId, list] of byRepo) {
@@ -541,7 +541,7 @@ async function pollMerges() {
       for (const s of list) {
         const pr = prs.find((p) => p.url === s.prUrl);
         if (pr?.state === 'merged') {
-          await sessions.remove(s.id, { worktree: true, branch: true });
+          await sessions.finishMerged(s.id, { into: pr.base }, { worktree: s.removeAfterMerge, branch: s.removeAfterMerge });
           store.data.activity.unshift({ id: Math.random().toString(36).slice(2), t: Date.now(), kind: 'merge', who: store.data.user?.login || 'you', human: true, what: `merged PR #${pr.number} “${pr.title}”`, repo: repoId.split('/')[1] });
         }
       }
