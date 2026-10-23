@@ -9,7 +9,7 @@ export type Route =
   | { screen: 'archive' }
   | { screen: 'repo'; id: string; tab?: string }
   | { screen: 'external'; repoId: string; id: string }
-  | { screen: 'session'; id: string; tab?: string; sub?: string }
+  | { screen: 'session'; id: string; tab?: string; sub?: string; file?: string; line?: number }
   | { screen: 'settings'; section?: string };
 
 export interface ToastItem {

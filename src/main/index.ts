@@ -181,10 +181,12 @@ function applyTheme() {
   }
 }
 
-function openExternalEditor(path: string, kind: string) {
+function openExternalEditor(path: string, kind: string, line?: number) {
   const cmd = kind === 'VS Code' ? 'code' : kind === 'Cursor' ? 'cursor' : kind === 'Zed' ? 'zed' : '';
   if (!cmd) return;
-  spawn(cmd, [path], { shell: process.platform === 'win32', detached: true, stdio: 'ignore' }).unref();
+  // VS Code and Cursor take `--goto file:line`; Zed takes `file:line`.
+  const args = line && kind !== 'Zed' ? ['--goto', `${path}:${line}`] : [line ? `${path}:${line}` : path];
+  spawn(cmd, args.map((a) => (process.platform === 'win32' ? `"${a}"` : a)), { shell: process.platform === 'win32', detached: true, stdio: 'ignore' }).unref();
 }
 
 // ------------------------------------------------------------------ API
@@ -467,11 +469,12 @@ const api: HelmApi = {
     const text = 'Review comments from the user. Please address each one:\n\n' + comments.map((c) => `- ${c.file}:${c.line}: ${c.text}`).join('\n');
     await sessions.send(id, text);
   },
-  async openInEditor(id, path) {
+  async openInEditor(id, path, line) {
     const s = sess(id);
     const kind = store.data.settings.openIn;
-    if (kind === 'helm') send('navigate', { screen: 'session', id, tab: 'code' });
-    else openExternalEditor(path ? safePath(s, path) : s.worktree, kind);
+    if (path) safePath(s, path);
+    if (kind === 'helm') send('navigate', { screen: 'session', id, tab: 'code', file: path, line });
+    else openExternalEditor(path ? safePath(s, path) : s.worktree, kind, line);
   },
   async openExternal(url) { if (/^https:\/\//.test(url)) await shell.openExternal(url); },
   projectMemory: (id) => projectMemory(repos.must(id).localPath),

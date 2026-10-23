@@ -610,7 +610,8 @@ export interface HelmApi {
   /** Pushes the branches with commits GitHub lacks: one target (a session id, or `@checkout`), or every target of a repository, or of all of them. */
   push(opts: { repoId?: string; target?: string }): Promise<PushResult>;
   requestChanges(sessionId: string, comments: ReviewComment[]): Promise<void>;
-  openInEditor(sessionId: string, path?: string): Promise<void>;
+  /** Opens the session's worktree, or one file in it (at a line), in the editor chosen in Settings. */
+  openInEditor(sessionId: string, path?: string, line?: number): Promise<void>;
   openExternal(url: string): Promise<void>;
   /** What Claude Code has remembered about this repository, plus the instruction files (CLAUDE.md) that apply to it. */
   projectMemory(repoId: string): Promise<ProjectMemory>;
@@ -641,5 +642,5 @@ export interface HelmEvents {
   toast: { tone: 'ready' | 'attention' | 'error' | 'neutral'; title: string; description?: string; sessionId?: string; tab?: string };
   termData: { id: string; data: string };
   termExit: { id: string };
-  navigate: { screen: string; id?: string; tab?: string };
+  navigate: { screen: string; id?: string; tab?: string; file?: string; line?: number };
 }

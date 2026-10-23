@@ -77,13 +77,29 @@ function SubagentTree({ s, selected }: { s: S; selected?: string }) {
   );
 }
 
-function ToolRow({ tool, target, meta }: { tool: string; target: string; meta: string }) {
+/** A file the agent touched, as a link that opens it in the editor chosen in Settings (helm's own, VS Code, Cursor or Zed), in that session's worktree. */
+function FileLink({ session, path, style }: { session?: S | null; path: string; style?: React.CSSProperties }) {
+  const [hover, setHover] = React.useState(false);
+  const usable = !!session && !session.worktreeGone && !!path && !path.startsWith('..') && !/^([a-zA-Z]:)?[\\/]/.test(path);
+  if (!usable) return <span style={style}>{path}</span>;
+  return (
+    <span role="link" tabIndex={0} title={`Open ${path} in the editor`} onClick={(e) => { e.stopPropagation(); void guard(api.openInEditor(session!.id, path)); }}
+      onKeyDown={(e) => { if (e.key === 'Enter') void guard(api.openInEditor(session!.id, path)); }} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      style={{ ...style, cursor: 'pointer', color: hover ? 'var(--accent-text, var(--accent))' : style?.color, textDecoration: hover ? 'underline' : 'none', textUnderlineOffset: 2 }}>{path}</span>
+  );
+}
+
+const FILE_TOOLS = new Set(['Read', 'Edit', 'Write', 'NotebookEdit', 'MultiEdit']);
+
+function ToolRow({ tool, target, meta, session }: { tool: string; target: string; meta: string; session?: S | null }) {
   const icon = ({ Read: 'file-text', Grep: 'magnifying-glass', Glob: 'folders', Bash: 'terminal', Edit: 'pencil-simple', Write: 'file-plus', WebFetch: 'globe', WebSearch: 'globe' } as any)[tool] || 'wrench';
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '16px 56px minmax(0,1fr) auto', gap: 8, alignItems: 'center', height: 26, padding: '0 10px' }}>
       <i className={'ph ph-' + icon} style={{ fontSize: 13, color: 'var(--text-3)' }} />
       <span style={{ font: '500 12px/1 var(--font-sans)', color: 'var(--text-2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tool}</span>
-      <span style={{ font: '400 12px/1 var(--font-mono)', color: 'var(--text-1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{target}</span>
+      {FILE_TOOLS.has(tool)
+        ? <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><FileLink session={session} path={target} style={{ font: '400 12px/1 var(--font-mono)', color: 'var(--text-1)' }} /></span>
+        : <span style={{ font: '400 12px/1 var(--font-mono)', color: 'var(--text-1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{target}</span>}
       <span style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)' }}>{meta}</span>
     </div>
   );
@@ -156,13 +172,13 @@ function TranscriptItemView({ m, s, onDeny }: { m: TranscriptEvent; s: S; onDeny
       </div>
     </div>
   );
-  if (m.k === 'tools') return <div style={{ marginLeft: 32, ...box, padding: '3px 0' }}>{m.items.map((t, i) => <ToolRow key={i} tool={t[0]} target={t[1]} meta={t[2]} />)}</div>;
+  if (m.k === 'tools') return <div style={{ marginLeft: 32, ...box, padding: '3px 0' }}>{m.items.map((t, i) => <ToolRow key={i} tool={t[0]} target={t[1]} meta={t[2]} session={s} />)}</div>;
   if (m.k === 'edit') return (
     <div style={{ marginLeft: 32, ...box }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 30, padding: '0 10px', borderBottom: '1px solid var(--border-subtle)' }}>
         <i className="ph ph-pencil-simple" style={{ fontSize: 13, color: 'var(--text-3)' }} />
         <span style={{ font: '500 12px/1 var(--font-sans)', color: 'var(--text-2)' }}>Edit</span>
-        <span style={{ font: '400 12px/1 var(--font-mono)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.file}</span>
+        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><FileLink session={s} path={m.file} style={{ font: '400 12px/1 var(--font-mono)' }} /></span>
         <DiffStat additions={m.add} deletions={m.del} />
       </div>
       <pre className="selectable" style={{ margin: 0, padding: '4px 0', background: 'var(--bg-editor)', font: '400 12px/1.65 var(--font-mono)', overflow: 'auto' }}>
@@ -555,7 +571,7 @@ function SubagentView({ s, subId }: { s: S; subId: string }) {
   );
 }
 
-export function Session({ id, tab, setTab, themeKey, sub }: { id: string; tab: string; setTab(t: string): void; themeKey: 'dark' | 'light'; sub?: string }) {
+export function Session({ id, tab, setTab, themeKey, sub, file, line }: { id: string; tab: string; setTab(t: string): void; themeKey: 'dark' | 'light'; sub?: string; file?: string; line?: number }) {
   const app = useApp();
   const s = app.sessions.find((x) => x.id === id);
   const items = useTranscript(id);
@@ -584,7 +600,7 @@ export function Session({ id, tab, setTab, themeKey, sub }: { id: string; tab: s
   let body: React.ReactNode;
   if (sub) body = <SubagentView s={s} subId={sub} />;
   else if (s.worktreeGone && (tab === 'code' || tab === 'changes')) body = <div style={{ ...gone, flex: 1 }}>The worktree was removed after this was merged{s.mergedInto ? ` into ${s.mergedInto}` : ''}, so there is no code to browse here. The conversation is kept.</div>;
-  else if (tab === 'code') body = <CodeView wsId={s.id} session={s} branch={s.branch} themeKey={themeKey} />;
+  else if (tab === 'code') body = <CodeView wsId={s.id} session={s} branch={s.branch} themeKey={themeKey} open={file ? { path: file, line } : undefined} />;
   else if (tab === 'changes') body = <Changes s={s} />;
   else body = (
     <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>

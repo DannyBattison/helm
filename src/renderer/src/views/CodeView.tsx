@@ -192,7 +192,7 @@ function Explorer({ ws, s, sig, active, open, branch }: { ws: string; s?: Sessio
  * Browse and edit a workspace: a session's worktree or the repository's own checkout.
  * Cmd/Ctrl+S saves, Cmd/Ctrl+P opens a file, the Search tab searches every file, Diff shows your edits against the base.
  */
-export function CodeView({ wsId, session: s, themeKey, branch }: { wsId: string; session?: Session; themeKey: 'dark' | 'light'; branch: string }) {
+export function CodeView({ wsId, session: s, themeKey, branch, open }: { wsId: string; session?: Session; themeKey: 'dark' | 'light'; branch: string; /** A file to show once the editor is ready, at a line. */ open?: { path: string; line?: number } }) {
   const app = useApp();
   const host = React.useRef<HTMLDivElement>(null);
   const diffHost = React.useRef<HTMLDivElement>(null);
@@ -312,6 +312,7 @@ export function CodeView({ wsId, session: s, themeKey, branch }: { wsId: string;
   }, [wsId]);
 
   React.useEffect(() => { if (M.current) M.current.monaco.editor.setTheme(M.current.themeName(themeKey)); }, [themeKey, ready]);
+  React.useEffect(() => { if (ready && open?.path) void openFile(open.path, open.line); }, [ready, open?.path, open?.line]);
   React.useEffect(() => {
     const o = { fontSize: app.settings.editorFontSize, fontFamily: fontStack(app.settings.editorFont), fontLigatures: app.settings.editorLigatures };
     document.fonts.load(`12.5px "${app.settings.editorFont}"`).catch(() => null).then(() => {

@@ -71,7 +71,7 @@ export function App() {
     const r = s && app.repos.find((x) => x.id === s.repoId);
     const subA = route.sub ? s?.subagents.find((x) => x.id === route.sub) : undefined;
     crumbs = [{ label: r?.id || 'Session', icon: 'book-bookmark', onClick: r && (() => go({ screen: 'repo', id: r.id })) }, subA ? { label: route.id, onClick: () => go({ screen: 'session', id: route.id, tab: 'conversation' }) } : route.id, ...(subA ? [{ label: subA.description, icon: 'tree-structure' }] : [])];
-    body = <Session key={route.id} id={route.id} tab={route.tab || 'conversation'} sub={route.sub} setTab={(t) => go({ screen: 'session', id: route.id, tab: t })} themeKey={theme} />;
+    body = <Session key={route.id} id={route.id} tab={route.tab || 'conversation'} sub={route.sub} file={route.file} line={route.line} setTab={(t) => go({ screen: 'session', id: route.id, tab: t })} themeKey={theme} />;
   } else if (route.screen === 'external') {
     const x = getUI().externals[route.repoId]?.find((e) => e.id === route.id);
     crumbs = [{ label: route.repoId, icon: 'book-bookmark', onClick: () => go({ screen: 'repo', id: route.repoId, tab: 'external' }) }, { label: x?.title || 'Claude Code session', icon: 'eye' }];
