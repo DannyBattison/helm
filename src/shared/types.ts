@@ -212,6 +212,12 @@ export interface Settings {
   /** Font for the interface: labels, titles and prose. */
   /** What interrupts a working agent from the keyboard: Esc, Esc pressed twice, or nothing (the Interrupt button still works). */
   interruptKey: 'esc' | 'double-esc' | 'off';
+  /** Connect to a helm-companion server so the website can show this app's agents and answer them. Off until turned on. */
+  companionEnabled: boolean;
+  /** The companion server, for example `https://companion.example.com`. */
+  companionUrl: string;
+  /** Let the website approve commands, answer questions, message, pause and stop agents, and start sessions. Off leaves it read-only. */
+  companionControl: boolean;
   /** The shell in the terminal: `auto` (zsh if installed, then Git Bash, WSL, PowerShell), an id from `listShells`, or `custom`. */
   terminalShell: string;
   /** The command to run for the `custom` shell, for example `wsl.exe -d Ubuntu -e zsh`. */
@@ -278,6 +284,7 @@ export interface AppState {
   tokensToday: number;
   claudeVersion: string | null;
   plan: PlanUsage;
+  companion: CompanionState;
   /** USD to other currencies. */
   rates: Record<string, number>;
   platform: string;
@@ -520,6 +527,36 @@ export interface ShellOption {
   label: string;
 }
 
+/** Where the companion connection stands. */
+export interface CompanionState {
+  state: 'off' | 'linking' | 'connecting' | 'connected' | 'error';
+  error?: string;
+  /** Shown while linking: the code to enter on GitHub. */
+  linkCode?: { userCode: string; verificationUri: string };
+  /** The GitHub username the companion knows this computer as. */
+  login?: string;
+  /** Browser tabs open on the website right now. */
+  viewers: number;
+}
+
+/** The small picture of helm that goes to the companion website: no code, no file contents, only what a phone screen needs. */
+export interface CompanionSnapshot {
+  at: number;
+  user: { login: string; avatar: string };
+  billing: 'subscription' | 'api';
+  /** Whether the website may answer and message agents, or only watch. */
+  control: boolean;
+  plan: { fiveHour?: PlanWindow; weekly?: PlanWindow };
+  repos: { id: string; name: string; owner: string; lifetimeTokens: number }[];
+  sessions: {
+    id: string; title: string; repoId: string; repoName: string; status: Status; step: string; branch: string; model: string; permMode: string;
+    startedAt: number; tokens: number; cost: number; ctx: number; files: number; add: number; del: number; prUrl?: string; mergedInto?: string; archived: boolean;
+    subagents: { running: number; total: number };
+    ask?: { id: string; type: string; head: string; note: string; command?: string; tool?: string; pattern?: string; scope?: string; orphaned?: boolean; questions?: AskQuestion[] };
+  }[];
+  activity: { t: number; who: string; what: string; kind: string; repo: string; ok?: boolean }[];
+}
+
 export interface MergeInput {
   sessionId: string;
   /** Branch to merge into, without origin/. */
@@ -543,6 +580,8 @@ export interface MergeResult {
 /** Request/response calls from renderer to main. */
 export interface HelmApi {
   getState(): Promise<AppState>;
+  /** Forgets this computer's link to the companion server. Turning the companion on again links it afresh. */
+  companionUnlink(): Promise<void>;
   /** The window was unresponsive for `ms`. Written to diagnostics.log, with the page it was on. */
   reportStall(ms: number, where: string): Promise<void>;
   /** The log of everything helm and its agents did, newest first. `before` is a timestamp to page back from. */

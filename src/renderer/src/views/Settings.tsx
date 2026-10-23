@@ -26,6 +26,45 @@ function TerminalShellRow({ st, set }: { st: any; set(p: any): void }) {
   );
 }
 
+/** The companion website: turn it on, link this computer, see who is connected. */
+function CompanionSection({ st, set, state }: { st: any; set(p: any): void; state: any }) {
+  const label = ({ off: 'Off', linking: 'Waiting for you to sign in to GitHub', connecting: 'Connecting…', connected: 'Connected', error: 'Not connected' } as any)[state.state] || state.state;
+  const tone = state.state === 'connected' ? 'var(--status-ready-text, var(--status-ready))' : state.state === 'error' ? 'var(--status-error-text)' : 'var(--text-3)';
+  return <>
+    <H sub="See your agents and answer them from a phone or another computer. Off by default: nothing leaves this computer until you turn it on.">Companion</H>
+    <SettingRow title="Enable companion" desc="Connects helm to your companion server and keeps it connected while helm is open. Without it, the companion website shows an “enable in settings” page.">
+      <Switch checked={st.companionEnabled} onChange={(v: boolean) => set({ companionEnabled: v })} />
+    </SettingRow>
+    <SettingRow title="Companion server" desc="The address of your helm-companion server. helm never sends your GitHub token to it.">
+      <Field value={st.companionUrl} onCommit={(v: string) => set({ companionUrl: v.trim() })} placeholder="https://companion.example.com" style={{ width: 280 }} />
+    </SettingRow>
+    <SettingRow title="Status" desc={state.state === 'connected' ? `Linked as ${state.login}. ${state.viewers ? `${state.viewers} ${state.viewers === 1 ? 'page is' : 'pages are'} open on the website.` : 'No page is open on the website.'}` : state.error || (state.state === 'off' ? 'Turn the companion on to link this computer.' : undefined)}>
+      <span style={{ font: '500 12.5px/1 var(--font-sans)', color: tone, display: 'inline-flex', alignItems: 'center', gap: 6 }}><i className={'ph-fill ph-circle'} style={{ fontSize: 8 }} />{label}</span>
+      {st.companionUrl && state.state === 'connected' ? <Button size="sm" variant="ghost" iconRight="arrow-square-out" onClick={() => api.openExternal(st.companionUrl)}>Open website</Button> : null}
+    </SettingRow>
+    {state.state === 'linking' ? (
+      <div style={{ margin: '4px 0 12px', padding: 14, borderRadius: 'var(--radius-md)', background: 'var(--bg-panel)', boxShadow: 'inset 0 0 0 1px var(--border)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <span style={{ font: '500 13px/1.4 var(--font-sans)' }}>Link this computer</span>
+        {state.linkCode ? <>
+          <span style={{ font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>Open GitHub and enter this code, signed in as the account you use in helm. It asks for no permissions: it only tells the companion which username this is.</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span className="selectable" style={{ font: '700 22px/1 var(--font-mono)', letterSpacing: '.12em' }}>{state.linkCode.userCode}</span>
+            <Button size="sm" icon="copy" onClick={() => api.copyText(state.linkCode.userCode)}>Copy</Button>
+            <Button size="sm" variant="primary" iconRight="arrow-square-out" onClick={() => api.openExternal(state.linkCode.verificationUri)}>Open GitHub</Button>
+          </div>
+        </> : <span style={{ font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Contacting the server…</span>}
+      </div>
+    ) : null}
+    <SettingRow title="Let the website control agents" desc="Allows approving commands, answering questions, sending messages, pausing, stopping and starting sessions from the website. Turn off to make it read-only.">
+      <Switch checked={st.companionControl} onChange={(v: boolean) => set({ companionControl: v })} />
+    </SettingRow>
+    <SettingRow title="What is sent" desc="A summary of each session (title, status, branch, tokens, any question it is waiting on), recent activity, plan usage, and the conversation of a session while someone has it open on the website. Commands and messages pass through your server. File contents and your GitHub token are never sent." />
+    <SettingRow title="Unlink this computer" desc="Forget the link. Turning the companion on again signs in to GitHub afresh.">
+      <Button size="sm" variant="ghost" icon="link-break" disabled={state.state === 'off' && !st.companionEnabled} onClick={() => api.companionUnlink()}>Unlink</Button>
+    </SettingRow>
+  </>;
+}
+
 function SettingRow({ title, desc, children }: { title: React.ReactNode; desc?: React.ReactNode; children?: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 24, padding: '14px 0', borderTop: '1px solid var(--border-subtle)' }}>
@@ -81,7 +120,7 @@ export function Settings({ section }: { section?: string }) {
   const subCols = useColumns('subagent-repos', [{ w: 1, min: 160, flex: true }, { w: 170, min: 110, fixed: true }]);
   const pctOptions = [{ value: '0', label: 'Off' }, { value: '50', label: '50%' }, { value: '70', label: '70%' }, { value: '80', label: '80%' }, { value: '90', label: '90%' }];
   const subLimits = (extra: number[]) => [...new Set([0, 1, 2, 3, 4, 6, 8, 12, ...extra])].sort((a, b) => a - b).map((n) => ({ value: String(n), label: n === 0 ? 'Off' : String(n) }));
-  const nav = [['account', 'Account', 'github-logo'], ['agents', 'Claude Code', 'robot'], ['worktrees', 'Worktrees', 'tree-structure'], ['budgets', 'Usage', 'coins'], ['notifications', 'Notifications', 'bell'], ['appearance', 'Appearance', 'paint-brush']];
+  const nav = [['account', 'Account', 'github-logo'], ['agents', 'Claude Code', 'robot'], ['worktrees', 'Worktrees', 'tree-structure'], ['budgets', 'Usage', 'coins'], ['companion', 'Companion', 'broadcast'], ['notifications', 'Notifications', 'bell'], ['appearance', 'Appearance', 'paint-brush']];
   const notif = (key: 'notifyAttention' | 'notifyReady' | 'notifyFailed' | 'notifyChecks', title: string) => (
     <SettingRow title={title}>
       <Switch checked={st[key].desktop} onChange={(v: boolean) => set({ [key]: { ...st[key], desktop: v } })} label="Desktop" />
@@ -219,6 +258,7 @@ export function Settings({ section }: { section?: string }) {
               </div>
             </>}
           </> : null}
+          {sec === 'companion' ? <CompanionSection st={st} set={set} state={app.companion} /> : null}
           {sec === 'notifications' ? <>
             <H sub="Desktop notifications are shown when helm is not the focused window. The taskbar or dock badge counts sessions that need you.">Notifications</H>
             {notif('notifyAttention', 'Agent needs approval or an answer')}

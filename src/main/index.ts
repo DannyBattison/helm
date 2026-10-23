@@ -7,6 +7,7 @@ import { join, relative, resolve, isAbsolute } from 'node:path';
 import type { AppState, ExternalTranscript, HelmApi, HelmEvents, Settings, TranscriptEvent } from '../shared/types';
 import * as G from './git';
 import * as GH from './github';
+import { Companion } from './companion';
 import { deleteMemory, projectMemory, readMemory, writeMemory } from './memory';
 import { RepoService } from './repos';
 import { SessionManager } from './sessions';
@@ -33,6 +34,7 @@ function buildState(): AppState {
     sessions: store.data.sessions,
     activity: store.data.activity,
     activitySeq: store.logSeq,
+    companion: companion.state,
     settings: store.data.settings,
     weekSpend: store.weekSpend(),
     lifetime: store.data.totals,
@@ -50,6 +52,7 @@ function emitState() {
   stateTimer = setTimeout(() => {
     stateTimer = null;
     send('state', buildState());
+    companion.changed();
     // The badge is an OS call (on Windows it draws an overlay icon), so only make it when the number changes.
     const need = store.data.sessions.filter((s) => s.status === 'attention').length;
     if (need !== lastBadge) { lastBadge = need; try { app.setBadgeCount(need); } catch { /* unsupported */ } }
@@ -77,9 +80,13 @@ function diag(line: string) {
 }
 
 const repos = new RepoService(store, emitState);
+// The companion is created before the sessions, which call into it when a transcript changes, but it needs them to act: so its
+// operations are filled in once they exist.
+const companionOps: import('./companion').CompanionOps = {} as any;
+const companion = new Companion(store, companionOps, () => emitState());
 const sessions = new SessionManager(store, {
   emitState,
-  emitTranscript: (sessionId, index, event) => send('transcript', { sessionId, index, event }),
+  emitTranscript: (sessionId, index, event) => { send('transcript', { sessionId, index, event }); companion.onTranscript(sessionId, index, event); },
   toast: (t) => send('toast', t),
   claudePath: () => {
     // The SDK resolves its bundled binary inside app.asar, where it cannot be executed.
@@ -100,6 +107,20 @@ const sessions = new SessionManager(store, {
     });
     n.show();
   }
+});
+Object.assign(companionOps, {
+  resolveAsk: (id: string, askId: string, answer: any) => sessions.resolveAsk(id, askId, answer),
+  sendMessage: (id: string, text: string) => sessions.send(id, text),
+  interrupt: (id: string) => sessions.interrupt(id),
+  stop: (id: string) => sessions.stop(id),
+  resume: async (id: string) => { await sessions.send(id, 'Continue where you left off.'); },
+  archive: async (id: string, archived: boolean) => { sessions.archive(id, archived); },
+  createSession: async (repoId: string, task: string) => {
+    const st = store.data.settings;
+    const repo = repos.must(repoId);
+    await sessions.create({ repoId, base: repo.defaultBranch, task, model: st.defaultModel, budget: st.sessionBudget, permMode: st.permMode });
+  },
+  transcript: (id: string) => store.transcript(id)
 });
 const terms = new Terminals((id, data) => send('termData', { id, data }), (id) => send('termExit', { id }));
 
@@ -219,12 +240,14 @@ const repoName = (id: string) => store.data.repos.find((r) => r.id === id)?.name
 const api: HelmApi = {
   async getState() { return buildState(); },
   activityLog: (opts) => store.readLog(opts?.before, opts?.limit),
+  companionUnlink: () => companion.unlink(),
   async reportStall(ms, where) { diag(`window stalled ${ms} ms on ${where}`); },
   async updateSettings(patch: Partial<Settings>) {
     Object.assign(store.data.settings, patch);
     if ('theme' in patch) applyTheme();
     if ('billing' in patch && patch.billing === 'subscription') void refreshPlan(true);
     if ('archiveAfterDays' in patch) sessions.autoArchive();
+    if ('companionEnabled' in patch || 'companionUrl' in patch) companion.apply();
     if ('planPause5h' in patch || 'planPauseWeek' in patch || 'billing' in patch) void sessions.enforcePlan();
     if ('claudePath' in patch) claudeVersion = await detectClaude(store.data.settings.claudePath);
     store.save();
@@ -699,6 +722,7 @@ else {
   app.whenReady().then(async () => {
     await store.load();
     if (!process.env.HELM_DEV_NO_RECOVER) sessions.recover();
+    void companion.loadKey().then(() => companion.apply());
     await GH.loadToken();
     G.setGitToken(GH.getToken());
     if (!GH.getToken() && !process.env.HELM_DEV_SEED) store.data.user = null;
@@ -724,6 +748,7 @@ else {
     e.preventDefault();
     (app as any).__closing = true;
     terms.closeAll();
+    companion.shutdown();
     sessions.shutdown();
     await store.flushAll().catch(() => undefined);
     app.quit();
