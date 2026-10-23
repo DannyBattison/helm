@@ -268,6 +268,21 @@ export function XTerm({ sessionId, themeKey }: { sessionId: string | null; theme
     t.loadAddon(fit);
     t.open(el.current!);
     term.current = t;
+    // xterm sends a literal ^V for Ctrl+V and never pastes, so paste and copy are done here: Ctrl/Cmd+V pastes, Ctrl/Cmd+C copies a
+    // selection (with nothing selected it still interrupts), and so do Ctrl+Shift+V and Ctrl+Shift+C.
+    const pasteIn = () => api.readClipboard().then((text) => { if (text) t.paste(text); }).catch(() => undefined);
+    t.attachCustomKeyEventHandler((e) => {
+      if (e.type !== 'keydown' || !(e.ctrlKey || e.metaKey) || e.altKey) return true;
+      const k = e.key.toLowerCase();
+      if (k === 'v') { e.preventDefault(); void pasteIn(); return false; }
+      if (k === 'c' && (e.shiftKey || t.hasSelection())) { e.preventDefault(); if (t.hasSelection()) void api.copyText(t.getSelection()); return false; }
+      return true;
+    });
+    const onContext = (e: MouseEvent) => {
+      e.preventDefault();
+      if (t.hasSelection()) { void api.copyText(t.getSelection()); t.clearSelection(); } else void pasteIn();
+    };
+    el.current!.addEventListener('contextmenu', onContext);
     let id: string | null = null;
     let dead = false;
     const doFit = () => { try { fit.fit(); if (id) void api.termResize(id, t.cols, t.rows); } catch { /* hidden */ } };
@@ -282,7 +297,8 @@ export function XTerm({ sessionId, themeKey }: { sessionId: string | null; theme
     const offE = on('termExit', (p) => { if (p.id === id) t.write('\r\n\x1b[2m[process exited]\x1b[0m\r\n'); });
     const ro = new ResizeObserver(doFit);
     ro.observe(el.current!);
-    return () => { dead = true; offD(); offE(); ro.disconnect(); if (id) void api.termClose(id); t.dispose(); };
+    const host = el.current!;
+    return () => { dead = true; offD(); offE(); ro.disconnect(); host.removeEventListener('contextmenu', onContext); if (id) void api.termClose(id); t.dispose(); };
   }, [sessionId]);
   React.useEffect(() => {
     if (term.current) { term.current.options.fontFamily = fontStack(font); }

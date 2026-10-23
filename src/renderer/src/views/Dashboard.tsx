@@ -1,4 +1,5 @@
 import React from 'react';
+import { CopyBox } from '../ui';
 import { usePush } from './push';
 import { sessionTitle, type ActivityEvent, type ExternalSession, type Session } from '@shared/types';
 import { api, platform } from '../api';
@@ -40,7 +41,7 @@ export function AttentionCard({ s }: { s: Session }) {
         <span style={{ marginLeft: 'auto' }}>{ago(a.at)}</span>
       </div>
       <div style={{ font: '600 13px/1.35 var(--font-sans)', textWrap: 'pretty' as any }}>{a.head}</div>
-      {a.command ? <code className="selectable" style={{ font: 'var(--type-data)', padding: '6px 8px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-editor)', boxShadow: 'inset 0 0 0 1px var(--border-subtle)', color: 'var(--text-1)', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 180, overflow: 'auto' }}>{a.tool === 'Bash' || a.tool === 'PowerShell' ? <><span style={{ color: 'var(--text-3)' }}>$ </span><Cmd text={a.command} /></> : a.command}</code> : null}
+      {a.command ? <CopyBox text={a.command}><code className="selectable" style={{ font: 'var(--type-data)', padding: '6px 8px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-editor)', boxShadow: 'inset 0 0 0 1px var(--border-subtle)', color: 'var(--text-1)', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 180, overflow: 'auto' }}>{a.tool === 'Bash' || a.tool === 'PowerShell' ? <><span style={{ color: 'var(--text-3)' }}>$ </span><Cmd text={a.command} /></> : a.command}</code></CopyBox> : null}
       {a.type === 'budget' && a.scope === 'plan' ? <PlanMeters /> : null}
       {a.type === 'budget' && a.scope !== 'plan' ? <Meter value={s.cost} max={s.budget} detail={fmt(s.cost) + ' / ' + fmt(s.budget)} label="Session budget" /> : null}
       {a.note ? <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)', flex: 1, textWrap: 'pretty' as any }}>{a.note}{a.orphaned ? (/[.!?]$/.test(a.note) ? ' ' : '. ') + 'helm was restarted while this waited. Answering resumes the session.' : ''}</div> : null}

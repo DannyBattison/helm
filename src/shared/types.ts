@@ -212,6 +212,10 @@ export interface Settings {
   /** Font for the interface: labels, titles and prose. */
   /** What interrupts a working agent from the keyboard: Esc, Esc pressed twice, or nothing (the Interrupt button still works). */
   interruptKey: 'esc' | 'double-esc' | 'off';
+  /** The shell in the terminal: `auto` (zsh if installed, then Git Bash, WSL, PowerShell), an id from `listShells`, or `custom`. */
+  terminalShell: string;
+  /** The command to run for the `custom` shell, for example `wsl.exe -d Ubuntu -e zsh`. */
+  terminalShellCustom: string;
   /** Which key sends a message from the composer. Enter sends and Shift+Enter starts a new line, or Ctrl/Cmd+Enter sends and Enter starts a new line. */
   sendKey: 'enter' | 'mod-enter';
   /** Show the organisation or user before each repository name in the left tree (`acme/` storefront). */
@@ -511,6 +515,11 @@ export interface PushResult {
   uncommitted: number;
 }
 
+export interface ShellOption {
+  id: string;
+  label: string;
+}
+
 export interface MergeInput {
   sessionId: string;
   /** Branch to merge into, without origin/. */
@@ -655,6 +664,10 @@ export interface HelmApi {
   termClose(id: string): Promise<void>;
 
   copyText(text: string): Promise<void>;
+  /** The text on the clipboard, for pasting into the terminal. */
+  readClipboard(): Promise<string>;
+  /** The shells this computer has, for the terminal setting. */
+  listShells(): Promise<ShellOption[]>;
 }
 
 /** Push events from main to renderer. */

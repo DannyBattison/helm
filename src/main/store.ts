@@ -46,6 +46,8 @@ export const defaultSettings = (): Settings => ({
   notifyChecks: { desktop: false, sound: false },
   dnd: true,
   editorFontSize: 12.5,
+  terminalShell: 'auto',
+  terminalShellCustom: '',
   sendKey: 'mod-enter',
   interruptKey: 'esc',
   showOwner: true,

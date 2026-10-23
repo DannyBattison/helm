@@ -5,7 +5,7 @@ import { Cmd, Hl } from '../Hl';
 import { highlightBlock, langFromPath, langFromTag } from '../highlight';
 import { clock, elapsed, fmtTokens, prettyModel, runningSubagents, STATUS_LABEL, subagentTree, tilde } from '../lib';
 import { go, loadTranscript, setUI, toast, useApp, useMoney, useTranscript } from '../store';
-import { Avatar, Badge, BranchTag, Button, DiffStat, Grip, IconButton, Meter, Select, StatusDot, Tabs, usePaneWidth } from '../ui';
+import { Avatar, Badge, BranchTag, Button, CopyBox, DiffStat, Grip, IconButton, Meter, Select, StatusDot, Tabs, usePaneWidth } from '../ui';
 import { Changes } from './Changes';
 import { TranscriptList } from './TranscriptList';
 import { usePush } from './push';
@@ -116,7 +116,8 @@ function Rich({ text }: { text: string }) {
   const codeBlock = (lines: string[], tag: string, key: number) => {
     const hb = highlightBlock(lines.join('\n'), langFromTag(tag));
     const st: React.CSSProperties = { margin: 0, padding: '8px 10px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-editor)', boxShadow: 'inset 0 0 0 1px var(--border-subtle)', font: 'var(--type-data)', overflow: 'auto' };
-    return hb ? <pre key={key} className="selectable" style={st} dangerouslySetInnerHTML={{ __html: hb.html }} /> : <pre key={key} className="selectable" style={st}>{lines.join('\n')}</pre>;
+    const text = lines.join('\n');
+    return <CopyBox key={key} text={text}>{hb ? <pre className="selectable" style={st} dangerouslySetInnerHTML={{ __html: hb.html }} /> : <pre className="selectable" style={st}>{text}</pre>}</CopyBox>;
   };
   const flushPara = () => { if (para.length) { blocks.push(<div key={blocks.length}>{inline(para.join(' '))}</div>); para = []; } };
   const flushList = () => { if (list) { const L = list; blocks.push(React.createElement(L.ordered ? 'ol' : 'ul', { key: blocks.length, style: { margin: 0, paddingLeft: 20, color: 'var(--text-2)' } }, L.items.map((x, i) => <li key={i}>{inline(x)}</li>))); list = null; } };
@@ -234,7 +235,7 @@ function TranscriptItemView({ m, s, onDeny }: { m: TranscriptEvent; s: S; onDeny
     return (
       <div style={{ marginLeft: 44, marginRight: 12, borderRadius: 'var(--radius-md)', background: 'var(--status-attention-bg)', boxShadow: 'inset 0 0 0 1px var(--status-attention)', padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, font: '600 13px/1 var(--font-sans)', color: 'var(--status-attention-text)' }}><i className="ph-fill ph-shield-warning" style={{ fontSize: 15 }} />{isCmd ? 'Permission needed to run a command' : m.tool === 'ExitPlanMode' ? 'Plan ready for approval' : 'Permission needed'}</div>
-        <code className="selectable" style={{ font: 'var(--type-code)', padding: '6px 10px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-editor)', color: 'var(--text-1)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{isCmd ? <><span style={{ color: 'var(--text-3)' }}>$ </span><Cmd text={m.cmd} /></> : m.cmd}</code>
+        <CopyBox text={m.cmd}>        <code className="selectable" style={{ font: 'var(--type-code)', padding: '6px 10px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-editor)', color: 'var(--text-1)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{isCmd ? <><span style={{ color: 'var(--text-3)' }}>$ </span><Cmd text={m.cmd} /></> : m.cmd}</code></CopyBox>
         <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>{m.why}</div>
         {restarted ? <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>helm was restarted while this waited. Approving starts the session again and has the agent run it.</div> : null}
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>

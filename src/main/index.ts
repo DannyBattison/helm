@@ -11,7 +11,7 @@ import { deleteMemory, projectMemory, readMemory, writeMemory } from './memory';
 import { RepoService } from './repos';
 import { SessionManager } from './sessions';
 import { Store } from './store';
-import { Terminals } from './terminal';
+import { shellOptions, Terminals } from './terminal';
 import { expandHome, home, run } from './util';
 import { CURRENCIES, currencyForRegion } from '../shared/money';
 
@@ -543,12 +543,15 @@ const api: HelmApi = {
 
   async termOpen(id, cols, rows) {
     const cwd = id ? ws(id).worktree : null;
-    return terms.open(cwd, cols, rows);
+    const st = store.data.settings;
+    return terms.open(cwd, cols, rows, st.terminalShell, st.terminalShellCustom);
   },
   async termWrite(id, d) { terms.write(id, d); },
   async termResize(id, c, r) { terms.resize(id, c, r); },
   async termClose(id) { terms.close(id); },
-  async copyText(t) { clipboard.writeText(t); }
+  async copyText(t) { clipboard.writeText(t); },
+  async readClipboard() { return clipboard.readText(); },
+  listShells: () => shellOptions()
 };
 
 async function commitFiles(wt: string, files: string[], message: string) {
