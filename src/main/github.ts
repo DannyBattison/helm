@@ -35,7 +35,7 @@ async function gh(path: string, init: RequestInit = {}): Promise<any> {
   });
   if (!res.ok) {
     let msg = res.statusText;
-    try { msg = (await res.json()).message || msg; } catch { /* ignore */ }
+    try { msg = ((await res.json()) as any).message || msg; } catch { /* ignore */ }
     throw new Error(`GitHub: ${msg} (${res.status})`);
   }
   return res.status === 204 ? null : res.json();

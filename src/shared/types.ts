@@ -194,7 +194,7 @@ export interface HistoryCommit {
   hash: string;
   parents: string[];
   lane: number;
-  kind: 'main' | 'working' | 'attention' | 'idle';
+  kind: 'main' | Status;
   msg: string;
   who: string;
   agent: boolean;

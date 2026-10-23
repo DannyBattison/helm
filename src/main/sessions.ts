@@ -618,6 +618,15 @@ export class SessionManager {
     this.touch();
   }
 
+  /** Tell a running agent that the user changed a file under it. */
+  async userEdited(id: string, file: string) {
+    const s = this.get(id);
+    const rt = this.rt.get(id);
+    if (!s || !rt || s.status !== 'working') return;
+    await this.push(id, { k: 'note', tone: 'neutral', text: `You edited ${file}. The agent was told.` });
+    rt.queue.push(`Note from the user: they edited ${file} directly in the worktree. Re-read it before changing it again.`);
+  }
+
   async stopAll() {
     for (const id of [...this.rt.keys()]) await this.stop(id);
   }
