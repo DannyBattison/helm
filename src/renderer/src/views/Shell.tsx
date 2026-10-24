@@ -2,7 +2,7 @@ import { sessionTitle } from '@shared/types';
 import React from 'react';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
-import { api, on, platform } from '../api';
+import { api, on, platform, windowControls } from '../api';
 import { fontStack } from '../fonts';
 import glyph from '../assets/helm-glyph-violet.svg';
 import { ago, elapsed, fmtTokens, lifetimeTokens, livePlan, reposWithSessions, runningSubagents, subagentTree, totals, untilReset } from '../lib';
@@ -133,7 +133,7 @@ export function Sidebar() {
   return (
     <aside style={{ position: 'relative', width, flex: 'none', display: 'flex', flexDirection: 'column', background: 'var(--bg-sidebar)', borderRight: '1px solid var(--border)' }}>
       <Grip onMouseDown={grip} onDoubleClick={resetWidth} />
-      <div className="drag" style={{ height: 'var(--titlebar-h)', flex: 'none', display: 'flex', alignItems: 'center', gap: 10, padding: '0 14px 0 ' + (mac() ? 78 : 14) + 'px' }}>
+      <div className="drag" style={{ height: 'var(--titlebar-h)', flex: 'none', display: 'flex', alignItems: 'center', gap: 10, padding: '0 14px 0 ' + (windowControls() === 'left' ? 78 : 14) + 'px' }}>
         <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
           <img src={glyph} width="22" height="22" alt="" />
           <span style={{ font: '600 14px/1 var(--font-mono)', letterSpacing: '-0.02em', position: 'relative', top: '0.14em' }}>helm</span>
@@ -216,7 +216,7 @@ export function TitleBar({ crumbs, theme, setTheme }: { crumbs: any[]; theme: 'd
   const app = useApp();
   const need = app.sessions.filter((s) => s.status === 'attention').length;
   return (
-    <div className="drag" style={{ height: 'var(--titlebar-h)', flex: 'none', display: 'flex', alignItems: 'center', gap: 12, padding: '0 ' + (mac() ? 10 : 150) + 'px 0 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg-app)' }}>
+    <div className="drag" style={{ height: 'var(--titlebar-h)', flex: 'none', display: 'flex', alignItems: 'center', gap: 12, padding: '0 ' + (windowControls() === 'right' ? 150 : 10) + 'px 0 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg-app)' }}>
       <div style={{ flex: 1, minWidth: 0 }}><Breadcrumbs items={crumbs || []} /></div>
       <button type="button" onClick={() => setUI({ palette: true })} style={{ width: 340, height: 26, flex: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '0 6px 0 10px', border: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border)', color: 'var(--text-3)', font: '400 12px/1 var(--font-sans)', cursor: 'pointer' }}>
         <i className="ph ph-magnifying-glass" style={{ fontSize: 13 }} />

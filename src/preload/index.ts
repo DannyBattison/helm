@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { HelmEvents } from '../shared/types';
+import type { HelmBridge, HelmEvents } from '../shared/types';
 
-const bridge = {
+const bridge: HelmBridge = {
   platform: process.platform,
   invoke: (channel: string, ...args: unknown[]) => ipcRenderer.invoke(channel, ...args),
   on<K extends keyof HelmEvents>(channel: K, cb: (payload: HelmEvents[K]) => void) {

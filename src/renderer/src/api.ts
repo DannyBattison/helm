@@ -7,3 +7,4 @@ export const api = new Proxy({} as HelmApi, {
 
 export const on = <K extends keyof HelmEvents>(channel: K, cb: (p: HelmEvents[K]) => void) => window.helmBridge.on(channel, cb);
 export const platform = () => window.helmBridge.platform;
+export const windowControls = () => window.helmBridge.windowControls ?? (window.helmBridge.platform === 'darwin' ? 'left' : 'right');

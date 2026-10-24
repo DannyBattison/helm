@@ -636,6 +636,19 @@ export interface HelmApi {
 }
 
 /** Push events from main to renderer. */
+/**
+ * What the UI needs from the thing it runs in. Electron's preload implements it over IPC, the hosted server's web client over a
+ * WebSocket. The renderer imports nothing else from its environment.
+ */
+export interface HelmBridge {
+  /** The user's operating system, for keyboard shortcuts. */
+  platform: string;
+  /** Where the window's own buttons sit, so the title bar can leave room: the left (macOS), the right (Windows, Linux), or nowhere (a browser tab). Defaults from `platform`. */
+  windowControls?: 'left' | 'right' | 'none';
+  invoke(channel: string, ...args: unknown[]): Promise<any>;
+  on<K extends keyof HelmEvents>(channel: K, cb: (payload: HelmEvents[K]) => void): () => void;
+}
+
 export interface HelmEvents {
   state: AppState;
   transcript: { sessionId: string; index: number; event: TranscriptEvent };

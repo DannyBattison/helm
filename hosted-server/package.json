@@ -1,0 +1,19 @@
+{
+  "name": "helm-hosted-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "helm in a browser: the desktop app's main process on a server, its renderer in a web page",
+  "scripts": {
+    "build": "vite build",
+    "start": "tsx src/server.ts",
+    "dev": "vite build --watch & tsx watch src/server.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.server.json && tsc --noEmit -p tsconfig.web.json"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.12",
+    "tsx": "^4.19.0"
+  }
+}
