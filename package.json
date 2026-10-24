@@ -91,7 +91,7 @@
         }
       ],
       "category": "public.app-category.developer-tools",
-      "icon": "build/icon.png",
+      "icon": "build/icon.icns",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
@@ -106,6 +106,10 @@
     },
     "npmRebuild": false,
     "extraResources": [
+      {
+        "from": "build/icon.png",
+        "to": "build/icon.png"
+      },
       {
         "from": "resources",
         "to": "resources",
