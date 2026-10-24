@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm, stat } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { ChangesSummary, DiffHunk, FileChange } from '../shared/types';
 import { run } from './util';
@@ -9,9 +9,9 @@ export const setGitToken = (t: string | null) => { token = t; };
 function env(): NodeJS.ProcessEnv {
   const e: NodeJS.ProcessEnv = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
   if (token) {
-    e.GIT_CONFIG_COUNT = '1';
-    e.GIT_CONFIG_KEY_0 = 'http.https://github.com/.extraheader';
-    e.GIT_CONFIG_VALUE_0 = 'AUTHORIZATION: basic ' + Buffer.from('x-access-token:' + token).toString('base64');
+    // GIT_CONFIG_PARAMETERS in its 'key=value' form works on every git; GIT_CONFIG_COUNT needs 2.31+.
+    const header = 'AUTHORIZATION: basic ' + Buffer.from('x-access-token:' + token).toString('base64');
+    e.GIT_CONFIG_PARAMETERS = [e.GIT_CONFIG_PARAMETERS, `'http.https://github.com/.extraheader=${header}'`].filter(Boolean).join(' ');
   }
   return e;
 }
@@ -166,8 +166,34 @@ export async function commitDiff(repo: string, hash: string, path: string): Prom
 }
 
 export async function listFiles(wt: string): Promise<string[]> {
-  const out = await git(wt, 'ls-files', '--cached', '--others', '--exclude-standard');
-  return [...new Set(out.split('\n').filter(Boolean))];
+  try {
+    const out = await git(wt, 'ls-files', '--cached', '--others', '--exclude-standard');
+    return [...new Set(out.split('\n').filter(Boolean))];
+  } catch {
+    // Not a git folder (a free agent working in a folder of its own): walk it instead.
+    const found: string[] = [];
+    const stack = [''];
+    while (stack.length && found.length < 5000) {
+      const dir = stack.pop()!;
+      let entries;
+      try { entries = await readdir(join(wt, dir), { withFileTypes: true }); } catch { continue; }
+      for (const e of entries) {
+        if (e.name === '.git' || e.name === 'node_modules' || e.isSymbolicLink()) continue;
+        const p = dir ? dir + '/' + e.name : e.name;
+        if (e.isDirectory()) stack.push(p); else found.push(p);
+      }
+    }
+    return found.sort();
+  }
+}
+
+/** A new folder for a free agent, with local git and an empty first commit so changes can be shown against it. */
+export async function initScratch(dir: string): Promise<void> {
+  await mkdir(dir, { recursive: true });
+  const env = { ...process.env, GIT_AUTHOR_NAME: 'helm', GIT_AUTHOR_EMAIL: 'helm@localhost', GIT_COMMITTER_NAME: 'helm', GIT_COMMITTER_EMAIL: 'helm@localhost' };
+  await run('git', ['init', '-q'], { cwd: dir, env });
+  await run('git', ['symbolic-ref', 'HEAD', 'refs/heads/main'], { cwd: dir, env });
+  await run('git', ['commit', '-q', '--allow-empty', '-m', 'helm: start of free agent'], { cwd: dir, env });
 }
 
 export async function searchFiles(wt: string, query: string, matchCase: boolean): Promise<{ path: string; line: number; text: string }[]> {

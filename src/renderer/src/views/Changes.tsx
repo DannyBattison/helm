@@ -1,11 +1,13 @@
 import React from 'react';
 import type { ChangesSummary, DiffHunk, ReviewComment, Session } from '@shared/types';
+import { hunkId } from '@shared/hunks';
+import { blockers } from '@shared/selfreview';
 import { api, platform } from '../api';
 import { Hl } from '../Hl';
 import { langFromPath } from '../highlight';
 import { CHECK_RE, relTime } from '../lib';
 import { go, setUI, toast, useApp, useTranscript } from '../store';
-import { Avatar, BranchTag, Button, Checkbox, DiffStat, Grip, IconButton, Input, SegmentedControl, Select, usePaneWidth } from '../ui';
+import { Avatar, Badge, BranchTag, Button, Checkbox, DiffStat, Grip, IconButton, Input, SegmentedControl, Select, usePaneWidth } from '../ui';
 
 const label: React.CSSProperties = { font: '500 10.5px/1 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' };
 const sClr: Record<string, string> = { M: 'var(--status-attention-text)', A: 'var(--diff-add-fg)', D: 'var(--diff-del-fg)', R: 'var(--accent-text)' };
@@ -91,7 +93,74 @@ function Composer({ onSave, onCancel }: { onSave(t: string): void; onCancel(): v
   );
 }
 
+function HunkActions({ s, path, h, accepted, onAsk, onChanged }: { s: Session; path: string; h: DiffHunk; accepted: boolean; onAsk(): void; onChanged(): void }) {
+  const [busy, setBusy] = React.useState(false);
+  const id = hunkId(path, h);
+  const revert = async () => {
+    setBusy(true);
+    try { await api.revertHunk(s.id, path, h); toast({ tone: 'neutral', title: 'Hunk reverted', description: 'The agent will be told you changed the file. A checkpoint of the earlier state is in Checkpoints.' }); onChanged(); }
+    catch (e) { toast({ tone: 'error', title: 'Could not revert the hunk', description: errText(e) }); } finally { setBusy(false); }
+  };
+  return (
+    <span style={{ display: 'inline-flex', gap: 2, flex: 'none' }}>
+      <Button size="sm" variant="ghost" icon={accepted ? 'check-circle' : 'circle'} onClick={() => void api.setHunksReviewed(s.id, [id], !accepted)}>{accepted ? 'Accepted' : 'Accept'}</Button>
+      <Button size="sm" variant="ghost" icon="chat-circle-text" onClick={onAsk}>Ask</Button>
+      <Button size="sm" variant="ghost" icon="arrow-u-up-left" loading={busy} onClick={() => void revert()}>Reject</Button>
+    </span>
+  );
+}
+
+const SEVERITY: Record<string, { tone: string; label: string }> = { blocker: { tone: 'error', label: 'Blocker' }, warning: { tone: 'attention', label: 'Warning' }, note: { tone: 'neutral', label: 'Note' } };
+
+function ReviewPanel({ s, onOpen }: { s: Session; onOpen(file: string): void }) {
+  const r = s.review;
+  const head = s.commits[s.commits.length - 1]?.hash || '';
+  // The review records the commit it saw; a later commit means it is out of date.
+  const stale = !!r && r.state === 'done' && !!head && !r.head.startsWith(head.slice(0, 5)) && !head.startsWith(r.head.slice(0, 5));
+  const run = () => api.startReview(s.id).catch((e) => toast({ tone: 'error', title: 'Could not start the review', description: errText(e) }));
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ ...label, flex: 1 }}>Review by Claude</span>
+        <Button size="sm" variant="secondary" icon="magnifying-glass" loading={r?.state === 'running'} disabled={s.worktreeGone} onClick={() => void run()}>{r ? 'Review again' : 'Review this branch'}</Button>
+      </div>
+      {!r ? <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>A separate, read-only Claude goes through the diff for bugs, missing tests and changes outside the task. It cannot edit anything.</span> : null}
+      {r?.state === 'running' ? <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>Reading the diff…</span> : null}
+      {r?.state === 'failed' ? <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--status-error-text)' }}>{r.summary}</span> : null}
+      {r?.state === 'done' ? <>
+        <span className="selectable" style={{ font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-1)' }}>{r.summary}</span>
+        {stale ? <span style={{ font: '400 11.5px/1.4 var(--font-sans)', color: 'var(--status-attention-text)' }}>The branch has new commits since this review.</span> : null}
+        {r.findings.length === 0 ? <span style={{ font: '400 12px/1.4 var(--font-sans)', color: 'var(--status-ready-text)' }}><i className="ph ph-check-circle" /> No findings.</span> : null}
+        {r.findings.map((f, i) => (
+          <div key={i} onClick={() => f.file && onOpen(f.file)} style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '8px 10px', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border)', cursor: f.file ? 'pointer' : 'default' }}>
+            <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <Badge tone={SEVERITY[f.severity].tone as any}>{SEVERITY[f.severity].label}</Badge>
+              {f.file ? <span style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.file}{f.line ? ':' + f.line : ''}</span> : null}
+            </span>
+            <span className="selectable" style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>{f.text}</span>
+          </div>
+        ))}
+        {r.findings.length ? <Button size="sm" variant="ghost" icon="chat-circle-text" style={{ alignSelf: 'flex-start' }} onClick={() => void api.requestChanges(s.id, r.findings.filter((f) => f.severity !== 'note').map((f) => ({ file: f.file || 'General', line: f.line || 0, text: f.text }))).then(() => go({ screen: 'session', id: s.id, tab: 'conversation' }))}>Send blockers and warnings to the agent</Button> : null}
+      </> : null}
+    </div>
+  );
+}
+
+/** A free agent's folder, when it is one of yours: there is no git history to compare against, so nothing to show. */
 export function Changes({ s }: { s: Session }) {
+  if (s.free && !s.free.managed) return (
+    <div style={{ flex: 1, display: 'grid', placeItems: 'center' }}>
+      <div style={{ maxWidth: 380, textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center' }}>
+        <i className="ph ph-folder-simple" style={{ fontSize: 28, color: 'var(--text-3)' }} />
+        <span style={{ font: '500 13px/1.3 var(--font-sans)' }}>Changes are not tracked here</span>
+        <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>This agent works directly in your own folder, so helm has nothing to compare against and leaves git alone. Use your editor or git to see what it did.</span>
+      </div>
+    </div>
+  );
+  return <ChangesView s={s} />;
+}
+
+function ChangesView({ s }: { s: Session }) {
   const app = useApp();
   const transcript = useTranscript(s.id) || [];
   const [sum, setSum] = React.useState<ChangesSummary | null>(null);
@@ -117,7 +186,10 @@ export function Changes({ s }: { s: Session }) {
   const bodyEdited = React.useRef(false);
   const [lw, lgrip, lreset] = usePaneWidth('changes-files', 280, 200, 560);
   const [rw, rgrip, rreset] = usePaneWidth('changes-pr', 340, 280, 620, -1);
-  const sig = s.files + ':' + s.add + ':' + s.del + ':' + s.commits.length;
+  const [tick, setTick] = React.useState(0);
+  const [fileHunks, setFileHunks] = React.useState<Record<string, string[]>>({});
+  const sig = s.files + ':' + s.add + ':' + s.del + ':' + s.commits.length + ':' + tick;
+  const accepted = React.useMemo(() => new Set(s.reviewed || []), [s.reviewed]);
 
   const setC = (c: ReviewComment[]) => { pending.set(s.id, c); setComments(c); };
 
@@ -131,6 +203,21 @@ export function Changes({ s }: { s: Session }) {
     }).catch((e) => toast({ tone: 'error', title: 'Could not read changes', description: errText(e) }));
     return () => { dead = true; };
   }, [s.id, sig]);
+
+  // Every file's hunk ids, for the "n of m hunks accepted" count. Read one at a time so a big change does not stall the view.
+  React.useEffect(() => {
+    if (!sum) return;
+    let dead = false;
+    (async () => {
+      const next: Record<string, string[]> = {};
+      for (const f of sum.files.filter((x) => !x.generated && !x.binary && x.add + x.del <= 1500).slice(0, 60)) {
+        try { next[f.path] = (await api.fileDiff(s.id, f.path)).map((h) => hunkId(f.path, h)); } catch { /* file gone */ }
+        if (dead) return;
+      }
+      if (!dead) setFileHunks(next);
+    })();
+    return () => { dead = true; };
+  }, [sum, s.id]);
 
   React.useEffect(() => { api.repoBranches(s.repoId).then(setBranches).catch(() => undefined); }, [s.repoId]);
 
@@ -149,7 +236,7 @@ export function Changes({ s }: { s: Session }) {
   React.useEffect(() => {
     if (!sum || bodyEdited.current) return;
     const items = sum.commits.slice().reverse().map((c) => `- ${c.msg}`).join('\n');
-    setBody(`${s.task}\n\n${items ? items + '\n\n' : ''}Created with helm · session ${s.id}`);
+    setBody(`${s.task}\n\n${items ? items + '\n\n' : ''}${s.source?.kind === 'issue' ? `Closes #${s.source.number}\n\n` : ''}Created with helm · session ${s.id}`);
   }, [sum, s.id]);
 
   const checks = transcript.filter((e) => e.k === 'bash' && e.done && CHECK_RE.test(e.cmd)) as Extract<(typeof transcript)[number], { k: 'bash' }>[];
@@ -178,6 +265,9 @@ export function Changes({ s }: { s: Session }) {
   const requestChanges = () => run('req', async () => { await api.requestChanges(s.id, comments); setC([]); go({ screen: 'session', id: s.id, tab: 'conversation' }); });
 
   const lineComments = (n: number | null) => (n ? comments.filter((c) => c.file === sel && c.line === n) : []);
+  const allIds = Object.values(fileHunks).flat();
+  const totalHunks = allIds.length, doneHunks = allIds.filter((h) => accepted.has(h)).length;
+  const openBlockers = blockers(s.review);
   const totalAdd = sum?.files.reduce((a, f) => a + f.add, 0) || 0, totalDel = sum?.files.reduce((a, f) => a + f.del, 0) || 0;
 
   const renderThreads = (n: number | null) => <>
@@ -190,7 +280,7 @@ export function Changes({ s }: { s: Session }) {
       <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center' }}>
         <i className="ph ph-git-diff" style={{ fontSize: 28, color: 'var(--text-3)' }} />
         <span style={{ font: '500 13px/1.3 var(--font-sans)' }}>No changes yet</span>
-        <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>{s.id} has not changed anything relative to {s.base.replace(/^origin\//, '')}.</span>
+        <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>{s.id} has not changed anything {s.free ? 'in its folder yet' : <>relative to {s.base.replace(/^origin\//, '')}</>}.</span>
       </div>
     </div>
   );
@@ -201,7 +291,8 @@ export function Changes({ s }: { s: Session }) {
         <Grip onMouseDown={lgrip} onDoubleClick={lreset} />
         <div style={{ height: 34, flex: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px' }}>
           <Checkbox checked={allOn} onChange={(on) => setUnchecked(on ? new Set() : new Set((sum?.files || []).filter((f) => pickable(f.path)).map((f) => f.path)))} />
-          <span style={{ flex: 1, font: '500 12px/1 var(--font-sans)' }}>{sum?.files.length ?? 0} files</span>
+          <span style={{ flex: 1, font: '500 12px/1 var(--font-sans)' }} title="Hunks accepted, of all hunks in the change">{sum?.files.length ?? 0} files{totalHunks ? <span style={{ font: '400 11px/1 var(--font-mono)', color: doneHunks === totalHunks ? 'var(--status-ready-text)' : 'var(--text-3)', marginLeft: 8, whiteSpace: 'nowrap' }}>✓ {doneHunks}/{totalHunks}</span> : null}</span>
+          {totalHunks && doneHunks < totalHunks ? <Button size="sm" variant="ghost" onClick={() => void api.setHunksReviewed(s.id, Object.values(fileHunks).flat(), true)}>Accept all</Button> : null}
           <DiffStat additions={totalAdd} deletions={totalDel} blocks={false} />
         </div>
         <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '0 4px 8px' }}>
@@ -217,6 +308,7 @@ export function Changes({ s }: { s: Session }) {
                 </div>
                 <span style={{ font: '400 10.5px/1 var(--font-mono)', color: 'var(--diff-add-fg)' }}>+{f.add}</span>
                 <span style={{ font: '400 10.5px/1 var(--font-mono)', color: 'var(--diff-del-fg)' }}>−{f.del}</span>
+                {fileHunks[f.path]?.length && fileHunks[f.path].every((h) => accepted.has(h)) ? <i className="ph-fill ph-check-circle" title="All hunks accepted" style={{ fontSize: 12, color: 'var(--status-ready)' }} /> : null}
                 <span style={{ font: '500 11px/1 var(--font-mono)', width: 10, color: sClr[f.status] }}>{f.status}</span>
               </div>
             );
@@ -245,7 +337,10 @@ export function Changes({ s }: { s: Session }) {
             : hunks.length === 0 ? <div style={{ padding: 16, font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>No textual changes.</div>
             : hunks.map((h, i) => (
               <div key={i}>
-                <div style={{ padding: '6px 16px', font: '400 11.5px/1.4 var(--font-mono)', color: 'var(--accent-text)', background: 'var(--accent-muted)' }}>{h.header}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 8px 3px 16px', background: 'var(--accent-muted)' }}>
+                  <span style={{ flex: 1, minWidth: 0, font: '400 11.5px/1.4 var(--font-mono)', color: 'var(--accent-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h.header}</span>
+                  {sel ? <HunkActions s={s} path={sel} h={h} accepted={accepted.has(hunkId(sel, h))} onAsk={() => { const first = h.lines.find((l) => l[0] === '+' && l[2]) || h.lines.find((l) => l[2]); if (first) setComposing(first[2]); }} onChanged={() => setTick((t) => t + 1)} /> : null}
+                </div>
                 {mode === 's' ? <SplitRows lines={h.lines} onComment={setComposing} lang={fileLang} />
                   : h.lines.map((l, j) => <React.Fragment key={j}><DiffLine l={l} onComment={setComposing} lang={fileLang} />{renderThreads(l[2])}</React.Fragment>)}
               </div>
@@ -253,9 +348,10 @@ export function Changes({ s }: { s: Session }) {
         </div>
       </div>
 
-      <aside style={{ position: 'relative', width: rw, flex: 'none', borderLeft: '1px solid var(--border)', background: 'var(--bg-panel)', display: 'flex', flexDirection: 'column' }}>
+      {s.free ? null : <aside style={{ position: 'relative', width: rw, flex: 'none', borderLeft: '1px solid var(--border)', background: 'var(--bg-panel)', display: 'flex', flexDirection: 'column' }}>
         <Grip edge="left" onMouseDown={rgrip} onDoubleClick={rreset} />
         <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <ReviewPanel s={s} onOpen={(file) => { setSel(file); }} />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <span style={label}>Checks run by the agent</span>
             {checks.length === 0 ? <span style={{ font: '400 12px/1.4 var(--font-sans)', color: 'var(--text-3)' }}>The agent has not run tests or linters in this session.</span> : null}
@@ -283,7 +379,7 @@ export function Changes({ s }: { s: Session }) {
               <SegmentedControl value={deliver} onChange={(v: string) => setDeliver(v as any)} options={[{ value: 'pr', label: 'Pull request' }, { value: 'merge', label: 'Merge directly' }]} />
             </div>
             {s.mergedAt ? <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>Merged into <b>{s.mergedInto}</b> {relTime(s.mergedAt)}. Merging again pushes anything new since.</div> : null}
-            {deliver === 'pr' && s.prUrl ? <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>A pull request is open for this branch. <a href="#" onClick={(e) => { e.preventDefault(); void api.openExternal(s.prUrl!); }}>View on GitHub</a>{/\/pull\/(\d+)/.test(s.prUrl) ? <>, or <a href="#" onClick={(e) => { e.preventDefault(); setUI({ mergingPr: { repoId: s.repoId, number: +/\/pull\/(\d+)/.exec(s.prUrl!)![1], sessionId: s.id } }); }}>merge it here</a></> : null}. Creating another pushes new commits to the same branch.</div> : null}
+            {deliver === 'pr' && s.prUrl ? <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}><Button size="sm" variant="secondary" icon="chats" style={{ marginBottom: 8 }} onClick={() => void api.sendPrFeedback(s.id).then((n) => toast({ tone: n ? 'ready' : 'neutral', title: n ? `Sent ${n} review ${n === 1 ? 'comment' : 'comments'} to the agent` : 'No new review comments' })).catch((e) => toast({ tone: 'error', title: 'Could not read the review comments', description: errText(e) }))}>Send new review comments to the agent</Button><br />A pull request is open for this branch. <a href="#" onClick={(e) => { e.preventDefault(); void api.openExternal(s.prUrl!); }}>View on GitHub</a>{/\/pull\/(\d+)/.test(s.prUrl) ? <>, or <a href="#" onClick={(e) => { e.preventDefault(); setUI({ mergingPr: { repoId: s.repoId, number: +/\/pull\/(\d+)/.exec(s.prUrl!)![1], sessionId: s.id } }); }}>merge it here</a></> : null}. Creating another pushes new commits to the same branch.</div> : null}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>
               <Select size="sm" icon="git-branch" mono value={base} onChange={(e) => setBase(e.target.value)} options={[...new Set([base, ...branches])]} /><i className="ph ph-arrow-left" style={{ fontSize: 12 }} /><BranchTag name={s.branch} />
             </div>
@@ -297,6 +393,12 @@ export function Changes({ s }: { s: Session }) {
           </div>
         </div>
         <div style={{ flex: 'none', padding: 12, borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {openBlockers || (totalHunks && doneHunks < totalHunks) ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3, font: '400 11.5px/1.4 var(--font-sans)', color: 'var(--status-attention-text)' }}>
+              {openBlockers ? <span><i className="ph ph-warning" /> The review found {openBlockers} {openBlockers === 1 ? 'blocker' : 'blockers'}.</span> : null}
+              {totalHunks && doneHunks < totalHunks ? <span>{totalHunks - doneHunks} {totalHunks - doneHunks === 1 ? 'hunk' : 'hunks'} not yet accepted.</span> : null}
+            </div>
+          ) : null}
           {deliver === 'pr'
             ? <Button variant="primary" icon="git-pull-request" kbd={MOD() + '↵'} fullWidth loading={busy === 'pr'} disabled={!title.trim() || !!busy || !app.user} onClick={createPr}>Create pull request</Button>
             : <Button variant={armed ? 'danger' : 'primary'} icon="git-merge" fullWidth loading={busy === 'merge'} disabled={!!busy || (!sum?.commits.length && filesToStage.length === 0)} onClick={() => (armed ? merge() : setArmed(true))}>{armed ? `Push to ${base} on GitHub. Click again to confirm` : `Merge into ${base}`}</Button>}
@@ -305,7 +407,7 @@ export function Changes({ s }: { s: Session }) {
             <Button variant="ghost" style={{ flex: 1 }} disabled={filesToStage.length === 0 || !!busy} loading={busy === 'commit'} onClick={commitOnly}>Commit only</Button>
           </div>
         </div>
-      </aside>
+      </aside>}
     </div>
   );
 }

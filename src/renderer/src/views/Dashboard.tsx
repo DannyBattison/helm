@@ -2,11 +2,12 @@ import React from 'react';
 import { usePush } from './push';
 import { sessionTitle, type ExternalSession, type Session } from '@shared/types';
 import { api, platform } from '../api';
-import { ago, clock, fmtTokens, lifetimeTokens, laneAxis, laneData, LANE_MIN, livePlan, repoOf, reposWithSessions, runningSubagents, sessionTokens, totals, untilReset } from '../lib';
+import { isFreeGroup, whereLabel, ago, clock, fmtTokens, lifetimeTokens, laneAxis, laneData, LANE_MIN, livePlan, repoOf, reposWithSessions, runningSubagents, sessionTokens, totals, untilReset } from '../lib';
 import { Cmd } from '../Hl';
 import { go, setUI, useApp, useMoney, toast, useUI } from '../store';
 import { Avatar, Button, DiffStat, Meter, SegmentedControl, Stat, StatusDot, useColumns } from '../ui';
 import { PlanMeters } from './Shell';
+import { ForecastNotice } from './Review';
 
 const lanePct = (m: number) => ((m / LANE_MIN) * 100).toFixed(2) + '%';
 const LANE_COLOR: Record<string, string> = { working: 'var(--status-working)', attention: 'var(--status-attention)', ready: 'var(--status-ready)', idle: 'var(--status-idle)' };
@@ -35,7 +36,7 @@ export function AttentionCard({ s }: { s: Session }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 12, borderRadius: 'var(--radius-lg)', background: 'var(--bg-panel)', boxShadow: 'inset 0 0 0 1px var(--border)', minWidth: 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, font: '400 11.5px/1 var(--font-mono)', color: 'var(--text-3)' }}>
         <StatusDot status="attention" size={7} />
-        <span style={{ color: 'var(--text-2)' }}>{s.repoId.split('/')[1]}</span><span>/</span>
+        <span style={{ color: 'var(--text-2)' }}>{s.free ? 'free agent' : s.repoId.split('/')[1]}</span><span>/</span>
         <span style={{ color: 'var(--text-1)', cursor: 'pointer' }} onClick={open}>{sessionTitle(s)}</span>
         <span style={{ marginLeft: 'auto' }}>{ago(a.at)}</span>
       </div>
@@ -102,7 +103,7 @@ function SessionRow({ s, now, tpl, sub }: { s: Session; now: number; tpl: string
       <StatusDot status={s.status} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
         <span style={{ font: '500 13px/1.2 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.task}</span>
-        <span style={{ font: '400 11px/1.2 var(--font-mono)', color: 'var(--text-3)', display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}><i className="ph ph-git-branch" style={{ fontSize: 11 }} />{s.branch}{runningSubagents(s) ? <span style={{ color: 'var(--status-working-text)', marginLeft: 6, display: 'inline-flex', alignItems: 'center', gap: 3 }}><i className="ph ph-tree-structure" style={{ fontSize: 11 }} />{runningSubagents(s)} {runningSubagents(s) === 1 ? 'subagent' : 'subagents'}</span> : null}</span>
+        <span style={{ font: '400 11px/1.2 var(--font-mono)', color: 'var(--text-3)', display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}><i className={'ph ph-' + (s.free ? 'folder' : 'git-branch')} style={{ fontSize: 11 }} />{whereLabel(s)}{runningSubagents(s) ? <span style={{ color: 'var(--status-working-text)', marginLeft: 6, display: 'inline-flex', alignItems: 'center', gap: 3 }}><i className="ph ph-tree-structure" style={{ fontSize: 11 }} />{runningSubagents(s)} {runningSubagents(s) === 1 ? 'subagent' : 'subagents'}</span> : null}</span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
         <span style={{ flex: 1, minWidth: 0, font: '400 12px/1.3 var(--font-sans)', color: needs ? 'var(--status-attention-text)' : 'var(--text-2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.step}</span>
@@ -130,7 +131,7 @@ function FirstRun() {
         <p style={{ margin: 0, font: '400 13px/1.55 var(--font-sans)', color: 'var(--text-2)' }}>
           {none ? 'helm works with GitHub repositories. Clone one from your account, from a URL, or register a clone you already have.' : 'Describe a task and helm gives the agent its own worktree and branch. Your checkout is never touched.'}
         </p>
-        {none ? <Button variant="primary" icon="book-bookmark" onClick={() => setUI({ adding: true })}>Add repository</Button> : <Button variant="primary" icon="plus" onClick={() => setUI({ newSession: {} })}>New session</Button>}
+        {none ? <div style={{ display: 'flex', gap: 8 }}><Button variant="primary" icon="book-bookmark" onClick={() => setUI({ adding: true })}>Add repository</Button><Button variant="secondary" icon="robot" onClick={() => setUI({ newSession: { repoId: '@free' } })}>Start a free agent</Button></div> : <Button variant="primary" icon="plus" onClick={() => setUI({ newSession: {} })}>New session</Button>}
       </div>
     </div>
   );
@@ -174,7 +175,7 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
           </div>
           <span title={pushes.tip}><Button variant="ghost" icon="cloud-arrow-up" loading={pushes.busy} disabled={pushes.ahead.length === 0} onClick={pushes.push}>{pushes.commits ? `Push all · ${pushes.commits}` : 'Push all'}</Button></span>
           <Button variant="ghost" icon="book-bookmark" onClick={() => setUI({ adding: true })}>Add repository</Button>
-          <Button variant="primary" icon="plus" kbd={platform() === 'darwin' ? '⌘N' : 'Ctrl+N'} disabled={app.repos.length === 0} onClick={() => setUI({ newSession: {} })}>New session</Button>
+          <Button variant="primary" icon="plus" kbd={platform() === 'darwin' ? '⌘N' : 'Ctrl+N'} onClick={() => setUI({ newSession: {} })}>New session</Button>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr)) minmax(0,1.6fr)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-panel)', boxShadow: 'inset 0 0 0 1px var(--border)' }}>
@@ -192,6 +193,8 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
             </>}
           </div>
         </div>
+
+        <ForecastNotice conflicts={app.forecast || []} />
 
         {liveSessions === 0 && totalExt === 0 && archivedTotal === 0 ? <FirstRun /> : null}
 
@@ -235,16 +238,17 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
             {groups.map(({ repo: r, sessions }) => (
               <div key={r.id}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, height: 34, padding: '0 8px 0 12px', borderTop: '1px solid var(--border)', background: 'var(--bg-raised)' }}>
-                  <i className="ph ph-book-bookmark" style={{ fontSize: 14, color: 'var(--text-3)' }} />
-                  <span style={{ font: '600 12.5px/1 var(--font-sans)', cursor: 'pointer' }} onClick={() => go({ screen: 'repo', id: r.id })}><span style={{ fontWeight: 400, color: 'var(--text-3)' }}>{r.owner}/</span>{r.name}</span>
-                  {lifetimeTokens(app.lifetime[r.id]) ? <span title="Lifetime tokens in this repository, including deleted sessions" style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)' }}>{fmtTokens(lifetimeTokens(app.lifetime[r.id]))} lifetime</span> : null}
-                  {sub ? null : <>
+                  <i className={'ph ph-' + (isFreeGroup(r) ? 'robot' : 'book-bookmark')} style={{ fontSize: 14, color: 'var(--text-3)' }} />
+                  <span style={{ font: '600 12.5px/1 var(--font-sans)', cursor: isFreeGroup(r) ? 'default' : 'pointer' }} onClick={() => { if (!isFreeGroup(r)) go({ screen: 'repo', id: r.id }); }}>{isFreeGroup(r) ? 'Free agents' : <><span style={{ fontWeight: 400, color: 'var(--text-3)' }}>{r.owner}/</span>{r.name}</>}</span>
+                  {isFreeGroup(r) ? <span style={{ font: '400 11px/1 var(--font-sans)', color: 'var(--text-3)' }}>not tied to a repository</span> : null}
+                  {!isFreeGroup(r) && lifetimeTokens(app.lifetime[r.id]) ? <span title="Lifetime tokens in this repository, including deleted sessions" style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)' }}>{fmtTokens(lifetimeTokens(app.lifetime[r.id]))} lifetime</span> : null}
+                  {sub || isFreeGroup(r) ? null : <>
                     <Meter value={app.weekSpend[r.id] || 0} max={r.cap} style={{ width: 90, marginLeft: 6 }} warnAt={app.settings.warnAt / 100} />
                     <span style={{ font: '400 11px/1 var(--font-mono)', color: (app.weekSpend[r.id] || 0) / r.cap >= app.settings.warnAt / 100 ? 'var(--status-attention-text)' : 'var(--text-3)' }}>{fmt(app.weekSpend[r.id] || 0)} / {fmt(r.cap, true)}</span>
                   </>}
                   <span style={{ flex: 1 }} />
-                  <Button size="sm" variant="ghost" icon="git-commit" onClick={() => go({ screen: 'repo', id: r.id })}>History</Button>
-                  <Button size="sm" variant="ghost" icon="plus" onClick={() => setUI({ newSession: { repoId: r.id } })}>New session</Button>
+                  {isFreeGroup(r) ? null : <Button size="sm" variant="ghost" icon="git-commit" onClick={() => go({ screen: 'repo', id: r.id })}>History</Button>}
+                  <Button size="sm" variant="ghost" icon="plus" onClick={() => setUI({ newSession: { repoId: r.id } })}>{isFreeGroup(r) ? 'New free agent' : 'New session'}</Button>
                 </div>
                 {sessions.filter(visible).map((s) => <SessionRow key={s.id} s={s} now={now} tpl={col.template} sub={sub} />)}
                 {extShown(r.id).map((x) => <ExternalRow key={x.id} x={x} repoId={r.id} tpl={col.template} sub={sub} />)}
