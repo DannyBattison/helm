@@ -1,4 +1,4 @@
-import { freeRepo, FREE_ID, type AppState, type Repo, type Session, type Status } from '@shared/types';
+import { freeRepo, FREE_ID, type AppState, type Repo, type Session, type Status } from '../../shared/types';
 
 export const STATUS_LABEL: Record<Status, string> = { working: 'Working', attention: 'Needs you', ready: 'Ready for review', idle: 'Done', error: 'Failed' };
 
