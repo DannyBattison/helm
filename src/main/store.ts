@@ -55,6 +55,7 @@ export const defaultSettings = (): Settings => ({
   dataFont: 'Monaspace Neon',
   editorFont: 'Monaspace Neon',
   editorLigatures: true,
+  showRepoOwner: false,
   density: 'Compact',
   openIn: 'helm'
 });

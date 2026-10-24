@@ -314,6 +314,8 @@ export interface Settings {
   /** Font family for code: the editor, terminal and diffs. */
   editorFont: string;
   editorLigatures: boolean;
+  /** Show the owner (`owner/`) before repository names in the left tree. */
+  showRepoOwner: boolean;
   density: 'Compact' | 'Comfortable';
   openIn: 'helm' | 'VS Code' | 'Cursor' | 'Zed';
 }
