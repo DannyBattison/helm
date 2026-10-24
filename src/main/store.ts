@@ -1,4 +1,3 @@
-import { app } from 'electron';
 import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ActivityEvent, Lifetime, PlanUsage, Repo, Session, Settings, TranscriptEvent, User } from '../shared/types';
@@ -75,8 +74,8 @@ export class Store {
   private timer: NodeJS.Timeout | null = null;
   private tTimers = new Map<string, NodeJS.Timeout>();
 
-  async load() {
-    this.dir = app.getPath('userData');
+  async load(dir: string) {
+    this.dir = dir;
     await mkdir(join(this.dir, 'transcripts'), { recursive: true });
     try {
       const raw = JSON.parse(await readFile(join(this.dir, 'helm.json'), 'utf8'));

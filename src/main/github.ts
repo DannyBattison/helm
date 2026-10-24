@@ -1,26 +1,28 @@
-import { app, safeStorage } from 'electron';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import type { Host } from './host';
 import type { DeviceCode, GhRepo, PullRequest, User } from '../shared/types';
 
 const SCOPES = 'repo read:org workflow';
 let token: string | null = null;
 let pending: { deviceCode: string; interval: number; expiresAt: number; clientId: string } | null = null;
 
-const tokenFile = () => join(app.getPath('userData'), 'auth.bin');
+let vault: Pick<Host, 'dataDir' | 'encrypt' | 'decrypt'> = { dataDir: '' };
+const tokenFile = () => join(vault.dataDir, 'auth.bin');
 export const getToken = () => token;
 
-export async function loadToken(): Promise<string | null> {
+export async function loadToken(h: Pick<Host, 'dataDir' | 'encrypt' | 'decrypt'>): Promise<string | null> {
+  vault = h;
   try {
     const buf = await readFile(tokenFile());
-    token = safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(buf) : buf.toString('utf8');
+    token = vault.decrypt ? vault.decrypt(buf) : buf.toString('utf8');
   } catch { token = null; }
   return token;
 }
 
 async function saveToken(t: string) {
   token = t;
-  await writeFile(tokenFile(), safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(t) : Buffer.from(t));
+  await writeFile(tokenFile(), vault.encrypt ? vault.encrypt(t) : Buffer.from(t));
 }
 
 export async function clearToken() {
