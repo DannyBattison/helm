@@ -622,12 +622,15 @@ async function pollMerges() {
 }
 
 // ------------------------------------------------------------------ window
+const iconPath = join(app.isPackaged ? process.resourcesPath : app.getAppPath(), 'build', 'icon.png');
+
 function createWindow() {
   const dark = nativeTheme.shouldUseDarkColors;
   win = new BrowserWindow({
     width: 1440, height: 900, minWidth: 1180, minHeight: 700, show: false,
     backgroundColor: dark ? '#0e0e12' : '#fbfbfc',
     title: 'helm',
+    icon: iconPath,
     titleBarStyle: 'hidden',
     ...(process.platform === 'darwin' ? { trafficLightPosition: { x: 14, y: 12 } } : { titleBarOverlay: { color: dark ? '#0e0e12' : '#fbfbfc', symbolColor: dark ? '#9d9dab' : '#55555f', height: 38 } }),
     webPreferences: { preload: join(__dirname, '../preload/index.js'), sandbox: false, contextIsolation: true, nodeIntegration: false }
@@ -655,6 +658,7 @@ else {
       ipcMain.handle(name, async (_e, ...args) => (api[name] as any)(...args));
     }
     nativeTheme.themeSource = store.data.settings.theme;
+    if (process.platform === 'darwin') app.dock?.setIcon(iconPath);
     createWindow();
     setInterval(pollMerges, 120_000);
     void detectCurrency().then(refreshRates);
