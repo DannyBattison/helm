@@ -162,3 +162,39 @@ describe('reverting a forged hunk', () => {
     await expect(revertHunk(wt, 'a.txt', { header: '@@ -1 +1 @@\ndiff --git a/b.txt b/b.txt', lines: [['-', 1, null, 'bee']] })).rejects.toThrow(/not a hunk/);
   });
 });
+
+import { changes, initScratch, listFiles } from '../src/main/git';
+import { FREE_ID, freeRepo, isFreeRepo, repoLabel } from '../src/shared/types';
+
+describe('free agents', () => {
+  it('make a scratch folder with git and an empty first commit, where changes and checkpoints work', async () => {
+    const dir = join(root, 'scratch');
+    await initScratch(dir);
+    expect(g(dir, 'rev-parse', '--abbrev-ref', 'HEAD').trim()).toBe('main');
+    expect(g(dir, 'log', '--format=%s').trim()).toBe('helm: start of free agent');
+    writeFileSync(join(dir, 'notes.md'), 'hello\nworld\n');
+    const c = await changes(dir, 'main');
+    expect(c.files).toEqual([expect.objectContaining({ path: 'notes.md', add: 2, status: 'A' })]);
+    await takeCheckpoint(dir, 'free1', 1, 'Before: write notes');
+    writeFileSync(join(dir, 'notes.md'), 'changed\n');
+    const cp = (await listCheckpoints(dir, 'free1'))[0];
+    await restoreCheckpoint(dir, cp.commit);
+    expect(readFileSync(join(dir, 'notes.md'), 'utf8')).toBe('hello\nworld\n');
+  });
+  it('can list the files of a folder that is not a git repository', async () => {
+    const dir = join(root, 'plain');
+    mkdirSync(join(dir, 'sub'), { recursive: true });
+    mkdirSync(join(dir, 'node_modules', 'x'), { recursive: true });
+    writeFileSync(join(dir, 'a.txt'), '1');
+    writeFileSync(join(dir, 'sub', 'b.txt'), '2');
+    writeFileSync(join(dir, 'node_modules', 'x', 'c.js'), '3');
+    expect(await listFiles(dir)).toEqual(['a.txt', 'sub/b.txt']);
+  });
+  it('have a stand-in repository for code that wants one', () => {
+    expect(isFreeRepo(FREE_ID)).toBe(true);
+    expect(isFreeRepo('acme/shop')).toBe(false);
+    expect(repoLabel(FREE_ID)).toBe('Free agents');
+    expect(repoLabel('acme/shop')).toBe('acme/shop');
+    expect(freeRepo('/x')).toMatchObject({ id: FREE_ID, localPath: '/x', cap: 0 });
+  });
+});

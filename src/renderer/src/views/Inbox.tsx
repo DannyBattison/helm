@@ -88,7 +88,7 @@ export function Inbox() {
                 <i className={'ph ph-' + k.icon} style={{ fontSize: 15, marginTop: 1, color: `var(--status-${k.tone === 'idle' ? 'idle' : k.tone}-text)` }} />
                 <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
                   <span style={{ font: '500 12.5px/1.25 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sessionTitle(it.session)}</span>
-                  <span style={{ font: '400 11.5px/1.3 var(--font-sans)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{k.label} · {it.session.repoId.split('/')[1]} · {ago(it.since)}</span>
+                  <span style={{ font: '400 11.5px/1.3 var(--font-sans)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{k.label} · {it.session.free ? 'free agent' : it.session.repoId.split('/')[1]} · {ago(it.since)}</span>
                 </div>
               </div>
             );
@@ -115,7 +115,7 @@ export function Inbox() {
               <span style={{ font: '600 16px/1.2 var(--font-sans)', flex: 1, minWidth: 0 }}>{sessionTitle(s)}</span>
               <Badge tone={KIND[cur.kind].tone as any} icon={KIND[cur.kind].icon}>{KIND[cur.kind].label}</Badge>
             </div>
-            <span style={{ font: '400 11.5px/1 var(--font-mono)', color: 'var(--text-3)' }}>{s.repoId} · {s.branch} · waiting {ago(cur.since)}</span>
+            <span style={{ font: '400 11.5px/1 var(--font-mono)', color: 'var(--text-3)' }}>{s.free ? 'Free agent' : s.repoId} · {s.free ? s.worktree : s.branch} · waiting {ago(cur.since)}</span>
 
             {cur.kind === 'approve' && a ? <>
               <div style={{ font: '600 14px/1.4 var(--font-sans)' }}>{a.head}</div>

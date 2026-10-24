@@ -445,6 +445,7 @@ const api: HelmApi = {
   },
   async createPr(input) {
     const s = sess(input.sessionId);
+    if (s.free) throw new Error('A free agent has no repository to open a pull request in.');
     const repo = repos.must(s.repoId);
     if (input.files.length) await commitFiles(s.worktree, input.files, input.message || input.title);
     await G.git(s.worktree, 'push', '-u', 'origin', s.branch);
@@ -477,6 +478,7 @@ const api: HelmApi = {
   },
   async mergeDirect(input) {
     const s = sess(input.sessionId);
+    if (s.free) throw new Error('A free agent has no repository to merge into.');
     const repo = repos.must(s.repoId);
     const base = input.base.replace(/^origin\//, '');
     if (base === s.branch) throw new Error('A session cannot merge into its own branch.');
@@ -593,7 +595,8 @@ const api: HelmApi = {
   },
   async worktreeUsage(refresh) {
     const out: WorktreeUsage[] = [];
-    const live = store.data.sessions.filter((s) => !s.worktreeGone);
+    // A folder you chose for a free agent is yours: it is not measured or cleaned.
+    const live = store.data.sessions.filter((s) => !s.worktreeGone && !(s.free && !s.free.managed));
     const todo = live.filter((s) => refresh || !usageCache.has(s.id) || Date.now() - usageCache.get(s.id)!.at > 5 * 60_000);
     // Three at a time: sizing a worktree reads every file in it.
     for (let i = 0; i < todo.length; i += 3) {
@@ -612,6 +615,7 @@ const api: HelmApi = {
   },
   async cleanWorktree(id) {
     const s = sess(id);
+    if (s.free && !s.free.managed) throw new Error('That is your own folder, so helm does not clean it.');
     if (sessions.isRunning(id) && (s.status === 'working' || s.status === 'attention')) throw new Error('Stop the session first: removing packages under a running agent breaks its commands.');
     const r = await cleanHeavy(s.worktree);
     usageCache.delete(id);
@@ -621,6 +625,7 @@ const api: HelmApi = {
   },
   async dropWorktree(id) {
     const s = sess(id);
+    if (s.free) throw new Error('Delete a free agent instead: it has no worktree to remove on its own.');
     if (!s.archivedAt && !s.mergedAt) throw new Error('Only archived or merged sessions can lose their worktree.');
     const info = await sessions.deleteInfo(id);
     if (info.dirty) throw new Error(`It has ${info.dirty} uncommitted ${info.dirty === 1 ? 'file' : 'files'}. Commit or discard them first.`);

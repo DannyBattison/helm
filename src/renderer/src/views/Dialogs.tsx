@@ -188,8 +188,9 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
   const app = useApp();
   const { sym, to, from } = useMoney();
   const sub = app.settings.billing === 'subscription';
-  const [repo, setRepo] = React.useState(repoId || app.repos[0]?.id || '');
+  const [repo, setRepo] = React.useState(repoId || app.repos[0]?.id || '@free');
   const r = app.repos.find((x) => x.id === repo);
+  const free = repo === '@free';
   const [bases, setBases] = React.useState<BaseOption[]>([]);
   const [dirty, setDirty] = React.useState(0);
   const [base, setBase] = React.useState(r?.defaultBranch || 'main');
@@ -201,9 +202,11 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState('');
   const [compare, setCompare] = React.useState(false);
+  const [folder, setFolder] = React.useState('');
   const [variants, setVariants] = React.useState<Variant[]>([{ model: 'sonnet', effort: 'default' }, { model: 'opus', effort: 'default' }]);
   React.useEffect(() => {
     if (!repo) return;
+    if (repo === '@free') { setBases([]); setDirty(0); return; }
     setBase(app.repos.find((x) => x.id === repo)?.defaultBranch || 'main');
     // Start from the local branch when it has commits GitHub does not, since that is where unpushed work is.
     api.repoBases(repo).then((b) => { setBases(b); const want = initial?.base && b.find((x) => x.ref === initial.base); if (want) setBase(want.ref); else if (initial?.base) setBase(initial.base); else if (b[0]) setBase(b[0].ref); }).catch(() => setBases([]));
@@ -212,8 +215,8 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
   const start = async () => {
     setBusy(true); setErr('');
     try {
-      const input = { repoId: repo, base, task: task.trim(), model, budget: sub ? 0 : from(parseFloat(budget)) || app.settings.sessionBudget, permMode: perm, after: after || undefined, source: initial?.source };
-      if (compare) {
+      const input = { repoId: repo, base: free ? '' : base, folder: free && folder ? folder : undefined, task: task.trim(), model, budget: sub ? 0 : from(parseFloat(budget)) || app.settings.sessionBudget, permMode: perm, after: after || undefined, source: initial?.source };
+      if (compare && !free) {
         const ids = await api.createGroup(input, variants.map((v) => ({ model: v.model, effort: v.effort === 'default' ? undefined : v.effort })));
         const group = getUI().app?.sessions.find((x) => x.id === ids[0])?.group;
         onClose();
@@ -227,16 +230,17 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
   };
   const mod = mac() ? '⌘' : 'Ctrl+';
   return (
-    <Dialog width={560} title="New session" description="The agent works in its own git worktree on a new branch. Your checkout is not touched." onClose={onClose}
+    <Dialog width={560} title={free ? 'New free agent' : 'New session'} description={free ? 'An agent that is not tied to a repository, for research, writing, scripts and one-off jobs. It works in a folder of its own.' : 'The agent works in its own git worktree on a new branch. Your checkout is not touched.'} onClose={onClose}
       footer={<>
-        <span style={{ flex: 1, font: '400 12px/1.3 var(--font-sans)', color: err ? 'var(--status-error-text)' : 'var(--text-3)' }}>{err || (r ? `Branch ${app.settings.branchPrefix}<name> from ${base}` : '')}</span>
+        <span style={{ flex: 1, font: '400 12px/1.3 var(--font-sans)', color: err ? 'var(--status-error-text)' : 'var(--text-3)' }}>{err || (free ? (folder ? 'Works directly in your folder' : 'A new scratch folder, with git') : r ? `Branch ${app.settings.branchPrefix}<name> from ${base}` : '')}</span>
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" icon="play" kbd={mod + '↵'} loading={busy} disabled={!task.trim() || !repo} onClick={start}>{compare ? `Start ${variants.length} runs` : after ? 'Queue session' : 'Start session'}</Button>
+        <Button variant="primary" icon="play" kbd={mod + '↵'} loading={busy} disabled={!task.trim() || !repo} onClick={start}>{compare && !free ? `Start ${variants.length} runs` : after ? 'Queue session' : 'Start session'}</Button>
       </>}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div style={{ display: 'flex', gap: 8 }}>
-          <Select value={repo} onChange={(e: any) => setRepo(e.target.value)} options={app.repos.map((x) => x.id)} style={{ flex: 1 }} icon="book-bookmark" />
-          <Select value={base} onChange={(e: any) => setBase(e.target.value)} options={bases.length ? bases.map((b) => ({ value: b.ref, label: b.label })) : [base]} mono icon="git-branch" />
+          <Select value={repo} onChange={(e: any) => { setRepo(e.target.value); if (e.target.value === '@free') setCompare(false); }} options={[{ value: '@free', label: 'No repository (free agent)' }, ...app.repos.map((x) => ({ value: x.id, label: x.id }))]} style={{ flex: 1 }} icon={free ? 'robot' : 'book-bookmark'} />
+          {free ? <Button variant="secondary" icon="folder-open" onClick={() => void api.chooseFolder().then((f) => f && setFolder(f))}>{folder ? 'Change folder…' : 'Use my own folder…'}</Button>
+            : <Select value={base} onChange={(e: any) => setBase(e.target.value)} options={bases.length ? bases.map((b) => ({ value: b.ref, label: b.label })) : [base]} mono icon="git-branch" />}
         </div>
         <textarea autoFocus rows={5} value={task} onChange={(e) => setTask(e.target.value)} placeholder="What should the agent do? Be specific about the outcome, and mention files or checks that matter."
           onKeyDown={(e) => { if (e.key === 'Enter' && (mac() ? e.metaKey : e.ctrlKey) && task.trim()) void start(); }}
@@ -246,12 +250,13 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
           <Select value={perm} onChange={(e: any) => setPerm(e.target.value)} options={PERM_OPTIONS} />
           {sub ? null : <Input mono value={sym + budget} onChange={(e: any) => setBudget(e.target.value.replace(/[^0-9.]/g, ''))} />}
         </div>
-        {!compare ? (
+        {free && folder ? <span style={{ display: 'flex', gap: 8, alignItems: 'center', font: '400 12px/1.45 var(--font-sans)', color: 'var(--status-attention-text)' }}><i className="ph-fill ph-warning-circle" /><span><code style={{ font: 'var(--type-data)' }}>{folder}</code> is your own folder: the agent works in it directly, with no worktree to throw away and no checkpoints. <a href="#" onClick={(e) => { e.preventDefault(); setFolder(''); }}>Use a scratch folder instead</a></span></span> : null}
+        {!compare && !free ? (
           <Select value={after} onChange={(e: any) => setAfter(e.target.value)} icon="hourglass"
             options={[{ value: '', label: app.settings.maxRunning ? `Start now, or when one of ${app.settings.maxRunning} slots is free` : 'Start right away' }, ...app.sessions.filter((x) => x.repoId === repo && !x.mergedAt && !x.archivedAt).map((x) => ({ value: x.id, label: 'After “' + (x.customTitle || x.title || x.task).slice(0, 48) + '” is merged' }))]} />
         ) : null}
-        <Checkbox checked={compare} onChange={setCompare} label="Compare several runs" description="Start the same task more than once, with different models or effort, and keep the best result." />
-        {compare ? <VariantEditor variants={variants} onChange={setVariants} /> : null}
+        {free ? null : <Checkbox checked={compare} onChange={setCompare} label="Compare several runs" description="Start the same task more than once, with different models or effort, and keep the best result." />}
+        {compare && !free ? <VariantEditor variants={variants} onChange={setVariants} /> : null}
         {(() => {
           const here = bases.find((b) => b.ref === base);
           const hidden = bases.find((b) => b.local && b.ahead > 0 && 'origin/' + b.ref === base);
@@ -327,7 +332,7 @@ export function RenameSession({ id, onClose }: { id: string; onClose(): void }) 
     try { await api.renameSession(id, v); onClose(); } catch (e) { setErr(errText(e)); }
   };
   return (
-    <Dialog width={440} title="Rename session" description={s.title && !s.customTitle ? `Claude named this one. Branch ${s.branch} is not changed.` : `The branch ${s.branch} is not changed.`} onClose={onClose}
+    <Dialog width={440} title="Rename session" description={s.free ? (s.title && !s.customTitle ? 'Claude named this one.' : 'Only the name in helm changes.') : s.title && !s.customTitle ? `Claude named this one. Branch ${s.branch} is not changed.` : `The branch ${s.branch} is not changed.`} onClose={onClose}
       footer={<>
         <span style={{ flex: 1, font: '400 12px/1.3 var(--font-sans)', color: 'var(--status-error-text)' }}>{err}</span>
         {s.customTitle ? <Button variant="ghost" onClick={() => void save('')}>Use Claude's name</Button> : null}
@@ -370,11 +375,12 @@ export function DeleteSession({ id, onClose }: { id: string; onClose(): void }) 
       </>}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {info?.running ? <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>It is running, and will be stopped first.</span> : null}
-        <Checkbox checked={worktree || branch} disabled={branch || !info?.worktreeExists} onChange={setWorktree} label="Remove the worktree"
-          description={info?.worktreeExists ? tilde(info.worktree, app.home) : 'Already gone from disk'} />
-        <Checkbox checked={branch} onChange={(v: boolean) => { setBranch(v); if (v) setWorktree(true); }} label={<span>Delete the branch <code style={{ font: 'var(--type-data)' }}>{s.branch}</code></span>}
-          description={info?.pushed ? 'Only the local branch. It also exists on GitHub and stays there.' : 'Local only. It is not on GitHub.'} />
-        {info && removing && info.dirty > 0 ? warn(`${info.dirty} uncommitted ${info.dirty === 1 ? 'file' : 'files'} in the worktree will be lost.`) : null}
+        {info?.free === 'folder' ? <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>It worked in your own folder, <code style={{ font: 'var(--type-data)' }}>{tilde(info.worktree, app.home)}</code>. That folder is left exactly as it is.</span> : null}
+        {info?.free !== 'folder' ? <Checkbox checked={worktree || branch} disabled={branch || !info?.worktreeExists} onChange={setWorktree} label={info?.free === 'scratch' ? 'Delete its scratch folder' : 'Remove the worktree'}
+          description={info?.worktreeExists ? tilde(info.worktree, app.home) : 'Already gone from disk'} /> : null}
+        {info?.free ? null : <Checkbox checked={branch} onChange={(v: boolean) => { setBranch(v); if (v) setWorktree(true); }} label={<span>Delete the branch <code style={{ font: 'var(--type-data)' }}>{s.branch}</code></span>}
+          description={info?.pushed ? 'Only the local branch. It also exists on GitHub and stays there.' : 'Local only. It is not on GitHub.'} />}
+        {info && removing && info.dirty > 0 ? warn(`${info.dirty} uncommitted ${info.dirty === 1 ? 'file' : 'files'} in the ${info.free ? 'folder' : 'worktree'} will be lost.`) : null}
         {info && branch && info.unpushed > 0 ? warn(`${info.unpushed} ${info.unpushed === 1 ? 'commit' : 'commits'} on this branch ${info.pushed ? 'are not on GitHub' : 'exist nowhere else'}, and will be lost.`) : null}
         {info && !branch && info.unpushed > 0 ? <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>Keeping the branch keeps its {info.unpushed} {info.unpushed === 1 ? 'commit' : 'commits'}.</span> : null}
       </div>
@@ -442,6 +448,7 @@ export function Palette({ onClose, toggleTheme }: { onClose(): void; toggleTheme
     { key: 'a-act', label: 'Activity', icon: 'pulse', run: () => go({ screen: 'activity' }) },
     { key: 'a-set', label: 'Settings', icon: 'gear-six', run: () => go({ screen: 'settings' }) },
     { key: 'a-new', label: 'New session', icon: 'plus', hint: mac() ? '⌘N' : 'Ctrl+N', run: () => setUI({ newSession: {} }) },
+    { key: 'a-free', label: 'New free agent (no repository)', icon: 'robot', run: () => setUI({ newSession: { repoId: '@free' } }) },
     { key: 'a-add', label: 'Add repository', icon: 'book-bookmark', run: () => setUI({ adding: true }) },
     { key: 'a-theme', label: 'Toggle theme', icon: 'sun', run: toggleTheme },
     ...app.sessions.map((s) => ({ key: 's-' + s.id, label: s.id, hint: s.task, icon: 'robot', run: () => go({ screen: 'session', id: s.id, tab: s.status === 'ready' ? 'changes' : 'conversation' }) })),

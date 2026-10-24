@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Report, WorktreeUsage } from '@shared/types';
 import { fmtDuration } from '@shared/reports';
+import { FREE_ID, repoLabel } from '@shared/types';
 import { api } from '../api';
 import { fmtTokens } from '../lib';
 import { go, toast, useApp, useMoney } from '../store';
@@ -76,7 +77,7 @@ function Spend({ r, fmt }: { r: Report; fmt: (v: number, whole?: boolean) => str
       <Panel title="Spend by day" icon="chart-bar"><Columns data={s.days.map((d) => ({ key: d.day, value: d.cost }))} format={(v) => fmt(v)} /></Panel>
       <Grid>
         <Panel title="By repository" icon="book-bookmark">
-          {s.byRepo.length ? s.byRepo.map((x) => <BarRow key={x.id} label={x.id} value={x.cost} max={maxRepo} text={fmt(x.cost)} sub={fmtTokens(x.tokens) + ' tokens'} onClick={() => go({ screen: 'repo', id: x.id })} />) : empty('No usage in this period.')}
+          {s.byRepo.length ? s.byRepo.map((x) => <BarRow key={x.id} label={repoLabel(x.id)} value={x.cost} max={maxRepo} text={fmt(x.cost)} sub={fmtTokens(x.tokens) + ' tokens'} onClick={x.id === FREE_ID ? undefined : () => go({ screen: 'repo', id: x.id })} />) : empty('No usage in this period.')}
         </Panel>
         <Panel title="By model and effort" icon="cpu">
           {s.byModel.map((x) => <BarRow key={x.id} label={x.id} value={x.cost} max={s.byModel[0].cost} text={fmt(x.cost)} sub={fmtTokens(x.tokens) + ' tokens'} />)}
@@ -86,7 +87,7 @@ function Spend({ r, fmt }: { r: Report; fmt: (v: number, whole?: boolean) => str
         </Panel>
       </Grid>
       <Panel title="Most expensive sessions" icon="coins">
-        {s.topSessions.length ? s.topSessions.map((x) => <BarRow key={x.id} label={x.id} value={x.cost} max={s.topSessions[0].cost} text={fmt(x.cost)} sub={`${x.repoId} · ${x.model}`} onClick={() => go({ screen: 'session', id: x.id })} />) : empty('No sessions in this period.')}
+        {s.topSessions.length ? s.topSessions.map((x) => <BarRow key={x.id} label={x.id} value={x.cost} max={s.topSessions[0].cost} text={fmt(x.cost)} sub={`${repoLabel(x.repoId)} · ${x.model}`} onClick={() => go({ screen: 'session', id: x.id })} />) : empty('No sessions in this period.')}
       </Panel>
       <Panel title="Cost per outcome" icon="target">
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12 }}>
@@ -140,7 +141,7 @@ function Throughput({ r }: { r: Report }) {
           {total.length ? total.map(([k, v]) => <BarRow key={k} label={STATUS[k] || k} value={v || 0} max={sum} text={fmtDuration(v || 0)} tone={k === 'attention' ? 'var(--status-attention)' : k === 'error' ? 'var(--status-error)' : undefined} />) : empty('No sessions in this period.')}
         </Panel>
         <Panel title="Waited longest for you" icon="bell-ringing">
-          {t.waiting.sessions.length ? t.waiting.sessions.map((x) => <BarRow key={x.id} label={x.id} value={x.ms} max={t.waiting.sessions[0].ms} text={fmtDuration(x.ms)} sub={x.repoId} tone="var(--status-attention)" onClick={() => go({ screen: 'session', id: x.id })} />) : empty('Nothing waited on you.')}
+          {t.waiting.sessions.length ? t.waiting.sessions.map((x) => <BarRow key={x.id} label={x.id} value={x.ms} max={t.waiting.sessions[0].ms} text={fmtDuration(x.ms)} sub={repoLabel(x.repoId)} tone="var(--status-attention)" onClick={() => go({ screen: 'session', id: x.id })} />) : empty('Nothing waited on you.')}
         </Panel>
       </Grid>
     </>
@@ -193,7 +194,7 @@ function Quality({ r }: { r: Report }) {
             <Badge tone="attention" icon="warning">Stuck</Badge>
             <span style={{ ...mono }}>{x.id}</span>
             <span style={{ flex: 1, font: '400 12.5px/1.3 var(--font-sans)', color: 'var(--text-2)' }}>{x.reason}</span>
-            <span style={{ ...mono, color: 'var(--text-3)' }}>{x.repoId}</span>
+            <span style={{ ...mono, color: 'var(--text-3)' }}>{repoLabel(x.repoId)}</span>
           </div>
         )) : empty('No session looks stuck. A session is flagged when it edits one file 10 times, or fails the same command 3 times in a row, without committing.')}
       </Panel>
@@ -212,7 +213,7 @@ function Quality({ r }: { r: Report }) {
       <Grid>
         <Panel title="Files agents touch most" icon="file-code">
           {q.hotFiles.length ? q.hotFiles.map((f) => (
-            <BarRow key={f.repoId + f.path} label={f.path} value={f.sessions} max={q.hotFiles[0].sessions} text={`${f.sessions} ${f.sessions === 1 ? 'session' : 'sessions'}`} sub={`${f.repoId} · +${f.add} −${f.del}`} />
+            <BarRow key={f.repoId + f.path} label={f.path} value={f.sessions} max={q.hotFiles[0].sessions} text={`${f.sessions} ${f.sessions === 1 ? 'session' : 'sessions'}`} sub={`${repoLabel(f.repoId)} · +${f.add} −${f.del}`} />
           )) : empty('No changes recorded.')}
         </Panel>
         <Panel title="Edited again and again" icon="arrows-clockwise">

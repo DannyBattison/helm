@@ -146,7 +146,21 @@ function ReviewPanel({ s, onOpen }: { s: Session; onOpen(file: string): void }) 
   );
 }
 
+/** A free agent's folder, when it is one of yours: there is no git history to compare against, so nothing to show. */
 export function Changes({ s }: { s: Session }) {
+  if (s.free && !s.free.managed) return (
+    <div style={{ flex: 1, display: 'grid', placeItems: 'center' }}>
+      <div style={{ maxWidth: 380, textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center' }}>
+        <i className="ph ph-folder-simple" style={{ fontSize: 28, color: 'var(--text-3)' }} />
+        <span style={{ font: '500 13px/1.3 var(--font-sans)' }}>Changes are not tracked here</span>
+        <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>This agent works directly in your own folder, so helm has nothing to compare against and leaves git alone. Use your editor or git to see what it did.</span>
+      </div>
+    </div>
+  );
+  return <ChangesView s={s} />;
+}
+
+function ChangesView({ s }: { s: Session }) {
   const app = useApp();
   const transcript = useTranscript(s.id) || [];
   const [sum, setSum] = React.useState<ChangesSummary | null>(null);
@@ -266,7 +280,7 @@ export function Changes({ s }: { s: Session }) {
       <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center' }}>
         <i className="ph ph-git-diff" style={{ fontSize: 28, color: 'var(--text-3)' }} />
         <span style={{ font: '500 13px/1.3 var(--font-sans)' }}>No changes yet</span>
-        <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>{s.id} has not changed anything relative to {s.base.replace(/^origin\//, '')}.</span>
+        <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>{s.id} has not changed anything {s.free ? 'in its folder yet' : <>relative to {s.base.replace(/^origin\//, '')}</>}.</span>
       </div>
     </div>
   );
@@ -334,7 +348,7 @@ export function Changes({ s }: { s: Session }) {
         </div>
       </div>
 
-      <aside style={{ position: 'relative', width: rw, flex: 'none', borderLeft: '1px solid var(--border)', background: 'var(--bg-panel)', display: 'flex', flexDirection: 'column' }}>
+      {s.free ? null : <aside style={{ position: 'relative', width: rw, flex: 'none', borderLeft: '1px solid var(--border)', background: 'var(--bg-panel)', display: 'flex', flexDirection: 'column' }}>
         <Grip edge="left" onMouseDown={rgrip} onDoubleClick={rreset} />
         <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 20 }}>
           <ReviewPanel s={s} onOpen={(file) => { setSel(file); }} />
@@ -393,7 +407,7 @@ export function Changes({ s }: { s: Session }) {
             <Button variant="ghost" style={{ flex: 1 }} disabled={filesToStage.length === 0 || !!busy} loading={busy === 'commit'} onClick={commitOnly}>Commit only</Button>
           </div>
         </div>
-      </aside>
+      </aside>}
     </div>
   );
 }

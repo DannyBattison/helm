@@ -10,6 +10,7 @@ A desktop app for supervising many Claude Code sessions across many GitHub repos
 - Subagents show as a tree under their session, each with its own transcript, and are limited per session and per repository.
 - Works for subscriptions (shows your Claude plan usage, with optional percentage limits) and for API tokens (dollar budgets, in your currency).
 - An Inbox for everything waiting on you (approvals, questions, limits, failures, finished work), cleared from the keyboard, with a tray or menu-bar menu that can approve, deny or answer without opening the window.
+- Free agents: sessions that are not tied to a repository, working in a scratch folder of their own (or a folder you choose), for research, writing, scripts and one-off jobs.
 - Checkpoints before every message you send: restore the worktree, or fork a new session from any of your messages. Compare several runs of one task and keep the best.
 - Review at hunk level (accept, ask, reject), a read-only review by Claude, and a forecast of which sessions would conflict.
 - Reports: spend, throughput, approvals, quality, a digest, an audit log and disk use, with CSV export.

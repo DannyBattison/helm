@@ -1,4 +1,5 @@
 /** Reports are computed from what helm already keeps: sessions, the per-day usage ledger and the audit log. Nothing here touches Electron or the disk. */
+import { repoLabel } from './types';
 import type { AuditEntry, DailyUsage, ModelAlias, PlanUsage, Session, Status } from './types';
 
 export const DAY = 86_400_000;
@@ -353,18 +354,18 @@ export function digestMarkdown(input: ReportInput, usd: (v: number) => string): 
   const L: string[] = [`# helm digest · ${from} – ${to}`, ''];
   L.push(`**${r.spend.total.cost ? usd(r.spend.total.cost) : 'No spend'}** across ${r.outcomes.rows.length} sessions · ${merged.length} merged · ${r.outcomes.counts.abandoned} abandoned · ${r.approvals.total} approvals asked of you.`, '');
   L.push('## Merged');
-  L.push(...(merged.length ? merged.map((s) => `- **${s.repoId}** ${title(s)} (${usd(s.cost)}, ${s.commits.length} commits, +${s.add}/−${s.del})`) : ['- Nothing merged in this period.']), '');
+  L.push(...(merged.length ? merged.map((s) => `- **${repoLabel(s.repoId)}** ${title(s)} (${usd(s.cost)}, ${s.commits.length} commits, +${s.add}/−${s.del})`) : ['- Nothing merged in this period.']), '');
   const waiting = open.filter((s) => s.status === 'attention' || s.status === 'ready' || s.status === 'error' || s.stuck);
   L.push('## Needs attention');
-  L.push(...(waiting.length ? waiting.map((s) => `- **${s.repoId}** ${title(s)}: ${s.stuck ? 'looks stuck, ' + s.stuck : s.status === 'ready' ? 'ready for review' : s.status === 'attention' ? 'waiting on you' : 'failed'}`) : ['- Nothing is waiting.']), '');
+  L.push(...(waiting.length ? waiting.map((s) => `- **${repoLabel(s.repoId)}** ${title(s)}: ${s.stuck ? 'looks stuck, ' + s.stuck : s.status === 'ready' ? 'ready for review' : s.status === 'attention' ? 'waiting on you' : 'failed'}`) : ['- Nothing is waiting.']), '');
   L.push('## Spend');
-  L.push(...r.spend.byRepo.slice(0, 5).map((x) => `- ${x.id}: ${usd(x.cost)}`));
+  L.push(...r.spend.byRepo.slice(0, 5).map((x) => `- ${repoLabel(x.id)}: ${usd(x.cost)}`));
   if (r.outcomes.costPerMerged != null) L.push(`- Average cost per merged session: ${usd(r.outcomes.costPerMerged)}`);
   if (r.outcomes.wasteShare > 0.01) L.push(`- ${Math.round(r.outcomes.wasteShare * 100)}% of spend went on sessions that were abandoned.`);
   L.push('', '## Time');
   L.push(`- Agents waited on you for ${fmtDuration(r.throughput.waiting.total)} (${Math.round(r.throughput.waiting.share * 100)}% of their active time).`);
   L.push(`- Median start to first commit ${fmtDuration(r.throughput.leadTime.firstCommit)}, to merge ${fmtDuration(r.throughput.leadTime.merged)}.`);
   if (r.approvals.suggestions.length) L.push('', '## Suggested allow rules', ...r.approvals.suggestions.map((x) => `- \`${x.pattern}\` (approved ${x.count} times)`));
-  if (r.quality.stuck.length) L.push('', '## Stuck', ...r.quality.stuck.map((x) => `- ${x.repoId} ${x.id}: ${x.reason}`));
+  if (r.quality.stuck.length) L.push('', '## Stuck', ...r.quality.stuck.map((x) => `- ${repoLabel(x.repoId)} ${x.id}: ${x.reason}`));
   return L.join('\n') + '\n';
 }

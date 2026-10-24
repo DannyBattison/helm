@@ -7,7 +7,7 @@ import { auditText } from '../shared/redact';
 import { queueBlock, queueOrder } from '../shared/queue';
 import { stuckReason } from '../shared/stuck';
 import { REVIEW_SCHEMA, parseReview, reviewPrompt } from '../shared/selfreview';
-import { sessionTitle, type ActivityEvent, type Checkpoint, type Effort, type MessageImage, type ModelAlias, type NewSessionInput, type PendingAsk, type PermMode, type Session, type Status, type Subagent, type TranscriptEvent } from '../shared/types';
+import { FREE_ID, freeRepo, sessionTitle, type ActivityEvent, type Checkpoint, type Effort, type MessageImage, type ModelAlias, type NewSessionInput, type PendingAsk, type PermMode, type Session, type Status, type Subagent, type TranscriptEvent } from '../shared/types';
 import * as G from './git';
 import { checkpointParent, dropCheckpoints, listCheckpoints, restoreCheckpoint, seedFromCheckpoint, takeCheckpoint } from './review';
 import type { Store } from './store';
@@ -134,7 +134,8 @@ export class SessionManager {
   private usd = (v: number, whole = false) => fmtMoney(v, this.store.data.settings.currency, this.store.data.fx.rates, { whole });
   private get billing() { return this.store.data.settings.billing; }
   get = (id: string) => this.sessions.find((s) => s.id === id);
-  repoOf = (s: Session) => this.store.data.repos.find((r) => r.id === s.repoId)!;
+  /** The session's repository. A free agent gets a stand-in whose folder is its own, so git commands there run in its folder. */
+  repoOf = (s: Session) => (s.free ? freeRepo(s.worktree) : this.store.data.repos.find((r) => r.id === s.repoId)!);
   private touch() {
     this.store.save();
     this.hooks.emitState();
@@ -193,28 +194,43 @@ export class SessionManager {
 
   // ---------------------------------------------------------------- create
   async create(input: NewSessionInput, extra: CreateExtra = {}): Promise<string> {
-    const repo = this.store.data.repos.find((r) => r.id === input.repoId);
-    if (!repo) throw new Error('Repository not found');
+    const free = input.repoId === FREE_ID;
+    const repo = free ? undefined : this.store.data.repos.find((r) => r.id === input.repoId);
+    if (!free && !repo) throw new Error('Repository not found');
     const st = this.store.data.settings;
     let id = slug(input.task);
-    for (let n = 2; this.sessions.some((s) => s.repoId === repo.id && s.id === id); n++) id = slug(input.task) + '-' + n;
-    const branch = st.branchPrefix + id;
-    const wt = join(expandHome(st.worktreeRoot), repo.name, id);
-
-    await G.git(repo.localPath, 'fetch', 'origin', '--prune').catch(() => undefined);
-    // `main` means the local branch, `origin/main` the one on GitHub. A bare name that only exists on GitHub falls back to it.
-    const isLocal = !input.base.startsWith('origin/') && (await G.gitOk(repo.localPath, 'rev-parse', '--verify', '--quiet', 'refs/heads/' + input.base));
-    const remoteBase = input.base.startsWith('origin/') || isLocal ? input.base : (await G.gitOk(repo.localPath, 'rev-parse', '--verify', 'origin/' + input.base)) ? 'origin/' + input.base : input.base;
-    await G.addWorktree(repo.localPath, wt, branch, extra.seed ? await checkpointParent(repo.localPath, extra.seed) : remoteBase);
-    if (extra.seed) await seedFromCheckpoint(wt, extra.seed);
-    await this.copyUntracked(repo.localPath, wt, st.copyFiles);
+    // Free agents are not grouped under a repository, so their names must be unique among all sessions.
+    const taken = (n: string) => this.sessions.some((s) => s.id === n && (free || s.repoId === repo!.id));
+    for (let n = 2; taken(id); n++) id = slug(input.task) + '-' + n;
+    let branch = '', wt = '', remoteBase = '';
     let claudeSessionId: string | undefined;
-    try { claudeSessionId = await extra.claude?.(wt); }
-    catch (e) { await G.removeWorktree(repo.localPath, wt, branch); throw e; }
+    if (free) {
+      // A folder of its own: one helm makes (with local git, so changes and checkpoints work), or one of yours, left as it is.
+      if (input.folder) {
+        wt = expandHome(input.folder);
+        if (!(await stat(wt).then((x) => x.isDirectory(), () => false))) throw new Error('That folder does not exist.');
+      } else {
+        wt = join(expandHome(st.freeRoot), id);
+        await G.initScratch(wt);
+        remoteBase = 'main';
+      }
+    } else {
+      branch = st.branchPrefix + id;
+      wt = join(expandHome(st.worktreeRoot), repo!.name, id);
+      await G.git(repo!.localPath, 'fetch', 'origin', '--prune').catch(() => undefined);
+      // `main` means the local branch, `origin/main` the one on GitHub. A bare name that only exists on GitHub falls back to it.
+      const isLocal = !input.base.startsWith('origin/') && (await G.gitOk(repo!.localPath, 'rev-parse', '--verify', '--quiet', 'refs/heads/' + input.base));
+      remoteBase = input.base.startsWith('origin/') || isLocal ? input.base : (await G.gitOk(repo!.localPath, 'rev-parse', '--verify', 'origin/' + input.base)) ? 'origin/' + input.base : input.base;
+      await G.addWorktree(repo!.localPath, wt, branch, extra.seed ? await checkpointParent(repo!.localPath, extra.seed) : remoteBase);
+      if (extra.seed) await seedFromCheckpoint(wt, extra.seed);
+      await this.copyUntracked(repo!.localPath, wt, st.copyFiles);
+      try { claudeSessionId = await extra.claude?.(wt); }
+      catch (e) { await G.removeWorktree(repo!.localPath, wt, branch); throw e; }
+    }
 
     const now = Date.now();
     const s: Session = {
-      id, repoId: repo.id, status: 'working', task: input.task, step: 'Starting', branch, base: remoteBase, worktree: wt,
+      id, repoId: free ? FREE_ID : repo!.id, free: free ? { managed: !input.folder } : undefined, status: 'working', task: input.task, step: 'Starting', branch, base: remoteBase, worktree: wt,
       model: input.model, permMode: input.permMode, startedAt: now, tokens: { input: 0, output: 0, cacheRead: 0 }, cost: 0, budget: input.budget,
       lastAccess: now, ctx: 0, add: 0, del: 0, files: 0, filesTouched: {}, timeline: [{ t: now, status: 'working' }], commits: [], removeAfterMerge: st.removeAfterMerge, deleteBranchAfterMerge: st.deleteBranchAfterMerge, subagents: [],
       claudeSessionId, effort: extra.effort, parentId: extra.parentId, group: extra.group, source: extra.source
@@ -228,7 +244,7 @@ export class SessionManager {
     s.queued = blocked ? wait : undefined;
     if (blocked) { s.status = 'idle'; s.step = 'Queued. ' + blocked; s.timeline = [{ t: now, status: 'idle' }]; }
     this.sessions.push(s);
-    this.activity(s, 'start', blocked ? `queued: ${blocked.toLowerCase()}` : `started on ${branch}`);
+    this.activity(s, 'start', blocked ? `queued: ${blocked.toLowerCase()}` : free ? `started in ${wt}` : `started on ${branch}`);
     await this.push(id, { k: 'user', t: now, text: input.task, cp: await this.checkpoint(s, 'Start: ' + input.task) });
     if (blocked) { this.touch(); return id; }
     this.touch();
@@ -290,7 +306,7 @@ export class SessionManager {
   // ---------------------------------------------------------------- checkpoints, forks
   /** Saves the worktree as it is, before the agent acts on the next message. Failing to do so never blocks the message. */
   private async checkpoint(s: Session, label: string): Promise<number | undefined> {
-    if (s.worktreeGone) return undefined;
+    if (s.worktreeGone || (s.free && !s.free.managed)) return undefined;
     const n = (s.checkpoints || 0) + 1;
     try {
       await takeCheckpoint(s.worktree, s.id, n, trunc(label.replace(/\s+/g, ' ').trim(), 100));
@@ -371,6 +387,7 @@ export class SessionManager {
   async fork(id: string, index: number | null, task: string): Promise<string> {
     const s = this.get(id);
     if (!s) throw new Error('Session not found');
+    if (s.free) throw new Error('Free agents cannot be forked yet: there is no repository to start the new session from.');
     if (!task.trim()) throw new Error('Say what the new session should do.');
     const t = await this.store.transcript(id);
     const ev = index != null ? t[index] : undefined;
@@ -411,6 +428,7 @@ export class SessionManager {
 
   async createGroup(input: NewSessionInput, variants: { model: ModelAlias; effort?: Effort }[]): Promise<string[]> {
     if (variants.length < 2) throw new Error('Pick at least two variants to compare.');
+    if (input.repoId === FREE_ID) throw new Error('Comparing runs needs a repository.');
     const group = uid();
     const ids: string[] = [];
     // One after another: each session's name is made unique against the ones that exist.
@@ -434,6 +452,7 @@ export class SessionManager {
   async review(id: string) {
     const s = this.get(id);
     if (!s) throw new Error('Session not found');
+    if (s.free) throw new Error('A free agent has no branch to review.');
     if (s.worktreeGone) throw new Error('This session\'s worktree is gone.');
     if (s.review?.state === 'running') return;
     const head = (await G.git(s.worktree, 'rev-parse', '--short', 'HEAD').catch(() => '')).trim();
@@ -487,6 +506,16 @@ export class SessionManager {
   // ---------------------------------------------------------------- run
   private systemAppend(s: Session): string {
     const st = this.store.data.settings;
+    if (s.free) {
+      return [
+        `You are a free agent running inside helm: you are not tied to any repository. Your working directory is ${s.worktree}.`,
+        s.free.managed
+          ? 'It is a folder made for this task alone. git is set up in it so the user can see what you changed; you may commit, but you do not have to. There is no remote, so do not push or open pull requests.'
+          : 'It is one of the user\'s own folders, and you are working in it directly with nothing to undo your changes, so be careful with anything destructive. Do not push or open pull requests unless asked.',
+        'Stay in this directory unless the user asks you to work elsewhere. If you need a decision from the user, ask with the AskUserQuestion tool instead of guessing.',
+        `Subagents: at most ${this.sessionLimit(s)} may run at once in this session. Start independent work in parallel only within that limit.`
+      ].join('\n');
+    }
     return [
       `You are running inside helm, working in an isolated git worktree on branch ${s.branch} (based on ${s.base}). Stay inside this directory.`,
       'Commit as you go: make a commit each time a coherent piece of work is done and working, rather than one big commit at the end. Keep commits small with clear messages.',
@@ -932,7 +961,7 @@ export class SessionManager {
   }
 
   async refreshStats(s: Session) {
-    if (s.worktreeGone) return;
+    if (s.worktreeGone || (s.free && !s.free.managed)) return;
     try {
       const c = await G.changes(s.worktree, s.base);
       s.add = c.files.reduce((a, f) => a + f.add, 0);
@@ -978,7 +1007,8 @@ export class SessionManager {
     }
     s.error = undefined;
     s.editing = undefined;
-    if (s.files > 0 || s.commits.length > 0) {
+    // A free agent has nothing to review or merge: it is simply done.
+    if (!s.free && (s.files > 0 || s.commits.length > 0)) {
       this.setStatus(s, 'ready', `${s.files} ${s.files === 1 ? 'file' : 'files'} changed · ready for review`);
       this.activity(s, 'ready', `finished · ${s.files} files ready for review`);
       this.hooks.notify('ready', `${s.id} is ready for review`, `${this.repoOf(s).id} · ${s.files} files`, s.id);
@@ -1382,6 +1412,12 @@ export class SessionManager {
   async deleteInfo(id: string) {
     const s = this.get(id);
     if (!s) throw new Error('Session not found');
+    if (s.free) {
+      // A scratch folder is helm's to remove; a folder you chose is never touched.
+      const exists = await G.fileExists(s.worktree);
+      const dirty = exists && s.free.managed ? (await G.git(s.worktree, 'status', '--porcelain').catch(() => '')).split('\n').filter(Boolean).length : 0;
+      return { free: s.free.managed ? 'scratch' as const : 'folder' as const, branch: '', worktree: s.worktree, worktreeExists: exists, dirty, unpushed: 0, pushed: false, running: this.rt.has(id) };
+    }
     const repo = this.repoOf(s);
     const worktreeExists = await G.fileExists(s.worktree);
     const dirty = worktreeExists ? (await G.git(s.worktree, 'status', '--porcelain').catch(() => '')).split('\n').filter(Boolean).length : 0;
@@ -1417,8 +1453,13 @@ export class SessionManager {
     const s = this.get(id);
     if (!s) return;
     await this.stop(id);
-    if (opts.worktree || opts.branch) await G.removeWorktree(this.repoOf(s).localPath, s.worktree, opts.branch ? s.branch : undefined);
-    await dropCheckpoints(this.repoOf(s).localPath, id).catch(() => undefined);
+    if (s.free) {
+      // Only a scratch folder helm made is deleted, and only if asked.
+      if (opts.worktree && s.free.managed) await rm(s.worktree, { recursive: true, force: true }).catch(() => undefined);
+    } else {
+      if (opts.worktree || opts.branch) await G.removeWorktree(this.repoOf(s).localPath, s.worktree, opts.branch ? s.branch : undefined);
+      await dropCheckpoints(this.repoOf(s).localPath, id).catch(() => undefined);
+    }
     this.store.data.sessions = this.store.data.sessions.filter((x) => x.id !== id);
     await this.store.deleteTranscripts(id);
     this.touch();

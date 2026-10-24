@@ -18,6 +18,7 @@ export const defaultSettings = (): Settings => ({
   pushOnCommit: false,
   commitAuthor: 'coauthor',
   worktreeRoot: join(home, '.helm', 'worktrees'),
+  freeRoot: join(home, '.helm', 'agents'),
   cloneRoot: join(home, 'code'),
   branchPrefix: 'agent/',
   removeAfterMerge: true,

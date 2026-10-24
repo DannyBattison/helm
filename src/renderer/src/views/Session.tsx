@@ -21,7 +21,8 @@ const box: React.CSSProperties = { borderRadius: 'var(--radius-md)', background:
 
 function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string): void }) {
   const { fmt } = useMoney();
-  const sub = useApp().settings.billing === 'subscription';
+  const app = useApp();
+  const sub = app.settings.billing === 'subscription';
   const running = s.status === 'working' || s.status === 'attention';
   const deliverMerge = useApp().settings.deliver === 'merge';
   const push = usePush(s.repoId, s.id);
@@ -41,7 +42,7 @@ function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string
             {s.stuck ? <Tooltip content={s.stuck}><Badge tone="attention" icon="warning">Looks stuck</Badge></Tooltip> : null}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, font: '400 11.5px/1 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden' }}>
-            <BranchTag worktree base={s.base.replace(/^origin\//, '')} name={s.branch} />
+            {s.free ? <span title={s.worktree} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><i className="ph ph-folder" />{tilde(s.worktree, app.home)}</span> : <BranchTag worktree base={s.base.replace(/^origin\//, '')} name={s.branch} />}
             <span>{prettyModel(s)}</span><span>·</span><span>started {clock(s.startedAt)}</span><span>·</span><span>{fmtTokens(s.tokens.input + s.tokens.output + s.tokens.cacheRead)} tokens</span>{sub ? null : <><span>·</span><span>{fmt(s.cost)}</span></>}
           </div>
         </div>
@@ -50,12 +51,14 @@ function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string
         {s.status === 'working' ? <Button variant="ghost" icon="pause" onClick={() => guard(api.interrupt(s.id))}>Pause</Button> : null}
         {running ? <Button variant="ghost" icon="stop" onClick={() => guard(api.stopSession(s.id))}>Stop</Button> : null}
         {push.commits && !s.worktreeGone ? <span title={push.tip}><Button variant="secondary" icon="cloud-arrow-up" loading={push.busy} onClick={push.push}>Push · {push.commits}</Button></span> : null}
-        {!s.worktreeGone ? <IconButton icon="clock-counter-clockwise" label="Checkpoints" onClick={() => setUI({ checkpointsOf: s.id })} /> : null}
-        {s.claudeSessionId && !s.worktreeGone ? <IconButton icon="git-fork" label="Fork this session" onClick={() => setUI({ forking: { sessionId: s.id, index: null, text: '' } })} /> : null}
+        {!s.worktreeGone && !(s.free && !s.free.managed) ? <IconButton icon="clock-counter-clockwise" label="Checkpoints" onClick={() => setUI({ checkpointsOf: s.id })} /> : null}
+        {s.claudeSessionId && !s.worktreeGone && !s.free ? <IconButton icon="git-fork" label="Fork this session" onClick={() => setUI({ forking: { sessionId: s.id, index: null, text: '' } })} /> : null}
         <Button variant="secondary" icon="arrow-square-out" onClick={() => guard(api.openInEditor(s.id))}>Open in editor</Button>
+        {s.free ? <Button variant="secondary" icon="git-diff" disabled={!s.free.managed} title={s.free.managed ? undefined : 'Changes are tracked only in folders helm made'} onClick={() => setTab('changes')}>Changes</Button> : <>
         {s.mergedAt ? <Badge tone="ready">Merged into {s.mergedInto}</Badge> : s.prUrl ? <><Button variant="ghost" icon="git-pull-request" onClick={() => api.openExternal(s.prUrl!)}>View pull request</Button>{prNumber(s.prUrl) ? <Button variant="primary" icon="git-merge" onClick={() => setUI({ mergingPr: { repoId: s.repoId, number: prNumber(s.prUrl)!, sessionId: s.id } })}>Merge pull request</Button> : null}</>
           : s.status === 'ready' ? <Button variant="primary" icon={deliverMerge ? 'git-merge' : 'git-pull-request'} onClick={() => setTab('changes')}>{deliverMerge ? 'Merge changes' : 'Create pull request'}</Button>
           : <Button variant="secondary" icon="git-diff" onClick={() => setTab('changes')}>Review changes</Button>}
+        </>}
       </div>
       <Tabs value={tab} onChange={setTab} style={{ borderBottom: 'none', padding: 0 }} tabs={[
         { value: 'conversation', label: 'Conversation', icon: 'chats-circle' },
@@ -171,9 +174,9 @@ function TranscriptItemView({ m, s, index, onDeny }: { m: TranscriptEvent; s: S;
         <div className="selectable" style={{ font: '400 13px/1.55 var(--font-sans)', color: 'var(--text-1)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.text}</div>
         {hover && s && !m.from && !s.worktreeGone && index != null ? (
           <div style={{ position: 'absolute', top: 6, right: 8, display: 'flex', gap: 2, background: 'var(--bg-overlay)', borderRadius: 'var(--radius-sm)', boxShadow: 'var(--shadow-popover)', padding: 2 }}>
-            {m.cp ? <Button size="sm" variant="ghost" icon="clock-counter-clockwise" onClick={() => setUI({ restoring: { sessionId: s.id, n: m.cp!, label: 'Before: ' + m.text } })}>Restore</Button> : null}
-            <Button size="sm" variant="ghost" icon="bookmark-simple" title="Add this to CLAUDE.md so later sessions know it" onClick={() => setUI({ remembering: { repoId: s.repoId, text: m.text } })}>Remember</Button>
-            {s.claudeSessionId ? <Button size="sm" variant="ghost" icon="git-fork" onClick={() => setUI({ forking: { sessionId: s.id, index, text: m.text } })}>Fork</Button> : null}
+            {m.cp && !(s.free && !s.free.managed) ? <Button size="sm" variant="ghost" icon="clock-counter-clockwise" onClick={() => setUI({ restoring: { sessionId: s.id, n: m.cp!, label: 'Before: ' + m.text } })}>Restore</Button> : null}
+            {s.free ? null : <Button size="sm" variant="ghost" icon="bookmark-simple" title="Add this to CLAUDE.md so later sessions know it" onClick={() => setUI({ remembering: { repoId: s.repoId, text: m.text } })}>Remember</Button>}
+            {s.claudeSessionId && !s.free ? <Button size="sm" variant="ghost" icon="git-fork" onClick={() => setUI({ forking: { sessionId: s.id, index, text: m.text } })}>Fork</Button> : null}
           </div>
         ) : null}
         {m.images?.length ? <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{m.images.map((im, i) => <img key={i} src={`data:${im.mediaType};base64,${im.data}`} alt={im.name || 'attached image'} title={im.name} style={{ maxWidth: 260, maxHeight: 180, borderRadius: 'var(--radius-md)', boxShadow: 'inset 0 0 0 1px var(--border)', objectFit: 'contain', background: 'var(--bg-editor)' }} />)}</div> : null}
@@ -524,9 +527,9 @@ function UsagePanel({ s }: { s: S }) {
         ))}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <span style={label}>Worktree</span>
+        <span style={label}>{s.free ? 'Folder' : 'Worktree'}</span>
         <span className="selectable" style={{ font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-2)', wordBreak: 'break-all' }}>{tilde(s.worktree, app.home)}</span>
-        <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>Isolated from your main checkout.{s.removeAfterMerge || (s.deleteBranchAfterMerge ?? false) ? ' Removed after the PR merges.' : ''}</span>
+        <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>{s.free ? (s.free.managed ? 'A folder made for this agent, with git so changes and checkpoints work. It is deleted only if you delete the session and choose to.' : 'Your own folder. The agent works in it directly, and helm never deletes it.') : <>Isolated from your main checkout.{s.removeAfterMerge || (s.deleteBranchAfterMerge ?? false) ? ' Removed after the PR merges.' : ''}</>}</span>
         <div style={{ display: 'flex', gap: 6 }}>
           <Button size="sm" variant="ghost" icon={s.archivedAt ? 'arrow-counter-clockwise' : 'archive'} disabled={!s.archivedAt && (s.status === 'working' || s.status === 'attention')} onClick={() => guard(api.archiveSession(s.id, !s.archivedAt))}>{s.archivedAt ? 'Restore' : 'Archive'}</Button>
           <Button size="sm" variant="ghost" icon="trash" onClick={() => setUI({ deleting: s.id })}>Delete session…</Button>

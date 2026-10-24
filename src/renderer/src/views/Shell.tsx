@@ -6,7 +6,7 @@ import { Terminal } from '@xterm/xterm';
 import { api, on, platform } from '../api';
 import { fontStack } from '../fonts';
 import glyph from '../assets/helm-glyph-violet.svg';
-import { ago, elapsed, fmtTokens, lifetimeTokens, livePlan, reposWithSessions, runningSubagents, subagentTree, totals, untilReset } from '../lib';
+import { ago, elapsed, fmtTokens, isFreeGroup, lifetimeTokens, livePlan, reposWithSessions, runningSubagents, subagentTree, totals, untilReset } from '../lib';
 import { go, refreshExternals, setUI, toast, useApp, useMoney, useUI, useTranscript, type Route } from '../store';
 import { Avatar, Badge, Breadcrumbs, ContextMenu, Grip, IconButton, Kbd, Meter, TreeItem, usePaneWidth, type MenuItem } from '../ui';
 
@@ -63,7 +63,7 @@ export function Sidebar() {
       { label: 'Open conversation', icon: 'chats-circle', onClick: () => go({ screen: 'session', id: s.id, tab: 'conversation' }) },
       { label: 'Open code', icon: 'code', onClick: () => go({ screen: 'session', id: s.id, tab: 'code' }) },
       { label: s.files ? `Review changes (${s.files})` : 'Review changes', icon: 'git-diff', onClick: () => go({ screen: 'session', id: s.id, tab: 'changes' }) },
-      { label: 'Copy branch name', icon: 'copy', separator: true, onClick: () => void api.copyText(s.branch) },
+      { label: s.free ? 'Copy folder path' : 'Copy branch name', icon: 'copy', separator: true, onClick: () => void api.copyText(s.free ? s.worktree : s.branch) },
       { label: 'Rename…', icon: 'pencil-simple', onClick: () => setUI({ renaming: s.id }) },
       { label: 'Stop session', icon: 'stop', disabled: !running, onClick: () => void api.stopSession(s.id) },
       { label: s.archivedAt ? 'Restore from archive' : running ? 'Archive (stop it first)' : 'Archive session', icon: s.archivedAt ? 'arrow-counter-clockwise' : 'archive', disabled: !s.archivedAt && running, onClick: () => { api.archiveSession(s.id, !s.archivedAt).catch((err) => toast({ tone: 'error', title: 'Could not archive', description: String(err?.message || err).replace(/^Error invoking remote method \'\w+\': Error: /, '') })); } },
@@ -154,12 +154,12 @@ export function Sidebar() {
           const open = !closed[r.id];
           return (
             <div key={r.id} {...target('repo', r.id)} style={line(r.id)}>
-              <div {...dnd('repo', r.id)} onContextMenu={(e) => repoMenu(e, r)}>
-              <TreeItem icon="book-bookmark" expandable={sessions.length > 0} expanded={open}
-                label={<span><span style={{ color: 'var(--text-3)' }}>{r.owner}/</span>{r.name}</span>}
-                selected={route.screen === 'repo' && route.id === r.id} meta={sessions.length || null}
-                trailing={lifetimeTokens(app.lifetime[r.id]) ? <span title={`${lifetimeTokens(app.lifetime[r.id]).toLocaleString()} tokens used in ${r.name} over its lifetime, including deleted sessions`} style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)', flex: 'none', marginLeft: 6 }}>{fmtTokens(lifetimeTokens(app.lifetime[r.id]))}</span> : null}
-                onClick={() => { if (route.screen === 'repo' && route.id === r.id) setClosed({ ...closed, [r.id]: open }); else go({ screen: 'repo', id: r.id }); }} />
+              <div {...(isFreeGroup(r) ? {} : dnd('repo', r.id))} onContextMenu={(e) => { if (!isFreeGroup(r)) repoMenu(e, r); }}>
+              <TreeItem icon={isFreeGroup(r) ? 'robot' : 'book-bookmark'} expandable={sessions.length > 0} expanded={open}
+                label={isFreeGroup(r) ? <span title="Agents that are not tied to a repository">Free agents</span> : <span><span style={{ color: 'var(--text-3)' }}>{r.owner}/</span>{r.name}</span>}
+                selected={!isFreeGroup(r) && route.screen === 'repo' && route.id === r.id} meta={sessions.length || null}
+                trailing={isFreeGroup(r) ? <IconButton icon="plus" label="New free agent" size="sm" onClick={(e: any) => { e.stopPropagation(); setUI({ newSession: { repoId: '@free' } }); }} /> : lifetimeTokens(app.lifetime[r.id]) ? <span title={`${lifetimeTokens(app.lifetime[r.id]).toLocaleString()} tokens used in ${r.name} over its lifetime, including deleted sessions`} style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)', flex: 'none', marginLeft: 6 }}>{fmtTokens(lifetimeTokens(app.lifetime[r.id]))}</span> : null}
+                onClick={() => { if (isFreeGroup(r) || (route.screen === 'repo' && route.id === r.id)) setClosed({ ...closed, [r.id]: open }); else go({ screen: 'repo', id: r.id }); }} />
               </div>
               {open ? sessions.map((s) => {
                 const tree = subagentTree(s);

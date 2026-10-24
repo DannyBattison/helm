@@ -14,6 +14,15 @@ export type PermMode = 'ask' | 'edits' | 'plan' | 'all';
 export type ModelAlias = 'sonnet' | 'opus' | 'haiku';
 export type ThemePref = 'dark' | 'light' | 'system';
 
+/** The repository id every free agent carries. It is not a real repository: free agents are not bound to one. */
+export const FREE_ID = '@free';
+export const isFreeRepo = (id: string) => id === FREE_ID;
+/** What to call a repository id in the interface. */
+export const repoLabel = (id: string) => (id === FREE_ID ? 'Free agents' : id);
+
+/** The stand-in "repository" of a free agent, so code that wants a repository gets one. `dir` is the agent's own folder. */
+export const freeRepo = (dir = ''): Repo => ({ id: FREE_ID, owner: '', name: 'Free agents', private: true, lang: null, defaultBranch: '', localPath: dir, cap: 0, addedAt: 0 });
+
 export interface Repo {
   /** owner/name */
   id: string;
@@ -75,6 +84,12 @@ export interface Subagent {
 
 export interface Session {
   id: string;
+  /**
+   * A free agent: not bound to a repository. `worktree` is its working folder. When `managed`, helm made that folder for it and
+   * set up local git there (so Changes and checkpoints work); otherwise it is a folder you chose and helm leaves git alone.
+   * Free agents have no branch, no pull request and nothing to merge.
+   */
+  free?: { managed: boolean };
   /** The worktree (and maybe the branch) was removed after the work was merged. The conversation and numbers stay; it cannot be continued. */
   worktreeGone?: boolean;
   /** Merged straight into this branch without a pull request, and when. */
@@ -238,6 +253,8 @@ export interface Settings {
   /** Who the agent's commits are credited to: you, with Claude as a co-author, or Claude alone. */
   commitAuthor: 'coauthor' | 'sole';
   worktreeRoot: string;
+  /** Where scratch folders for free agents are made. */
+  freeRoot: string;
   cloneRoot: string;
   branchPrefix: string;
   removeAfterMerge: boolean;
@@ -452,6 +469,8 @@ export interface BaseOption {
 }
 
 export interface SessionDeleteInfo {
+  /** Set for a free agent: its folder is helm's own (`scratch`, which can be removed) or yours (`folder`, which never is). */
+  free?: 'scratch' | 'folder';
   branch: string;
   worktree: string;
   worktreeExists: boolean;
@@ -579,6 +598,8 @@ export interface NewSessionInput {
   model: ModelAlias;
   budget: number;
   permMode: PermMode;
+  /** For a free agent: a folder of yours to work in, instead of a new scratch folder. */
+  folder?: string;
   /** Wait until this session has been merged before starting, so the new one begins from the merged base. */
   after?: string;
   /** What the task came from, such as a GitHub issue. */
