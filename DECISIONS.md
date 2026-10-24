@@ -271,3 +271,7 @@ Why: user report that it could not be seen.
 ## D-064 · 2026-10-23 · File names in the conversation open the file
 The file name on Read, Edit and Write rows and on edit cards is a link. It opens that file, in that session's worktree, in the editor chosen in Settings: helm's own Code tab (at the file), or VS Code, Cursor or Zed (VS Code and Cursor are given the line too). Paths outside the worktree, patterns (Grep, Glob), sessions whose worktree was removed, and read-only external sessions are shown as plain text.
 Why: user request.
+
+## D-065 · 2026-10-24 · App icon is the wheel in a circle
+The app icon is the helm wheel, white on a dark circle with transparent corners. The source is `build/icon.svg`; `build/icon.png` and `build/icon.icns` are rendered from it. electron-builder picks up `build/icon.icns` for the macOS app, and the window and dock icon are set at run time so it also shows when running in development.
+Why: user request.
