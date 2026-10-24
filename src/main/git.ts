@@ -9,9 +9,9 @@ export const setGitToken = (t: string | null) => { token = t; };
 function env(): NodeJS.ProcessEnv {
   const e: NodeJS.ProcessEnv = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
   if (token) {
-    e.GIT_CONFIG_COUNT = '1';
-    e.GIT_CONFIG_KEY_0 = 'http.https://github.com/.extraheader';
-    e.GIT_CONFIG_VALUE_0 = 'AUTHORIZATION: basic ' + Buffer.from('x-access-token:' + token).toString('base64');
+    // GIT_CONFIG_PARAMETERS in its 'key=value' form works on every git; GIT_CONFIG_COUNT needs 2.31+.
+    const header = 'AUTHORIZATION: basic ' + Buffer.from('x-access-token:' + token).toString('base64');
+    e.GIT_CONFIG_PARAMETERS = [e.GIT_CONFIG_PARAMETERS, `'http.https://github.com/.extraheader=${header}'`].filter(Boolean).join(' ');
   }
   return e;
 }
