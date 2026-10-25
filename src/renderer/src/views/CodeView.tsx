@@ -152,7 +152,7 @@ function Explorer({ ws, s, sig, active, open, branch }: { ws: string; s?: Sessio
   };
 
   return (
-    <div style={{ position: 'relative', width, flex: 'none', display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border)', background: 'var(--bg-sidebar)' }}>
+    <div className="helm-list" style={{ position: 'relative', width, flex: 'none', display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border)', background: 'var(--bg-sidebar)' }}>
       <Grip onMouseDown={grip} onDoubleClick={resetWidth} />
       <div style={{ minHeight: 34, flex: 'none', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px 6px', padding: '5px 8px 5px 12px' }}>
         <SegmentedControl size="sm" value={mode} onChange={(v: string) => setMode(v as any)} options={[{ value: 'files', label: 'Files', icon: 'folder-simple' }, { value: 'search', label: 'Search', icon: 'magnifying-glass' }]} />
@@ -379,13 +379,13 @@ export function CodeView({ wsId, session: s, themeKey, branch, open }: { wsId: s
   const sig = s ? Object.keys(s.filesTouched).join('|') + s.files : String(tick);
   const crumbs = active ? active.split('/') : [];
   return (
-    <div style={{ flex: 1, minHeight: 0, display: 'flex' }}
+    <div className="helm-split" style={{ flex: 1, minHeight: 0, display: 'flex' }}
       onKeyDown={(e) => {
         if (mod(e) && e.key.toLowerCase() === 'p') { e.preventDefault(); setQuick(true); }
         else if (mod(e) && e.key.toLowerCase() === 's') { e.preventDefault(); saveRef.current(); }
       }}>
       <Explorer ws={wsId} s={s} sig={sig} active={active} open={(p, l) => void openFile(p, l)} branch={branch} />
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg-editor)' }}>
+      <div className="helm-main" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg-editor)' }}>
         <style>{`.helm-blame{color:var(--text-disabled);font-style:italic}`}</style>
         {tabs.length ? (
           <Tabs variant="editor" closable onClose={closeTab} value={active || undefined} onChange={(p: string) => void openFile(p)} style={{ background: 'var(--bg-panel)', flex: 'none' }}

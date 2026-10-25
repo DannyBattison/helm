@@ -5,7 +5,7 @@ import { FREE_ID, repoLabel } from '@shared/types';
 import { api } from '../api';
 import { fmtTokens } from '../lib';
 import { go, toast, useApp, useMoney } from '../store';
-import { Badge, Button, Meter, Panel, SegmentedControl, Stat } from '../ui';
+import { Badge, Button, Meter, Panel, SegmentedControl, Stat, useNarrow } from '../ui';
 
 const fail = (title: string) => (e: any) => toast({ tone: 'error', title, description: String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '') });
 const head: React.CSSProperties = { font: '500 10.5px/1 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' };
@@ -16,7 +16,7 @@ const empty = (text: string) => <div style={{ font: '400 12.5px/1.5 var(--font-s
 /** A row with a name, a bar scaled to the largest value in its list, and a figure. */
 function BarRow({ label, value, max, text, sub, onClick, tone }: { label: React.ReactNode; value: number; max: number; text: React.ReactNode; sub?: React.ReactNode; onClick?: () => void; tone?: string }) {
   return (
-    <div onClick={onClick} className={onClick ? 'helm-row-hover' : undefined} style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 220px) 1fr auto', gap: 12, alignItems: 'center', padding: '5px 4px', cursor: onClick ? 'pointer' : undefined, borderRadius: 'var(--radius-sm)' }}>
+    <div onClick={onClick} className={'helm-barrow' + (onClick ? ' helm-row-hover' : '')} style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 220px) 1fr auto', gap: 12, alignItems: 'center', padding: '5px 4px', cursor: onClick ? 'pointer' : undefined, borderRadius: 'var(--radius-sm)' }}>
       <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
         <span style={{ ...mono, color: 'var(--text-1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
         {sub ? <span style={{ font: '400 11px/1.2 var(--font-sans)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</span> : null}
@@ -48,7 +48,7 @@ function Columns({ data, format, height = 96 }: { data: { key: string; value: nu
   );
 }
 
-const Grid = ({ children, cols = 2 }: { children: React.ReactNode; cols?: number }) => <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gap: 12 }}>{children}</div>;
+const Grid = ({ children, cols = 2 }: { children: React.ReactNode; cols?: number }) => <div className="helm-stack" style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gap: 12 }}>{children}</div>;
 
 function Spend({ r, fmt }: { r: Report; fmt: (v: number, whole?: boolean) => string }) {
   const s = r.spend;
@@ -90,7 +90,7 @@ function Spend({ r, fmt }: { r: Report; fmt: (v: number, whole?: boolean) => str
         {s.topSessions.length ? s.topSessions.map((x) => <BarRow key={x.id} label={x.id} value={x.cost} max={s.topSessions[0].cost} text={fmt(x.cost)} sub={`${repoLabel(x.repoId)} · ${x.model}`} onClick={() => go({ screen: 'session', id: x.id })} />) : empty('No sessions in this period.')}
       </Panel>
       <Panel title="Cost per outcome" icon="target">
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12 }}>
+        <div className="helm-grid2" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12 }}>
           {(['merged', 'pr', 'open', 'abandoned'] as const).map((k) => (
             <Stat key={k} label={{ merged: 'Merged', pr: 'In a pull request', open: 'In progress', abandoned: 'Abandoned' }[k]} value={o.counts[k]} detail={fmt(o.cost[k]) + ' spent'} tone={k === 'abandoned' && o.counts[k] ? 'attention' : undefined} />
           ))}
@@ -290,7 +290,7 @@ function Disk() {
         {rows == null ? empty('Measuring. The first time can take a while for big repositories.') : null}
         {rows && !rows.length ? empty('No session has a worktree.') : null}
         {(rows || []).map((r) => (
-          <div key={r.sessionId} style={{ display: 'grid', gridTemplateColumns: 'minmax(140px, 240px) 1fr auto', gap: 12, alignItems: 'center', padding: '7px 4px', borderTop: '1px solid var(--border-subtle)' }}>
+          <div key={r.sessionId} className="helm-barrow" style={{ display: 'grid', gridTemplateColumns: 'minmax(140px, 240px) 1fr auto', gap: 12, alignItems: 'center', padding: '7px 4px', borderTop: '1px solid var(--border-subtle)' }}>
             <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
               <span style={{ ...mono, cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} onClick={() => go({ screen: 'session', id: r.sessionId })}>{r.sessionId}</span>
               <span style={{ font: '400 11px/1.2 var(--font-sans)', color: 'var(--text-3)' }}>{r.repoId} · {r.running ? 'running' : r.merged ? 'merged' : r.archived ? 'archived' : r.status}{r.dirty ? ` · ${r.dirty} uncommitted` : ''}{r.unpushed ? ` · ${r.unpushed} unpushed` : ''}</span>
@@ -325,6 +325,7 @@ const TABS = [
 ];
 
 export function Reports({ tab = 'spend' }: { tab?: string }) {
+  const narrow = useNarrow();
   const app = useApp();
   const { fmt } = useMoney();
   const [days, setDays] = React.useState(() => { try { return +(localStorage.getItem('helm-report-days') || 30) || 30; } catch { return 30; } });
@@ -341,9 +342,9 @@ export function Reports({ tab = 'spend' }: { tab?: string }) {
 
   return (
     <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-      <div style={{ padding: '20px 24px 32px', display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 1200 }}>
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12 }}>
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div style={{ padding: narrow ? '14px 12px 24px' : '20px 24px 32px', display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 1200 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12 }}>
+          <div style={{ flex: '1 1 240px', display: 'flex', flexDirection: 'column', gap: 4 }}>
             <h1 style={{ margin: 0, font: '600 20px/1.2 var(--font-sans)', letterSpacing: 'var(--tracking-tight)' }}>Reports</h1>
             <span style={{ font: '400 12px/1.4 var(--font-sans)', color: 'var(--text-3)' }}>What your agents cost, how long things take, and where they need you. Spend history starts when this version was first run.</span>
           </div>

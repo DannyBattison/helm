@@ -4,7 +4,7 @@ import { api, platform } from '../api';
 import glyph from '../assets/helm-glyph-violet.svg';
 import { tilde } from '../lib';
 import { getUI, go, setUI, toast, useApp, useMoney } from '../store';
-import { Badge, Button, Checkbox, Dialog, Input, Kbd, Select, Tabs } from '../ui';
+import { Badge, Button, Checkbox, Dialog, Input, Kbd, Select, Tabs, useNarrow } from '../ui';
 import { MODEL_OPTIONS, PERM_OPTIONS } from './Settings';
 import { VariantEditor, type Variant } from './Review';
 
@@ -228,10 +228,10 @@ export function AddRepo({ onClose }: { onClose(): void }) {
         </> : null}
         {tab === 'url' ? <>
           <Input mono icon="link" value={url} onChange={(e: any) => setUrl(e.target.value)} placeholder="https://github.com/owner/name or git@github.com:owner/name.git" />
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><span style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)', width: 70 }}>Clone into</span><Input mono value={dir} onChange={(e: any) => setDir(e.target.value)} style={{ flex: 1 }} /><Button onClick={() => choose(setDir)}>Choose…</Button></div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}><span style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)', width: 70 }}>Clone into</span><Input mono value={dir} onChange={(e: any) => setDir(e.target.value)} style={{ flex: '1 1 160px', minWidth: 0 }} /><Button onClick={() => choose(setDir)}>Choose…</Button></div>
         </> : null}
         {tab === 'local' ? <>
-          <div style={{ display: 'flex', gap: 8 }}><Input mono value={path} onChange={(e: any) => setPath(e.target.value)} placeholder="Path to an existing clone" style={{ flex: 1 }} /><Button onClick={() => choose(setPath)}>Choose folder…</Button></div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}><Input mono value={path} onChange={(e: any) => setPath(e.target.value)} placeholder="Path to an existing clone" style={{ flex: '1 1 160px', minWidth: 0 }} /><Button onClick={() => choose(setPath)}>Choose folder…</Button></div>
           {insp ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 12, borderRadius: 'var(--radius-md)', background: 'var(--bg-raised)', boxShadow: 'inset 0 0 0 1px var(--border)' }}>
               {insp.checks.map((c) => {
@@ -250,6 +250,7 @@ export function AddRepo({ onClose }: { onClose(): void }) {
 // ------------------------------------------------------------------ new session
 export function NewSession({ repoId, initial, onClose }: { repoId?: string; initial?: { task?: string; source?: import('@shared/types').Session['source']; base?: string }; onClose(): void }) {
   const app = useApp();
+  const narrow = useNarrow();
   const { sym, to, from } = useMoney();
   const sub = app.settings.billing === 'subscription';
   const [repo, setRepo] = React.useState(repoId || app.repos[0]?.id || '@free');
@@ -296,20 +297,20 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
   return (
     <Dialog width={560} title={free ? 'New free agent' : 'New session'} description={free ? 'An agent that is not tied to a repository, for research, writing, scripts and one-off jobs. It works in a folder of its own.' : 'The agent works in its own git worktree on a new branch. Your checkout is not touched.'} onClose={onClose}
       footer={<>
-        <span style={{ flex: 1, font: '400 12px/1.3 var(--font-sans)', color: err ? 'var(--status-error-text)' : 'var(--text-3)' }}>{err || (free ? (folder ? 'Works directly in your folder' : 'A new scratch folder, with git') : r ? `Branch ${app.settings.branchPrefix}<name> from ${base}` : '')}</span>
+        <span style={{ flex: narrow ? '1 1 100%' : 1, font: '400 12px/1.3 var(--font-sans)', color: err ? 'var(--status-error-text)' : 'var(--text-3)' }}>{err || (free ? (folder ? 'Works directly in your folder' : 'A new scratch folder, with git') : r ? `Branch ${app.settings.branchPrefix}<name> from ${base}` : '')}</span>
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" icon="play" kbd={mod + '↵'} loading={busy} disabled={!task.trim() || !repo} onClick={start}>{compare && !free ? `Start ${variants.length} runs` : after ? 'Queue session' : 'Start session'}</Button>
+        <Button variant="primary" icon="play" kbd={narrow ? undefined : mod + '↵'} loading={busy} disabled={!task.trim() || !repo} onClick={start}>{compare && !free ? `Start ${variants.length} runs` : after ? 'Queue session' : 'Start session'}</Button>
       </>}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <Select value={repo} onChange={(e: any) => { setRepo(e.target.value); if (e.target.value === '@free') setCompare(false); }} options={[{ value: '@free', label: 'No repository (free agent)' }, ...app.repos.map((x) => ({ value: x.id, label: x.id }))]} style={{ flex: 1 }} icon={free ? 'robot' : 'book-bookmark'} />
+        <div style={{ display: 'flex', flexDirection: narrow ? 'column' : 'row', gap: 8 }}>
+          <Select value={repo} onChange={(e: any) => { setRepo(e.target.value); if (e.target.value === '@free') setCompare(false); }} options={[{ value: '@free', label: 'No repository (free agent)' }, ...app.repos.map((x) => ({ value: x.id, label: x.id }))]} style={{ flex: narrow ? 'none' : 1, minWidth: 0 }} icon={free ? 'robot' : 'book-bookmark'} />
           {free ? <Button variant="secondary" icon="folder-open" onClick={() => void api.chooseFolder().then((f) => f && setFolder(f))}>{folder ? 'Change folder…' : 'Use my own folder…'}</Button>
             : <Select value={base} onChange={(e: any) => setBase(e.target.value)} options={bases.length ? bases.map((b) => ({ value: b.ref, label: b.label })) : [base]} mono icon="git-branch" />}
         </div>
-        <textarea autoFocus rows={5} value={task} onChange={(e) => setTask(e.target.value)} placeholder="What should the agent do? Be specific about the outcome, and mention files or checks that matter."
+        <textarea autoFocus={!narrow} rows={narrow ? 4 : 5} value={task} onChange={(e) => setTask(e.target.value)} placeholder="What should the agent do? Be specific about the outcome, and mention files or checks that matter."
           onKeyDown={(e) => { if (e.key === 'Enter' && (mac() ? e.metaKey : e.ctrlKey) && task.trim()) void start(); }}
           style={{ resize: 'vertical', border: 'none', outline: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border-strong)', color: 'var(--text-1)', font: '400 13px/1.55 var(--font-sans)', padding: '10px 12px' }} />
-        <div style={{ display: 'grid', gridTemplateColumns: sub ? '1fr 1fr' : '1fr 1fr 110px', gap: 8, ...(compare ? { opacity: 0.5 } : null) }}>
+        <div style={{ display: 'grid', gridTemplateColumns: narrow ? 'minmax(0,1fr)' : sub ? '1fr 1fr' : '1fr 1fr 110px', gap: 8, ...(compare ? { opacity: 0.5 } : null) }}>
           <Select disabled={compare} value={model} onChange={(e: any) => setModel(e.target.value)} options={MODEL_OPTIONS} />
           <Select value={perm} onChange={(e: any) => setPerm(e.target.value)} options={PERM_OPTIONS} />
           {sub ? null : <Input mono value={sym + budget} onChange={(e: any) => setBudget(e.target.value.replace(/[^0-9.]/g, ''))} />}

@@ -130,3 +130,31 @@ textarea {
 .hljs-punctuation, .hljs-operator, .hljs-tag .hljs-attr + .hljs-string { color: var(--syn-punct); }
 .hljs-emphasis { font-style: italic; }
 .hljs-strong { font-weight: 600; }
+
+/* Phones: multi-column grids fold. Inline grid templates need !important to be overridden. */
+@media (max-width: 767px) {
+  .helm-stack { grid-template-columns: minmax(0, 1fr) !important; }
+  .helm-grid2 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  /* A name, a bar and a figure: the bar drops under the name and figure. */
+  .helm-barrow { grid-template-columns: minmax(0, 1fr) auto !important; row-gap: 4px !important; }
+  .helm-barrow > :nth-child(2) { grid-column: 1 / -1; grid-row: 2; }
+  /* A settings row: the control goes under its description. */
+  .helm-setting { flex-direction: column !important; align-items: stretch !important; gap: 10px !important; }
+  .helm-setting > :last-child { flex-wrap: wrap; }
+}
+@media (max-width: 767px) {
+  .helm-setting input, .helm-setting textarea { width: 100% !important; box-sizing: border-box; }
+  .helm-setting > :last-child > * { max-width: 100%; }
+}
+
+/* Phones: side-by-side panes (file list and diff, list and detail) stack and the page scrolls. */
+@media (max-width: 767px) {
+  .helm-split { flex-direction: column !important; overflow-y: auto !important; overflow-x: hidden !important; }
+  .helm-split > * { flex: none !important; width: 100% !important; min-width: 0; box-sizing: border-box; border-left: none !important; border-right: none !important; border-bottom: 1px solid var(--border); }
+  .helm-split > .helm-list { max-height: 36dvh; }
+  .helm-split > .helm-main { height: 72dvh; }
+  .helm-split [role='separator'] { display: none !important; }
+}
+@media (max-width: 767px) {
+  .helm-hide-phone { display: none !important; }
+}

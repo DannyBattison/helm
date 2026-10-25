@@ -125,7 +125,9 @@ export function useColumns(key: string, cols: Col[]) {
       ) : null}
     </span>
   );
-  return { template, cell, reset };
+  // The narrowest the table can be. Below this a phone scrolls it sideways instead of squeezing the cells.
+  const minWidth = cols.reduce((n, c, i) => n + (c.flex ? c.min : c.fixed ? c.w : ws[i]), 0) + 12 * (cols.length - 1);
+  return { template, cell, reset, minWidth };
 }
 
 /** Phone widths: below this the sidebar is a drawer and every page lays itself out in one column. */
