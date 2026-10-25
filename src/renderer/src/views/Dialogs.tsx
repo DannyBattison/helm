@@ -6,6 +6,7 @@ import { tilde } from '../lib';
 import { getUI, go, setUI, toast, useApp, useMoney } from '../store';
 import { Badge, Button, Checkbox, Dialog, Input, Kbd, Select, Tabs } from '../ui';
 import { MODEL_OPTIONS, PERM_OPTIONS } from './Settings';
+import { VariantEditor, type Variant } from './Review';
 
 const errText = (e: any) => String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '');
 const mac = () => platform() === 'darwin';
@@ -247,57 +248,79 @@ export function AddRepo({ onClose }: { onClose(): void }) {
 }
 
 // ------------------------------------------------------------------ new session
-export function NewSession({ repoId, onClose }: { repoId?: string; onClose(): void }) {
+export function NewSession({ repoId, initial, onClose }: { repoId?: string; initial?: { task?: string; source?: import('@shared/types').Session['source']; base?: string }; onClose(): void }) {
   const app = useApp();
   const { sym, to, from } = useMoney();
   const sub = app.settings.billing === 'subscription';
-  const [repo, setRepo] = React.useState(repoId || app.repos[0]?.id || '');
+  const [repo, setRepo] = React.useState(repoId || app.repos[0]?.id || '@free');
   const r = app.repos.find((x) => x.id === repo);
+  const free = repo === '@free';
   const [bases, setBases] = React.useState<BaseOption[]>([]);
   const [dirty, setDirty] = React.useState(0);
   const [base, setBase] = React.useState(r?.defaultBranch || 'main');
-  const [task, setTask] = React.useState('');
+  const [task, setTask] = React.useState(initial?.task || '');
+  const [after, setAfter] = React.useState('');
   const [model, setModel] = React.useState<ModelAlias>(app.settings.defaultModel);
   const [perm, setPerm] = React.useState<PermMode>(app.settings.permMode);
   const [budget, setBudget] = React.useState(String(Math.round(to(app.settings.sessionBudget) * 100) / 100));
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState('');
+  const [compare, setCompare] = React.useState(false);
+  const [folder, setFolder] = React.useState('');
+  const [variants, setVariants] = React.useState<Variant[]>([{ model: 'sonnet', effort: 'default' }, { model: 'opus', effort: 'default' }]);
   React.useEffect(() => {
     if (!repo) return;
+    if (repo === '@free') { setBases([]); setDirty(0); return; }
     setBase(app.repos.find((x) => x.id === repo)?.defaultBranch || 'main');
     // Start from the local branch when it has commits GitHub does not, since that is where unpushed work is.
-    api.repoBases(repo).then((b) => { setBases(b); if (b[0]) setBase(b[0].ref); }).catch(() => setBases([]));
+    api.repoBases(repo).then((b) => { setBases(b); const want = initial?.base && b.find((x) => x.ref === initial.base); if (want) setBase(want.ref); else if (initial?.base) setBase(initial.base); else if (b[0]) setBase(b[0].ref); }).catch(() => setBases([]));
     api.workspaceInfo('repo:' + repo).then((i) => setDirty(i.dirty)).catch(() => setDirty(0));
   }, [repo]);
   const start = async () => {
     setBusy(true); setErr('');
     try {
-      const id = await api.createSession({ repoId: repo, base, task: task.trim(), model, budget: sub ? 0 : from(parseFloat(budget)) || app.settings.sessionBudget, permMode: perm });
+      const input = { repoId: repo, base: free ? '' : base, folder: free && folder ? folder : undefined, task: task.trim(), model, budget: sub ? 0 : from(parseFloat(budget)) || app.settings.sessionBudget, permMode: perm, after: after || undefined, source: initial?.source };
+      if (compare && !free) {
+        const ids = await api.createGroup(input, variants.map((v) => ({ model: v.model, effort: v.effort === 'default' ? undefined : v.effort })));
+        const group = getUI().app?.sessions.find((x) => x.id === ids[0])?.group;
+        onClose();
+        go(group ? { screen: 'compare', group } : { screen: 'overview' });
+        return;
+      }
+      const id = await api.createSession(input);
       onClose();
       go({ screen: 'session', id, tab: 'conversation' });
     } catch (e) { setErr(errText(e)); } finally { setBusy(false); }
   };
   const mod = mac() ? '⌘' : 'Ctrl+';
   return (
-    <Dialog width={560} title="New session" description="The agent works in its own git worktree on a new branch. Your checkout is not touched." onClose={onClose}
+    <Dialog width={560} title={free ? 'New free agent' : 'New session'} description={free ? 'An agent that is not tied to a repository, for research, writing, scripts and one-off jobs. It works in a folder of its own.' : 'The agent works in its own git worktree on a new branch. Your checkout is not touched.'} onClose={onClose}
       footer={<>
-        <span style={{ flex: 1, font: '400 12px/1.3 var(--font-sans)', color: err ? 'var(--status-error-text)' : 'var(--text-3)' }}>{err || (r ? `Branch ${app.settings.branchPrefix}<name> from ${base}` : '')}</span>
+        <span style={{ flex: 1, font: '400 12px/1.3 var(--font-sans)', color: err ? 'var(--status-error-text)' : 'var(--text-3)' }}>{err || (free ? (folder ? 'Works directly in your folder' : 'A new scratch folder, with git') : r ? `Branch ${app.settings.branchPrefix}<name> from ${base}` : '')}</span>
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" icon="play" kbd={mod + '↵'} loading={busy} disabled={!task.trim() || !repo} onClick={start}>Start session</Button>
+        <Button variant="primary" icon="play" kbd={mod + '↵'} loading={busy} disabled={!task.trim() || !repo} onClick={start}>{compare && !free ? `Start ${variants.length} runs` : after ? 'Queue session' : 'Start session'}</Button>
       </>}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div style={{ display: 'flex', gap: 8 }}>
-          <Select value={repo} onChange={(e: any) => setRepo(e.target.value)} options={app.repos.map((x) => x.id)} style={{ flex: 1 }} icon="book-bookmark" />
-          <Select value={base} onChange={(e: any) => setBase(e.target.value)} options={bases.length ? bases.map((b) => ({ value: b.ref, label: b.label })) : [base]} mono icon="git-branch" />
+          <Select value={repo} onChange={(e: any) => { setRepo(e.target.value); if (e.target.value === '@free') setCompare(false); }} options={[{ value: '@free', label: 'No repository (free agent)' }, ...app.repos.map((x) => ({ value: x.id, label: x.id }))]} style={{ flex: 1 }} icon={free ? 'robot' : 'book-bookmark'} />
+          {free ? <Button variant="secondary" icon="folder-open" onClick={() => void api.chooseFolder().then((f) => f && setFolder(f))}>{folder ? 'Change folder…' : 'Use my own folder…'}</Button>
+            : <Select value={base} onChange={(e: any) => setBase(e.target.value)} options={bases.length ? bases.map((b) => ({ value: b.ref, label: b.label })) : [base]} mono icon="git-branch" />}
         </div>
         <textarea autoFocus rows={5} value={task} onChange={(e) => setTask(e.target.value)} placeholder="What should the agent do? Be specific about the outcome, and mention files or checks that matter."
           onKeyDown={(e) => { if (e.key === 'Enter' && (mac() ? e.metaKey : e.ctrlKey) && task.trim()) void start(); }}
           style={{ resize: 'vertical', border: 'none', outline: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border-strong)', color: 'var(--text-1)', font: '400 13px/1.55 var(--font-sans)', padding: '10px 12px' }} />
-        <div style={{ display: 'grid', gridTemplateColumns: sub ? '1fr 1fr' : '1fr 1fr 110px', gap: 8 }}>
-          <Select value={model} onChange={(e: any) => setModel(e.target.value)} options={MODEL_OPTIONS} />
+        <div style={{ display: 'grid', gridTemplateColumns: sub ? '1fr 1fr' : '1fr 1fr 110px', gap: 8, ...(compare ? { opacity: 0.5 } : null) }}>
+          <Select disabled={compare} value={model} onChange={(e: any) => setModel(e.target.value)} options={MODEL_OPTIONS} />
           <Select value={perm} onChange={(e: any) => setPerm(e.target.value)} options={PERM_OPTIONS} />
           {sub ? null : <Input mono value={sym + budget} onChange={(e: any) => setBudget(e.target.value.replace(/[^0-9.]/g, ''))} />}
         </div>
+        {free && folder ? <span style={{ display: 'flex', gap: 8, alignItems: 'center', font: '400 12px/1.45 var(--font-sans)', color: 'var(--status-attention-text)' }}><i className="ph-fill ph-warning-circle" /><span><code style={{ font: 'var(--type-data)' }}>{folder}</code> is your own folder: the agent works in it directly, with no worktree to throw away and no checkpoints. <a href="#" onClick={(e) => { e.preventDefault(); setFolder(''); }}>Use a scratch folder instead</a></span></span> : null}
+        {!compare && !free ? (
+          <Select value={after} onChange={(e: any) => setAfter(e.target.value)} icon="hourglass"
+            options={[{ value: '', label: app.settings.maxRunning ? `Start now, or when one of ${app.settings.maxRunning} slots is free` : 'Start right away' }, ...app.sessions.filter((x) => x.repoId === repo && !x.mergedAt && !x.archivedAt).map((x) => ({ value: x.id, label: 'After “' + (x.customTitle || x.title || x.task).slice(0, 48) + '” is merged' }))]} />
+        ) : null}
+        {free ? null : <Checkbox checked={compare} onChange={setCompare} label="Compare several runs" description="Start the same task more than once, with different models or effort, and keep the best result." />}
+        {compare && !free ? <VariantEditor variants={variants} onChange={setVariants} /> : null}
         {(() => {
           const here = bases.find((b) => b.ref === base);
           const hidden = bases.find((b) => b.local && b.ahead > 0 && 'origin/' + b.ref === base);
@@ -373,7 +396,7 @@ export function RenameSession({ id, onClose }: { id: string; onClose(): void }) 
     try { await api.renameSession(id, v); onClose(); } catch (e) { setErr(errText(e)); }
   };
   return (
-    <Dialog width={440} title="Rename session" description={s.title && !s.customTitle ? `Claude named this one. Branch ${s.branch} is not changed.` : `The branch ${s.branch} is not changed.`} onClose={onClose}
+    <Dialog width={440} title="Rename session" description={s.free ? (s.title && !s.customTitle ? 'Claude named this one.' : 'Only the name in helm changes.') : s.title && !s.customTitle ? `Claude named this one. Branch ${s.branch} is not changed.` : `The branch ${s.branch} is not changed.`} onClose={onClose}
       footer={<>
         <span style={{ flex: 1, font: '400 12px/1.3 var(--font-sans)', color: 'var(--status-error-text)' }}>{err}</span>
         {s.customTitle ? <Button variant="ghost" onClick={() => void save('')}>Use Claude's name</Button> : null}
@@ -416,11 +439,12 @@ export function DeleteSession({ id, onClose }: { id: string; onClose(): void }) 
       </>}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {info?.running ? <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>It is running, and will be stopped first.</span> : null}
-        <Checkbox checked={worktree || branch} disabled={branch || !info?.worktreeExists} onChange={setWorktree} label="Remove the worktree"
-          description={info?.worktreeExists ? tilde(info.worktree, app.home) : 'Already gone from disk'} />
-        <Checkbox checked={branch} onChange={(v: boolean) => { setBranch(v); if (v) setWorktree(true); }} label={<span>Delete the branch <code style={{ font: 'var(--type-data)' }}>{s.branch}</code></span>}
-          description={info?.pushed ? 'Only the local branch. It also exists on GitHub and stays there.' : 'Local only. It is not on GitHub.'} />
-        {info && removing && info.dirty > 0 ? warn(`${info.dirty} uncommitted ${info.dirty === 1 ? 'file' : 'files'} in the worktree will be lost.`) : null}
+        {info?.free === 'folder' ? <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>It worked in your own folder, <code style={{ font: 'var(--type-data)' }}>{tilde(info.worktree, app.home)}</code>. That folder is left exactly as it is.</span> : null}
+        {info?.free !== 'folder' ? <Checkbox checked={worktree || branch} disabled={branch || !info?.worktreeExists} onChange={setWorktree} label={info?.free === 'scratch' ? 'Delete its scratch folder' : 'Remove the worktree'}
+          description={info?.worktreeExists ? tilde(info.worktree, app.home) : 'Already gone from disk'} /> : null}
+        {info?.free ? null : <Checkbox checked={branch} onChange={(v: boolean) => { setBranch(v); if (v) setWorktree(true); }} label={<span>Delete the branch <code style={{ font: 'var(--type-data)' }}>{s.branch}</code></span>}
+          description={info?.pushed ? 'Only the local branch. It also exists on GitHub and stays there.' : 'Local only. It is not on GitHub.'} />}
+        {info && removing && info.dirty > 0 ? warn(`${info.dirty} uncommitted ${info.dirty === 1 ? 'file' : 'files'} in the ${info.free ? 'folder' : 'worktree'} will be lost.`) : null}
         {info && branch && info.unpushed > 0 ? warn(`${info.unpushed} ${info.unpushed === 1 ? 'commit' : 'commits'} on this branch ${info.pushed ? 'are not on GitHub' : 'exist nowhere else'}, and will be lost.`) : null}
         {info && !branch && info.unpushed > 0 ? <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>Keeping the branch keeps its {info.unpushed} {info.unpushed === 1 ? 'commit' : 'commits'}.</span> : null}
       </div>
@@ -467,25 +491,46 @@ export function Palette({ onClose, toggleTheme }: { onClose(): void; toggleTheme
   const app = useApp();
   const [q, setQ] = React.useState('');
   const [i, setI] = React.useState(0);
-  type Item = { key: string; label: string; hint?: string; icon: string; run(): void };
+  type Item = { key: string; label: string; hint?: string; icon: string; section?: string; run(): void };
+  const [deep, setDeep] = React.useState<import('@shared/types').SearchResults | null>(null);
+  const [searching, setSearching] = React.useState(false);
+  // Search what was said in conversations, commit messages and, inside a session or repository, its code.
+  React.useEffect(() => {
+    setDeep(null);
+    if (q.trim().length < 2) { setSearching(false); return; }
+    setSearching(true);
+    let live = true;
+    const r = getUI().route;
+    const workspace = r.screen === 'session' ? r.id : r.screen === 'repo' ? 'repo:' + r.id : undefined;
+    const t = setTimeout(() => api.searchAll(q, workspace).then((x) => { if (live) { setDeep(x); setSearching(false); } }).catch(() => live && setSearching(false)), 250);
+    return () => { live = false; clearTimeout(t); };
+  }, [q]);
   const items: Item[] = [
     { key: 'a-overview', label: 'Overview', icon: 'squares-four', run: () => go({ screen: 'overview' }) },
-    { key: 'a-need', label: 'Needs you', icon: 'bell-ringing', run: () => go({ screen: 'overview', filter: 'attention' }) },
+    { key: 'a-need', label: 'Inbox: what needs you', icon: 'tray', run: () => go({ screen: 'inbox' }) },
+    { key: 'a-reports', label: 'Reports', icon: 'chart-line-up', run: () => go({ screen: 'reports' }) },
     { key: 'a-act', label: 'Activity', icon: 'pulse', run: () => go({ screen: 'activity' }) },
     { key: 'a-set', label: 'Settings', icon: 'gear-six', run: () => go({ screen: 'settings' }) },
     { key: 'a-new', label: 'New session', icon: 'plus', hint: mac() ? '⌘N' : 'Ctrl+N', run: () => setUI({ newSession: {} }) },
+    { key: 'a-free', label: 'New free agent (no repository)', icon: 'robot', run: () => setUI({ newSession: { repoId: '@free' } }) },
     { key: 'a-add', label: 'Add repository', icon: 'book-bookmark', run: () => setUI({ adding: true }) },
     { key: 'a-theme', label: 'Toggle theme', icon: 'sun', run: toggleTheme },
     ...app.sessions.map((s) => ({ key: 's-' + s.id, label: s.id, hint: s.task, icon: 'robot', run: () => go({ screen: 'session', id: s.id, tab: s.status === 'ready' ? 'changes' : 'conversation' }) })),
     ...app.repos.map((r) => ({ key: 'r-' + r.id, label: r.id, hint: 'Repository', icon: 'book-bookmark', run: () => go({ screen: 'repo', id: r.id }) }))
   ];
-  const f = items.filter((x) => (x.label + ' ' + (x.hint || '')).toLowerCase().includes(q.toLowerCase())).slice(0, 12);
+  const KIND_HINT = { you: 'you', claude: 'Claude', command: 'command', edit: 'edit', note: 'note' } as const;
+  const deepItems: Item[] = deep ? [
+    ...deep.transcripts.map((h, n) => ({ key: `t-${h.sessionId}-${h.index}-${n}`, section: 'In conversations', label: h.snippet, hint: `${h.title} · ${KIND_HINT[h.kind]}`, icon: 'chats-circle', run: () => go({ screen: 'session', id: h.sessionId, tab: 'conversation' }) })),
+    ...deep.commits.map((c) => ({ key: `c-${c.repoId}-${c.hash}`, section: 'Commits', label: c.msg, hint: `${c.hash} · ${c.who} · ${c.repoId}`, icon: 'git-commit', run: () => go({ screen: 'repo', id: c.repoId, tab: 'history' }) })),
+    ...deep.code.map((h, n) => ({ key: `f-${h.path}-${h.line}-${n}`, section: 'In code', label: h.text.trim() || h.path, hint: `${h.path}:${h.line}`, icon: 'code', run: () => (h.ws.startsWith('repo:') ? go({ screen: 'repo', id: h.ws.slice(5), tab: 'code' }) : go({ screen: 'session', id: h.ws, tab: 'code', file: h.path, line: h.line })) }))
+  ] : [];
+  const f = [...items.filter((x) => (x.label + ' ' + (x.hint || '')).toLowerCase().includes(q.toLowerCase())).slice(0, 8), ...deepItems];
   const go_ = (it?: Item) => { if (!it) return; onClose(); it.run(); };
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 120, background: 'var(--scrim)', display: 'flex', justifyContent: 'center', paddingTop: 90 }} onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: 560, alignSelf: 'flex-start', borderRadius: 'var(--radius-xl)', background: 'var(--bg-overlay)', boxShadow: 'var(--shadow-dialog)', overflow: 'hidden', animation: 'helm-in var(--dur-slow) var(--ease-out)' }}>
         <div style={{ padding: 10, borderBottom: '1px solid var(--border-subtle)' }}>
-          <Input autoFocus icon="magnifying-glass" size="lg" placeholder="Search sessions, repositories and actions" value={q} onChange={(e: any) => { setQ(e.target.value); setI(0); }}
+          <Input autoFocus icon="magnifying-glass" size="lg" placeholder="Search sessions, conversations, commits and code" value={q} onChange={(e: any) => { setQ(e.target.value); setI(0); }}
             onKeyDown={(e: any) => {
               if (e.key === 'ArrowDown') { e.preventDefault(); setI(Math.min(i + 1, f.length - 1)); }
               else if (e.key === 'ArrowUp') { e.preventDefault(); setI(Math.max(i - 1, 0)); }
@@ -494,14 +539,18 @@ export function Palette({ onClose, toggleTheme }: { onClose(): void; toggleTheme
             }} />
         </div>
         <div style={{ maxHeight: 360, overflow: 'auto', padding: 6 }}>
-          {f.length === 0 ? <div style={{ padding: 14, font: '400 13px/1 var(--font-sans)', color: 'var(--text-3)' }}>Nothing matches.</div> : null}
+          {f.length === 0 ? <div style={{ padding: 14, font: '400 13px/1 var(--font-sans)', color: 'var(--text-3)' }}>{searching ? 'Searching…' : 'Nothing matches.'}</div> : null}
           {f.map((it, n) => (
-            <div key={it.key} onMouseEnter={() => setI(n)} onClick={() => go_(it)} style={{ display: 'flex', alignItems: 'center', gap: 10, height: 34, padding: '0 10px', borderRadius: 'var(--radius-md)', cursor: 'pointer', background: n === i ? 'var(--bg-selected)' : 'transparent' }}>
+            <React.Fragment key={it.key}>
+            {it.section && f[n - 1]?.section !== it.section ? <div style={{ padding: '10px 10px 4px', font: '500 10.5px/1 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>{it.section}</div> : null}
+            <div onMouseEnter={() => setI(n)} onClick={() => go_(it)} style={{ display: 'flex', alignItems: 'center', gap: 10, height: 34, padding: '0 10px', borderRadius: 'var(--radius-md)', cursor: 'pointer', background: n === i ? 'var(--bg-selected)' : 'transparent' }}>
               <i className={'ph ph-' + it.icon} style={{ fontSize: 15, color: 'var(--text-3)' }} />
-              <span style={{ font: '500 13px/1 var(--font-sans)', whiteSpace: 'nowrap' }}>{it.label}</span>
-              <span style={{ flex: 1, minWidth: 0, font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.hint}</span>
+              <span style={{ font: it.section ? '400 12.5px/1.2 var(--font-sans)' : '500 13px/1 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: it.section ? '66%' : undefined, flex: it.section ? '0 1 auto' : 'none' }}>{it.label}</span>
+              <span style={{ flex: 1, minWidth: 0, font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textAlign: it.section ? 'right' : undefined }}>{it.hint}</span>
             </div>
+            </React.Fragment>
           ))}
+          {searching && f.length > 0 ? <div style={{ padding: '8px 10px', font: '400 11.5px/1 var(--font-sans)', color: 'var(--text-3)' }}>Searching conversations, commits and code…</div> : null}
         </div>
         <div style={{ display: 'flex', gap: 14, padding: '8px 12px', borderTop: '1px solid var(--border-subtle)', font: '400 11px/1 var(--font-sans)', color: 'var(--text-3)' }}>
           <span style={{ display: 'flex', gap: 5, alignItems: 'center' }}><Kbd keys={['↑', '↓']} /> move</span>

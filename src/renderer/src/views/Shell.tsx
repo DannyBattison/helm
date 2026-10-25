@@ -1,3 +1,4 @@
+import { inbox } from '@shared/inbox';
 import { sessionTitle } from '@shared/types';
 import React from 'react';
 import { FitAddon } from '@xterm/addon-fit';
@@ -5,7 +6,7 @@ import { Terminal } from '@xterm/xterm';
 import { api, on, platform, windowControls } from '../api';
 import { fontStack } from '../fonts';
 import glyph from '../assets/helm-glyph-violet.svg';
-import { ago, elapsed, fmtTokens, lifetimeTokens, livePlan, reposWithSessions, runningSubagents, subagentTree, totals, untilReset } from '../lib';
+import { ago, elapsed, fmtTokens, isFreeGroup, lifetimeTokens, livePlan, reposWithSessions, runningSubagents, subagentTree, totals, untilReset } from '../lib';
 import { go, refreshExternals, setUI, toast, useApp, useMoney, useUI, useTranscript, type Route } from '../store';
 import { Avatar, Badge, Breadcrumbs, ContextMenu, Grip, IconButton, Kbd, Meter, TreeItem, usePaneWidth, type MenuItem } from '../ui';
 
@@ -47,6 +48,7 @@ export function Sidebar() {
   const [subsClosed, setSubsClosed] = React.useState<Record<string, boolean>>({});
   const [width, grip, resetWidth] = usePaneWidth('sidebar', 240, 180, 440);
   const t = totals(app);
+  const inboxCount = inbox(app.sessions).filter((i) => i.kind !== 'queued' && i.kind !== 'stuck').length;
   const externals = useUI((u) => u.externals);
   const showArchived = useUI((u) => u.showArchived);
   const archivedCount = app.sessions.filter((x) => x.archivedAt).length + Object.values(externals).reduce((n, l) => n + l.filter((x) => x.archived).length, 0);
@@ -61,7 +63,7 @@ export function Sidebar() {
       { label: 'Open conversation', icon: 'chats-circle', onClick: () => go({ screen: 'session', id: s.id, tab: 'conversation' }) },
       { label: 'Open code', icon: 'code', onClick: () => go({ screen: 'session', id: s.id, tab: 'code' }) },
       { label: s.files ? `Review changes (${s.files})` : 'Review changes', icon: 'git-diff', onClick: () => go({ screen: 'session', id: s.id, tab: 'changes' }) },
-      { label: 'Copy branch name', icon: 'copy', separator: true, onClick: () => void api.copyText(s.branch) },
+      { label: s.free ? 'Copy folder path' : 'Copy branch name', icon: 'copy', separator: true, onClick: () => void api.copyText(s.free ? s.worktree : s.branch) },
       { label: 'Rename…', icon: 'pencil-simple', onClick: () => setUI({ renaming: s.id }) },
       { label: 'Stop session', icon: 'stop', disabled: !running, onClick: () => void api.stopSession(s.id) },
       { label: s.archivedAt ? 'Restore from archive' : running ? 'Archive (stop it first)' : 'Archive session', icon: s.archivedAt ? 'arrow-counter-clockwise' : 'archive', disabled: !s.archivedAt && running, onClick: () => { api.archiveSession(s.id, !s.archivedAt).catch((err) => toast({ tone: 'error', title: 'Could not archive', description: String(err?.message || err).replace(/^Error invoking remote method \'\w+\': Error: /, '') })); } },
@@ -141,9 +143,10 @@ export function Sidebar() {
       </div>
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: '4px 6px 8px' }}>
         <TreeItem icon="squares-four" label="Overview" selected={route.screen === 'overview' && !(route as any).filter} onClick={() => go({ screen: 'overview' })} />
-        <TreeItem icon="bell-ringing" label="Needs you" selected={route.screen === 'overview' && (route as any).filter === 'attention'} onClick={() => go({ screen: 'overview', filter: 'attention' })}
-          trailing={t.attention ? <Badge tone="attention" mono>{t.attention}</Badge> : null} />
+        <TreeItem icon="tray" label="Inbox" selected={route.screen === 'inbox'} onClick={() => go({ screen: 'inbox' })}
+          trailing={inboxCount ? <Badge tone="attention" mono>{inboxCount}</Badge> : null} />
         <TreeItem icon="pulse" label="Activity" selected={route.screen === 'activity'} onClick={() => go({ screen: 'activity' })} />
+        <TreeItem icon="chart-line-up" label="Reports" selected={route.screen === 'reports'} onClick={() => go({ screen: 'reports' })} />
         <TreeItem icon="archive" label="Archive" selected={route.screen === 'archive'} onClick={() => go({ screen: 'archive' })} trailing={archivedCount ? <span style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)' }}>{archivedCount}</span> : null} />
         <SectionLabel action={<><IconButton icon="archive" label={showArchived ? 'Hide archived sessions' : 'Show archived sessions'} size="sm" active={showArchived} onClick={toggleArchived} /><IconButton icon="plus" label="Add repository" size="sm" onClick={() => setUI({ adding: true })} /></>}>Repositories</SectionLabel>
         {app.repos.length === 0 ? <div style={{ padding: '4px 10px 6px', font: '400 12px/1.4 var(--font-sans)', color: 'var(--text-3)' }}>No repositories yet. Use + to add one from GitHub.</div> : null}
@@ -151,12 +154,12 @@ export function Sidebar() {
           const open = !closed[r.id];
           return (
             <div key={r.id} {...target('repo', r.id)} style={line(r.id)}>
-              <div {...dnd('repo', r.id)} onContextMenu={(e) => repoMenu(e, r)}>
-              <TreeItem icon="book-bookmark" expandable={sessions.length > 0} expanded={open}
-                label={<span><span style={{ color: 'var(--text-3)' }}>{r.owner}/</span>{r.name}</span>}
-                selected={route.screen === 'repo' && route.id === r.id} meta={sessions.length || null}
-                trailing={lifetimeTokens(app.lifetime[r.id]) ? <span title={`${lifetimeTokens(app.lifetime[r.id]).toLocaleString()} tokens used in ${r.name} over its lifetime, including deleted sessions`} style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)', flex: 'none', marginLeft: 6 }}>{fmtTokens(lifetimeTokens(app.lifetime[r.id]))}</span> : null}
-                onClick={() => { if (route.screen === 'repo' && route.id === r.id) setClosed({ ...closed, [r.id]: open }); else go({ screen: 'repo', id: r.id }); }} />
+              <div {...(isFreeGroup(r) ? {} : dnd('repo', r.id))} onContextMenu={(e) => { if (!isFreeGroup(r)) repoMenu(e, r); }}>
+              <TreeItem icon={isFreeGroup(r) ? 'robot' : 'book-bookmark'} expandable={sessions.length > 0} expanded={open}
+                label={isFreeGroup(r) ? <span title="Agents that are not tied to a repository">Free agents</span> : <span>{app.settings.showOwner ? <span style={{ color: 'var(--text-3)' }}>{r.owner}/</span> : null}{r.name}</span>}
+                selected={!isFreeGroup(r) && route.screen === 'repo' && route.id === r.id} meta={sessions.length || null}
+                trailing={isFreeGroup(r) ? <IconButton icon="plus" label="New free agent" size="sm" onClick={(e: any) => { e.stopPropagation(); setUI({ newSession: { repoId: '@free' } }); }} /> : lifetimeTokens(app.lifetime[r.id]) ? <span title={`${lifetimeTokens(app.lifetime[r.id]).toLocaleString()} tokens used in ${r.name} over its lifetime, including deleted sessions`} style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)', flex: 'none', marginLeft: 6 }}>{fmtTokens(lifetimeTokens(app.lifetime[r.id]))}</span> : null}
+                onClick={() => { if (isFreeGroup(r) || (route.screen === 'repo' && route.id === r.id)) setClosed({ ...closed, [r.id]: open }); else go({ screen: 'repo', id: r.id }); }} />
               </div>
               {open ? sessions.map((s) => {
                 const tree = subagentTree(s);
@@ -165,7 +168,7 @@ export function Sidebar() {
                 return (
                   <div key={s.id} {...target('session', s.id, r.id)} style={line(s.id)}>
                     <div {...dnd('session', s.id, r.id)} onContextMenu={(e) => sessionMenu(e, s)}>
-                    <TreeItem depth={1} status={s.status} label={sessionTitle(s)} expandable={tree.length > 0} expanded={subsOpen} style={s.archivedAt ? { opacity: 0.6 } : undefined} trailing={s.archivedAt ? <i className="ph ph-archive" title="Archived" style={{ fontSize: 12, color: 'var(--text-3)' }} /> : null}
+                    <TreeItem depth={1} status={s.status} label={sessionTitle(s)} expandable={tree.length > 0} expanded={subsOpen} style={s.archivedAt ? { opacity: 0.6 } : undefined} trailing={s.archivedAt ? <i className="ph ph-archive" title="Archived" style={{ fontSize: 12, color: 'var(--text-3)' }} /> : s.stuck ? <i className="ph ph-warning" title={'Looks stuck: ' + s.stuck} style={{ fontSize: 12, color: 'var(--status-attention-text)' }} /> : null}
                       meta={running ? <span style={{ color: 'var(--status-working-text)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><i className="ph ph-tree-structure" style={{ fontSize: 11 }} />{running}</span> : elapsed(s.startedAt, s.endedAt)}
                       selected={route.screen === 'session' && route.id === s.id && !route.sub}
                       onClick={() => {
@@ -224,7 +227,7 @@ export function TitleBar({ crumbs, theme, setTheme }: { crumbs: any[]; theme: 'd
         <Kbd keys={[mac() ? '⌘' : 'Ctrl', 'K']} />
       </button>
       <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 2 }}>
-        <IconButton icon="bell" label="Needs you" badge={need > 0} onClick={() => go({ screen: 'overview', filter: 'attention' })} />
+        <IconButton icon="bell" label="Inbox" badge={need > 0} onClick={() => go({ screen: 'inbox' })} />
         <IconButton icon={theme === 'dark' ? 'sun' : 'moon'} label="Toggle theme" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
         <span style={{ width: 1, height: 16, background: 'var(--border)', margin: '0 6px' }} />
         <Avatar name={app.user?.login || '?'} src={app.user?.avatar || undefined} size={22} />
@@ -268,6 +271,21 @@ export function XTerm({ sessionId, themeKey }: { sessionId: string | null; theme
     t.loadAddon(fit);
     t.open(el.current!);
     term.current = t;
+    // xterm sends a literal ^V for Ctrl+V and never pastes, so paste and copy are done here: Ctrl/Cmd+V pastes, Ctrl/Cmd+C copies a
+    // selection (with nothing selected it still interrupts), and so do Ctrl+Shift+V and Ctrl+Shift+C.
+    const pasteIn = () => api.readClipboard().then((text) => { if (text) t.paste(text); }).catch(() => undefined);
+    t.attachCustomKeyEventHandler((e) => {
+      if (e.type !== 'keydown' || !(e.ctrlKey || e.metaKey) || e.altKey) return true;
+      const k = e.key.toLowerCase();
+      if (k === 'v') { e.preventDefault(); void pasteIn(); return false; }
+      if (k === 'c' && (e.shiftKey || t.hasSelection())) { e.preventDefault(); if (t.hasSelection()) void api.copyText(t.getSelection()); return false; }
+      return true;
+    });
+    const onContext = (e: MouseEvent) => {
+      e.preventDefault();
+      if (t.hasSelection()) { void api.copyText(t.getSelection()); t.clearSelection(); } else void pasteIn();
+    };
+    el.current!.addEventListener('contextmenu', onContext);
     let id: string | null = null;
     let dead = false;
     const doFit = () => { try { fit.fit(); if (id) void api.termResize(id, t.cols, t.rows); } catch { /* hidden */ } };
@@ -282,7 +300,8 @@ export function XTerm({ sessionId, themeKey }: { sessionId: string | null; theme
     const offE = on('termExit', (p) => { if (p.id === id) t.write('\r\n\x1b[2m[process exited]\x1b[0m\r\n'); });
     const ro = new ResizeObserver(doFit);
     ro.observe(el.current!);
-    return () => { dead = true; offD(); offE(); ro.disconnect(); if (id) void api.termClose(id); t.dispose(); };
+    const host = el.current!;
+    return () => { dead = true; offD(); offE(); ro.disconnect(); host.removeEventListener('contextmenu', onContext); if (id) void api.termClose(id); t.dispose(); };
   }, [sessionId]);
   React.useEffect(() => {
     if (term.current) { term.current.options.fontFamily = fontStack(font); }

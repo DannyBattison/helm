@@ -15,12 +15,16 @@ export function createHost(send: Host['send'], allowLogin?: Host['allowLogin']):
     send,
     allowLogin,
     requireClaudeLogin: true,
+    companion: false,
     // No keychain on a server: the GitHub token sits in dataDir (0700) as plain text. See hosted-server/README.md.
     sdkClaudePath: () => undefined,
     cliClaudePath: () => undefined,
     chooseFolder: async () => null,
     openExternal: unavailable('Opening a link'),
     openPath: unavailable('Opening a folder'),
-    copyText: unavailable('Copying')
+    copyText: unavailable('Copying'),
+    appInfo: () => ({ version: 'hosted', packaged: true }),
+    // A report or diagnostics bundle goes to the browser, which downloads it.
+    async saveFile(name, text) { send('download', { name, text }); return name; }
   };
 }

@@ -1,5 +1,5 @@
 import React from 'react';
-import type { MemoryEntry, ProjectMemory, Repo as R } from '@shared/types';
+import type { HealthIssue, MemoryEntry, MemoryUsage, ProjectMemory, Repo as R } from '@shared/types';
 import { api } from '../api';
 import { relTime, tilde } from '../lib';
 import { toast, useApp } from '../store';
@@ -39,9 +39,13 @@ export function RepoMemory({ repo }: { repo: R }) {
   const [busy, setBusy] = React.useState(false);
   const [confirm, setConfirm] = React.useState(false);
   const [bodies, setBodies] = React.useState<Record<string, string>>({});
+  const [ins, setIns] = React.useState<{ usage: Record<string, MemoryUsage>; issues: HealthIssue[]; sessions: number } | null>(null);
+  const [flagged, setFlagged] = React.useState(false);
 
   const load = React.useCallback(() => {
     api.projectMemory(repo.id).then((m) => { setMem(m); setErr(''); }).catch((e) => { setErr(errText(e)); setMem({ dir: null, memories: [], instructions: [] }); });
+    // Reading every session's conversation takes a moment, so it comes after the list.
+    api.memoryInsights(repo.id).then(setIns).catch(() => setIns(null));
   }, [repo.id]);
   React.useEffect(() => { setMem(null); setSel(null); setBodies({}); load(); }, [repo.id]);
 
@@ -63,7 +67,8 @@ export function RepoMemory({ repo }: { repo: R }) {
   }, [q, mem]);
 
   const needle = q.trim().toLowerCase();
-  const hit = (m: MemoryEntry) => (type === 'all' || m.type === type) && (!needle || [m.name, m.description, m.file, bodies[m.path] || ''].some((s) => s.toLowerCase().includes(needle)));
+  const issuesOf = (m: MemoryEntry) => (ins?.issues || []).filter((i) => i.path === m.path);
+  const hit = (m: MemoryEntry) => (type === 'all' || m.type === type) && (!flagged || issuesOf(m).length > 0) && (!needle || [m.name, m.description, m.file, bodies[m.path] || ''].some((s) => s.toLowerCase().includes(needle)));
   const memories = (mem?.memories || []).filter((m) => !m.index).filter(hit).sort((a, b) => b.modified - a.modified);
   const index = mem?.memories.find((m) => m.index);
   const types = ['all', ...Array.from(new Set((mem?.memories || []).filter((m) => !m.index && m.type).map((m) => m.type)))];
@@ -91,6 +96,8 @@ export function RepoMemory({ repo }: { repo: R }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
         <i className={`ph ph-${icon}`} style={{ fontSize: 14, color: 'var(--text-3)', flex: 'none' }} />
         <span style={{ font: '600 12.5px/1.3 var(--font-sans)', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.kind === 'instructions' || e.index ? e.file : e.name}</span>
+        {e.kind === 'memory' && !e.index && issuesOf(e).length ? <i className="ph ph-warning" title={issuesOf(e).map((i) => i.text).join('\n')} style={{ fontSize: 13, color: 'var(--status-attention-text)' }} /> : null}
+        {e.kind === 'memory' && !e.index && ins ? <span title={ins.usage[e.file] ? `Read in ${ins.usage[e.file].sessions} of ${ins.sessions} sessions` : 'No session has read this'} style={{ font: '400 10.5px/1 var(--font-mono)', color: 'var(--text-3)' }}>{ins.usage[e.file]?.sessions ?? 0}×</span> : null}
         {e.type ? <Badge tone={TYPE_TONE[e.type] as any}>{e.type}</Badge> : null}
       </div>
       {e.description || e.kind === 'instructions' ? <div style={{ ...muted, paddingLeft: 21, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{e.description || tilde(e.path, app.home)}</div> : null}
@@ -105,6 +112,7 @@ export function RepoMemory({ repo }: { repo: R }) {
       <div style={{ width: 380, flex: 'none', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8, flex: 'none' }}>
           <Input value={q} placeholder={`Search ${mem.memories.filter((m) => !m.index).length} memories`} onChange={(e: any) => setQ(e.target.value)} />
+          {ins && ins.issues.length ? <div onClick={() => setFlagged(!flagged)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 'var(--radius-md)', cursor: 'pointer', background: flagged ? 'var(--status-attention-bg)' : 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px ' + (flagged ? 'var(--status-attention)' : 'var(--border)'), font: '400 12px/1.3 var(--font-sans)', color: 'var(--text-2)' }}><i className="ph ph-warning" style={{ color: 'var(--status-attention-text)' }} />{new Set(ins.issues.map((i) => i.path)).size} {new Set(ins.issues.map((i) => i.path)).size === 1 ? 'memory needs' : 'memories need'} a look<span style={{ flex: 1 }} /><span style={{ color: 'var(--text-3)' }}>{flagged ? 'Show all' : 'Show only these'}</span></div> : null}
           {types.length > 2 ? <SegmentedControl value={type} onChange={setType} options={types.map((t) => ({ value: t, label: t === 'all' ? 'All' : t }))} /> : null}
         </div>
         <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
@@ -125,7 +133,8 @@ export function RepoMemory({ repo }: { repo: R }) {
           <div style={{ flex: 'none', padding: '12px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ font: '600 15px/1.25 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cur.kind === 'memory' && !cur.index ? cur.name : cur.file}</div>
-              <div style={{ font: '400 11.5px/1.4 var(--font-mono)', color: 'var(--text-3)', marginTop: 3 }} title={cur.path}>{cur.kind === 'memory' ? cur.file : tilde(cur.path, app.home)} · changed {relTime(cur.modified)}</div>
+              <div style={{ font: '400 11.5px/1.4 var(--font-mono)', color: 'var(--text-3)', marginTop: 3 }} title={cur.path}>{cur.kind === 'memory' ? cur.file : tilde(cur.path, app.home)} · changed {relTime(cur.modified)}{ins && cur.kind === 'memory' && !cur.index ? ` · read in ${ins.usage[cur.file]?.sessions ?? 0} of ${ins.sessions} sessions${ins.usage[cur.file] ? ', last ' + relTime(ins.usage[cur.file].last) : ''}` : ''}</div>
+              {issuesOf(cur).map((i, n) => <div key={n} style={{ font: '400 12px/1.4 var(--font-sans)', color: 'var(--status-attention-text)', marginTop: 4, display: 'flex', gap: 6 }}><i className="ph ph-warning" style={{ marginTop: 2 }} />{i.text}</div>)}
             </div>
             {cur.type ? <Badge tone={TYPE_TONE[cur.type] as any}>{cur.type}</Badge> : null}
             {draft == null ? <Button size="sm" variant="secondary" icon="pencil-simple" disabled={text == null} onClick={() => setDraft(text ?? '')}>Edit</Button> : <>

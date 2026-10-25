@@ -1,6 +1,9 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { HelmBridge, HelmEvents } from '../shared/types';
 
+// HELM_RESET_ROUTE=1 forgets the page helm would reopen. For a page that freezes the window, so it can be started at all.
+if (process.env.HELM_RESET_ROUTE) { try { localStorage.removeItem('helm-route'); } catch { /* storage unavailable */ } }
+
 const bridge: HelmBridge = {
   platform: process.platform,
   invoke: (channel: string, ...args: unknown[]) => ipcRenderer.invoke(channel, ...args),

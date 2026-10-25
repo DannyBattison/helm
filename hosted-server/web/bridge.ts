@@ -7,9 +7,19 @@ type Pending = { resolve(v: unknown): void; reject(e: Error): void };
 const local: Record<string, (...a: any[]) => unknown> = {
   openExternal: (url: string) => { if (/^https:\/\//.test(url)) window.open(url, '_blank', 'noopener,noreferrer'); },
   copyText: (t: string) => navigator.clipboard.writeText(t),
+  readClipboard: () => navigator.clipboard.readText().catch(() => ''),
   chooseFolder: () => window.prompt('Folder on the server:') || null,
   openFolder: () => Promise.reject(new Error('Opening a folder is not available in the browser'))
 };
+
+/** Hands a file the server made to the browser, as a download. */
+function download({ name, text }: HelmEvents['download']) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+}
 
 const clientPlatform = () => (/Mac/i.test(navigator.platform) ? 'darwin' : /Win/i.test(navigator.platform) ? 'win32' : 'linux');
 
@@ -49,7 +59,10 @@ export function createBridge(url: string): HelmBridge & { ready: Promise<void> }
         if (p) { if (m.ok === true) p.resolve(m.value); else p.reject(new Error(m.error)); }
       } else if (m.t === 'session') {
         void fetch('/auth/claim', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ claim: m.claim }), credentials: 'same-origin' }).catch(() => undefined);
-      } else if (m.t === 'event') emit(m.channel, m.payload);
+      } else if (m.t === 'event') {
+        if (m.channel === 'download') download(m.payload as HelmEvents['download']);
+        else emit(m.channel, m.payload);
+      }
     };
     ws.onclose = () => {
       isReady = false;

@@ -7,6 +7,9 @@ import { Button, Toast } from './ui';
 import { Activity, Dashboard } from './views/Dashboard';
 import { AddRepo, ClaudeLoginGate, DeleteSession, MergePr, NewSession, Palette, RemoveRepo, RenameSession, SignIn } from './views/Dialogs';
 import { Archive } from './views/Archive';
+import { Reports } from './views/Reports';
+import { Inbox } from './views/Inbox';
+import { Compare, CheckpointsDialog, ContinueDialog, ForkDialog, RememberDialog, RestoreDialog } from './views/Review';
 import { ExternalSessionView, Repo } from './views/Repo';
 import { Session } from './views/Session';
 import { Settings } from './views/Settings';
@@ -21,6 +24,11 @@ export function App() {
   const palette = useUI((u) => u.palette);
   const deleting = useUI((u) => u.deleting);
   const renaming = useUI((u) => u.renaming);
+  const checkpointsOf = useUI((u) => u.checkpointsOf);
+  const restoring = useUI((u) => u.restoring);
+  const forking = useUI((u) => u.forking);
+  const continuing = useUI((u) => u.continuing);
+  const remembering = useUI((u) => u.remembering);
   const mergingPr = useUI((u) => u.mergingPr);
   const removingRepo = useUI((u) => u.removingRepo);
   const term = useUI((u) => u.term);
@@ -52,7 +60,7 @@ export function App() {
     const onKey = (e: KeyboardEvent) => {
       const m = mac ? e.metaKey : e.ctrlKey;
       if (m && e.key.toLowerCase() === 'k') { e.preventDefault(); setUI({ palette: true }); }
-      else if (m && e.key.toLowerCase() === 'n' && getUI().app?.repos.length) { e.preventDefault(); const r = getUI().route; setUI({ newSession: r.screen === 'repo' ? { repoId: r.id } : {} }); }
+      else if (m && e.key.toLowerCase() === 'n') { e.preventDefault(); const r = getUI().route; setUI({ newSession: r.screen === 'repo' ? { repoId: r.id } : {} }); }
       else if (e.ctrlKey && e.key === '`') { e.preventDefault(); setUI({ term: !getUI().term }); }
       else if (e.key === 'Escape') setUI({ palette: false });
     };
@@ -70,7 +78,7 @@ export function App() {
     const s = app.sessions.find((x) => x.id === route.id);
     const r = s && app.repos.find((x) => x.id === s.repoId);
     const subA = route.sub ? s?.subagents.find((x) => x.id === route.sub) : undefined;
-    crumbs = [{ label: r?.id || 'Session', icon: 'book-bookmark', onClick: r && (() => go({ screen: 'repo', id: r.id })) }, subA ? { label: route.id, onClick: () => go({ screen: 'session', id: route.id, tab: 'conversation' }) } : route.id, ...(subA ? [{ label: subA.description, icon: 'tree-structure' }] : [])];
+    crumbs = [{ label: s?.free ? 'Free agents' : r?.id || 'Session', icon: s?.free ? 'robot' : 'book-bookmark', onClick: r && (() => go({ screen: 'repo', id: r.id })) }, subA ? { label: route.id, onClick: () => go({ screen: 'session', id: route.id, tab: 'conversation' }) } : route.id, ...(subA ? [{ label: subA.description, icon: 'tree-structure' }] : [])];
     body = <Session key={route.id} id={route.id} tab={route.tab || 'conversation'} sub={route.sub} file={route.file} line={route.line} setTab={(t) => go({ screen: 'session', id: route.id, tab: t })} themeKey={theme} />;
   } else if (route.screen === 'external') {
     const x = getUI().externals[route.repoId]?.find((e) => e.id === route.id);
@@ -85,6 +93,15 @@ export function App() {
   } else if (route.screen === 'archive') {
     crumbs = [{ label: 'Archive', icon: 'archive' }];
     body = <Archive />;
+  } else if (route.screen === 'inbox') {
+    crumbs = [{ label: 'Inbox', icon: 'tray' }];
+    body = <Inbox />;
+  } else if (route.screen === 'compare') {
+    crumbs = [{ label: 'Compare runs', icon: 'columns' }];
+    body = <Compare group={route.group} />;
+  } else if (route.screen === 'reports') {
+    crumbs = [{ label: 'Reports', icon: 'chart-line-up' }];
+    body = <Reports tab={route.tab} />;
   } else if (route.screen === 'activity') {
     crumbs = [{ label: 'Activity', icon: 'pulse' }];
     body = <Activity />;
@@ -109,9 +126,14 @@ export function App() {
       </div>
       <StatusBar />
       {adding ? <AddRepo onClose={() => setUI({ adding: false })} /> : null}
-      {newSession ? <NewSession repoId={newSession.repoId} onClose={() => setUI({ newSession: null })} /> : null}
+      {newSession ? <NewSession repoId={newSession.repoId} initial={newSession} onClose={() => setUI({ newSession: null })} /> : null}
       {removingRepo ? <RemoveRepo key={removingRepo} id={removingRepo} onClose={() => setUI({ removingRepo: null })} /> : null}
       {mergingPr ? <MergePr key={mergingPr.repoId + mergingPr.number} target={mergingPr} onClose={() => setUI({ mergingPr: null })} /> : null}
+      {checkpointsOf ? <CheckpointsDialog key={checkpointsOf} id={checkpointsOf} onClose={() => setUI({ checkpointsOf: null })} /> : null}
+      {restoring ? <RestoreDialog key={restoring.sessionId + restoring.n} target={restoring} onClose={() => setUI({ restoring: null })} /> : null}
+      {forking ? <ForkDialog key={forking.sessionId + forking.index} target={forking} onClose={() => setUI({ forking: null })} /> : null}
+      {remembering ? <RememberDialog key={remembering.text} target={remembering} onClose={() => setUI({ remembering: null })} /> : null}
+      {continuing ? <ContinueDialog key={continuing.externalId} target={continuing} onClose={() => setUI({ continuing: null })} /> : null}
       {renaming ? <RenameSession key={renaming} id={renaming} onClose={() => setUI({ renaming: null })} /> : null}
       {deleting ? <DeleteSession key={deleting} id={deleting} onClose={() => setUI({ deleting: null })} /> : null}
       {palette ? <Palette onClose={() => setUI({ palette: false })} toggleTheme={toggleTheme} /> : null}

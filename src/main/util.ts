@@ -36,8 +36,28 @@ export function dayStart(now = Date.now()): number {
 
 /** Glob-ish match where `*` matches anything. */
 export function globMatch(pattern: string, text: string): boolean {
-  const re = new RegExp('^' + pattern.split('*').map((s) => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$');
-  return re.test(text.trim());
+  // `*` matches anything. Done by walking both strings, so no pattern can make it backtrack for long.
+  const t = text.trim();
+  let p = 0, i = 0, star = -1, mark = 0;
+  while (i < t.length) {
+    if (p < pattern.length && pattern[p] === '*') { star = p++; mark = i; }
+    else if (p < pattern.length && pattern[p] === t[i]) { p++; i++; }
+    else if (star >= 0) { p = star + 1; i = ++mark; }
+    else return false;
+  }
+  while (p < pattern.length && pattern[p] === '*') p++;
+  return p === pattern.length;
+}
+
+/**
+ * Where a command's card is in a transcript. The place it was given when the command started can be wrong by the time the result
+ * arrives, because a subagent's transcript is rebuilt from Claude Code's saved file in between, so look there first and then by id.
+ * -1 when the card is gone (the rebuilt transcript already has the finished command).
+ */
+export function findBash(t: ({ k?: string; id?: string } | null | undefined)[], toolId: string, hint: number): number {
+  const at = t[hint];
+  if (at && at.k === 'bash' && at.id === toolId) return hint;
+  return t.findIndex((e) => !!e && e.k === 'bash' && e.id === toolId);
 }
 
 /** Shell syntax that can chain, redirect or substitute, so one pattern must never cover a command using it. */

@@ -1,4 +1,4 @@
-import type { AppState, Repo, Session, Status } from '@shared/types';
+import { freeRepo, FREE_ID, type AppState, type Repo, type Session, type Status } from '../../shared/types';
 
 export const STATUS_LABEL: Record<Status, string> = { working: 'Working', attention: 'Needs you', ready: 'Ready for review', idle: 'Done', error: 'Failed' };
 
@@ -49,7 +49,12 @@ export function totals(app: AppState) {
   return { working: c('working'), attention: c('attention'), ready: c('ready'), idle: c('idle'), spent, cap: app.settings.weeklyLimit, tokens: app.tokensToday };
 }
 
-export const reposWithSessions = (app: AppState, includeArchived = false) => app.repos.map((r) => ({ repo: r, sessions: app.sessions.filter((s) => s.repoId === r.id && (includeArchived || !s.archivedAt)) }));
+/** Where a session works: its branch, or for a free agent the end of its folder's path. */
+export const whereLabel = (s: Session) => (s.free ? s.worktree.split(/[\\/]/).filter(Boolean).slice(-2).join('/') : s.branch);
+
+/** Repositories with their sessions, and first the free agents as a group of their own (which is not a repository). */
+export const reposWithSessions = (app: AppState, includeArchived = false) => [freeRepo(), ...app.repos].map((r) => ({ repo: r, sessions: app.sessions.filter((s) => s.repoId === r.id && (includeArchived || !s.archivedAt)) }));
+export const isFreeGroup = (r: { id: string }) => r.id === FREE_ID;
 
 export const repoOf = (app: AppState, s: Session): Repo | undefined => app.repos.find((r) => r.id === s.repoId);
 

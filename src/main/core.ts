@@ -1,23 +1,38 @@
 import { getSessionInfo, getSessionMessages, listSessions, query } from '@anthropic-ai/claude-agent-sdk';
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { readFile, stat, writeFile } from 'node:fs/promises';
+import { appendFile, readFile, stat, writeFile } from 'node:fs/promises';
 import { join, relative, resolve, isAbsolute } from 'node:path';
-import type { AppState, ClaudeLogin, ExternalTranscript, HelmApi, HelmEvents, Settings, TranscriptEvent } from '../shared/types';
+import type { AppState, ClaudeLogin, ExternalTranscript, HelmApi, HelmEvents, Settings, TranscriptEvent, WorktreeUsage } from '../shared/types';
 import { ClaudeAuth } from './claudeAuth';
 import * as G from './git';
 import * as GH from './github';
+import { Companion } from './companion';
+import { installLogging, logFile, logLine, recentLog } from './log';
+import { cleanHeavy, dirSize, reclaimableBytes } from './disk';
+import { diagnostics } from '../shared/diagnostics';
+import { memoryHealth, memoryReads, STALE_DAYS, type MemoryFile, type MemoryUsage } from '../shared/memoryhealth';
 import type { Host } from './host';
-import { deleteMemory, projectMemory, readMemory, writeMemory } from './memory';
+import { appendInstruction, deleteMemory, projectMemory, readMemory, writeMemory } from './memory';
 import { RepoService } from './repos';
+import { forecastRepo, revertHunk } from './review';
 import { SessionManager } from './sessions';
 import { Store } from './store';
-import { Terminals } from './terminal';
+import { shellOptions, Terminals } from './terminal';
 import { expandHome, home, run } from './util';
-import { CURRENCIES, currencyForRegion } from '../shared/money';
+import { CURRENCIES, currencyForRegion, fmtMoney } from '../shared/money';
+import { notifyDecision } from '../shared/notify';
+import { auditText } from '../shared/redact';
+import { prepareInputs } from '../shared/workflows';
+import { searchEvents, type SearchResults } from '../shared/search';
+import { sessionTitle } from '../shared/types';
+import { feedbackTask, issueTask, pullNumber } from '../shared/issues';
+import { auditCsv, buildReport, digestMarkdown, sessionsCsv, spendCsv, type ReportInput } from '../shared/reports';
 
 let host: Host;
 let claudeVersion: string | null = null;
+let forecast: import('../shared/forecast').Conflict[] = [];
+const usageCache = new Map<string, { at: number; bytes: number; partial: boolean; reclaimable: number; dirs: string[]; dirty: number; unpushed: number }>();
 const store = new Store();
 
 function send<K extends keyof HelmEvents>(channel: K, payload: HelmEvents[K]) {
@@ -34,10 +49,14 @@ function buildState(): AppState {
     repos: store.data.repos,
     sessions: store.data.sessions,
     activity: store.data.activity,
+    activitySeq: store.logSeq,
+    companion: companion.state,
     settings: store.data.settings,
     weekSpend: store.weekSpend(),
     lifetime: store.data.totals,
     tokensToday: store.tokensToday(),
+    forecast,
+    update: host.updates?.status() ?? { state: 'dev' },
     claudeVersion,
     plan: store.data.plan,
     rates: store.data.fx.rates,
@@ -55,27 +74,78 @@ async function refreshClaudeLogin(): Promise<ClaudeLogin | undefined> {
   return s;
 }
 
-function emitState() {
+let lastBadge = -1;
+export function emitState() {
   if (stateTimer) return;
   stateTimer = setTimeout(() => {
     stateTimer = null;
     send('state', buildState());
+    companion.changed();
+    // The badge is an OS call (on Windows it draws an overlay icon), so only make it when the number changes.
     const need = store.data.sessions.filter((s) => s.status === 'attention').length;
-    host.setBadge?.(need);
-  }, 60);
+    if (need !== lastBadge) { lastBadge = need; host.setBadge?.(need); }
+    host.changed?.();
+  }, 120);
+}
+
+// Watchdog: if the process is blocked for more than 400 ms (HELM_DEV_LAG=1: 80 ms), say so in diagnostics.log with what the
+// sessions were doing, so a freeze leaves something to read. The window reports its own stalls the same way.
+function diag(line: string) {
+  void appendFile(join(host.dataDir, 'diagnostics.log'), `${new Date().toISOString()} ${line}\n`, 'utf8').catch(() => undefined);
+}
+function startWatchdog() {
+  let last = Date.now();
+  const limit = process.env.HELM_DEV_LAG ? 80 : 400;
+  setInterval(() => {
+    const now = Date.now();
+    const lag = now - last - 100;
+    last = now;
+    if (lag > limit) {
+      const busy = store.data.sessions.filter((s) => s.status === 'working' || s.status === 'attention').map((s) => `${s.id}:${s.status}:${s.step.slice(0, 60)}`).join(' | ');
+      diag(`main process blocked ${lag} ms; sessions: ${busy || 'none active'}`);
+      if (process.env.HELM_DEV_LAG) console.log(`[lag] main process blocked ${lag} ms`);
+    }
+  }, 100);
 }
 
 const repos = new RepoService(store, emitState);
+// The companion is created before the sessions, which call into it when a transcript changes, but it needs them to act: so its
+// operations are filled in once they exist.
+const companionOps: import('./companion').CompanionOps = {} as any;
+const companion = new Companion(store, companionOps, () => emitState(), () => host);
 const sessions = new SessionManager(store, {
   emitState,
-  emitTranscript: (sessionId, index, event) => send('transcript', { sessionId, index, event }),
+  emitTranscript: (sessionId, index, event) => { send('transcript', { sessionId, index, event }); companion.onTranscript(sessionId, index, event); },
   toast: (t) => send('toast', t),
   claudePath: () => host.sdkClaudePath(),
   notify(kind, title, body, sessionId) {
     const st = store.data.settings;
-    const pref = kind === 'attention' ? st.notifyAttention : kind === 'ready' ? st.notifyReady : st.notifyFailed;
-    if (pref.desktop) host.notify?.({ kind, title, body, silent: !pref.sound, sessionId });
+    const repoId = sessions.get(sessionId)?.repoId || '';
+    const d = notifyDecision(st, kind, repoId);
+    if (!d.show) return;
+    const ask = kind === 'attention' ? sessions.get(sessionId)?.ask : undefined;
+    // A host that can show buttons on a notification lets a plain approval be answered without opening the app.
+    const answer = ask?.type === 'approve' ? (decision: 'approve' | 'deny') => { if (sessions.get(sessionId)?.ask?.id === ask.id) void sessions.resolveAsk(sessionId, ask.id, { decision }); } : undefined;
+    host.notify?.({ kind, title, body, silent: !d.sound, sessionId, answer });
   }
+});
+Object.assign(companionOps, {
+  resolveAsk: (id: string, askId: string, answer: any) => sessions.resolveAsk(id, askId, answer),
+  sendMessage: (id: string, text: string) => sessions.send(id, text),
+  interrupt: (id: string) => sessions.interrupt(id),
+  stop: (id: string) => sessions.stop(id),
+  resume: async (id: string) => { await sessions.send(id, 'Continue where you left off.'); },
+  archive: async (id: string, archived: boolean) => { sessions.archive(id, archived); },
+  createSession: async (repoId: string, task: string) => {
+    const st = store.data.settings;
+    const repo = repos.must(repoId);
+    await sessions.create({ repoId, base: repo.defaultBranch, task, model: st.defaultModel, budget: st.sessionBudget, permMode: st.permMode });
+  },
+  transcript: (key: string) => store.transcript(key),
+  externals: (repoId: string) => api.listExternalSessions(repoId),
+  externalTranscript: async (repoId: string, sessionId: string, limit: number) => { const r = await externalTranscript(repoId, sessionId, { tail: limit }); return { ready: r.ready, total: r.total, start: r.start, events: r.events }; },
+  archiveExternal: (sessionId: string, archived: boolean) => api.archiveExternal(sessionId, archived),
+  activity: (before: number | undefined, limit: number) => store.readLog(before, limit)
 });
 const terms = new Terminals((id, data) => send('termData', { id, data }), (id) => send('termExit', { id }));
 
@@ -181,13 +251,21 @@ function openExternalEditor(path: string, kind: string, line?: number) {
 }
 
 // ------------------------------------------------------------------ API
+const me = () => store.data.user?.login || 'you';
+const repoName = (id: string) => store.data.repos.find((r) => r.id === id)?.name || id.split('/').pop() || '';
+
 export const api: HelmApi = {
   async getState() { return buildState(); },
+  activityLog: (opts) => store.readLog(opts?.before, opts?.limit),
+  async companionUnlink() { if (host.companion !== false) await companion.unlink(); },
+  async reportStall(ms, where) { diag(`window stalled ${ms} ms on ${where}`); },
   async updateSettings(patch: Partial<Settings>) {
     Object.assign(store.data.settings, patch);
     if ('theme' in patch) applyTheme();
     if ('billing' in patch && patch.billing === 'subscription') void refreshPlan(true);
     if ('archiveAfterDays' in patch) sessions.autoArchive();
+    if (('companionEnabled' in patch || 'companionUrl' in patch) && host.companion !== false) companion.apply();
+    host.settingsChanged?.(patch);
     if ('planPause5h' in patch || 'planPauseWeek' in patch || 'billing' in patch) void sessions.enforcePlan();
     if ('claudePath' in patch) claudeVersion = await detectClaude(store.data.settings.claudePath);
     store.save();
@@ -236,10 +314,10 @@ export const api: HelmApi = {
   },
 
   async listGithubRepos() { return GH.listRepos(new Set(store.data.repos.map((r) => r.id))); },
-  async cloneRepos(ids) { for (const id of ids) await repos.cloneSlug(id); },
-  async cloneUrl(url, dir) { await repos.cloneUrl(url, dir); },
+  async cloneRepos(ids) { for (const id of ids) { await repos.cloneSlug(id); store.log({ kind: 'git', who: me(), human: true, what: 'cloned the repository', repo: repoName(id) }); } },
+  async cloneUrl(url, dir) { await repos.cloneUrl(url, dir); store.log({ kind: 'git', who: me(), human: true, what: `cloned ${url}`, repo: url.split('/').pop()?.replace(/\.git$/, '') || '' }); },
   async inspectClone(path) { return repos.inspect(path); },
-  async addLocalRepo(path) { await repos.addFromPath(expandHome(path)); },
+  async addLocalRepo(path) { await repos.addFromPath(expandHome(path)); store.log({ kind: 'git', who: me(), human: true, what: `added ${path}`, repo: path.split(/[\\/]/).pop() || '' }); },
   async removeRepo(id) {
     if (store.data.sessions.some((s) => s.repoId === id)) throw new Error('Remove or delete this repository\'s sessions first.');
     await repos.remove(id);
@@ -248,7 +326,10 @@ export const api: HelmApi = {
   async chooseFolder() {
     return host.chooseFolder();
   },
-  async fetchRepo(id) { await repos.fetch(id); },
+  async fetchRepo(id) {
+    try { await repos.fetch(id); store.log({ kind: 'fetch', who: me(), human: true, what: 'fetched origin', repo: repoName(id) }); }
+    catch (e: any) { store.log({ kind: 'fetch', who: me(), human: true, what: 'fetch failed', repo: repoName(id), ok: false, detail: String(e?.message || e) }); throw e; }
+  },
   repoBranches: (id) => repos.branches(id),
   repoBases: (id) => repos.bases(id),
   repoHistory: (id, limit) => repos.history(id, store.data.sessions, limit),
@@ -275,7 +356,7 @@ export const api: HelmApi = {
     const r = repos.must(repoId);
     const s = store.data.sessions.find((x) => x.repoId === repoId && x.worktree === path);
     if (s) await sessions.remove(s.id, { worktree: true, branch: false });
-    else await G.removeWorktree(r.localPath, path);
+    else { await G.removeWorktree(r.localPath, path); store.log({ kind: 'worktree', who: me(), human: true, what: 'removed a worktree', repo: r.name, detail: path }); }
   },
 
   createSession: (input) => sessions.create(input),
@@ -380,10 +461,19 @@ export const api: HelmApi = {
   async commitOnly(id, files, message) {
     const w = ws(id);
     await commitFiles(w.worktree, files, message);
+    store.log({ kind: 'commit', who: me(), human: true, what: `committed ${files.length} ${files.length === 1 ? 'file' : 'files'}: ${message.split('\n')[0].slice(0, 80)}`, repo: w.sessionId ? repoName(sessions.get(w.sessionId)?.repoId || '') : '', sessionId: w.sessionId, detail: files.join('\n') });
     const s = w.sessionId ? sessions.get(w.sessionId) : undefined;
     if (s) await sessions.refreshStats(s);
   },
-  async pushStatus(repoId) { return pushTargets(repoId); },
+  pushStatus(repoId) {
+    // The window asks from several places on a timer. Share one answer instead of running git for each ask.
+    const key = repoId || '*';
+    const hit = pushing.get(key);
+    if (hit) return hit;
+    const p = pushTargets(repoId).finally(() => setTimeout(() => pushing.delete(key), 4000));
+    pushing.set(key, p);
+    return p;
+  },
   async push({ repoId, target }) {
     const pushed: string[] = [], failed: { id: string; error: string }[] = [];
     let uncommitted = 0;
@@ -395,21 +485,30 @@ export const api: HelmApi = {
         if (t.dirty) uncommitted++;
         await G.git(cwd, 'push', '-u', 'origin', t.branch);
         pushed.push(key);
-      } catch (e: any) { failed.push({ id: key, error: String(e?.message || e).split('\n').slice(-2).join(' ').trim() }); }
+        store.log({ kind: 'push', who: me(), human: true, what: `pushed ${t.branch} (${t.ahead} ${t.ahead === 1 ? 'commit' : 'commits'})`, repo: repoName(t.repoId), sessionId: t.kind === 'session' ? t.id : undefined });
+      } catch (e: any) {
+        const error = String(e?.message || e).split('\n').slice(-2).join(' ').trim();
+        failed.push({ id: key, error });
+        store.log({ kind: 'push', who: me(), human: true, what: `push of ${t.branch} failed`, repo: repoName(t.repoId), sessionId: t.kind === 'session' ? t.id : undefined, ok: false, detail: error });
+      }
     }
+    pushing.clear();
     emitState();
     return { pushed, failed, uncommitted };
   },
   async createPr(input) {
     const s = sess(input.sessionId);
+    if (s.free) throw new Error('A free agent has no repository to open a pull request in.');
     const repo = repos.must(s.repoId);
     if (input.files.length) await commitFiles(s.worktree, input.files, input.message || input.title);
     await G.git(s.worktree, 'push', '-u', 'origin', s.branch);
+    store.log({ kind: 'push', who: me(), human: true, what: `pushed ${s.branch}`, repo: repo.name, sessionId: s.id });
     const url = await GH.createPull(repo.id, { head: s.branch, base: input.base, title: input.title, body: input.body, draft: input.draft });
     s.prUrl = url;
+    s.prAt = Date.now();
     s.removeAfterMerge = input.removeAfterMerge;
     s.deleteBranchAfterMerge = input.deleteBranchAfterMerge;
-    store.data.activity.unshift({ id: Math.random().toString(36).slice(2), t: Date.now(), kind: 'ready', who: s.id, what: `opened a pull request`, repo: repo.name, sessionId: s.id });
+    store.log({ kind: 'pr', who: me(), human: true, what: `opened a pull request for ${s.branch}`, repo: repo.name, sessionId: s.id });
     store.save();
     emitState();
     return { url };
@@ -427,12 +526,13 @@ export const api: HelmApi = {
     if (opts.deleteBranch) await GH.deleteBranch(repoId, pr.branch).catch(() => undefined);
     await pollMerges();
     mergingHere.delete(`${repoId}#${number}`);
-    store.data.activity.unshift({ id: Math.random().toString(36).slice(2), t: Date.now(), kind: 'merge', who: store.data.user?.login || 'you', human: true, what: `merged PR #${pr.number} “${pr.title}” (${opts.method})`, repo: repoId.split('/')[1] });
+    store.log({ kind: 'merge', who: store.data.user?.login || 'you', human: true, what: `merged PR #${pr.number} “${pr.title}” (${opts.method})`, repo: repoId.split('/')[1] });
     store.save();
     emitState();
   },
   async mergeDirect(input) {
     const s = sess(input.sessionId);
+    if (s.free) throw new Error('A free agent has no repository to merge into.');
     const repo = repos.must(s.repoId);
     const base = input.base.replace(/^origin\//, '');
     if (base === s.branch) throw new Error('A session cannot merge into its own branch.');
@@ -446,7 +546,7 @@ export const api: HelmApi = {
         throw new Error(`${base} has changes that conflict with this branch. Ask the agent to merge ${base} into it and resolve the conflicts, then try again.`);
       }
     }
-    try { await G.git(s.worktree, 'push', 'origin', `HEAD:refs/heads/${base}`); }
+    try { await G.git(s.worktree, 'push', 'origin', `HEAD:refs/heads/${base}`); store.log({ kind: 'push', who: me(), human: true, what: `pushed ${s.branch} onto ${base}`, repo: repo.name, sessionId: s.id }); }
     catch (e: any) { throw new Error(`GitHub refused the push to ${base}${/protected|denied|declined|rule/i.test(String(e?.message)) ? ', which looks protected: use a pull request instead' : ''}. ${String(e?.message || e).split('\n').slice(-3).join(' ').trim()}`); }
     const sha = (await G.git(s.worktree, 'rev-parse', '--short', 'HEAD')).trim();
     // Keep the local copy of the base branch in step, when that can be done without touching anyone's work.
@@ -462,7 +562,7 @@ export const api: HelmApi = {
     } catch (e: any) { localNote = `Your local ${base} could not be fast-forwarded (${String(e?.message || e).split('\n')[0]}).`; }
     s.mergedInto = base;
     s.mergedAt = Date.now();
-    store.data.activity.unshift({ id: Math.random().toString(36).slice(2), t: Date.now(), kind: 'merge', who: store.data.user?.login || 'you', human: true, what: `merged ${s.branch} into ${base}`, repo: repo.name, sessionId: s.id });
+    store.log({ kind: 'merge', who: store.data.user?.login || 'you', human: true, what: `merged ${s.branch} into ${base}`, repo: repo.name, sessionId: s.id });
     store.save();
     emitState();
     // A branch cannot be deleted while it is checked out, so deleting it takes the worktree with it.
@@ -471,7 +571,7 @@ export const api: HelmApi = {
     return { sha, localUpdated, localNote };
   },
   async requestChanges(id, comments) {
-    const text = 'Review comments from the user. Please address each one:\n\n' + comments.map((c) => `- ${c.file}:${c.line}: ${c.text}`).join('\n');
+    const text = 'Review comments from the user. Please address each one:\n\n' + comments.map((c) => `- ${c.line ? `${c.file}:${c.line}` : c.file}: ${c.text}`).join('\n');
     await sessions.send(id, text);
   },
   async openInEditor(id, path, line) {
@@ -501,13 +601,200 @@ export const api: HelmApi = {
 
   async termOpen(id, cols, rows) {
     const cwd = id ? ws(id).worktree : null;
-    return terms.open(cwd, cols, rows);
+    const st = store.data.settings;
+    return terms.open(cwd, cols, rows, st.terminalShell, st.terminalShellCustom);
   },
   async termWrite(id, d) { terms.write(id, d); },
   async termResize(id, c, r) { terms.resize(id, c, r); },
   async termClose(id) { terms.close(id); },
-  async copyText(t) { await host.copyText(t); }
+  async copyText(t) { await host.copyText(t); },
+  async readClipboard() { return host.readClipboard ? host.readClipboard() : ''; },
+  listShells: () => shellOptions(),
+
+  checkpoints: (id) => sessions.checkpoints(id),
+  restoreCheckpoint: (id, n) => sessions.restoreTo(id, n),
+  forkSession: (id, index, task) => sessions.fork(id, index, task),
+  continueExternal: (repoId, extId, task) => sessions.continueExternal(repoId, extId, task),
+  createGroup: (input, variants) => sessions.createGroup(input, variants),
+  keepFromGroup: (group, keep) => sessions.keepFromGroup(group, keep),
+  async revertHunk(id, path, hunk) {
+    const s = sess(id);
+    safePath(s, path);
+    await sessions.snapshot(id, `Before rejecting a hunk in ${path}`);
+    await revertHunk(s.worktree, path, hunk);
+    await sessions.userEdited(id, path);
+    await sessions.refreshStats(s);
+  },
+  async setHunksReviewed(id, ids, reviewed) { sessions.setReviewed(id, ids, reviewed); },
+  startReview: (id) => sessions.review(id),
+  async memoryInsights(repoId) {
+    const repo = repos.must(repoId);
+    const mine = store.data.sessions.filter((s) => s.repoId === repoId);
+    const usage: Record<string, MemoryUsage> = {};
+    for (const s of mine) {
+      for (const f of memoryReads(await store.peekTranscript(s.id))) {
+        const u = (usage[f] ||= { sessions: 0, last: 0 });
+        u.sessions++; u.last = Math.max(u.last, s.endedAt ?? s.lastAccess);
+      }
+    }
+    const pm = await projectMemory(repo.localPath);
+    const files: MemoryFile[] = await Promise.all(pm.memories.map(async (m) => ({ path: m.path, file: m.path.split(/[\\/]/).pop()!, name: m.name, description: m.description, type: m.type, modified: m.modified, index: m.index, text: await readFile(m.path, 'utf8').catch(() => '') })));
+    const known = new Set(await G.listFiles(repo.localPath).catch(() => [] as string[]));
+    const since = Date.now() - STALE_DAYS * 86_400_000;
+    const issues = memoryHealth({ memories: files, usage, now: Date.now(), recentSessions: mine.filter((s) => s.startedAt >= since).length, exists: (p) => known.has(p) || [...known].some((k) => k.startsWith(p.replace(/\/$/, '') + '/')) });
+    return { usage, issues, sessions: mine.length };
+  },
+  async rememberInstruction(repoId, target, text) {
+    const repo = repos.must(repoId);
+    const file = target === 'user' ? join(home, '.claude', 'CLAUDE.md') : join(repo.localPath, target === 'local' ? 'CLAUDE.local.md' : 'CLAUDE.md');
+    await appendInstruction(file, text);
+    return file;
+  },
+  async worktreeUsage(refresh) {
+    const out: WorktreeUsage[] = [];
+    // A folder you chose for a free agent is yours: it is not measured or cleaned.
+    const live = store.data.sessions.filter((s) => !s.worktreeGone && !(s.free && !s.free.managed));
+    const todo = live.filter((s) => refresh || !usageCache.has(s.id) || Date.now() - usageCache.get(s.id)!.at > 5 * 60_000);
+    // Three at a time: sizing a worktree reads every file in it.
+    for (let i = 0; i < todo.length; i += 3) {
+      await Promise.all(todo.slice(i, i + 3).map(async (s) => {
+        if (!(await G.fileExists(s.worktree))) { usageCache.delete(s.id); return; }
+        const [size, rec, info] = await Promise.all([dirSize(s.worktree), reclaimableBytes(s.worktree), sessions.deleteInfo(s.id).catch(() => null)]);
+        usageCache.set(s.id, { at: Date.now(), bytes: size.bytes, partial: size.partial, reclaimable: rec.bytes, dirs: rec.dirs, dirty: info?.dirty ?? 0, unpushed: info?.unpushed ?? 0 });
+      }));
+    }
+    for (const s of live) {
+      const c = usageCache.get(s.id);
+      if (!c) continue;
+      out.push({ sessionId: s.id, repoId: s.repoId, branch: s.branch, path: s.worktree, bytes: c.bytes, reclaimable: c.reclaimable, reclaimDirs: c.dirs, partial: c.partial, status: s.status, running: sessions.isRunning(s.id), archived: !!s.archivedAt, merged: !!s.mergedAt, lastAccess: s.lastAccess, dirty: c.dirty, unpushed: c.unpushed });
+    }
+    return out.sort((a, b) => b.bytes - a.bytes);
+  },
+  async cleanWorktree(id) {
+    const s = sess(id);
+    if (s.free && !s.free.managed) throw new Error('That is your own folder, so helm does not clean it.');
+    if (sessions.isRunning(id) && (s.status === 'working' || s.status === 'attention')) throw new Error('Stop the session first: removing packages under a running agent breaks its commands.');
+    const r = await cleanHeavy(s.worktree);
+    usageCache.delete(id);
+    if (r.removed.length) store.data.activity.unshift({ id: Math.random().toString(36).slice(2), t: Date.now(), kind: 'done', who: s.id, what: `cleaned ${r.removed.join(', ')} (${(r.bytes / 1e6).toFixed(0)} MB)`, repo: repos.must(s.repoId).name, sessionId: s.id });
+    store.save();
+    return r.bytes;
+  },
+  async dropWorktree(id) {
+    const s = sess(id);
+    if (s.free) throw new Error('Delete a free agent instead: it has no worktree to remove on its own.');
+    if (!s.archivedAt && !s.mergedAt) throw new Error('Only archived or merged sessions can lose their worktree.');
+    const info = await sessions.deleteInfo(id);
+    if (info.dirty) throw new Error(`It has ${info.dirty} uncommitted ${info.dirty === 1 ? 'file' : 'files'}. Commit or discard them first.`);
+    if (info.unpushed) throw new Error(`It has ${info.unpushed} ${info.unpushed === 1 ? 'commit' : 'commits'} that are not on GitHub. Push them first.`);
+    await sessions.stop(id);
+    await G.removeWorktree(repos.must(s.repoId).localPath, s.worktree);
+    s.worktreeGone = true;
+    usageCache.delete(id);
+    store.save();
+    emitState();
+  },
+  async checkForUpdates() { return host.updates ? host.updates.check() : { state: 'dev' as const }; },
+  async installUpdate() { host.updates?.install(); },
+  async saveDiagnostics() {
+    const gitVersion = (await run('git', ['--version']).catch(() => '')).replace(/^git version\s*/, '').trim() || null;
+    const info = host.appInfo?.() ?? { version: 'server', packaged: true };
+    const text = diagnostics({
+      now: Date.now(), claudeVersion, gitVersion, home, settings: store.data.settings, repos: store.data.repos, sessions: store.data.sessions, log: recentLog(),
+      app: { version: info.version, electron: info.electron, node: process.versions.node, chrome: info.chrome, platform: process.platform, arch: process.arch, os: (await import('node:os')).release(), packaged: info.packaged }
+    });
+    return saveFile(`helm-diagnostics-${new Date().toISOString().slice(0, 10)}.md`, text);
+  },
+  async openLogFolder() { const f = logFile(); if (f) host.showInFolder?.(f); },
+  async logRenderer(message) { logLine('error', 'window: ' + String(message).slice(0, 2000)); },
+  repoWorkflows: (repoId, ref) => GH.listWorkflows(repoId, ref),
+  workflowRuns: (repoId, id) => GH.listRuns(repoId, id),
+  async runWorkflow(repoId, id, ref, inputs) {
+    repos.must(repoId);
+    // The inputs are checked here against the file on that branch, not trusted from the window.
+    const wf = (await GH.listWorkflows(repoId, ref)).find((w) => w.id === id);
+    if (!wf) throw new Error('That workflow was not found.');
+    if (!wf.dispatchable) throw new Error(`${wf.name} cannot be started by hand on ${ref}: it has no workflow_dispatch trigger there.`);
+    const prepared = prepareInputs(wf.inputs, inputs);
+    const bad = Object.entries(prepared.errors);
+    if (bad.length) throw new Error(bad.map(([k, v]) => `${k}: ${v}`).join('; '));
+    await GH.dispatchWorkflow(repoId, id, ref, prepared.inputs);
+    const what = `${wf.name} on ${ref}${Object.keys(prepared.inputs).length ? ' (' + Object.entries(prepared.inputs).map(([k, v]) => `${k}=${v}`).join(', ') + ')' : ''}`;
+    store.addAudit({ t: Date.now(), sessionId: '-', repoId, kind: 'dispatch', text: auditText(`Ran workflow ${what}`), decision: 'approved' });
+    store.data.activity.unshift({ id: Math.random().toString(36).slice(2), t: Date.now(), kind: 'start', who: store.data.user?.login || 'you', human: true, what: `ran workflow ${what}`, repo: repos.must(repoId).name });
+    store.save();
+    emitState();
+  },
+  startQueued: (id) => sessions.startNow(id),
+  async searchAll(query, workspace) {
+    const q = query.trim();
+    const out: SearchResults = { query: q, transcripts: [], commits: [], code: [] };
+    if (q.length < 2) return out;
+    const recent = [...store.data.sessions].sort((a, b) => b.lastAccess - a.lastAccess).slice(0, 80);
+    for (const s of recent) {
+      if (out.transcripts.length >= 24) break;
+      for (const h of searchEvents(await store.peekTranscript(s.id), q, 2)) out.transcripts.push({ ...h, sessionId: s.id, repoId: s.repoId, title: sessionTitle(s) });
+    }
+    await Promise.all(store.data.repos.map(async (r) => {
+      const log = await G.git(r.localPath, 'log', '--exclude=refs/helm/*', '--all', '-i', '--fixed-strings', `--grep=${q}`, '-n', '8', '--format=%h%x1f%s%x1f%an%x1f%ct').catch(() => '');
+      for (const l of log.split('\n').filter(Boolean)) { const [hash, msg, who, ct] = l.split('\x1f'); out.commits.push({ repoId: r.id, hash, msg, who, at: +ct * 1000 }); }
+      if (/^[0-9a-f]{5,40}$/i.test(q)) {
+        const one = await G.git(r.localPath, 'log', '-n', '1', '--format=%h%x1f%s%x1f%an%x1f%ct', q).catch(() => '');
+        const [hash, msg, who, ct] = one.trim().split('\x1f');
+        if (hash && !out.commits.some((c) => c.repoId === r.id && c.hash === hash)) out.commits.unshift({ repoId: r.id, hash, msg, who, at: +ct * 1000 });
+      }
+    }));
+    out.commits = out.commits.sort((a, b) => b.at - a.at).slice(0, 15);
+    if (workspace && q.length >= 3) {
+      try { out.code = (await G.searchFiles(ws(workspace).worktree, q, false)).slice(0, 20).map((h) => ({ ws: workspace, ...h })); } catch { /* workspace gone */ }
+    }
+    return out;
+  },
+  cancelQueued: (id) => sessions.dequeue(id),
+  repoIssues: (id) => GH.listIssues(id),
+  async issueTask(repoId, number) {
+    const [issue, comments] = await Promise.all([GH.getIssue(repoId, number), GH.issueComments(repoId, number).catch(() => [])]);
+    return { task: issueTask(issue, comments), title: issue.title, url: issue.url };
+  },
+  async feedbackTask(repoId, number) {
+    const pr = (await GH.listPulls(repoId)).find((p) => p.number === number);
+    if (!pr) throw new Error(`Pull request #${number} was not found.`);
+    const comments = await GH.pullReviewComments(repoId, number);
+    if (!comments.length) throw new Error('This pull request has no review comments yet.');
+    return { task: feedbackTask(pr, comments), base: 'origin/' + pr.branch, count: comments.length };
+  },
+  async sendPrFeedback(id) {
+    const s = sess(id);
+    const n = pullNumber(s.prUrl);
+    if (!n) throw new Error('This session has no pull request.');
+    const since = s.feedbackAt ?? s.prAt ?? 0;
+    const fresh = (await GH.pullReviewComments(s.repoId, n)).filter((c) => Date.parse(c.at) > since && c.author !== store.data.user?.login);
+    if (!fresh.length) return 0;
+    s.feedbackAt = Math.max(...fresh.map((c) => Date.parse(c.at)));
+    store.save();
+    await sessions.send(id, feedbackTask({ number: n, title: s.customTitle || s.title || s.task, url: s.prUrl! }, fresh));
+    return fresh.length;
+  },
+
+  async getReport(days) { return buildReport(reportInput(days)); },
+  async reportDigest(days) { return digestMarkdown(reportInput(days), reportMoney); },
+  async exportReport(kind, days) {
+    const input = reportInput(days);
+    const stamp = new Date().toISOString().slice(0, 10);
+    return saveFile(`helm-${kind}-${stamp}.${kind === 'digest' ? 'md' : 'csv'}`, kind === 'spend' ? spendCsv(input) : kind === 'sessions' ? sessionsCsv(input) : kind === 'audit' ? auditCsv(input) : digestMarkdown(input, reportMoney));
+  }
 };
+
+function reportInput(days: number): ReportInput {
+  const d = store.data;
+  return { sessions: d.sessions, daily: d.daily, audit: d.audit, alwaysAllow: d.settings.alwaysAllow, plan: d.plan, now: Date.now(), days: Math.max(1, Math.min(365, Math.round(days) || 30)) };
+}
+const reportMoney = (v: number) => fmtMoney(v, store.data.settings.currency, store.data.fx.rates);
+/** Hands a generated file to the user: a save dialog on the desktop, a download in the browser. Resolves to where it went, or null if cancelled. */
+async function saveFile(name: string, text: string): Promise<string | null> {
+  if (!host.saveFile) throw new Error('Saving files is not available here.');
+  return host.saveFile(name, text);
+}
 
 async function commitFiles(wt: string, files: string[], message: string) {
   await G.git(wt, 'add', '--', ...files);
@@ -588,6 +875,7 @@ async function aheadOf(cwd: string, branch: string): Promise<{ ahead: number; on
 }
 
 /** Every branch helm knows of that could be pushed: its sessions' branches, and the branch checked out in each repository's own folder. */
+const pushing = new Map<string, Promise<import('../shared/types').PushTarget[]>>();
 async function pushTargets(repoId?: string): Promise<import('../shared/types').PushTarget[]> {
   const out: import('../shared/types').PushTarget[] = [];
   for (const r of store.data.repos.filter((x) => !repoId || x.id === repoId)) {
@@ -598,7 +886,8 @@ async function pushTargets(repoId?: string): Promise<import('../shared/types').P
     }
     for (const s of sessions.sessions.filter((x) => x.repoId === r.id && !x.worktreeGone && !x.archivedAt)) {
       if (!(await G.fileExists(s.worktree))) continue;
-      const dirty = (await G.git(s.worktree, 'status', '--porcelain').catch(() => '')).split('\n').filter(Boolean).length;
+      // Tracked files only: a full status walks every untracked file, which on a big worktree (node_modules, build output) takes seconds.
+      const dirty = (await G.git(s.worktree, 'status', '--porcelain', '--untracked-files=no').catch(() => '')).split('\n').filter(Boolean).length;
       out.push({ id: s.id, kind: 'session', repoId: r.id, branch: s.branch, dirty, ...(await aheadOf(s.worktree, s.branch)) });
     }
   }
@@ -619,19 +908,39 @@ async function pollMerges() {
         if (pr?.state === 'merged') {
           const delBranch = s.deleteBranchAfterMerge ?? s.removeAfterMerge;
           await sessions.finishMerged(s.id, { into: pr.base }, { worktree: s.removeAfterMerge || delBranch, branch: delBranch });
-          if (!mergingHere.has(`${repoId}#${pr.number}`)) store.data.activity.unshift({ id: Math.random().toString(36).slice(2), t: Date.now(), kind: 'merge', who: store.data.user?.login || 'you', human: true, what: `merged PR #${pr.number} “${pr.title}”`, repo: repoId.split('/')[1] });
+          if (!mergingHere.has(`${repoId}#${pr.number}`)) store.log({ kind: 'merge', who: store.data.user?.login || 'you', human: true, what: `merged PR #${pr.number} “${pr.title}”`, repo: repoId.split('/')[1] });
         }
       }
     } catch { /* offline */ }
   }
 }
 
+// ------------------------------------------------------------------ conflict forecast
+let forecastSig = '';
+let forecasting = false;
+/** Recomputes who would conflict with whom, but only when something that could change the answer has changed. */
+async function refreshForecast() {
+  if (forecasting) return;
+  const live = store.data.sessions.filter((s) => !s.archivedAt && !s.mergedAt && !s.worktreeGone);
+  const sig = live.map((s) => `${s.id}:${s.commits.length}:${s.files}:${s.add}:${s.del}:${Object.keys(s.filesTouched || {}).length}`).join('|');
+  if (sig === forecastSig) return;
+  forecasting = true;
+  try {
+    const next = (await Promise.all(store.data.repos.map((r) => forecastRepo(r, live).catch(() => [])))).flat();
+    forecastSig = sig;
+    if (JSON.stringify(next.map((c) => [c.a, c.b, c.kind, c.files])) !== JSON.stringify(forecast.map((c) => [c.a, c.b, c.kind, c.files]))) { forecast = next; emitState(); }
+  } finally { forecasting = false; }
+}
+
 // ------------------------------------------------------------------ lifecycle
 /** Loads state and starts the background work. Call once, after `host` is ready. */
 export async function start(h: Host) {
   host = h;
+  await installLogging(host.dataDir);
+  startWatchdog();
   await store.load(host.dataDir);
   if (!process.env.HELM_DEV_NO_RECOVER) sessions.recover();
+  if (host.companion !== false) void companion.loadKey().then(() => companion.apply());
   GH.setSignInGuard(host.allowLogin ?? null);
   await GH.loadToken(host);
   // A server's list can change between runs: a token that belongs to someone no longer on it is dropped, not honoured.
@@ -645,6 +954,8 @@ export async function start(h: Host) {
   host.setTheme?.(store.data.settings.theme);
   if (host.requireClaudeLogin) { void refreshClaudeLogin(); setInterval(() => void refreshClaudeLogin(), 5 * 60_000); }
   setInterval(pollMerges, 120_000);
+  setInterval(() => void refreshForecast(), 20_000);
+  setTimeout(() => void refreshForecast(), 4000);
   void detectCurrency().then(refreshRates);
   sessions.autoArchive();
   setInterval(() => sessions.autoArchive(), 3600_000);
@@ -656,8 +967,11 @@ export async function start(h: Host) {
 
 export async function shutdown() {
   terms.closeAll();
+  companion.shutdown();
   sessions.shutdown();
   await store.flushAll().catch(() => undefined);
 }
 
+/** What a desktop shell needs to reach into (its tray lists and answers sessions). */
+export { sessions, store };
 export type { TranscriptEvent };

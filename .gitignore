@@ -36,3 +36,7 @@ Multi-agent desktop application design.zip
 
 # local settings and secrets
 .env
+
+# Claude Code's own worktrees and local settings
+.claude/worktrees/
+.claude/settings.local.json

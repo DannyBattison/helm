@@ -1,6 +1,6 @@
 import React from 'react';
 import type { ModelAlias, PermMode, Settings as SettingsT } from '@shared/types';
-import { api } from '../api';
+import { api, platform } from '../api';
 import { livePlan, untilReset } from '../lib';
 import { CURRENCIES, rateFor } from '@shared/money';
 import { BUNDLED_FONTS, fontStack, SYSTEM_DEFAULT, systemFonts, systemUiFonts, uiStack, UI_BUNDLED_FONTS, dataStack } from '../fonts';
@@ -12,6 +12,58 @@ const set = (patch: Partial<SettingsT>) => void api.updateSettings(patch);
 
 export const PERM_OPTIONS = [{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits, ask for commands' }, { value: 'plan', label: 'Plan only' }, { value: 'all', label: 'Allow everything' }];
 export const MODEL_OPTIONS = [{ value: 'sonnet', label: 'Sonnet' }, { value: 'opus', label: 'Opus' }, { value: 'haiku', label: 'Haiku' }];
+
+/** Which shell the terminal starts: whatever is installed here, or any command. Changes apply to terminals opened after it. */
+function TerminalShellRow({ st, set }: { st: any; set(p: any): void }) {
+  const [shells, setShells] = React.useState<{ id: string; label: string }[] | null>(null);
+  React.useEffect(() => { api.listShells().then(setShells).catch(() => setShells([])); }, []);
+  const options = [{ value: 'auto', label: shells?.[0] ? `Automatic (${shells[0].label})` : 'Automatic' }, ...(shells || []).map((s) => ({ value: s.id, label: s.label })), { value: 'custom', label: 'Other command…' }];
+  return (
+    <SettingRow title="Terminal shell" desc={<>Automatic prefers zsh when it is installed, then Git Bash, WSL, PowerShell. WSL distributions appear here too; to get zsh on Windows, install it in WSL and choose that. Applies to terminals opened after the change.</>}>
+      <Select value={st.terminalShell} onChange={(e: any) => set({ terminalShell: e.target.value })} options={options} />
+      {st.terminalShell === 'custom' ? <Field value={st.terminalShellCustom} onCommit={(v: string) => set({ terminalShellCustom: v })} placeholder="wsl.exe -d Ubuntu -e zsh" style={{ width: 240 }} /> : null}
+    </SettingRow>
+  );
+}
+
+/** The companion website: turn it on, link this computer, see who is connected. */
+function CompanionSection({ st, set, state }: { st: any; set(p: any): void; state: any }) {
+  const label = ({ off: 'Off', linking: 'Waiting for you to sign in to GitHub', connecting: 'Connecting…', connected: 'Connected', error: 'Not connected' } as any)[state.state] || state.state;
+  const tone = state.state === 'connected' ? 'var(--status-ready-text, var(--status-ready))' : state.state === 'error' ? 'var(--status-error-text)' : 'var(--text-3)';
+  return <>
+    <H sub="See your agents and answer them from a phone or another computer. Off by default: nothing leaves this computer until you turn it on.">Companion</H>
+    <SettingRow title="Enable companion" desc="Connects helm to your companion server and keeps it connected while helm is open. Without it, the companion website shows an “enable in settings” page.">
+      <Switch checked={st.companionEnabled} onChange={(v: boolean) => set({ companionEnabled: v })} />
+    </SettingRow>
+    <SettingRow title="Companion server" desc="The address of your helm-companion server. helm never sends your GitHub token to it.">
+      <Field value={st.companionUrl} onCommit={(v: string) => set({ companionUrl: v.trim() })} placeholder="https://companion.example.com" style={{ width: 280 }} />
+    </SettingRow>
+    <SettingRow title="Status" desc={state.state === 'connected' ? `Linked as ${state.login}. ${state.viewers ? `${state.viewers} ${state.viewers === 1 ? 'page is' : 'pages are'} open on the website.` : 'No page is open on the website.'}` : state.error || (state.state === 'off' ? 'Turn the companion on to link this computer.' : undefined)}>
+      <span style={{ font: '500 12.5px/1 var(--font-sans)', color: tone, display: 'inline-flex', alignItems: 'center', gap: 6 }}><i className={'ph-fill ph-circle'} style={{ fontSize: 8 }} />{label}</span>
+      {st.companionUrl && state.state === 'connected' ? <Button size="sm" variant="ghost" iconRight="arrow-square-out" onClick={() => api.openExternal(st.companionUrl)}>Open website</Button> : null}
+    </SettingRow>
+    {state.state === 'linking' ? (
+      <div style={{ margin: '4px 0 12px', padding: 14, borderRadius: 'var(--radius-md)', background: 'var(--bg-panel)', boxShadow: 'inset 0 0 0 1px var(--border)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <span style={{ font: '500 13px/1.4 var(--font-sans)' }}>Link this computer</span>
+        {state.linkCode ? <>
+          <span style={{ font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>Open GitHub and enter this code, signed in as the account you use in helm. It asks for no permissions: it only tells the companion which username this is.</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span className="selectable" style={{ font: '700 22px/1 var(--font-mono)', letterSpacing: '.12em' }}>{state.linkCode.userCode}</span>
+            <Button size="sm" icon="copy" onClick={() => api.copyText(state.linkCode.userCode)}>Copy</Button>
+            <Button size="sm" variant="primary" iconRight="arrow-square-out" onClick={() => api.openExternal(state.linkCode.verificationUri)}>Open GitHub</Button>
+          </div>
+        </> : <span style={{ font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Contacting the server…</span>}
+      </div>
+    ) : null}
+    <SettingRow title="Let the website control agents" desc="Allows approving commands, answering questions, sending messages, pausing, stopping and starting sessions from the website. Turn off to make it read-only.">
+      <Switch checked={st.companionControl} onChange={(v: boolean) => set({ companionControl: v })} />
+    </SettingRow>
+    <SettingRow title="What is sent" desc="A summary of each session (title, status, branch, tokens, any question it is waiting on), recent activity, plan usage, and the conversation of a session while someone has it open on the website. Commands and messages pass through your server. File contents and your GitHub token are never sent." />
+    <SettingRow title="Unlink this computer" desc="Forget the link. Turning the companion on again signs in to GitHub afresh.">
+      <Button size="sm" variant="ghost" icon="link-break" disabled={state.state === 'off' && !st.companionEnabled} onClick={() => api.companionUnlink()}>Unlink</Button>
+    </SettingRow>
+  </>;
+}
 
 function SettingRow({ title, desc, children }: { title: React.ReactNode; desc?: React.ReactNode; children?: React.ReactNode }) {
   return (
@@ -56,6 +108,7 @@ function FontRow({ title, desc, value, onChange, bundled, system, stack }: { tit
 }
 
 export function Settings({ section }: { section?: string }) {
+  const hosted = !!window.helmBridge.hosted;
   const app = useApp();
   const st = app.settings;
   const [sec, setSec] = React.useState(section || 'account');
@@ -68,7 +121,7 @@ export function Settings({ section }: { section?: string }) {
   const subCols = useColumns('subagent-repos', [{ w: 1, min: 160, flex: true }, { w: 170, min: 110, fixed: true }]);
   const pctOptions = [{ value: '0', label: 'Off' }, { value: '50', label: '50%' }, { value: '70', label: '70%' }, { value: '80', label: '80%' }, { value: '90', label: '90%' }];
   const subLimits = (extra: number[]) => [...new Set([0, 1, 2, 3, 4, 6, 8, 12, ...extra])].sort((a, b) => a - b).map((n) => ({ value: String(n), label: n === 0 ? 'Off' : String(n) }));
-  const nav = [['account', 'Account', 'github-logo'], ['agents', 'Claude Code', 'robot'], ['worktrees', 'Worktrees', 'tree-structure'], ['budgets', 'Usage', 'coins'], ['notifications', 'Notifications', 'bell'], ['appearance', 'Appearance', 'paint-brush']];
+  const nav = [['account', 'Account', 'github-logo'], ['agents', 'Claude Code', 'robot'], ['worktrees', 'Worktrees', 'tree-structure'], ['budgets', 'Usage', 'coins'], ...(hosted ? [] : [['companion', 'Companion', 'broadcast']]), ['notifications', 'Notifications', 'bell'], ['appearance', 'Appearance', 'paint-brush'], ['about', 'About and support', 'info']];
   const notif = (key: 'notifyAttention' | 'notifyReady' | 'notifyFailed' | 'notifyChecks', title: string) => (
     <SettingRow title={title}>
       <Switch checked={st[key].desktop} onChange={(v: boolean) => set({ [key]: { ...st[key], desktop: v } })} label="Desktop" />
@@ -114,6 +167,7 @@ export function Settings({ section }: { section?: string }) {
             <SettingRow title="Always allowed commands" desc="Comma separated patterns. * matches anything. Added to when you choose Always allow.">
               <Field value={st.alwaysAllow} format={(v: string[]) => v.join(', ')} parse={(s: string) => s.split(',').map((x) => x.trim()).filter(Boolean)} onCommit={(v: string[]) => set({ alwaysAllow: v })} style={{ width: 260 }} />
             </SettingRow>
+            <SettingRow title="Sessions working at once" desc="More than this wait in a queue and start as others finish. Sessions waiting on you do not count. A queued session can be started by hand."><Select value={String(st.maxRunning)} onChange={(e: any) => set({ maxRunning: +e.target.value })} options={[0, 1, 2, 3, 4, 6, 8, 12].map((n) => ({ value: String(n), label: n === 0 ? 'No limit' : String(n) }))} /></SettingRow>
             <SettingRow title="Subagents per session" desc="Most subagents one session may run at once. Off stops agents from starting any. A session can override this."><Select value={String(st.maxSubagentsSession)} onChange={(e: any) => set({ maxSubagentsSession: +e.target.value })} options={subLimits([st.maxSubagentsSession])} /></SettingRow>
             <SettingRow title="Subagents per repository" desc="Most subagents that may run at once across every session of a repository."><Select value={String(st.maxSubagentsRepo)} onChange={(e: any) => set({ maxSubagentsRepo: +e.target.value })} options={subLimits([st.maxSubagentsRepo, 16, 24])} /></SettingRow>
             {app.repos.length ? (
@@ -135,9 +189,16 @@ export function Settings({ section }: { section?: string }) {
             <SettingRow title="Commit author" desc="Co-author: commits are authored by you, with a Co-authored-by trailer for the session. Claude only: commits are authored by Claude, with no co-author. Takes effect when a session next starts.">
               <SegmentedControl value={st.commitAuthor} onChange={(v: string) => set({ commitAuthor: v as any })} options={[{ value: 'coauthor', label: 'Co-author' }, { value: 'sole', label: 'Claude only' }]} />
             </SettingRow>
+            <SettingRow title="Send messages with" desc={st.sendKey === 'enter' ? 'Enter sends. Shift+Enter starts a new line.' : 'Ctrl+Enter (Cmd+Enter on a Mac) sends. Enter starts a new line.'}>
+              <SegmentedControl value={st.sendKey} onChange={(v: string) => set({ sendKey: v as any })} options={[{ value: 'enter', label: 'Enter' }, { value: 'mod-enter', label: platform() === 'darwin' ? 'Cmd+Enter' : 'Ctrl+Enter' }]} />
+            </SettingRow>
+            <SettingRow title="Interrupt a working agent with" desc="Pauses the agent where it is. The Interrupt button next to Send always works. Esc closes the @ file list first, without interrupting.">
+              <SegmentedControl value={st.interruptKey} onChange={(v: string) => set({ interruptKey: v as any })} options={[{ value: 'esc', label: 'Esc' }, { value: 'double-esc', label: 'Esc twice' }, { value: 'off', label: 'Button only' }]} />
+            </SettingRow>
             <SettingRow title="Run tests before marking ready" desc="Asks the agent to run the project's tests (package.json, go.mod, Makefile) before it finishes."><Switch checked={st.runTests} onChange={(v: boolean) => set({ runTests: v })} /></SettingRow>
           </> : null}
           {sec === 'worktrees' ? <>
+            <SettingRow title="Free agents' folders" desc="Where a free agent's scratch folder is made. Agents that are not tied to a repository work in a folder of their own here, with git set up so you can see what changed."><Field value={st.freeRoot} onCommit={(v: string) => set({ freeRoot: v.trim() })} style={{ width: 260 }} /></SettingRow>
             <H sub="Every session gets its own git worktree and branch, so agents never touch your working copy or each other.">Worktrees</H>
             <SettingRow title="Location"><Field value={st.worktreeRoot} onCommit={(v: string) => set({ worktreeRoot: v })} style={{ width: 260 }} /></SettingRow>
             <SettingRow title="Clone location" desc="Repositories cloned from GitHub go to <location>/<owner>/<name>."><Field value={st.cloneRoot} onCommit={(v: string) => set({ cloneRoot: v })} style={{ width: 260 }} /></SettingRow>
@@ -207,18 +268,55 @@ export function Settings({ section }: { section?: string }) {
               </div>
             </>}
           </> : null}
+          {sec === 'companion' ? <CompanionSection st={st} set={set} state={app.companion} /> : null}
           {sec === 'notifications' ? <>
             <H sub="Desktop notifications are shown when helm is not the focused window. The taskbar or dock badge counts sessions that need you.">Notifications</H>
             {notif('notifyAttention', 'Agent needs approval or an answer')}
             {notif('notifyReady', 'Session ready for review')}
             {notif('notifyFailed', 'Session failed or hit its budget')}
             {notif('notifyChecks', 'Pull request checks finished')}
+            <SettingRow title="Quiet hours" desc="No desktop notifications between these times. Sound is silenced too.">
+              <Switch checked={st.quiet.enabled} onChange={(v: boolean) => set({ quiet: { ...st.quiet, enabled: v } })} />
+              <Field value={st.quiet.from} onCommit={(v: string) => set({ quiet: { ...st.quiet, from: v } })} parse={(x: string) => (/^([01]?\d|2[0-3]):[0-5]\d$/.test(x.trim()) ? x.trim() : undefined)} style={{ width: 70 }} />
+              <span style={{ color: 'var(--text-3)' }}>to</span>
+              <Field value={st.quiet.to} onCommit={(v: string) => set({ quiet: { ...st.quiet, to: v } })} parse={(x: string) => (/^([01]?\d|2[0-3]):[0-5]\d$/.test(x.trim()) ? x.trim() : undefined)} style={{ width: 70 }} />
+            </SettingRow>
+            <SettingRow title="Still tell me when an agent is blocked" desc="During quiet hours, an approval or question still notifies you.">
+              <Switch checked={st.quiet.allowAttention} onChange={(v: boolean) => set({ quiet: { ...st.quiet, allowAttention: v } })} />
+            </SettingRow>
+            {app.repos.length ? <>
+              <H sub="Per repository. Only things that need you leaves out finished work and failed checks.">Repositories</H>
+              {app.repos.map((r) => (
+                <SettingRow key={r.id} title={<span style={{ font: '400 13px/1 var(--font-mono)' }}>{r.id}</span>}>
+                  <Select size="sm" value={st.notifyRepo[r.id] || 'all'} onChange={(e: any) => set({ notifyRepo: { ...st.notifyRepo, [r.id]: e.target.value } })} options={[{ value: 'all', label: 'Everything' }, { value: 'attention', label: 'Only things that need you' }, { value: 'off', label: 'Nothing' }]} />
+                </SettingRow>
+              ))}
+            </> : null}
+            {hosted ? null : <>
+            <H>System</H>
+            <SettingRow title="Tray icon" desc="Keep helm in the system tray or menu bar, with a count of what needs you and a menu to jump to it."><Switch checked={st.tray} onChange={(v: boolean) => set({ tray: v })} /></SettingRow>
+            </>}
+          </> : null}
+          {sec === 'about' ? <>
+            <H sub="Updates, and what to send if something goes wrong.">About and support</H>
+            {hosted ? null : <>
+            <SettingRow title="Version" desc={app.update.state === 'dev' ? 'This is a development build, which does not update itself.' : app.update.state === 'ready' ? `Version ${app.update.version} is downloaded and installs when helm restarts.` : app.update.state === 'downloading' ? `Downloading ${app.update.version ?? 'an update'}${app.update.percent != null ? ' · ' + app.update.percent + '%' : ''}` : app.update.state === 'error' ? 'Could not check for updates: ' + app.update.error : app.update.state === 'current' ? 'helm is up to date.' : app.update.state === 'checking' ? 'Checking…' : undefined}>
+              {app.update.state === 'ready' ? <Button variant="primary" icon="arrow-clockwise" onClick={() => void api.installUpdate()}>Restart to update</Button> : <Button icon="arrows-clockwise" disabled={app.update.state === 'dev' || app.update.state === 'checking' || app.update.state === 'downloading'} onClick={() => void api.checkForUpdates()}>Check for updates</Button>}
+            </SettingRow>
+            <SettingRow title="Update automatically" desc="Look for a new version when helm starts and every few hours, download it in the background, and install it the next time helm quits."><Switch checked={st.autoUpdate} onChange={(v: boolean) => set({ autoUpdate: v })} /></SettingRow>
+            </>}
+            <SettingRow title="Diagnostics" desc="Saves versions, settings, the state of each session and the recent log as one Markdown file you can attach to a bug report. Task text, conversations, file contents and repository paths are left out, and tokens and your home folder are masked.">
+              <Button icon="download-simple" onClick={() => void api.saveDiagnostics().then((f) => f && toast({ tone: 'ready', title: 'Saved diagnostics', description: f })).catch((e) => toast({ tone: 'error', title: 'Could not save', description: errText(e) }))}>Save diagnostics…</Button>
+            </SettingRow>
+            {hosted ? null : <SettingRow title="Log" desc="Errors and warnings from helm, kept up to about 2 MB."><Button icon="folder-open" onClick={() => void api.openLogFolder()}>Show in folder</Button></SettingRow>}
           </> : null}
           {sec === 'appearance' ? <>
             <H>Appearance</H>
             <SettingRow title="Theme"><SegmentedControl value={st.theme} onChange={(v: string) => set({ theme: v as any })} options={[{ value: 'dark', label: 'Dark', icon: 'moon' }, { value: 'light', label: 'Light', icon: 'sun' }, { value: 'system', label: 'System', icon: 'desktop' }]} /></SettingRow>
+            <SettingRow title="Show organisation in the sidebar" desc="Writes repositories as acme/storefront rather than just storefront. Turn off to save width."><Switch checked={st.showOwner} onChange={(v: boolean) => set({ showOwner: v })} /></SettingRow>
             <FontRow title="Interface font" desc="Labels, titles and prose throughout helm." value={st.uiFont} onChange={(v: string) => set({ uiFont: v })} bundled={UI_BUNDLED_FONTS} system={[SYSTEM_DEFAULT, ...uiSystem]} stack={uiStack} />
             <FontRow title="Data font" desc="Monospaced text in the interface: paths, branches, hashes, counts and costs." value={st.dataFont} onChange={(v: string) => set({ dataFont: v })} bundled={BUNDLED_FONTS} system={monoSystem} stack={dataStack} />
+            <TerminalShellRow st={st} set={set} />
             <FontRow title="Code font" desc="The editor, terminal and diffs." value={st.editorFont} onChange={(v: string) => set({ editorFont: v })} bundled={BUNDLED_FONTS} system={monoSystem} stack={fontStack} />
             <SettingRow title="Ligatures" desc="Draw combinations such as => and !== as single symbols, in code fonts that have them."><Switch checked={st.editorLigatures} onChange={(v: boolean) => set({ editorLigatures: v })} /></SettingRow>
             <div style={{ margin: '4px 0 10px', padding: '12px 14px', borderRadius: 'var(--radius-md)', background: 'var(--bg-editor)', boxShadow: 'inset 0 0 0 1px var(--border-subtle)', fontFamily: fontStack(st.editorFont), fontSize: st.editorFontSize, lineHeight: '20px', fontVariantLigatures: st.editorLigatures ? 'normal' : 'none', color: 'var(--text-1)', whiteSpace: 'pre', overflow: 'auto' }} className="selectable">

@@ -17,7 +17,7 @@ export function Archive() {
   const days = app.settings.archiveAfterDays;
   const match = (...f: (string | undefined)[]) => !q.trim() || f.some((x) => x?.toLowerCase().includes(q.trim().toLowerCase()));
 
-  const mine = app.sessions.filter((s) => s.archivedAt && match(s.task, s.id, s.branch, s.repoId)).sort((a, b) => b.archivedAt! - a.archivedAt!);
+  const mine = app.sessions.filter((s) => s.archivedAt && match(s.task, s.id, s.branch, s.repoId, s.free ? 'free agent' : '')).sort((a, b) => b.archivedAt! - a.archivedAt!);
   const ext: { repoId: string; x: ExternalSession }[] = [];
   for (const [repoId, list] of Object.entries(externals)) for (const x of list) if (x.archived && match(x.title, x.branch, repoId)) ext.push({ repoId, x });
   ext.sort((a, b) => b.x.lastModified - a.x.lastModified);
@@ -52,9 +52,9 @@ export function Archive() {
               <StatusDot status={s.status} pulse={false} />
               <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
                 <span style={{ font: '500 13px/1.2 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.task}</span>
-                <span style={{ font: '400 11px/1.2 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.branch}{s.files ? ` · ${s.files} files changed` : ''}{s.mergedAt ? ` · merged into ${s.mergedInto}` : s.prUrl ? ' · PR open' : ''}</span>
+                <span style={{ font: '400 11px/1.2 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.free ? s.worktree.split(/[\\/]/).filter(Boolean).slice(-2).join('/') : s.branch}{s.files ? ` · ${s.files} files changed` : ''}{s.mergedAt ? ` · merged into ${s.mergedInto}` : s.prUrl ? ' · PR open' : ''}</span>
               </span>
-              <span style={{ font: '400 12px/1 var(--font-mono)', color: 'var(--text-2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.repoId}</span>
+              <span style={{ font: '400 12px/1 var(--font-mono)', color: 'var(--text-2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.free ? 'Free agents' : s.repoId}</span>
               <span style={{ font: '400 12px/1.3 var(--font-sans)', color: 'var(--text-2)' }}>{relTime(s.archivedAt!)} · {reason(s)}</span>
               <span style={{ font: '400 11.5px/1 var(--font-mono)', color: 'var(--text-3)' }}>{ago(s.lastAccess) === 'now' ? 'just now' : ago(s.lastAccess) + ' ago'}</span>
               <span style={{ font: 'var(--type-data)', color: 'var(--text-2)' }}>{fmtTokens(sessionTokens(s))}</span>

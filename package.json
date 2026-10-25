@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",
     "dist": "electron-vite build && electron-builder",
-    "pack": "electron-vite build && electron-builder --dir"
+    "pack": "electron-vite build && electron-builder --dir",
+    "release": "electron-vite build && electron-builder --publish always"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
@@ -44,20 +45,24 @@
     "@phosphor-icons/web": "^2.1.2",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
+    "electron-updater": "^6.8.9",
     "highlight.js": "^11.12.0",
     "monaco-editor": "^0.57.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "react-virtuoso": "^4.18.19"
+    "react-virtuoso": "^4.18.19",
+    "yaml": "^2.9.1"
   },
   "build": {
     "appId": "dev.helm.app",
     "productName": "helm",
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
     "files": [
       "out/**",
+      "build/icon.png",
       "package.json"
     ],
     "asarUnpack": [
@@ -65,22 +70,66 @@
       "node_modules/@homebridge/**"
     ],
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         "nsis"
-      ]
+      ],
+      "icon": "build/icon.png"
     },
     "mac": {
+      "icon": "build/icon.icns",
       "target": [
-        "dmg"
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
       ],
-      "category": "public.app-category.developer-tools"
+      "category": "public.app-category.developer-tools",
+      "icon": "build/icon.icns",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
     },
     "linux": {
+      "icon": "build/icon.png",
       "target": [
         "AppImage"
       ],
-      "category": "Development"
+      "category": "Development",
+      "icon": "build/icon.png"
     },
-    "npmRebuild": false
+    "npmRebuild": false,
+    "extraResources": [
+      {
+        "from": "build/icon.png",
+        "to": "build/icon.png"
+      },
+      {
+        "from": "resources",
+        "to": "resources",
+        "filter": [
+          "*.png"
+        ]
+      }
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "DannyBattison",
+        "repo": "helm",
+        "releaseType": "release"
+      }
+    ]
   }
 }

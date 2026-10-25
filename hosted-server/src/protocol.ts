@@ -12,4 +12,4 @@ export type ServerMessage =
   | { t: 'event'; channel: keyof HelmEvents; payload: unknown };
 
 /** API calls that act on the user's own computer; the web client does these itself or refuses. */
-export const CLIENT_SIDE = ['chooseFolder', 'openFolder', 'openExternal', 'copyText'] as const;
+export const CLIENT_SIDE = ['chooseFolder', 'openFolder', 'openExternal', 'copyText', 'readClipboard'] as const;
