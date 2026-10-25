@@ -464,3 +464,7 @@ Why: user request.
 ## D-111 · 2026-10-25 · Below 900px wide the sidebar is a drawer
 The app no longer has a fixed minimum width of 1180px (now 320px). In a window narrower than 900px (`useNarrow`) the sidebar leaves the layout and opens as a drawer over the content from a menu button in the title bar; the search box becomes an icon, and the drawer closes on navigation, on Escape and on a tap outside it. Wider windows are unchanged.
 Why: user request, to make the UI responsive.
+
+## D-112 · 2026-10-25 · The drawer is for mobile widths only: below 768px
+D-111 switched to the drawer below 900px, which also caught small laptop and tablet windows. The breakpoint is now 768px, so only phone-sized windows get the drawer; everything wider keeps the sidebar.
+Why: user correction, the drawer was meant for mobile.

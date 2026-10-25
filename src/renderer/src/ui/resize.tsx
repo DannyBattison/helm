@@ -129,7 +129,7 @@ export function useColumns(key: string, cols: Col[]) {
 }
 
 /** True while the window is narrower than `max` pixels. */
-export function useNarrow(max = 900) {
+export function useNarrow(max = 768) {
   const query = `(max-width: ${max - 1}px)`;
   const [narrow, setNarrow] = React.useState(() => window.matchMedia(query).matches);
   React.useEffect(() => {
