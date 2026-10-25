@@ -95,8 +95,8 @@ textarea {
   to { opacity: 1; }
 }
 
-/* Phones: iOS zooms into any field with text smaller than 16px, and does not zoom back out. */
-@media (max-width: 767px) {
+/* Touch screens: iOS zooms into any field with text smaller than 16px, and does not zoom back out. */
+@media (max-width: 767px), (pointer: coarse) {
   input:not([type='checkbox']):not([type='radio']),
   textarea:not(.monaco-editor textarea):not(.xterm textarea) {
     font-size: 16px !important;
@@ -106,15 +106,35 @@ textarea {
 /* Touch screens: rows and buttons big enough for a finger. */
 @media (pointer: coarse) {
   .helm-tap-row {
-    min-height: 40px !important;
+    min-height: 44px !important;
     height: auto !important;
   }
   .helm-tap-icon {
-    min-width: 36px !important;
-    min-height: 36px !important;
+    min-width: 44px !important;
+    min-height: 44px !important;
   }
   .helm-tap-btn {
-    min-height: 34px !important;
+    min-height: 44px !important;
+    padding-left: 14px !important;
+    padding-right: 14px !important;
+    font-size: 14px !important;
+  }
+  .helm-tap-field {
+    height: 44px !important;
+  }
+  .helm-tap-tabbar {
+    height: auto !important;
+    min-height: 44px;
+  }
+  .helm-tap-seg {
+    min-height: 40px !important;
+    height: auto !important;
+    padding-left: 14px !important;
+    padding-right: 14px !important;
+  }
+  body {
+    -webkit-text-size-adjust: 100%;
+    touch-action: manipulation;
   }
 }
 
