@@ -1,5 +1,5 @@
 {
-  "name": "helm-hosted-server",
+  "name": "helm-hosted",
   "version": "0.1.0",
   "private": true,
   "description": "helm in a browser: the desktop app's main process on a server, its renderer in a web page",

@@ -3,7 +3,7 @@ import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { WebSocket, WebSocketServer } from 'ws';
-import { api, shutdown, start } from '../../src/main/core';
+import { api, shutdown, start } from '../../src/core/core';
 import { originAllowed } from './auth';
 import { dispatch } from './dispatch';
 import { createGate, parseUser } from './gate';
@@ -128,7 +128,7 @@ async function main() {
     const text = JSON.stringify({ t: 'event', channel, payload } satisfies ServerMessage);
     for (const ws of clients) if (ws.readyState === WebSocket.OPEN) ws.send(text);
   }, (login) => login.toLowerCase() === ALLOWED));
-  http.listen(PORT, BIND, () => console.log(`helm hosted on http://${BIND}:${PORT} for ${ALLOWED}${existsSync(WEB) ? '' : '  (no web client yet: run `npm run build` in hosted-server)'}`));
+  http.listen(PORT, BIND, () => console.log(`helm hosted on http://${BIND}:${PORT} for ${ALLOWED}${existsSync(WEB) ? '' : '  (no web client yet: run `npm run build` in hosted)'}`));
 }
 
 let closing = false;

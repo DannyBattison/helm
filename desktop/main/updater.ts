@@ -1,7 +1,7 @@
 import { app } from 'electron';
 import { autoUpdater } from 'electron-updater';
-import type { UpdateStatus } from '../shared/types';
-import { logLine } from './log';
+import type { UpdateStatus } from '../../src/shared/types';
+import { logLine } from '../../src/core/log';
 
 let status: UpdateStatus = { state: app.isPackaged ? 'idle' : 'dev' };
 let onChange: () => void = () => undefined;

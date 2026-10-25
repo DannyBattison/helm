@@ -1,9 +1,9 @@
 # helm hosted server (proof of concept)
 
-helm in a browser. One deployment, one user, one Anthropic login. The server runs the desktop app's main process (`src/main/core.ts`) as a plain Node process; the browser runs the desktop app's renderer (`src/renderer`) unchanged. Nothing here is copied from the app: both ends are imported from `../src`.
+helm in a browser. One deployment, one user, one Anthropic login. The server runs the desktop app's main process (`src/core/core.ts`) as a plain Node process; the browser runs the desktop app's renderer (`src/renderer`) unchanged. Nothing here is copied from the app: both ends are imported from `../src`.
 
 ```
-browser ── renderer (src/renderer) ── HelmBridge ──WebSocket──▶ server.ts ── api (src/main/core.ts) ── Agent SDK, git, GitHub
+browser ── renderer (src/renderer) ── HelmBridge ──WebSocket──▶ server.ts ── api (src/core/core.ts) ── Agent SDK, git, GitHub
 ```
 
 ## Run in Docker (as if hosted)
@@ -11,7 +11,8 @@ browser ── renderer (src/renderer) ── HelmBridge ──WebSocket──�
 The image carries its own Node, git and Claude Code binary (the one the Agent SDK ships for Linux, at the version helm is built against), runs as a normal user, and keeps everything under one volume.
 
 ```
-cp .env.example .env        # at the repository root; fill it in (below)
+cd hosted
+cp .env.example .env        # fill it in (below)
 docker compose up --build
 ```
 
@@ -54,7 +55,7 @@ Signing in asks GitHub for repository access (helm needs it), and the token is k
 ## What is shared, and where the seams are
 
 - `HelmBridge` (`src/shared/types.ts`) is everything the renderer needs from its environment. Electron's preload and `web/bridge.ts` both implement it.
-- `Host` (`src/main/host.ts`) is everything `core.ts` needs from where it runs. `src/main/index.ts` implements it with Electron, `src/host.ts` here with Node.
+- `Host` (`src/core/host.ts`) is everything `core.ts` needs from where it runs. `desktop/main/index.ts` implements it with Electron, `hosted/src/host.ts` with Node.
 - The renderer's title bar asks the bridge where window buttons are (`windowControls`), so a browser tab leaves no room for them.
 - Anything that acts on the user's own computer (choose a folder, open a link, copy) is done by the browser in `web/bridge.ts`; the server refuses those names.
 

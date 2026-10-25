@@ -1,8 +1,8 @@
 import type { HelmEvents, Settings, ThemePref, UpdateStatus } from '../shared/types';
 
 /**
- * Everything the app logic needs from wherever it runs. The desktop app implements it with Electron (`index.ts`); the hosted
- * server implements it with plain Node (`hosted-server/`). Nothing in `core.ts` or its siblings imports Electron.
+ * Everything the app logic needs from wherever it runs. The desktop app implements it with Electron (`desktop/main/index.ts`); the hosted
+ * server implements it with plain Node (`hosted/`). Nothing in `core.ts` or its siblings imports Electron.
  */
 export interface Host {
   /** Where state, transcripts and the sign-in token are kept. */

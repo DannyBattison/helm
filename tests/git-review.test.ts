@@ -3,8 +3,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { parseDiff } from '../src/main/git';
-import { checkpointParent, dropCheckpoints, forecastRepo, listCheckpoints, restoreCheckpoint, revertHunk, seedFromCheckpoint, takeCheckpoint } from '../src/main/review';
+import { parseDiff } from '../src/core/git';
+import { checkpointParent, dropCheckpoints, forecastRepo, listCheckpoints, restoreCheckpoint, revertHunk, seedFromCheckpoint, takeCheckpoint } from '../src/core/review';
 import type { Repo, Session } from '../src/shared/types';
 
 const g = (cwd: string, ...a: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', ...a], { cwd, encoding: 'utf8' });
@@ -163,7 +163,7 @@ describe('reverting a forged hunk', () => {
   });
 });
 
-import { changes, initScratch, listFiles } from '../src/main/git';
+import { changes, initScratch, listFiles } from '../src/core/git';
 import { FREE_ID, freeRepo, isFreeRepo, repoLabel } from '../src/shared/types';
 
 describe('free agents', () => {

@@ -1,4 +1,4 @@
-import type { HelmBridge } from '../shared/types';
+import type { HelmBridge } from '../../shared/types';
 
 declare global {
   interface Window {

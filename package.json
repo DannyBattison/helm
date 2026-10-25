@@ -2,18 +2,21 @@
   "name": "helm",
   "version": "0.1.0",
   "description": "Supervise many Claude Code sessions across many GitHub repositories",
-  "main": "./out/main/index.js",
+  "main": "./desktop/out/main/index.js",
   "author": "Danny Battison",
   "private": true,
   "scripts": {
-    "dev": "electron-vite dev",
-    "build": "electron-vite build",
-    "start": "electron-vite preview",
-    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "dev": "electron-vite dev -c desktop/electron.vite.config.ts",
+    "build": "electron-vite build -c desktop/electron.vite.config.ts",
+    "start": "electron-vite preview -c desktop/electron.vite.config.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p desktop/tsconfig.json && tsc --noEmit -p hosted/tsconfig.server.json && tsc --noEmit -p hosted/tsconfig.web.json",
     "test": "vitest run",
-    "dist": "electron-vite build && electron-builder",
-    "pack": "electron-vite build && electron-builder --dir",
-    "release": "electron-vite build && electron-builder --publish always"
+    "dist": "electron-vite build -c desktop/electron.vite.config.ts && electron-builder",
+    "pack": "electron-vite build -c desktop/electron.vite.config.ts && electron-builder --dir",
+    "release": "electron-vite build -c desktop/electron.vite.config.ts && electron-builder --publish always",
+    "icons": "node desktop/scripts/make-icons.mjs",
+    "hosted:build": "npm --prefix hosted run build",
+    "hosted:start": "npm --prefix hosted start"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
@@ -58,11 +61,11 @@
     "productName": "helm",
     "directories": {
       "output": "release",
-      "buildResources": "build"
+      "buildResources": "desktop/build"
     },
     "files": [
-      "out/**",
-      "build/icon.png",
+      "desktop/out/**",
+      "desktop/build/icon.png",
       "package.json"
     ],
     "asarUnpack": [
@@ -70,14 +73,13 @@
       "node_modules/@homebridge/**"
     ],
     "win": {
-      "icon": "build/icon.ico",
+      "icon": "desktop/build/icon.png",
       "target": [
         "nsis"
-      ],
-      "icon": "build/icon.png"
+      ]
     },
     "mac": {
-      "icon": "build/icon.icns",
+      "icon": "desktop/build/icon.icns",
       "target": [
         {
           "target": "dmg",
@@ -95,28 +97,26 @@
         }
       ],
       "category": "public.app-category.developer-tools",
-      "icon": "build/icon.icns",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
-      "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist"
+      "entitlements": "desktop/build/entitlements.mac.plist",
+      "entitlementsInherit": "desktop/build/entitlements.mac.plist"
     },
     "linux": {
-      "icon": "build/icon.png",
+      "icon": "desktop/build/icon.png",
       "target": [
         "AppImage"
       ],
-      "category": "Development",
-      "icon": "build/icon.png"
+      "category": "Development"
     },
     "npmRebuild": false,
     "extraResources": [
       {
-        "from": "build/icon.png",
+        "from": "desktop/build/icon.png",
         "to": "build/icon.png"
       },
       {
-        "from": "resources",
+        "from": "desktop/resources",
         "to": "resources",
         "filter": [
           "*.png"

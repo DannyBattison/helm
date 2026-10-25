@@ -24,7 +24,7 @@ Design reference: `design_handoff_helm_desktop/` (not tracked in git). Decisions
 ```
 npm install
 npm run dev        # development with hot reload
-npm run build      # production bundles into out/
+npm run build      # production bundles into desktop/out/
 npm run pack       # unpacked app in release/ (npm run dist for an installer)
 npm test           # logic tests
 npm run typecheck
@@ -34,15 +34,19 @@ Requires Node 22+, git on PATH, and a Claude login. If the terminal reports that
 
 ## GitHub sign-in
 
-helm signs in with GitHub's OAuth device flow, using a registered OAuth app whose public client ID is built in (`src/main/store.ts`). Click Continue with GitHub, enter the code in your browser, approve. To use your own OAuth app (device flow enabled, no secret needed), set `HELM_GITHUB_CLIENT_ID` or change it in Settings → Account.
+helm signs in with GitHub's OAuth device flow, using a registered OAuth app whose public client ID is built in (`src/core/store.ts`). Click Continue with GitHub, enter the code in your browser, approve. To use your own OAuth app (device flow enabled, no secret needed), set `HELM_GITHUB_CLIENT_ID` or change it in Settings → Account.
 
 You can also sign in with a personal access token (scopes `repo`, `read:org`, `workflow`). The token is stored encrypted with the OS keychain via Electron `safeStorage`.
 
 ## How it works
 
-- `src/main`: the main process owns all state and persists it under the user data directory. `sessions.ts` drives the Agent SDK (`canUseTool` for approvals, interrupt, resume, budgets), `git.ts` and `repos.ts` use the git CLI, `github.ts` the GitHub API, `terminal.ts` node-pty.
-- `src/preload`: a thin bridge. The renderer calls the typed `HelmApi` in `src/shared/types.ts`.
-- `src/renderer`: React. `ui/` holds the design-system primitives, `views/` the screens, `styles/tokens/` the design tokens.
+The repository has three parts: the app itself (`src/`), and one folder for each way of running it.
+
+- `src/core`: everything the app does, with no Electron in it: the main process owns all state and persists it under the user data directory. `sessions.ts` drives the Agent SDK (`canUseTool` for approvals, interrupt, resume, budgets), `git.ts` and `repos.ts` use the git CLI, `github.ts` the GitHub API, `terminal.ts` node-pty.
+- `src/renderer`: React, the UI, which both versions share. `ui/` holds the design-system primitives, `views/` the screens, `styles/tokens/` the design tokens. It reaches the rest only through `HelmBridge` and the typed `HelmApi` in `src/shared/types.ts`.
+- `src/shared`: types and pure logic used by both sides.
+- `desktop/`: the Electron app and nothing else of it. `main/` creates the window, tray, updater, native dialogs and keychain around the core; `preload/` is the thin bridge; `build/` and `resources/` hold icons; `electron.vite.config.ts` bundles it; installer settings are the `build` key of `package.json`.
+- `hosted/`: helm in a browser. A Node server that runs the same core, a web client that mounts the same renderer, and the Docker files (`Dockerfile`, `docker-compose.yml`). See [hosted/README.md](hosted/README.md).
 
 Worktrees are created at `~/.helm/worktrees/<repo>/<session>`; clones go to `~/code/<owner>/<name>`. Both are configurable.
 

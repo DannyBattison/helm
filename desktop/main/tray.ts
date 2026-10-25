@@ -1,9 +1,9 @@
 import { app, Menu, nativeImage, Tray, type MenuItemConstructorOptions } from 'electron';
 import { join } from 'node:path';
-import { trayEntries, type TrayAction } from '../shared/tray';
-import type { Session } from '../shared/types';
+import { trayEntries, type TrayAction } from '../../src/shared/tray';
+import type { Session } from '../../src/shared/types';
 
-const asset = (name: string) => join(app.isPackaged ? join(process.resourcesPath, 'resources') : join(app.getAppPath(), 'resources'), name);
+const asset = (name: string) => join(app.isPackaged ? join(process.resourcesPath, 'resources') : join(app.getAppPath(), 'desktop', 'resources'), name);
 
 export interface TrayHooks {
   sessions(): Session[];

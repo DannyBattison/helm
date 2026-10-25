@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { ClaudeAuth, findLoginUrl, lastWords, parseStatus, plain, without } from '../src/main/claudeAuth';
+import { ClaudeAuth, findLoginUrl, lastWords, parseStatus, plain, without } from '../src/core/claudeAuth';
 
 // What `claude auth login` really prints under a terminal: a link wrapped in an OSC-8 hyperlink, the same address in colour, then a prompt.
 const URL_ = 'https://claude.com/cai/oauth/authorize?code=true&client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e&response_type=code&redirect_uri=https%3A%2F%2Fplatform.claude.com%2Foauth%2Fcode%2Fcallback&scope=user%3Ainference&code_challenge=abc&code_challenge_method=S256&state=xyz';

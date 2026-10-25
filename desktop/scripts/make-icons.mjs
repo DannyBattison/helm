@@ -1,5 +1,5 @@
-// Renders build/icon.svg to the files the installers and the window need: icon.png, icon.ico (Windows) and icon.icns (macOS).
-// It draws the SVG with a headless Chrome or Edge, so set CHROME to its path if it is not found. Run: node scripts/make-icons.mjs
+// Renders desktop/build/icon.svg to the files the installers and the window need: icon.png, icon.ico (Windows) and icon.icns (macOS).
+// It draws the SVG with a headless Chrome or Edge, so set CHROME to its path if it is not found. Run: node desktop/scripts/make-icons.mjs (npm run icons)
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -80,4 +80,4 @@ const icnsHead = Buffer.alloc(8);
 icnsHead.write('icns', 0, 'ascii');
 icnsHead.writeUInt32BE(body.length + 8, 4);
 writeFileSync(out('icon.icns'), Buffer.concat([icnsHead, body]));
-console.log('wrote build/icon.png, icon.ico, icon.icns');
+console.log('wrote desktop/build/icon.png, icon.ico, icon.icns');

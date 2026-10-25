@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findBash } from '../src/main/util';
+import { findBash } from '../src/core/util';
 
 const bash = (id: string) => ({ k: 'bash', id });
 

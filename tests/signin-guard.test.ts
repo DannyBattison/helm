@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import * as GH from '../src/main/github';
+import * as GH from '../src/core/github';
 
 // The hosted server lets only one GitHub username in. The check lives in helm's own sign-in, after GitHub says who it is and before the token is
 // kept, so someone turned away cannot displace the person who is already signed in.

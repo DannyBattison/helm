@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import type { Host } from '../../src/main/host';
+import type { Host } from '../../src/core/host';
 
 const unavailable = (what: string) => () => Promise.reject(new Error(`${what} is not available on a hosted server`));
 
@@ -16,7 +16,7 @@ export function createHost(send: Host['send'], allowLogin?: Host['allowLogin']):
     allowLogin,
     requireClaudeLogin: true,
     companion: false,
-    // No keychain on a server: the GitHub token sits in dataDir (0700) as plain text. See hosted-server/README.md.
+    // No keychain on a server: the GitHub token sits in dataDir (0700) as plain text. See hosted/README.md.
     sdkClaudePath: () => undefined,
     cliClaudePath: () => undefined,
     chooseFolder: async () => null,

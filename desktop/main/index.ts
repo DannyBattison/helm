@@ -2,13 +2,13 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, Notification, nativeThe
 import { existsSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { HelmApi, HelmEvents } from '../shared/types';
-import { api, emitState, refreshPlan, sessions, shutdown, start, store } from './core';
-import { logLine } from './log';
-import { fromDisplay } from '../shared/money';
+import type { HelmApi, HelmEvents } from '../../src/shared/types';
+import { api, emitState, refreshPlan, sessions, shutdown, start, store } from '../../src/core/core';
+import { logLine } from '../../src/core/log';
+import { fromDisplay } from '../../src/shared/money';
 import { AppTray } from './tray';
 import { checkForUpdates, initUpdater, installUpdate, updateStatus } from './updater';
-import type { Host } from './host';
+import type { Host } from '../../src/core/host';
 
 // The desktop app: Electron supplies the window, notifications, keychain and native dialogs; `core.ts` is everything else.
 let win: BrowserWindow | null = null;
@@ -74,7 +74,7 @@ const host: Host = {
 
 /** The wheel tile: the window and taskbar icon while developing, and on Linux. Installed builds get theirs from the installer. */
 function appIcon() {
-  const p = join(app.getAppPath(), 'build', 'icon.png');
+  const p = join(app.getAppPath(), 'desktop', 'build', 'icon.png');
   return existsSync(p) ? p : undefined;
 }
 

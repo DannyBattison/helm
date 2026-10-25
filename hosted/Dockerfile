@@ -1,6 +1,6 @@
 # helm hosted server, in a container. Build from the repository root:
-#   docker build -t helm-hosted .
-# Run it with docker-compose.yml (see hosted-server/README.md).
+#   docker build -f hosted/Dockerfile -t helm-hosted .
+# Run it with hosted/docker-compose.yml (see hosted/README.md).
 #
 # The image carries everything it needs and nothing from the machine it runs on: Node, git, its own Claude Code binary (the one the
 # Agent SDK ships for Linux, at the version helm is built against) and the built web client.
@@ -14,12 +14,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 make g+
     && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json ./
 RUN npm ci
-COPY hosted-server/package.json hosted-server/package-lock.json hosted-server/
-RUN cd hosted-server && npm ci
-COPY tsconfig.json tsconfig.node.json tsconfig.web.json electron.vite.config.ts ./
+COPY hosted/package.json hosted/package-lock.json hosted/
+RUN cd hosted && npm ci
+COPY tsconfig.json tsconfig.node.json tsconfig.web.json ./
+# The root tsconfig points at this one; nothing else of desktop/ is needed here.
+COPY desktop/tsconfig.json desktop/
 COPY src src
-COPY hosted-server hosted-server
-RUN cd hosted-server && npm run build
+COPY hosted hosted
+RUN cd hosted && npm run build
 
 # ---- run
 FROM node:22-bookworm-slim
@@ -38,7 +40,7 @@ RUN case "$(dpkg --print-architecture)" in amd64) A=x64 ;; arm64) A=arm64 ;; *) 
 # worktrees, Claude Code's login) lives under /home/helm, which is the one volume.
 RUN useradd --create-home --uid 1001 --shell /bin/bash helm
 # Built on Windows the script can arrive with CRLF line endings and no exec bit; fix both.
-COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY hosted/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN sed -i 's/\x0d$//' /usr/local/bin/docker-entrypoint.sh && chmod 755 /usr/local/bin/docker-entrypoint.sh
 USER helm
 ENV HOME=/home/helm \
@@ -47,7 +49,7 @@ ENV HOME=/home/helm \
     PORT=8787 \
     NODE_ENV=production
 VOLUME /home/helm
-WORKDIR /app/hosted-server
+WORKDIR /app/hosted
 EXPOSE 8787
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s CMD curl -fs http://127.0.0.1:8787/ >/dev/null || exit 1
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]

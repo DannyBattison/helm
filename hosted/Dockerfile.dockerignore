@@ -1,13 +1,13 @@
 .git
 .claude
 node_modules
-hosted-server/node_modules
-hosted-server/dist
+hosted/node_modules
+hosted/dist
 out
 release
 dist
 *.log
 tests
-hosted-server/tests
+hosted/tests
 design_handoff_helm_desktop
-.env
+**/.env
