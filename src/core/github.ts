@@ -136,6 +136,20 @@ export async function listRepos(added: Set<string>): Promise<GhRepo[]> {
   return out;
 }
 
+export async function listOwners(): Promise<string[]> {
+  const me = await gh('/user');
+  const orgs: any[] = await gh('/user/orgs?per_page=100');
+  return [me.login, ...orgs.map((o) => o.login)];
+}
+
+/** Creates a repository with a README, so it has a branch to start sessions from, under the user or an organisation. */
+export async function createRepo(input: { name: string; description: string; private: boolean; owner?: string }): Promise<string> {
+  const me = await gh('/user');
+  const org = input.owner && input.owner.toLowerCase() !== String(me.login).toLowerCase() ? input.owner : '';
+  const x = await gh(org ? `/orgs/${org}/repos` : '/user/repos', { method: 'POST', body: JSON.stringify({ name: input.name, description: input.description || undefined, private: input.private, auto_init: true }), headers: { 'Content-Type': 'application/json' } });
+  return x.full_name;
+}
+
 export async function repoInfo(slug: string): Promise<{ private: boolean; lang: string | null; defaultBranch: string }> {
   const x = await gh(`/repos/${slug}`);
   return { private: x.private, lang: x.language, defaultBranch: x.default_branch };

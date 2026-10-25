@@ -316,6 +316,8 @@ export const api: HelmApi = {
   async listGithubRepos() { return GH.listRepos(new Set(store.data.repos.map((r) => r.id))); },
   async cloneRepos(ids) { for (const id of ids) { await repos.cloneSlug(id); store.log({ kind: 'git', who: me(), human: true, what: 'cloned the repository', repo: repoName(id) }); } },
   async cloneUrl(url, dir) { await repos.cloneUrl(url, dir); store.log({ kind: 'git', who: me(), human: true, what: `cloned ${url}`, repo: url.split('/').pop()?.replace(/\.git$/, '') || '' }); },
+  async listGithubOwners() { return GH.listOwners(); },
+  async createGithubRepo(input) { const r = await repos.createRepo(input); store.log({ kind: 'git', who: me(), human: true, what: 'created the repository on GitHub', repo: r.name }); },
   async inspectClone(path) { return repos.inspect(path); },
   async addLocalRepo(path) { await repos.addFromPath(expandHome(path)); store.log({ kind: 'git', who: me(), human: true, what: `added ${path}`, repo: path.split(/[\\/]/).pop() || '' }); },
   async removeRepo(id) {

@@ -168,9 +168,15 @@ export function AddRepo({ onClose }: { onClose(): void }) {
   const [dir, setDir] = React.useState(app.settings.cloneRoot);
   const [path, setPath] = React.useState('');
   const [insp, setInsp] = React.useState<{ ok: boolean; checks: { ok: boolean; warn?: boolean; text: string }[] } | null>(null);
+  const [newName, setNewName] = React.useState('');
+  const [newDesc, setNewDesc] = React.useState('');
+  const [newPrivate, setNewPrivate] = React.useState(true);
+  const [newOwner, setNewOwner] = React.useState('');
+  const [owners2, setOwners2] = React.useState<string[]>([]);
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState('');
 
+  React.useEffect(() => { api.listGithubOwners().then((o) => { setOwners2(o); setNewOwner(o[0] || ''); }).catch(() => undefined); }, []);
   React.useEffect(() => { api.listGithubRepos().then(setList).catch((e) => { setList([]); setLoadErr(errText(e)); }); }, []);
   React.useEffect(() => {
     setInsp(null);
@@ -188,22 +194,23 @@ export function AddRepo({ onClose }: { onClose(): void }) {
     try {
       if (tab === 'github') await api.cloneRepos(Object.keys(picked).filter((k) => picked[k]));
       else if (tab === 'url') await api.cloneUrl(url.trim(), dir);
+      else if (tab === 'new') await api.createGithubRepo({ name: newName.trim(), description: newDesc.trim(), private: newPrivate, owner: newOwner || undefined });
       else await api.addLocalRepo(path);
       onClose();
     } catch (e) { setErr(errText(e)); } finally { setBusy(false); }
   };
   const choose = async (set: (p: string) => void) => { const p = await api.chooseFolder(); if (p) set(p); };
-  const can = tab === 'github' ? n > 0 : tab === 'url' ? !!url.trim() && !!dir.trim() : !!insp?.ok;
+  const can = tab === 'github' ? n > 0 : tab === 'url' ? !!url.trim() && !!dir.trim() : tab === 'new' ? /^[A-Za-z0-9._-]+$/.test(newName.trim()) : !!insp?.ok;
 
   return (
     <Dialog width={600} title="Add repository" description="helm works with GitHub repositories so every session can branch, commit and open pull requests." onClose={onClose}
       footer={<>
-        <span style={{ flex: 1, font: '400 12px/1.3 var(--font-sans)', color: err ? 'var(--status-error-text)' : 'var(--text-3)' }}>{err || (tab === 'github' ? 'Cloned into ' + tilde(app.settings.cloneRoot, app.home) + '/<owner>/<name>' : '')}</span>
+        <span style={{ flex: 1, font: '400 12px/1.3 var(--font-sans)', color: err ? 'var(--status-error-text)' : 'var(--text-3)' }}>{err || (tab === 'github' || tab === 'new' ? 'Cloned into ' + tilde(app.settings.cloneRoot, app.home) + '/<owner>/<name>' : '')}</span>
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" icon="download-simple" loading={busy} disabled={!can} onClick={submit}>{tab === 'github' ? 'Clone ' + n + (n === 1 ? ' repository' : ' repositories') : tab === 'url' ? 'Clone' : 'Add'}</Button>
+        <Button variant="primary" icon="download-simple" loading={busy} disabled={!can} onClick={submit}>{tab === 'github' ? 'Clone ' + n + (n === 1 ? ' repository' : ' repositories') : tab === 'url' ? 'Clone' : tab === 'new' ? 'Create repository' : 'Add'}</Button>
       </>}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, margin: '-8px 0 0' }}>
-        <Tabs value={tab} onChange={setTab} style={{ padding: 0 }} tabs={[{ value: 'github', label: 'Your repositories', icon: 'github-logo' }, { value: 'url', label: 'Clone from URL', icon: 'link' }, { value: 'local', label: 'Existing clone', icon: 'folder-simple' }]} />
+        <Tabs value={tab} onChange={setTab} style={{ padding: 0 }} tabs={[{ value: 'github', label: 'Your repositories', icon: 'github-logo' }, { value: 'url', label: 'Clone from URL', icon: 'link' }, { value: 'new', label: 'Create new', icon: 'plus-circle' }, { value: 'local', label: 'Existing clone', icon: 'folder-simple' }]} />
         {tab === 'github' ? <>
           <div style={{ display: 'flex', gap: 8 }}>
             <Input icon="magnifying-glass" placeholder="Filter repositories" value={filter} onChange={(e: any) => setFilter(e.target.value)} style={{ flex: 1 }} />
@@ -229,6 +236,15 @@ export function AddRepo({ onClose }: { onClose(): void }) {
         {tab === 'url' ? <>
           <Input mono icon="link" value={url} onChange={(e: any) => setUrl(e.target.value)} placeholder="https://github.com/owner/name or git@github.com:owner/name.git" />
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}><span style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)', width: 70 }}>Clone into</span><Input mono value={dir} onChange={(e: any) => setDir(e.target.value)} style={{ flex: '1 1 160px', minWidth: 0 }} /><Button onClick={() => choose(setDir)}>Choose…</Button></div>
+        </> : null}
+        {tab === 'new' ? <>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {owners2.length > 1 ? <Select value={newOwner} onChange={(e: any) => setNewOwner(e.target.value)} options={owners2.map((o) => ({ value: o, label: o }))} /> : null}
+            <Input mono autoFocus value={newName} onChange={(e: any) => setNewName(e.target.value)} placeholder="repository-name" style={{ flex: '1 1 160px', minWidth: 0 }} />
+          </div>
+          <Input value={newDesc} onChange={(e: any) => setNewDesc(e.target.value)} placeholder="Description (optional)" />
+          <Checkbox checked={newPrivate} onChange={setNewPrivate} label="Private" description="Only you and people you give access to can see it." />
+          <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>Created on GitHub with a README, then cloned and added to helm.</span>
         </> : null}
         {tab === 'local' ? <>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}><Input mono value={path} onChange={(e: any) => setPath(e.target.value)} placeholder="Path to an existing clone" style={{ flex: '1 1 160px', minWidth: 0 }} /><Button onClick={() => choose(setPath)}>Choose folder…</Button></div>
