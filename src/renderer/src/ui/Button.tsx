@@ -15,9 +15,9 @@ export function Button({ variant = 'secondary', size = 'md', icon, iconRight, kb
   const v = VARIANTS[variant] || VARIANTS.secondary;
   const off = disabled || loading;
   return (
-    <button type={type} disabled={off} onClick={onClick}
-      onMouseEnter={() => setHover(true)} onMouseLeave={() => { setHover(false); setPress(false); }}
-      onMouseDown={() => setPress(true)} onMouseUp={() => setPress(false)}
+    <button type={type} className="helm-tap-btn" disabled={off} onClick={onClick}
+      onPointerEnter={(e) => { if (e.pointerType === 'mouse') setHover(true); }} onPointerLeave={() => { setHover(false); setPress(false); }}
+      onPointerDown={() => setPress(true)} onPointerUp={() => setPress(false)} onPointerCancel={() => setPress(false)}
       style={{
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: s.gap, height: s.h, padding: '0 ' + s.px + 'px',
         width: fullWidth ? '100%' : undefined, border: 'none', borderRadius: 'var(--radius-md)', boxShadow: v.ring,

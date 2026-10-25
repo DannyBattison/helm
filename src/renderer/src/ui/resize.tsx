@@ -128,8 +128,13 @@ export function useColumns(key: string, cols: Col[]) {
   return { template, cell, reset };
 }
 
+/** Phone widths: below this the sidebar is a drawer and every page lays itself out in one column. */
+export const PHONE = 768;
+/** Below this there is no room for a side panel next to the main content (the session's usage panel, the review sidebar): it folds away. */
+export const COMPACT = 1100;
+
 /** True while the window is narrower than `max` pixels. */
-export function useNarrow(max = 768) {
+export function useNarrow(max = PHONE) {
   const query = `(max-width: ${max - 1}px)`;
   const [narrow, setNarrow] = React.useState(() => window.matchMedia(query).matches);
   React.useEffect(() => {
@@ -141,3 +146,6 @@ export function useNarrow(max = 768) {
   }, [query]);
   return narrow;
 }
+
+/** True when there is no room for a side panel next to the main content. */
+export const useCompact = () => useNarrow(COMPACT);

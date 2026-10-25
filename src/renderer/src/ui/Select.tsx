@@ -70,7 +70,7 @@ export function Select({ value, defaultValue, options = [], icon, mono = false, 
           {norm.map((o, i) => {
             const on = o.value === cur;
             return (
-              <div key={o.value} role="option" aria-selected={on} data-hi={i === hi} onMouseEnter={() => setHi(i)} onClick={() => pick(o.value)}
+              <div key={o.value} role="option" className="helm-tap-row" aria-selected={on} data-hi={i === hi} onMouseEnter={() => setHi(i)} onClick={() => pick(o.value)}
                 style={{ display: 'flex', alignItems: 'center', gap: 8, height: 28, padding: '0 8px 0 10px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', whiteSpace: 'nowrap',
                   background: i === hi ? 'var(--bg-hover)' : 'transparent', color: on ? 'var(--text-1)' : 'var(--text-2)', font: mono ? '400 12px/1 var(--font-mono)' : '400 13px/1 var(--font-sans)' }}>
                 <span style={{ flex: 1 }}>{o.label}</span>
