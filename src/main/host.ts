@@ -22,6 +22,11 @@ export interface Host {
   setTheme?(theme: ThemePref): void;
   /** A desktop notification. The host decides whether the user is already looking. */
   notify?(n: { kind: 'attention' | 'ready' | 'failed'; title: string; body: string; silent: boolean; sessionId: string }): void;
+  /**
+   * Who may sign in to GitHub in this app. Only a hosted server sets it, since a server is shared by whoever can reach it; the desktop app
+   * is the one person's own and leaves it out. Asked after GitHub says who it is and before anything is stored.
+   */
+  allowLogin?(login: string): boolean;
   /** Things that happen on the user's own computer, which a hosted server has no access to. */
   chooseFolder(): Promise<string | null>;
   openExternal(url: string): Promise<void>;

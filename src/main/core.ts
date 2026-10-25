@@ -605,7 +605,13 @@ export async function start(h: Host) {
   host = h;
   await store.load(host.dataDir);
   if (!process.env.HELM_DEV_NO_RECOVER) sessions.recover();
+  GH.setSignInGuard(host.allowLogin ?? null);
   await GH.loadToken(host);
+  // A server's list can change between runs: a token that belongs to someone no longer on it is dropped, not honoured.
+  if (host.allowLogin && GH.getToken()) {
+    const u = await GH.currentUser().catch(() => null);
+    if (!u || !host.allowLogin(u.login)) { await GH.clearToken(); store.data.user = null; }
+  }
   G.setGitToken(GH.getToken());
   if (!GH.getToken() && !process.env.HELM_DEV_SEED) store.data.user = null;
   claudeVersion = await detectClaude(store.data.settings.claudePath);

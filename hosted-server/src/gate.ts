@@ -1,60 +1,24 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
-/** The OAuth app helm itself signs in with. Device flow needs no secret, so the same client id works for this gate. */
-export const DEFAULT_CLIENT_ID = 'Ov23liTYcKE5lBWCEAAV';
-
-export interface DeviceStart { userCode: string; verificationUri: string; deviceCode: string; interval: number; expiresIn: number }
-export type DevicePoll = { status: 'pending' | 'slow_down' | 'denied' | 'expired' } | { status: 'error'; error?: string } | { status: 'ok'; login: string; avatar: string };
+/**
+ * Remembering who has signed in. The person signs in once, with helm's own GitHub sign-in (the one screen), and the server only lets them
+ * through if their username is on the allow list. This turns that into a signed cookie, so reloading the page does not mean signing in again.
+ */
 
 /**
- * Who someone is, according to GitHub. Only the identity is asked for (no scopes) and GitHub's token is dropped as soon as the username is known:
- * this gate decides who may open helm, and holds nothing that could reach anyone's code. (helm's own GitHub sign-in, inside the app, is separate.)
+ * The one GitHub username allowed in, lower-cased, or an error message. GitHub usernames are not case sensitive, are 1 to 39 letters, digits
+ * and single hyphens, and cannot start or end with a hyphen. A list is refused on purpose: this server has one user.
  */
-export interface Github {
-  start(): Promise<DeviceStart>;
-  poll(deviceCode: string): Promise<DevicePoll>;
+export function parseUser(v: string | undefined): { user: string } | { error: string } {
+  const raw = (v || '').trim().replace(/^@/, '');
+  if (!raw) return { error: 'Set HELM_HOSTED_ALLOWED_USER to the GitHub username allowed to use this server (for example `HELM_HOSTED_ALLOWED_USER=DannyBattison`).' };
+  if (/[\s,;]/.test(raw)) return { error: 'HELM_HOSTED_ALLOWED_USER takes one GitHub username. This server supports a single user.' };
+  if (!/^[a-z\d](?:[a-z\d]|-(?=[a-z\d])){0,38}$/i.test(raw)) return { error: `"${raw}" is not a valid GitHub username.` };
+  return { user: raw.toLowerCase() };
 }
 
-export function realGithub(clientId = DEFAULT_CLIENT_ID): Github {
-  const headers = { Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'helm-hosted' };
-  return {
-    async start() {
-      const r = await fetch('https://github.com/login/device/code', { method: 'POST', headers, body: JSON.stringify({ client_id: clientId, scope: '' }) });
-      const j: any = await r.json();
-      if (!j.device_code) throw new Error(j.error_description || 'GitHub would not start a sign-in');
-      return { userCode: j.user_code, verificationUri: j.verification_uri, deviceCode: j.device_code, interval: j.interval || 5, expiresIn: j.expires_in || 900 };
-    },
-    async poll(deviceCode) {
-      const r = await fetch('https://github.com/login/oauth/access_token', { method: 'POST', headers, body: JSON.stringify({ client_id: clientId, device_code: deviceCode, grant_type: 'urn:ietf:params:oauth:grant-type:device_code' }) });
-      const j: any = await r.json();
-      if (j.error === 'authorization_pending') return { status: 'pending' };
-      if (j.error === 'slow_down') return { status: 'slow_down' };
-      if (j.error === 'access_denied') return { status: 'denied' };
-      if (j.error === 'expired_token') return { status: 'expired' };
-      if (!j.access_token) return { status: 'error', error: j.error_description || j.error || 'GitHub refused' };
-      const u = await fetch('https://api.github.com/user', { headers: { Authorization: 'Bearer ' + j.access_token, Accept: 'application/vnd.github+json', 'User-Agent': 'helm-hosted' } });
-      if (!u.ok) return { status: 'error', error: 'Could not read your GitHub profile' };
-      const p: any = await u.json();
-      return { status: 'ok', login: String(p.login), avatar: String(p.avatar_url || '') };
-    }
-  };
-}
-
-/** For tests: every sign-in succeeds at once, as the given login. */
-export function fakeGithub(login: string): Github {
-  return {
-    async start() { return { userCode: 'TEST-0000', verificationUri: 'https://github.com/login/device', deviceCode: 'dev-' + randomBytes(6).toString('hex'), interval: 1, expiresIn: 600 }; },
-    async poll() { return { status: 'ok', login, avatar: '' }; }
-  };
-}
-
-/** `a, B ,c` → {a, b, c}. GitHub usernames are not case sensitive. */
-export function parseAllowed(v: string | undefined): Set<string> {
-  return new Set((v || '').split(/[\s,;]+/).map((s) => s.trim().replace(/^@/, '').toLowerCase()).filter(Boolean));
-}
-
-// ------------------------------------------------------------------ the sign-in cookie: `payload.signature`, signed with the server secret
+// ------------------------------------------------------------------ the cookie: `payload.signature`, signed with the server secret
 const b64 = (s: string) => Buffer.from(s, 'utf8').toString('base64url');
 
 export function sign(secret: string, login: string, avatar: string, ttlMs: number, now = Date.now()): string {
@@ -79,31 +43,41 @@ export function verify(secret: string, value: string | undefined, now = Date.now
 // ------------------------------------------------------------------ the gate
 const COOKIE = 'helm_hosted';
 const SESSION_TTL = 7 * 24 * 3600_000;
+const CLAIM_TTL = 60_000;
 
 export interface GateOptions {
-  /** Lower-case GitHub usernames that may open helm. */
-  allowed: Set<string>;
+  /** The one GitHub username (lower case) that may open helm. */
+  allowed: string;
   secret: string;
-  github: Github;
   /** Set the Secure flag on the cookie. Default: when the proxy says the request was https. */
   secureCookie?: boolean;
 }
 
 export function createGate(opts: GateOptions) {
-  const tickets = new Map<string, { deviceCode: string; expires: number; interval: number; last: number }>();
-  const starts = new Map<string, number[]>();
+  // A claim is how a page that just signed in (over the WebSocket, which cannot set cookies) gets its cookie: one use, a minute to spend it.
+  const claims = new Map<string, { login: string; avatar: string; expires: number }>();
 
   const readCookie = (req: IncomingMessage) => {
     const m = /(?:^|;\s*)helm_hosted=([^;]+)/.exec(req.headers.cookie || '');
     return m ? decodeURIComponent(m[1]) : undefined;
   };
-  const allowedLogin = (login: string) => opts.allowed.has(login.toLowerCase());
+  const allowedLogin = (login: string) => login.toLowerCase() === opts.allowed;
   const secure = (req: IncomingMessage) => opts.secureCookie ?? req.headers['x-forwarded-proto'] === 'https';
 
-  /** The signed-in person, if the cookie is genuine and their username is still on the list. */
+  /** The signed-in person, if the cookie is genuine and it is for the allowed username. */
   function identity(req: IncomingMessage): { login: string; avatar: string } | null {
     const who = verify(opts.secret, readCookie(req));
     return who && allowedLogin(who.login) ? who : null;
+  }
+
+  /** Called when someone has signed in and been let in. Returns what they exchange for a cookie. */
+  function issueClaim(login: string, avatar: string): string | null {
+    if (!allowedLogin(login)) return null;
+    const now = Date.now();
+    for (const [k, c] of claims) if (c.expires < now) claims.delete(k);
+    const id = randomBytes(24).toString('base64url');
+    claims.set(id, { login, avatar, expires: now + CLAIM_TTL });
+    return id;
   }
 
   const json = (res: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}) => {
@@ -112,7 +86,7 @@ export function createGate(opts: GateOptions) {
   };
   const readBody = (req: IncomingMessage): Promise<any> => new Promise((resolve) => {
     let s = '';
-    req.on('data', (d) => { s += d; if (s.length > 4000) req.destroy(); });
+    req.on('data', (d) => { s += d; if (s.length > 2000) req.destroy(); });
     req.on('end', () => { try { resolve(s ? JSON.parse(s) : {}); } catch { resolve({}); } });
     req.on('error', () => resolve({}));
   });
@@ -128,37 +102,13 @@ export function createGate(opts: GateOptions) {
       return true;
     }
 
-    if (path === '/auth/device/start' && req.method === 'POST') {
-      // Each start is a request to GitHub, so one address cannot make many.
-      const ip = req.socket.remoteAddress || '?';
-      const now = Date.now();
-      const recent = (starts.get(ip) || []).filter((t) => now - t < 60_000);
-      if (recent.length >= 10) { json(res, 429, { error: 'Too many sign-in attempts. Wait a minute.' }); return true; }
-      starts.set(ip, [...recent, now]);
-      try {
-        const d = await opts.github.start();
-        const ticket = randomBytes(18).toString('base64url');
-        tickets.set(ticket, { deviceCode: d.deviceCode, expires: now + d.expiresIn * 1000, interval: d.interval, last: 0 });
-        for (const [k, t] of tickets) if (t.expires < now) tickets.delete(k);
-        json(res, 200, { ticket, userCode: d.userCode, verificationUri: d.verificationUri, interval: d.interval, expiresIn: d.expiresIn });
-      } catch (e: any) { json(res, 502, { error: String(e?.message || e) }); }
-      return true;
-    }
-
-    if (path === '/auth/device/poll' && req.method === 'POST') {
+    if (path === '/auth/claim' && req.method === 'POST') {
       const b = await readBody(req);
-      const t = typeof b.ticket === 'string' ? tickets.get(b.ticket) : undefined;
-      if (!t || t.expires < Date.now()) { json(res, 200, { status: 'expired' }); return true; }
-      if (Date.now() - t.last < (t.interval - 1) * 1000) { json(res, 200, { status: 'pending' }); return true; }
-      t.last = Date.now();
-      const r = await opts.github.poll(t.deviceCode).catch((e): DevicePoll => ({ status: 'error', error: String(e?.message || e) }));
-      if (r.status === 'slow_down') { json(res, 200, { status: 'pending' }); return true; }
-      if (r.status !== 'ok') { json(res, 200, r); return true; }
-      tickets.delete(b.ticket);
-      // Signed in to GitHub is not the same as allowed in. No cookie unless the username is on the list.
-      if (!allowedLogin(r.login)) { json(res, 200, { status: 'forbidden', login: r.login }); return true; }
-      const cookie = `${COOKIE}=${encodeURIComponent(sign(opts.secret, r.login, r.avatar, SESSION_TTL))}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${SESSION_TTL / 1000}${secure(req) ? '; Secure' : ''}`;
-      json(res, 200, { status: 'ok', login: r.login }, { 'Set-Cookie': cookie });
+      const c = typeof b.claim === 'string' ? claims.get(b.claim) : undefined;
+      if (!c || c.expires < Date.now() || !allowedLogin(c.login)) { json(res, 401, { error: 'That claim is not valid.' }); return true; }
+      claims.delete(b.claim);
+      const cookie = `${COOKIE}=${encodeURIComponent(sign(opts.secret, c.login, c.avatar, SESSION_TTL))}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${SESSION_TTL / 1000}${secure(req) ? '; Secure' : ''}`;
+      json(res, 200, { login: c.login }, { 'Set-Cookie': cookie });
       return true;
     }
 
@@ -171,5 +121,5 @@ export function createGate(opts: GateOptions) {
     return true;
   }
 
-  return { identity, handle };
+  return { identity, issueClaim, handle };
 }

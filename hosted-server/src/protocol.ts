@@ -1,10 +1,12 @@
 import type { HelmEvents } from '../../src/shared/types';
 
-/** Messages between the web client and the server, as JSON over one WebSocket. Who is on the other end is decided before it opens, by the sign-in cookie. */
+/** Messages between the web client and the server, as JSON over one WebSocket. A page without a valid cookie may connect, but may only use helm's own sign-in until it has signed in with an allowed username. */
 export type ClientMessage = { t: 'call'; id: number; name: string; args: unknown[] };
 
 export type ServerMessage =
   | { t: 'ready' }
+  /** Sent to a page that has just signed in and been let in: it exchanges this for its cookie at /auth/claim. */
+  | { t: 'session'; claim: string }
   | { t: 'result'; id: number; ok: true; value: unknown }
   | { t: 'result'; id: number; ok: false; error: string }
   | { t: 'event'; channel: keyof HelmEvents; payload: unknown };

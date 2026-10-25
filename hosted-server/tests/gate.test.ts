@@ -1,19 +1,27 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createGate, fakeGithub, parseAllowed, sign, verify, type Github } from '../src/gate';
+import { createGate, parseUser, sign, verify } from '../src/gate';
 
-describe('the allow list', () => {
-  it('reads usernames however they are separated, ignoring case and @', () => {
-    expect([...parseAllowed('DannyBattison, @Other_User;third\nfourth')].sort()).toEqual(['dannybattison', 'fourth', 'other_user', 'third']);
+describe('the allowed username', () => {
+  it('is one GitHub username, lower-cased, with a leading @ and spaces ignored', () => {
+    expect(parseUser('DannyBattison')).toEqual({ user: 'dannybattison' });
+    expect(parseUser('  @Danny-B  ')).toEqual({ user: 'danny-b' });
   });
-  it('is empty when nothing is set, so nobody gets in by default', () => {
-    expect(parseAllowed(undefined).size).toBe(0);
-    expect(parseAllowed('  , ;').size).toBe(0);
+  it('is required: nobody gets in by default', () => {
+    expect(parseUser(undefined)).toHaveProperty('error');
+    expect(parseUser('   ')).toHaveProperty('error');
+  });
+  it('refuses a list, so nobody assumes more than one person works', () => {
+    for (const v of ['a,b', 'a b', 'a;b', 'a, b']) expect(parseUser(v)).toMatchObject({ error: expect.stringMatching(/one GitHub username/) });
+  });
+  it('refuses what cannot be a GitHub username', () => {
+    for (const v of ['-lead', 'trail-', 'dou--ble', 'under_score', 'a'.repeat(40), 'sp\u00e9cial', 'a/b']) expect(parseUser(v)).toHaveProperty('error');
+    expect(parseUser('a'.repeat(39))).toEqual({ user: 'a'.repeat(39) });
   });
 });
 
-describe('the sign-in cookie', () => {
+describe('the cookie', () => {
   it('verifies what it signed, and nothing else', () => {
     const v = sign('a-long-enough-secret', 'danny', 'x', 1000, 5_000);
     expect(verify('a-long-enough-secret', v, 5_500)).toEqual({ login: 'danny', avatar: 'x' });
@@ -31,82 +39,79 @@ describe('the sign-in cookie', () => {
 let server: Server | undefined;
 afterEach(() => new Promise<void>((r) => (server ? server.close(() => r()) : r())));
 
-async function boot(login: string, allowed: string, github: Github = fakeGithub(login)) {
-  const gate = createGate({ allowed: parseAllowed(allowed), secret: 'test-secret-test-secret', github });
+async function boot(allowed: string) {
+  const gate = createGate({ allowed, secret: 'test-secret-test-secret' });
   server = createServer(async (req, res) => { if (!(await gate.handle(req, res))) { res.writeHead(200); res.end('page'); } });
   await new Promise<void>((r) => server!.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  const post = (path: string, body: unknown = {}, cookie?: string) => fetch(base + path, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(cookie ? { cookie } : {}) }, body: JSON.stringify(body) });
-  const signIn = async () => {
-    const start: any = await (await post('/auth/device/start')).json();
-    await new Promise((r) => setTimeout(r, 1100)); // the fake asks to be polled no more than once a second
-    const res = await post('/auth/device/poll', { ticket: start.ticket });
-    return { json: (await res.json()) as any, cookie: res.headers.get('set-cookie')?.split(';')[0] };
+  const post = (path: string, body: unknown = {}) => fetch(base + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  /** What the page does after helm's sign-in succeeds: trade the claim for a cookie. */
+  const cookieFor = async (claim: string | null) => {
+    const res = await post('/auth/claim', { claim });
+    return { status: res.status, cookie: res.headers.get('set-cookie')?.split(';')[0], header: res.headers.get('set-cookie') || '' };
   };
-  return { gate, base, post, signIn };
+  return { gate, base, post, cookieFor };
 }
 
-describe('signing in', () => {
-  it('lets a username on the list in, and then knows who they are', async () => {
-    const { base, signIn } = await boot('DannyBattison', 'dannybattison');
+describe('claims and cookies', () => {
+  it('exchanges a claim for a cookie, and the cookie then identifies the person', async () => {
+    const { gate, base, cookieFor } = await boot('dannybattison');
     expect((await fetch(base + '/auth/me')).status).toBe(401);
-    const r = await signIn();
-    expect(r.json).toMatchObject({ status: 'ok', login: 'DannyBattison' });
+    const claim = gate.issueClaim('DannyBattison', 'https://avatar')!;
+    const r = await cookieFor(claim);
+    expect(r.status).toBe(200);
     const me = await fetch(base + '/auth/me', { headers: { cookie: r.cookie! } });
     expect(me.status).toBe(200);
     expect(await me.json()).toMatchObject({ login: 'DannyBattison' });
   });
 
-  it('gives a cookie that the browser cannot read or send from another site', async () => {
-    const { post } = await boot('danny', 'danny');
-    const start: any = await (await post('/auth/device/start')).json();
-    await new Promise((r) => setTimeout(r, 1100));
-    const res = await post('/auth/device/poll', { ticket: start.ticket });
-    const cookie = res.headers.get('set-cookie')!;
-    expect(cookie).toMatch(/HttpOnly/);
-    expect(cookie).toMatch(/SameSite=Strict/);
+  it('gives a cookie that scripts cannot read and other sites cannot send', async () => {
+    const { gate, cookieFor } = await boot('danny');
+    const r = await cookieFor(gate.issueClaim('danny', '')!);
+    expect(r.header).toMatch(/HttpOnly/);
+    expect(r.header).toMatch(/SameSite=Strict/);
   });
 
-  it('turns away a GitHub user who is not on the list, and gives them no cookie', async () => {
-    const { base, signIn } = await boot('stranger', 'danny');
-    const r = await signIn();
-    expect(r.json).toEqual({ status: 'forbidden', login: 'stranger' });
-    expect(r.cookie).toBeUndefined();
-    expect((await fetch(base + '/auth/me')).status).toBe(401);
+  it('issues no claim to anyone but the allowed username', async () => {
+    const { gate } = await boot('danny');
+    expect(gate.issueClaim('stranger', '')).toBeNull();
   });
 
-  it('stops honouring a cookie once the username is taken off the list', async () => {
-    const first = await boot('danny', 'danny,someone');
-    const r = await first.signIn();
-    const cookie = r.cookie!;
+  it('lets a claim be used once', async () => {
+    const { gate, cookieFor } = await boot('danny');
+    const claim = gate.issueClaim('danny', '')!;
+    expect((await cookieFor(claim)).status).toBe(200);
+    expect((await cookieFor(claim)).status).toBe(401);
+  });
+
+  it('refuses a claim that was never issued', async () => {
+    const { cookieFor } = await boot('danny');
+    expect((await cookieFor('made-up')).status).toBe(401);
+    expect((await cookieFor(null)).status).toBe(401);
+  });
+
+  it('stops honouring a cookie if the server is later set up for someone else', async () => {
+    const first = await boot('danny');
+    const cookie = (await first.cookieFor(first.gate.issueClaim('danny', '')!)).cookie!;
     expect((await fetch(first.base + '/auth/me', { headers: { cookie } })).status).toBe(200);
     await new Promise<void>((done) => server!.close(() => done()));
-    const second = await boot('danny', 'someone'); // same secret, shorter list
+    const second = await boot('someone'); // same secret, different allowed user
     expect((await fetch(second.base + '/auth/me', { headers: { cookie } })).status).toBe(401);
   });
 
   it('rejects a tampered cookie', async () => {
-    const { base, signIn } = await boot('danny', 'danny');
-    const r = await signIn();
-    expect((await fetch(base + '/auth/me', { headers: { cookie: r.cookie!.slice(0, -4) + 'AAAA' } })).status).toBe(401);
+    const { gate, base, cookieFor } = await boot('danny');
+    const cookie = (await cookieFor(gate.issueClaim('danny', '')!)).cookie!;
+    expect((await fetch(base + '/auth/me', { headers: { cookie: cookie.slice(0, -4) + 'AAAA' } })).status).toBe(401);
   });
 
   it('signs out', async () => {
-    const { post } = await boot('danny', 'danny');
-    const res = await post('/auth/logout');
-    expect(res.headers.get('set-cookie')).toMatch(/Max-Age=0/);
-  });
-
-  it('limits how fast one address can start sign-ins', async () => {
-    const { post } = await boot('danny', 'danny');
-    const codes: number[] = [];
-    for (let i = 0; i < 12; i++) codes.push((await post('/auth/device/start')).status);
-    expect(codes.filter((c) => c === 200)).toHaveLength(10);
-    expect(codes.filter((c) => c === 429)).toHaveLength(2);
+    const { post } = await boot('danny');
+    expect((await post('/auth/logout')).headers.get('set-cookie')).toMatch(/Max-Age=0/);
   });
 
   it('leaves every other path to the caller', async () => {
-    const { base } = await boot('danny', 'danny');
+    const { base } = await boot('danny');
     expect(await (await fetch(base + '/anything')).text()).toBe('page');
   });
 });

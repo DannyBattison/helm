@@ -1,6 +1,6 @@
 # helm hosted server, for trying it as if it were hosted.
 #
-#   cp .env.example .env     # then fill it in: allowed GitHub users, a secret, the Anthropic key
+#   cp .env.example .env     # then fill it in: the allowed GitHub user, a secret, the Anthropic key
 #   docker compose up --build
 #
 # then open http://127.0.0.1:8787 and sign in with GitHub. The port is published on this computer only; put TLS in front before it is

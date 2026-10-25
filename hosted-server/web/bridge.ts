@@ -14,10 +14,10 @@ const local: Record<string, (...a: any[]) => unknown> = {
 const clientPlatform = () => (/Mac/i.test(navigator.platform) ? 'darwin' : /Win/i.test(navigator.platform) ? 'win32' : 'linux');
 
 /**
- * The same `HelmBridge` Electron's preload provides, over a WebSocket. Reconnects by itself. The server only opens the socket for a valid
- * sign-in cookie, so a socket that never opens may mean the sign-in ended: `onSignedOut` is called then, and the page asks again.
+ * The same `HelmBridge` Electron's preload provides, over a WebSocket. Reconnects by itself. Before sign-in the server only answers helm's
+ * own sign-in screen; once that succeeds it tells this page to collect a cookie, so a reload does not mean signing in again.
  */
-export function createBridge(url: string, onSignedOut: () => void): HelmBridge & { ready: Promise<void> } {
+export function createBridge(url: string): HelmBridge & { ready: Promise<void> } {
   const listeners = new Map<string, Set<(p: any) => void>>();
   const pending = new Map<number, Pending>();
   let ws: WebSocket;
@@ -47,18 +47,14 @@ export function createBridge(url: string, onSignedOut: () => void): HelmBridge &
         const p = pending.get(m.id);
         pending.delete(m.id);
         if (p) { if (m.ok === true) p.resolve(m.value); else p.reject(new Error(m.error)); }
+      } else if (m.t === 'session') {
+        void fetch('/auth/claim', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ claim: m.claim }), credentials: 'same-origin' }).catch(() => undefined);
       } else if (m.t === 'event') emit(m.channel, m.payload);
     };
-    ws.onclose = async () => {
-      const wasReady = isReady;
+    ws.onclose = () => {
       isReady = false;
       for (const p of pending.values()) p.reject(new Error('Connection to the server was lost'));
       pending.clear();
-      // A refused upgrade looks the same as a network drop from here, so ask the server whether we are still signed in.
-      if (!wasReady) {
-        const me = await fetch('/auth/me', { credentials: 'same-origin' }).catch(() => null);
-        if (me && me.status === 401) return onSignedOut();
-      }
       setTimeout(() => connect(true), retry);
       retry = Math.min(retry * 2, 10_000);
     };

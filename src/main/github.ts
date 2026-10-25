@@ -11,6 +11,10 @@ let vault: Pick<Host, 'dataDir' | 'encrypt' | 'decrypt'> = { dataDir: '' };
 const tokenFile = () => join(vault.dataDir, 'auth.bin');
 export const getToken = () => token;
 
+let guard: ((login: string) => boolean) | null = null;
+/** Sets who may sign in (a hosted server's allow list). Null, the default, lets anyone: the desktop app's own user. */
+export function setSignInGuard(g: ((login: string) => boolean) | null) { guard = g; }
+
 export async function loadToken(h: Pick<Host, 'dataDir' | 'encrypt' | 'decrypt'>): Promise<string | null> {
   vault = h;
   try {
@@ -71,8 +75,7 @@ export async function waitDeviceFlow(): Promise<User> {
     const j: any = await res.json();
     if (j.access_token) {
       pending = null;
-      await saveToken(j.access_token);
-      return currentUser();
+      return acceptToken(j.access_token);
     }
     if (j.error === 'slow_down') interval += 5000;
     else if (j.error && j.error !== 'authorization_pending') throw new Error(j.error_description || j.error);
@@ -81,12 +84,19 @@ export async function waitDeviceFlow(): Promise<User> {
   throw new Error('The code expired. Start again.');
 }
 
-export async function signInWithToken(t: string): Promise<User> {
+export const signInWithToken = (t: string): Promise<User> => acceptToken(t.trim());
+
+/**
+ * Finds out whose token this is, and keeps it only if that person may sign in. The check comes before the token is saved, so someone who is
+ * turned away leaves the person already signed in exactly as they were.
+ */
+async function acceptToken(t: string): Promise<User> {
   const prev = token;
-  token = t.trim();
+  token = t;
   try {
     const u = await currentUser();
-    await saveToken(token);
+    if (guard && !guard(u.login)) throw new Error(`@${u.login} is not allowed to use this server.`);
+    await saveToken(t);
     return u;
   } catch (e) {
     token = prev;

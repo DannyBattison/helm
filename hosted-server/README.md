@@ -21,13 +21,13 @@ Open `http://127.0.0.1:8787` and sign in with GitHub. The port is published on t
 
 | Variable | Meaning |
 | --- | --- |
-| `HELM_HOSTED_ALLOWED_USERS` | **Required.** GitHub usernames allowed in, comma separated, not case sensitive. Nobody else gets a session, and the server will not start with the list empty. Anyone on it can run commands inside the container. |
+| `HELM_HOSTED_ALLOWED_USER` | **Required.** The one GitHub username allowed in (not case sensitive). Anyone else is turned away, and the server will not start without it or with more than one name. That person can run commands inside the container. |
 | `HELM_HOSTED_SECRET` | Signs the sign-in cookie. 32+ random characters (`openssl rand -hex 32`). If it is left out, everyone is signed out whenever the container restarts. |
 | `ANTHROPIC_API_KEY` | How agents authenticate. See below. |
 | `CLAUDE_CODE_OAUTH_TOKEN` | Optional alternative to the API key. See below. |
 | `HELM_GIT_NAME`, `HELM_GIT_EMAIL` | Who agent commits are made as. |
 
-Without `docker`: `HELM_HOSTED_ALLOWED_USERS=you HELM_HOSTED_SECRET=... npm start` after `npm run build`, with Node 22 and git installed, and the same variables.
+Without `docker`: `HELM_HOSTED_ALLOWED_USER=you HELM_HOSTED_SECRET=... npm start` after `npm run build`, with Node 22 and git installed, and the same variables.
 
 ### Getting an Anthropic API key
 
@@ -41,7 +41,9 @@ Without `docker`: `HELM_HOSTED_ALLOWED_USERS=you HELM_HOSTED_SECRET=... npm star
 
 ## Signing in
 
-The page asks you to sign in with GitHub (device flow: it shows a code to enter at github.com/login/device). Only your username is read, no permissions are requested, and GitHub's token is dropped at once. If the username is on `HELM_HOSTED_ALLOWED_USERS` the server sets a signed, HttpOnly, same-site cookie; if not, you get no cookie at all. The WebSocket (the only way to call anything) is refused unless that cookie is genuine, the username is still on the list, and the page's origin is the server's own, so taking someone off the list and restarting locks them out. Helm's own GitHub sign-in inside the app (which asks for repository access) is separate from this one.
+There is one login: helm's own GitHub sign-in screen, the same one the desktop app shows. On the hosted server it also checks who signed in. A page that has not signed in is shown that screen and nothing else (the server answers only the four calls the screen needs, and sends it a state with nobody signed in and none of the server's paths or settings). When the sign-in completes, helm asks whether that username is `HELM_HOSTED_ALLOWED_USER` before it keeps anything: if not, the person is told so, no token is stored, and whoever is already signed in is untouched. If so, the page is let in and given a signed, HttpOnly, same-site cookie, so reloading does not mean signing in again; a new visitor without the cookie has to sign in. The WebSocket is also refused for a page on another origin, so another site cannot use the cookie.
+
+Signing in asks GitHub for repository access (helm needs it), and the token is kept on the server, in the data volume, unencrypted. There is no second login.
 
 ## What is shared, and where the seams are
 
@@ -52,7 +54,7 @@ The page asks you to sign in with GitHub (device flow: it shows a code to enter 
 
 ## Not safe yet
 
-- Everyone on the allow list has the same powers. The agent can run any command as the server's user, and the terminal tab is a shell on the server. Only list people you would give a shell.
+- The allowed user has a shell. The agent can run any command as the server's user, and the terminal tab is a shell on the server.
 - The GitHub token is stored unencrypted in `HELM_DATA_DIR` (mode 0700); there is no keychain on a server.
 - No sandbox, no egress control, no resource limits. The VM or container this runs in is the boundary.
 - A dropped connection can miss transcript events; the UI refetches `state` on reconnect but not open transcripts.
