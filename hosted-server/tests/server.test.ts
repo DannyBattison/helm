@@ -1,21 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { originAllowed, tokenMatches } from '../src/auth';
+import { originAllowed } from '../src/auth';
 import { dispatch } from '../src/dispatch';
 
-describe('token', () => {
-  it('accepts only the exact token', () => {
-    expect(tokenMatches('s3cret-s3cret-s3cret', 's3cret-s3cret-s3cret')).toBe(true);
-    expect(tokenMatches('s3cret-s3cret-s3cre', 's3cret-s3cret-s3cret')).toBe(false);
-    expect(tokenMatches('', 's3cret-s3cret-s3cret')).toBe(false);
-    expect(tokenMatches(undefined, 's3cret-s3cret-s3cret')).toBe(false);
-    expect(tokenMatches(['s3cret-s3cret-s3cret'], 's3cret-s3cret-s3cret')).toBe(false);
-  });
-});
-
 describe('origin', () => {
-  it('lets the page we serve and non-browser clients in, and nobody else', () => {
+  it('lets the page we serve in, and nobody else (a request with no Origin is not a browser and has no cookie to ride on)', () => {
     expect(originAllowed('https://helm.example.com', 'helm.example.com')).toBe(true);
-    expect(originAllowed(undefined, 'helm.example.com')).toBe(true);
+    expect(originAllowed(undefined, 'helm.example.com')).toBe(false);
     expect(originAllowed('https://evil.example', 'helm.example.com')).toBe(false);
     expect(originAllowed('https://helm.example.com.evil.example', 'helm.example.com')).toBe(false);
     expect(originAllowed('null', 'helm.example.com')).toBe(false);

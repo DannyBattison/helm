@@ -1,16 +1,9 @@
-import { createHash, timingSafeEqual } from 'node:crypto';
-
-/** Compares tokens in constant time, whatever their lengths. */
-export function tokenMatches(given: unknown, expected: string): boolean {
-  if (typeof given !== 'string') return false;
-  const a = createHash('sha256').update(given).digest();
-  const b = createHash('sha256').update(expected).digest();
-  return timingSafeEqual(a, b);
-}
-
-/** A WebSocket opened by a page on another origin carries the visitor's browser, not ours. Same-origin pages and non-browser clients (no Origin) pass. */
+/**
+ * A WebSocket opened by a page on another origin carries the visitor's browser (and their cookie), not ours: only the page this server
+ * serves may open one. A request with no Origin is not a browser, and has no cookie to ride on, so it fails the sign-in check instead.
+ */
 export function originAllowed(origin: string | undefined, host: string | undefined, extra: string[] = []): boolean {
-  if (!origin) return true;
+  if (!origin) return false;
   if (extra.includes(origin)) return true;
   try { return new URL(origin).host === host; } catch { return false; }
 }

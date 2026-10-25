@@ -1,5 +1,5 @@
 import type { HelmBridge, HelmEvents } from '@shared/types';
-import { CLOSE_UNAUTHORIZED, type ClientMessage, type ServerMessage } from '../src/protocol';
+import type { ClientMessage, ServerMessage } from '../src/protocol';
 
 type Pending = { resolve(v: unknown): void; reject(e: Error): void };
 
@@ -13,8 +13,11 @@ const local: Record<string, (...a: any[]) => unknown> = {
 
 const clientPlatform = () => (/Mac/i.test(navigator.platform) ? 'darwin' : /Win/i.test(navigator.platform) ? 'win32' : 'linux');
 
-/** The same `HelmBridge` Electron's preload provides, over a WebSocket. Reconnects by itself; `onUnauthorized` is called when the token is refused. */
-export function createBridge(url: string, token: string, onUnauthorized: () => void): HelmBridge & { ready: Promise<void> } {
+/**
+ * The same `HelmBridge` Electron's preload provides, over a WebSocket. Reconnects by itself. The server only opens the socket for a valid
+ * sign-in cookie, so a socket that never opens may mean the sign-in ended: `onSignedOut` is called then, and the page asks again.
+ */
+export function createBridge(url: string, onSignedOut: () => void): HelmBridge & { ready: Promise<void> } {
   const listeners = new Map<string, Set<(p: any) => void>>();
   const pending = new Map<number, Pending>();
   let ws: WebSocket;
@@ -30,7 +33,6 @@ export function createBridge(url: string, token: string, onUnauthorized: () => v
 
   function connect(reconnect: boolean) {
     ws = new WebSocket(url);
-    ws.onopen = () => ws.send(JSON.stringify({ t: 'auth', token } satisfies ClientMessage));
     ws.onmessage = (e) => {
       const m = JSON.parse(e.data) as ServerMessage;
       if (m.t === 'ready') {
@@ -47,11 +49,16 @@ export function createBridge(url: string, token: string, onUnauthorized: () => v
         if (p) { if (m.ok === true) p.resolve(m.value); else p.reject(new Error(m.error)); }
       } else if (m.t === 'event') emit(m.channel, m.payload);
     };
-    ws.onclose = (e) => {
+    ws.onclose = async () => {
+      const wasReady = isReady;
       isReady = false;
       for (const p of pending.values()) p.reject(new Error('Connection to the server was lost'));
       pending.clear();
-      if (e.code === CLOSE_UNAUTHORIZED) return onUnauthorized();
+      // A refused upgrade looks the same as a network drop from here, so ask the server whether we are still signed in.
+      if (!wasReady) {
+        const me = await fetch('/auth/me', { credentials: 'same-origin' }).catch(() => null);
+        if (me && me.status === 401) return onSignedOut();
+      }
       setTimeout(() => connect(true), retry);
       retry = Math.min(retry * 2, 10_000);
     };

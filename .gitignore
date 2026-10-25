@@ -33,3 +33,6 @@ desktop.ini
 # design handoff bundle (reference material, not part of the app)
 design_handoff_helm_desktop/
 Multi-agent desktop application design.zip
+
+# local settings and secrets
+.env

@@ -6,23 +6,42 @@ helm in a browser. One deployment, one user, one Anthropic login. The server run
 browser ── renderer (src/renderer) ── HelmBridge ──WebSocket──▶ server.ts ── api (src/main/core.ts) ── Agent SDK, git, GitHub
 ```
 
-## Run
+## Run in Docker (as if hosted)
+
+The image carries its own Node, git and Claude Code binary (the one the Agent SDK ships for Linux, at the version helm is built against), runs as a normal user, and keeps everything under one volume.
 
 ```
-npm install                 # in the repo root, then here
-cd hosted-server && npm install
-npm run build               # the web client into dist/web
-HELM_HOSTED_TOKEN=$(openssl rand -hex 24) npm start
+cp .env.example .env        # at the repository root; fill it in (below)
+docker compose up --build
 ```
 
-Open `http://127.0.0.1:8787` and enter the token. Anthropic access is whatever the server's user has: `ANTHROPIC_API_KEY` in the environment, or a Claude Code login (`claude login`) on that machine. Requires Node 22+ and git.
+Open `http://127.0.0.1:8787` and sign in with GitHub. The port is published on this computer only.
+
+### The `.env` file
 
 | Variable | Meaning |
 | --- | --- |
-| `HELM_HOSTED_TOKEN` | Required, 16+ characters. Anyone with it can run commands as the server's user. |
-| `PORT`, `HOST` | Default `8787` on `127.0.0.1`. Put a TLS reverse proxy in front before exposing it. |
-| `HELM_DATA_DIR` | State, transcripts and the GitHub token. Default `~/.helm-hosted`. |
-| `HELM_HOSTED_ORIGINS` | Extra page origins allowed to open the WebSocket, comma separated, for when a proxy changes the `Host`. |
+| `HELM_HOSTED_ALLOWED_USERS` | **Required.** GitHub usernames allowed in, comma separated, not case sensitive. Nobody else gets a session, and the server will not start with the list empty. Anyone on it can run commands inside the container. |
+| `HELM_HOSTED_SECRET` | Signs the sign-in cookie. 32+ random characters (`openssl rand -hex 32`). If it is left out, everyone is signed out whenever the container restarts. |
+| `ANTHROPIC_API_KEY` | How agents authenticate. See below. |
+| `CLAUDE_CODE_OAUTH_TOKEN` | Optional alternative to the API key. See below. |
+| `HELM_GIT_NAME`, `HELM_GIT_EMAIL` | Who agent commits are made as. |
+
+Without `docker`: `HELM_HOSTED_ALLOWED_USERS=you HELM_HOSTED_SECRET=... npm start` after `npm run build`, with Node 22 and git installed, and the same variables.
+
+### Getting an Anthropic API key
+
+1. Go to <https://console.anthropic.com/settings/keys> and sign in (the Anthropic Console, not claude.ai).
+2. **Create Key**, name it (for example `helm-hosted`), and copy it straight away: it starts `sk-ant-` and is shown only once. An old key cannot be looked up, only replaced.
+3. Paste it as `ANTHROPIC_API_KEY=` in `.env`, and make sure the Console account has credit (Settings, Billing). API use is billed per token there, separately from a Claude Pro or Max subscription.
+
+### Using a Claude subscription instead
+
+`claude setup-token` (run on a computer where you are logged in to Claude Code) prints a long-lived token that the binary accepts as `CLAUDE_CODE_OAUTH_TOKEN`. It draws on your subscription instead of API credit. Anthropic's terms do not allow third-party apps to broker subscription logins on other people's behalf (see D-069); for a server only you use, running Claude Code itself under your own login is a judgement for you to make, so API keys are the documented route here.
+
+## Signing in
+
+The page asks you to sign in with GitHub (device flow: it shows a code to enter at github.com/login/device). Only your username is read, no permissions are requested, and GitHub's token is dropped at once. If the username is on `HELM_HOSTED_ALLOWED_USERS` the server sets a signed, HttpOnly, same-site cookie; if not, you get no cookie at all. The WebSocket (the only way to call anything) is refused unless that cookie is genuine, the username is still on the list, and the page's origin is the server's own, so taking someone off the list and restarting locks them out. Helm's own GitHub sign-in inside the app (which asks for repository access) is separate from this one.
 
 ## What is shared, and where the seams are
 
@@ -33,7 +52,7 @@ Open `http://127.0.0.1:8787` and enter the token. Anthropic access is whatever t
 
 ## Not safe yet
 
-- One shared token, no accounts. The agent can run any command as the server's user, and the terminal tab is a shell on the server. Treat the token like an SSH key.
+- Everyone on the allow list has the same powers. The agent can run any command as the server's user, and the terminal tab is a shell on the server. Only list people you would give a shell.
 - The GitHub token is stored unencrypted in `HELM_DATA_DIR` (mode 0700); there is no keychain on a server.
 - No sandbox, no egress control, no resource limits. The VM or container this runs in is the boundary.
 - A dropped connection can miss transcript events; the UI refetches `state` on reconnect but not open transcripts.
