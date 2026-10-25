@@ -8,6 +8,8 @@ import { CodeView } from './CodeView';
 import { langFromPath } from '../highlight';
 import { DiffLine, SplitRows } from './Changes';
 import { TranscriptItem } from './Session';
+import { Issues } from './Issues';
+import { Actions } from './Actions';
 import { RepoMemory } from './Memory';
 import { usePush } from './push';
 import { TranscriptList } from './TranscriptList';
@@ -240,7 +242,7 @@ function PullRequests({ prs, err, repoId }: { prs: PullRequest[] | null; err: st
           <span style={{ font: '500 13px/1 var(--font-sans)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title}</span>
           <span style={{ font: '400 11.5px/1 var(--font-mono)', color: 'var(--text-3)' }}>#{p.number}</span>
           <span style={{ minWidth: 0 }}><BranchTag name={p.branch} /></span>
-          <span style={{ textAlign: 'right', display: 'inline-flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>{p.state === 'open' && !p.draft ? <Button size="sm" variant="secondary" icon="git-merge" onClick={(e: any) => { e.stopPropagation(); setUI({ mergingPr: { repoId: repoId, number: p.number, sessionId: app.sessions.find((x) => x.prUrl === p.url)?.id } }); }}>Merge</Button> : null}<Badge tone={p.state === 'merged' ? 'accent' : p.draft ? 'idle' : p.checks === 'failing' ? 'error' : p.checks === 'pending' ? 'working' : p.state === 'open' ? 'ready' : 'idle'}>
+          <span style={{ textAlign: 'right', display: 'inline-flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>{p.state === 'open' ? <Button size="sm" variant="ghost" icon="chats" title="Start a session that addresses the review comments" onClick={(e: any) => { e.stopPropagation(); api.feedbackTask(repoId, p.number).then((t) => setUI({ newSession: { repoId, task: t.task, base: t.base } })).catch((err: any) => toast({ tone: 'error', title: 'No comments to address', description: errText(err) })); }}>Fix comments</Button> : null}{p.state === 'open' && !p.draft ? <Button size="sm" variant="secondary" icon="git-merge" onClick={(e: any) => { e.stopPropagation(); setUI({ mergingPr: { repoId: repoId, number: p.number, sessionId: app.sessions.find((x) => x.prUrl === p.url)?.id } }); }}>Merge</Button> : null}<Badge tone={p.state === 'merged' ? 'accent' : p.draft ? 'idle' : p.checks === 'failing' ? 'error' : p.checks === 'pending' ? 'working' : p.state === 'open' ? 'ready' : 'idle'}>
             {p.state === 'merged' ? 'Merged' : p.state === 'closed' ? 'Closed' : p.draft ? 'Draft' : p.checks === 'failing' ? 'Checks failing' : p.checks === 'pending' ? 'Checks running' : p.checks === 'passing' ? 'Checks passing' : 'Open'}
           </Badge></span>
         </div>
@@ -311,6 +313,7 @@ export function ExternalSessionView({ repoId, id }: { repoId: string; id: string
           <span style={{ font: '600 15px/1.2 var(--font-sans)', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{known?.title || 'Claude Code session'}</span>
           {known?.branch ? <BranchTag name={known.branch} /> : null}
           <Badge tone="neutral">External · read-only</Badge>
+          <Button size="sm" variant="secondary" icon="play" disabled={active} title={active ? 'It is running right now. Let it finish first.' : 'Copy this conversation into a helm session with its own worktree'} onClick={() => setUI({ continuing: { repoId, externalId: id, title: known?.title || 'Claude Code session' } })}>Continue in helm</Button>
           {active ? <Badge tone="working" dot>Active now</Badge> : known ? <Badge>Last active {ago(known.lastModified)}</Badge> : null}
         </div>
         <div style={{ font: '400 11.5px/1.4 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={known?.cwd}>{known?.cwd ? tilde(known.cwd, app.home) + ' · ' : ''}{id}{win ? ` · ${win.total} events` : ''}</div>
@@ -481,6 +484,8 @@ export function Repo({ id, themeKey, tab: firstTab }: { id: string; themeKey: 'd
           { value: 'external', label: 'Claude sessions', icon: 'chats-circle', count: extCount },
           { value: 'memory', label: 'Memory', icon: 'brain' },
           { value: 'worktrees', label: 'Branches & worktrees', icon: 'tree-structure', count: wts?.length },
+          { value: 'issues', label: 'Issues', icon: 'circle-dashed' },
+          { value: 'actions', label: 'Actions', icon: 'lightning' },
           { value: 'prs', label: 'Pull requests', icon: 'git-pull-request', count: prs?.filter((p) => p.state === 'open').length }]} />
       </div>
       {tab === 'history' ? (
@@ -502,6 +507,8 @@ export function Repo({ id, themeKey, tab: firstTab }: { id: string; themeKey: 'd
         </div>
       ) : tab === 'code' ? <RepoCode repo={repo} themeKey={themeKey} />
         : tab === 'memory' ? <RepoMemory repo={repo} />
+        : tab === 'issues' ? <Issues repoId={repo.id} />
+        : tab === 'actions' ? <Actions repoId={repo.id} />
         : tab === 'external' ? <ExternalSessions repo={repo} onCount={setExtCount} />
         : tab === 'worktrees' ? <div style={{ flex: 1, overflow: 'auto' }}><Worktrees repo={repo} list={wts} reload={loadWts} /></div>
         : <PullRequests prs={prs} err={prErr} repoId={repo.id} />}

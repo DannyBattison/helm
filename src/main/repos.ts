@@ -92,7 +92,7 @@ export class RepoService {
 
   /** Changes whenever any ref moves, which is exactly when the history can differ. */
   private async refsSig(path: string): Promise<string> {
-    const refs = await G.git(path, 'for-each-ref', '--format=%(objectname) %(refname)');
+    const refs = await G.git(path, 'for-each-ref', '--format=%(objectname) %(refname)', 'refs/heads', 'refs/remotes', 'refs/tags');
     const head = (await G.git(path, 'rev-parse', 'HEAD').catch(() => '')).trim();
     return createHash('sha1').update(refs + head).digest('hex');
   }
@@ -156,7 +156,7 @@ export class RepoService {
   /** The slow part: git log and lane assignment. No per-commit stats, those are read when a commit is opened. */
   private async readLog(r: Repo, limit: number): Promise<HistoryCommit[]> {
     const SEP = '\x1e', F = '\x1f';
-    const raw = await G.git(r.localPath, 'log', '--all', '--topo-order', '-n', String(limit), `--format=${SEP}%H${F}%P${F}%an${F}%ct${F}%D${F}%s${F}%b`);
+    const raw = await G.git(r.localPath, 'log', '--exclude=refs/helm/*', '--all', '--decorate-refs-exclude=refs/helm/*', '--topo-order', '-n', String(limit), `--format=${SEP}%H${F}%P${F}%an${F}%ct${F}%D${F}%s${F}%b`);
     const commits: HistoryCommit[] = [];
     for (const e of raw.split(SEP).filter((x) => x.trim())) {
       const [hash, parents, who, ct, refs, msg, body = ''] = e.split(F);

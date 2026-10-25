@@ -1,10 +1,27 @@
 /** Types shared by the main process, preload and renderer. */
 
+import type { Conflict } from './forecast';
+import type { Issue } from './issues';
+import type { Workflow, WorkflowRun } from './workflows';
+import type { SearchResults } from './search';
+import type { HealthIssue, MemoryUsage } from './memoryhealth';
+import type { Report } from './reports';
+export type { Workflow, WorkflowRun, Report, Conflict, Issue, SearchResults, HealthIssue, MemoryUsage };
+
 export type Status = 'working' | 'attention' | 'ready' | 'idle' | 'error';
 /** ask: approve commands; edits: edits go through, commands ask; plan: plan only; all: nothing asks. */
 export type PermMode = 'ask' | 'edits' | 'plan' | 'all';
 export type ModelAlias = 'sonnet' | 'opus' | 'haiku';
 export type ThemePref = 'dark' | 'light' | 'system';
+
+/** The repository id every free agent carries. It is not a real repository: free agents are not bound to one. */
+export const FREE_ID = '@free';
+export const isFreeRepo = (id: string) => id === FREE_ID;
+/** What to call a repository id in the interface. */
+export const repoLabel = (id: string) => (id === FREE_ID ? 'Free agents' : id);
+
+/** The stand-in "repository" of a free agent, so code that wants a repository gets one. `dir` is the agent's own folder. */
+export const freeRepo = (dir = ''): Repo => ({ id: FREE_ID, owner: '', name: 'Free agents', private: true, lang: null, defaultBranch: '', localPath: dir, cap: 0, addedAt: 0 });
 
 export interface Repo {
   /** owner/name */
@@ -67,6 +84,12 @@ export interface Subagent {
 
 export interface Session {
   id: string;
+  /**
+   * A free agent: not bound to a repository. `worktree` is its working folder. When `managed`, helm made that folder for it and
+   * set up local git there (so Changes and checkpoints work); otherwise it is a folder you chose and helm leaves git alone.
+   * Free agents have no branch, no pull request and nothing to merge.
+   */
+  free?: { managed: boolean };
   /** The worktree (and maybe the branch) was removed after the work was merged. The conversation and numbers stay; it cannot be continued. */
   worktreeGone?: boolean;
   /** Merged straight into this branch without a pull request, and when. */
@@ -120,10 +143,82 @@ export interface Session {
   maxSubagents?: number;
   /** Requests the user approved while helm was closed. The agent re-issues them, and each is allowed once without asking again. */
   preApproved?: string[];
+  /** Tool calls by tool name: how many were made and how many failed. Subagents' calls count too. */
+  tools?: Record<string, { n: number; err: number }>;
+  /** How many times each file was edited, to spot an agent going round in circles. Capped at 200 files. */
+  fileEdits?: Record<string, number>;
+  /** Why the session looks stuck (the same file edited again and again, the same command failing), until it makes progress. */
+  stuck?: string;
+  /** When its pull request was opened. */
+  prAt?: number;
+  /** The session this one was forked or fanned out from, and the group of sessions started from one prompt. */
+  parentId?: string;
+  group?: string;
+  /** Where the work came from, such as a GitHub issue or pull request comment. */
+  source?: { kind: 'issue' | 'pr'; number: number; url: string; title: string };
+  /** Last checkpoint number taken. Checkpoints are git refs named refs/helm/<session>/<n>. */
+  checkpoints?: number;
+  /** The result of the last self-review. */
+  review?: SelfReview;
+  /** Waiting to start: for a free slot, or for another session to be merged. It has a worktree but the agent has not run. */
+  queued?: { after?: string; since: number };
+  /** Review comments on its pull request up to this time have already been sent to the agent. */
+  feedbackAt?: number;
+  /** Hunks the user has looked at and accepted, by hunk id (path and changed lines, not line numbers). */
+  reviewed?: string[];
+  /** Said to the agent along with the next message, then forgotten. Used after a checkpoint restore. */
+  agentNote?: string;
+}
+
+/** A saved state of a session's worktree. Taken before each message you send. */
+export interface Checkpoint {
+  n: number;
+  commit: string;
+  at: number;
+  /** What it was taken before, or why. */
+  label: string;
+}
+
+export interface SelfReview {
+  at: number;
+  /** running while the reviewer works. */
+  state: 'running' | 'done' | 'failed';
+  /** The branch tip the review was of, so a later commit makes it stale. */
+  head: string;
+  summary: string;
+  /** What the review cost, USD. */
+  cost?: number;
+  findings: { severity: 'blocker' | 'warning' | 'note'; file?: string; line?: number; text: string }[];
+}
+
+/** One thing that happened in a session, kept for the audit report. Text is cut short and secrets are masked. */
+export interface AuditEntry {
+  t: number;
+  sessionId: string;
+  repoId: string;
+  kind: 'command' | 'edit' | 'approval' | 'question' | 'dispatch';
+  text: string;
+  /** Commands: whether it succeeded. */
+  ok?: boolean;
+  /** Approvals: what the user decided, and how long the agent waited. */
+  decision?: 'approved' | 'always' | 'denied';
+  waitMs?: number;
+}
+
+/** Usage for one local day, one repository and one model. Kept for good, so reports reach further back than the session list. */
+export interface DailyUsage {
+  /** YYYY-MM-DD, local time. */
+  day: string;
+  repoId: string;
+  model: ModelAlias;
+  cost: number;
+  input: number;
+  output: number;
+  cacheRead: number;
 }
 
 export type TranscriptEvent =
-  | { k: 'user'; t: number; text: string; from?: string; images?: MessageImage[] }
+  | { k: 'user'; t: number; text: string; from?: string; images?: MessageImage[]; cp?: number }
   | { k: 'subagent'; id: string; description: string; agentType: string; status: Subagent['status']; summary?: string }
   | { k: 'agent'; text: string; list?: string[] }
   | { k: 'tools'; items: [string, string, string][] }
@@ -167,6 +262,8 @@ export interface Settings {
   /** Who the agent's commits are credited to: you, with Claude as a co-author, or Claude alone. */
   commitAuthor: 'coauthor' | 'sole';
   worktreeRoot: string;
+  /** Where scratch folders for free agents are made. */
+  freeRoot: string;
   cloneRoot: string;
   branchPrefix: string;
   removeAfterMerge: boolean;
@@ -203,11 +300,21 @@ export interface Settings {
   planPause5h: number;
   /** Pause agents at this percentage of the weekly subscription limit. 0 is off. */
   planPauseWeek: number;
+  /** Most sessions allowed to work at once across all repositories. More wait in a queue. 0 is no limit. */
+  maxRunning: number;
   notifyAttention: { desktop: boolean; sound: boolean };
   notifyReady: { desktop: boolean; sound: boolean };
   notifyFailed: { desktop: boolean; sound: boolean };
   notifyChecks: { desktop: boolean; sound: boolean };
   dnd: boolean;
+  /** No desktop notifications between these local times (HH:MM), unless the session is blocked on an approval and `quietAllowAttention` is on. */
+  quiet: { enabled: boolean; from: string; to: string; allowAttention: boolean };
+  /** Per repository: everything, only things that need you, or nothing. Repositories not listed notify for everything. */
+  notifyRepo: Record<string, 'all' | 'attention' | 'off'>;
+  /** Keep helm in the system tray / menu bar with a count of what needs you. */
+  tray: boolean;
+  /** Look for a new version of helm at launch and download it in the background. */
+  autoUpdate: boolean;
   editorFontSize: number;
   /** Font for the interface: labels, titles and prose. */
   /** What interrupts a working agent from the keyboard: Esc, Esc pressed twice, or nothing (the Interrupt button still works). */
@@ -267,6 +374,36 @@ export interface Lifetime {
   cost: number;
 }
 
+export interface UpdateStatus {
+  /** dev: a development build, which never updates. */
+  state: 'dev' | 'idle' | 'checking' | 'downloading' | 'ready' | 'current' | 'error';
+  version?: string;
+  percent?: number;
+  checkedAt?: number;
+  error?: string;
+}
+
+/** A session's worktree and what it costs in disk space. */
+export interface WorktreeUsage {
+  sessionId: string;
+  repoId: string;
+  branch: string;
+  path: string;
+  /** Size of the whole worktree. */
+  bytes: number;
+  /** Of that, what could be deleted without losing anything: ignored build output and installed packages. */
+  reclaimable: number;
+  reclaimDirs: string[];
+  partial: boolean;
+  status: Status;
+  running: boolean;
+  archived: boolean;
+  merged: boolean;
+  lastAccess: number;
+  dirty: number;
+  unpushed: number;
+}
+
 export interface AppState {
   ready: boolean;
   user: User | null;
@@ -282,6 +419,9 @@ export interface AppState {
   /** Lifetime usage per repository id. */
   lifetime: Record<string, Lifetime>;
   tokensToday: number;
+  /** Live sessions that would conflict with each other or with their base. */
+  forecast: Conflict[];
+  update: UpdateStatus;
   claudeVersion: string | null;
   plan: PlanUsage;
   companion: CompanionState;
@@ -358,6 +498,8 @@ export interface BaseOption {
 }
 
 export interface SessionDeleteInfo {
+  /** Set for a free agent: its folder is helm's own (`scratch`, which can be removed) or yours (`folder`, which never is). */
+  free?: 'scratch' | 'folder';
   branch: string;
   worktree: string;
   worktreeExists: boolean;
@@ -485,6 +627,14 @@ export interface NewSessionInput {
   model: ModelAlias;
   budget: number;
   permMode: PermMode;
+  /** For a free agent: a folder of yours to work in, instead of a new scratch folder. */
+  folder?: string;
+  /** Wait until this session has been merged before starting, so the new one begins from the merged base. */
+  after?: string;
+  /** What the task came from, such as a GitHub issue. */
+  source?: Session['source'];
+  /** Start from this effort level instead of the default. */
+  effort?: Effort;
 }
 
 export interface CreatePrInput {
@@ -717,6 +867,65 @@ export interface HelmApi {
   readClipboard(): Promise<string>;
   /** The shells this computer has, for the terminal setting. */
   listShells(): Promise<ShellOption[]>;
+
+  checkpoints(sessionId: string): Promise<Checkpoint[]>;
+  /** Puts the worktree back as it was at a checkpoint. A safety checkpoint is taken first, so the restore can be undone. Refused while the agent is working. */
+  restoreCheckpoint(sessionId: string, n: number): Promise<void>;
+  /** Starts a new session from this one at one of your messages (an index into its transcript, or null for now): the conversation up to it, and the worktree as it was then. */
+  forkSession(sessionId: string, index: number | null, task: string): Promise<string>;
+  /** Carries on a session started outside helm, in its own worktree, from a copy of its conversation. */
+  continueExternal(repoId: string, externalId: string, task: string): Promise<string>;
+  /** The same task started in several sessions, one per variant, to compare. */
+  createGroup(input: NewSessionInput, variants: { model: ModelAlias; effort?: Effort }[]): Promise<string[]>;
+  /** Keeps one session of a group and archives the rest. */
+  keepFromGroup(group: string, keepId: string): Promise<void>;
+  revertHunk(sessionId: string, path: string, hunk: DiffHunk): Promise<void>;
+  setHunksReviewed(sessionId: string, ids: string[], reviewed: boolean): Promise<void>;
+  /** Has a read-only reviewer go through the branch's diff. The result lands on the session. */
+  startReview(sessionId: string): Promise<void>;
+  /** Starts a queued session now, whatever it is waiting for. */
+  /** Searches conversations, commit messages and (for a session or repository) code. A workspace id is a session id, or `repo:<owner/name>`. */
+  searchAll(query: string, workspace?: string): Promise<SearchResults>;
+  /** Which memories sessions have read, and what looks wrong with them: stale, mentioning files that are gone, or reading alike. */
+  memoryInsights(repoId: string): Promise<{ usage: Record<string, MemoryUsage>; issues: HealthIssue[]; sessions: number }>;
+  /** Adds a line to the "Learned in helm" list in the repository's CLAUDE.md, its CLAUDE.local.md, or your own ~/.claude/CLAUDE.md. Resolves to the file. */
+  rememberInstruction(repoId: string, target: 'repo' | 'local' | 'user', text: string): Promise<string>;
+  /** Every session worktree with its size, and how much of it is build output that can go. Slow the first time; remembered for a few minutes. */
+  worktreeUsage(refresh?: boolean): Promise<WorktreeUsage[]>;
+  /** Deletes node_modules, build output and the like from a worktree, only where git ignores them. Resolves to bytes freed. */
+  cleanWorktree(sessionId: string): Promise<number>;
+  /** Removes a finished session's worktree (the branch and the conversation stay). Refused with uncommitted or unpushed work. */
+  dropWorktree(sessionId: string): Promise<void>;
+  checkForUpdates(): Promise<UpdateStatus>;
+  installUpdate(): Promise<void>;
+  /** Saves a support bundle: versions, settings, session states and the recent log, with private text left out and secrets masked. */
+  saveDiagnostics(): Promise<string | null>;
+  openLogFolder(): Promise<void>;
+  /** The window reports an error here so it ends up in the log. */
+  logRenderer(message: string): Promise<void>;
+  /** The repository's GitHub Actions workflows on a branch, and which of them can be started by hand with what inputs. */
+  repoWorkflows(repoId: string, ref: string): Promise<Workflow[]>;
+  /** Starts a workflow that has `workflow_dispatch` on a branch. Inputs are checked against the workflow's own declaration first. */
+  runWorkflow(repoId: string, workflowId: number, ref: string, inputs: Record<string, string>): Promise<void>;
+  workflowRuns(repoId: string, workflowId: number): Promise<WorkflowRun[]>;
+  startQueued(sessionId: string): Promise<void>;
+  /** Takes a session out of the queue without starting it. */
+  cancelQueued(sessionId: string): Promise<void>;
+  /** Open issues of a repository (pull requests excluded). */
+  repoIssues(repoId: string): Promise<Issue[]>;
+  /** The task text for a session that works on an issue, with its discussion. */
+  issueTask(repoId: string, number: number): Promise<{ task: string; title: string; url: string }>;
+  /** The review comments on a pull request as a task, and the branch to start from. */
+  feedbackTask(repoId: string, number: number): Promise<{ task: string; base: string; count: number }>;
+  /** Sends the pull request's review comments that arrived since the last time to the session's agent. Resolves to how many were sent. */
+  sendPrFeedback(sessionId: string): Promise<number>;
+
+  /** Every report for the last `days` days, computed from sessions, the usage ledger and the audit log. */
+  getReport(days: number): Promise<Report>;
+  /** The period's summary as Markdown. */
+  reportDigest(days: number): Promise<string>;
+  /** Saves a report as a file the user picks (CSV, or Markdown for the digest). Resolves to the path, or null if cancelled. */
+  exportReport(kind: 'spend' | 'sessions' | 'audit' | 'digest', days: number): Promise<string | null>;
 }
 
 /** Push events from main to renderer. */

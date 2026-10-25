@@ -6,7 +6,10 @@ import { api, on } from './api';
 export type Route =
   | { screen: 'overview'; filter?: string }
   | { screen: 'activity' }
+  | { screen: 'inbox' }
   | { screen: 'archive' }
+  | { screen: 'reports'; tab?: string }
+  | { screen: 'compare'; group: string }
   | { screen: 'repo'; id: string; tab?: string }
   | { screen: 'external'; repoId: string; id: string }
   | { screen: 'session'; id: string; tab?: string; sub?: string; file?: string; line?: number }
@@ -29,11 +32,17 @@ export interface UI {
   externals: Record<string, ExternalSession[]>;
   toasts: ToastItem[];
   adding: boolean;
-  newSession: { repoId?: string } | null;
+  newSession: { repoId?: string; task?: string; source?: Session['source']; base?: string } | null;
   /** The session whose delete dialog is open. */
   deleting: string | null;
   mergingPr: { repoId: string; number: number; sessionId?: string } | null;
   renaming: string | null;
+  /** Dialogs on a session: its checkpoints, restoring one, forking at a message, continuing an outside session. */
+  checkpointsOf: string | null;
+  restoring: { sessionId: string; n: number; label: string } | null;
+  forking: { sessionId: string; index: number | null; text: string } | null;
+  continuing: { repoId: string; externalId: string; title: string } | null;
+  remembering: { repoId: string; text: string } | null;
   /** The repository whose remove dialog is open. */
   removingRepo: string | null;
   /** Show archived sessions in the left tree. Off by default. */
@@ -57,7 +66,7 @@ function loadRoute(): Route {
   } catch { return { screen: 'overview' }; }
 }
 
-let ui: UI = { app: null, route: loadRoute(), transcripts: {}, externals: {}, toasts: [], adding: false, newSession: null, deleting: null, mergingPr: null, renaming: null, removingRepo: null, showArchived: (() => { try { return localStorage.getItem('helm-show-archived') === '1'; } catch { return false; } })(), palette: false, term: false };
+let ui: UI = { app: null, route: loadRoute(), transcripts: {}, externals: {}, toasts: [], adding: false, newSession: null, deleting: null, mergingPr: null, renaming: null, checkpointsOf: null, restoring: null, forking: null, continuing: null, remembering: null, removingRepo: null, showArchived: (() => { try { return localStorage.getItem('helm-show-archived') === '1'; } catch { return false; } })(), palette: false, term: false };
 const listeners = new Set<() => void>();
 
 export function setUI(patch: Partial<UI> | ((u: UI) => Partial<UI>)) {
