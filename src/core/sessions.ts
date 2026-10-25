@@ -8,6 +8,7 @@ import { queueBlock, queueOrder } from '../shared/queue';
 import { stuckReason } from '../shared/stuck';
 import { REVIEW_SCHEMA, parseReview, reviewPrompt } from '../shared/selfreview';
 import { FREE_ID, freeRepo, sessionTitle, type ActivityEvent, type Checkpoint, type Effort, type MessageImage, type ModelAlias, type NewSessionInput, type PendingAsk, type PermMode, type Session, type Status, type Subagent, type TranscriptEvent } from '../shared/types';
+import { artifactDir, dropArtifacts, ensureArtifactDir } from './artifacts';
 import * as G from './git';
 import { checkpointParent, dropCheckpoints, listCheckpoints, restoreCheckpoint, seedFromCheckpoint, takeCheckpoint } from './review';
 import type { Store } from './store';
@@ -505,8 +506,9 @@ export class SessionManager {
   }
 
   // ---------------------------------------------------------------- run
-  private systemAppend(s: Session): string {
+  private systemAppend(s: Session, artifacts: string): string {
     const st = this.store.data.settings;
+    const art = `To hand the user a file (a generated image, chart, report, export), write it to ${artifacts} (not into the worktree), then link it in your reply as [label](artifact:file.ext), using a plain file name without spaces. For an image use ![description](artifact:file.png) and helm shows it in the chat; any other file becomes a download button. These files are temporary and are deleted with the session.`;
     if (s.free) {
       return [
         `You are a free agent running inside helm: you are not tied to any repository. Your working directory is ${s.worktree}.`,
@@ -514,6 +516,7 @@ export class SessionManager {
           ? 'It is a folder made for this task alone. git is set up in it so the user can see what you changed; you may commit, but you do not have to. There is no remote, so do not push or open pull requests.'
           : 'It is one of the user\'s own folders, and you are working in it directly with nothing to undo your changes, so be careful with anything destructive. Do not push or open pull requests unless asked.',
         'Stay in this directory unless the user asks you to work elsewhere. If you need a decision from the user, ask with the AskUserQuestion tool instead of guessing.',
+        art,
         `Subagents: at most ${this.sessionLimit(s)} may run at once in this session. Start independent work in parallel only within that limit.`
       ].join('\n');
     }
@@ -527,6 +530,7 @@ export class SessionManager {
         ? `Push after every commit: run \`git push -u origin ${s.branch}\` right after each \`git commit\`. Do not open pull requests; the user does that from helm.`
         : 'Do not push and do not open pull requests; the user does that from helm after reviewing your changes.',
       'If you need a decision from the user, ask with the AskUserQuestion tool instead of guessing.',
+      art,
       `Subagents: at most ${this.sessionLimit(s)} may run at once in this session and ${this.repoLimit(s)} across the repository. Start independent work in parallel only within those limits.`,
       st.runTests ? 'Before you finish, run the project\'s tests (from package.json, go.mod, Makefile or equivalent) when they exist, and state the result.' : ''
     ].filter(Boolean).join('\n');
@@ -536,6 +540,7 @@ export class SessionManager {
     const abort = new AbortController();
     const queue = new InputQueue();
     const settings = this.store.data.settings;
+    const artifacts = await ensureArtifactDir(s.id);
     const rt: Runtime = { q: null as any, queue, abort, asks: new Map(), turnCost: 0, baseCost: s.cost, interrupted: false, budgetPaused: false, toolStart: new Map(), fails: new Map(), lastTools: new Map(), subEvent: new Map(), admitted: new Set() };
     const options: any = {
       cwd: s.worktree,
@@ -546,7 +551,7 @@ export class SessionManager {
       allowDangerouslySkipPermissions: true,
       abortController: abort,
       settingSources: ['user', 'project', 'local'],
-      systemPrompt: { type: 'preset', preset: 'claude_code', append: this.systemAppend(s) },
+      systemPrompt: { type: 'preset', preset: 'claude_code', append: this.systemAppend(s, artifacts) },
       canUseTool: (tool: string, input: Record<string, unknown>, o: any) => this.canUse(s, rt, tool, input, o),
       hooks: { PreToolUse: [{ matcher: 'Agent|Task', hooks: [async (input: any) => this.checkSubagentLimit(s, rt, input)] }] },
       env: {
@@ -1123,7 +1128,7 @@ export class SessionManager {
     }
     if (EDIT_TOOLS.has(tool)) {
       const p = String(input.file_path || input.notebook_path || '');
-      if (!p || inside(s.worktree, p)) return { behavior: 'allow', updatedInput: input };
+      if (!p || inside(s.worktree, p) || inside(artifactDir(s.id), p)) return { behavior: 'allow', updatedInput: input };
       const ask: PendingAsk = { id: uid(), type: 'approve', at: Date.now(), tool, command: p, head: 'Wants to edit a file outside its worktree', note: 'This path is outside the session worktree.' };
       await this.push(s.id, { k: 'permission', askId: ask.id, cmd: p, tool, why: ask.note });
       return this.waitAsk(s, rt, ask, 'tool', input, tool);
@@ -1480,6 +1485,7 @@ export class SessionManager {
     }
     this.store.data.sessions = this.store.data.sessions.filter((x) => x.id !== id);
     await this.store.deleteTranscripts(id);
+    await dropArtifacts(id);
     this.touch();
   }
 

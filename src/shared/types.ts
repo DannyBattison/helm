@@ -217,6 +217,9 @@ export interface DailyUsage {
   cacheRead: number;
 }
 
+/** A file an agent put in its session's artifact folder. `data` (base64) is null when the file is too large to send. */
+export interface Artifact { name: string; mediaType: string; size: number; data: string | null }
+
 export type TranscriptEvent =
   | { k: 'user'; t: number; text: string; from?: string; images?: MessageImage[]; cp?: number }
   | { k: 'subagent'; id: string; description: string; agentType: string; status: Subagent['status']; summary?: string }
@@ -828,6 +831,8 @@ export interface HelmApi {
   setRepoMaxSubagents(repoId: string, max: number | null): Promise<void>;
   resolveAsk(sessionId: string, askId: string, answer: { decision: 'approve' | 'always' | 'deny'; text?: string } | { answers: Record<string, string> } | { addBudget: number }): Promise<void>;
   getTranscript(sessionId: string): Promise<TranscriptEvent[]>;
+  /** A file the agent made for the user (`artifact:` links in its replies), or null if it no longer exists. */
+  getArtifact(sessionId: string, name: string): Promise<Artifact | null>;
 
   /** A workspace id is a session id, or `repo:<owner/name>` for the repository's own checkout. */
   workspaceInfo(ws: string): Promise<WorkspaceInfo>;

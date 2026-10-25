@@ -1,5 +1,5 @@
 import React from 'react';
-import type { Session as S, TranscriptEvent, ModelAlias, PermMode, Effort, MessageImage } from '@shared/types';
+import type { Session as S, TranscriptEvent, ModelAlias, PermMode, Effort, MessageImage, Artifact } from '@shared/types';
 import { api, platform } from '../api';
 import { Cmd, Hl } from '../Hl';
 import { highlightBlock, langFromPath, langFromTag } from '../highlight';
@@ -117,9 +117,44 @@ function ToolRow({ tool, target, meta, session }: { tool: string; target: string
   );
 }
 
+const safeDecode = (s: string) => { try { return decodeURIComponent(s); } catch { return s; } };
+const EMBEDDABLE = /^image\/(png|jpeg|gif|webp|svg\+xml|avif)$/;
+const fmtSize = (n: number) => (n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(1) + ' MB');
+
+/** A file the agent left for the user: shown in the chat if it is an image, otherwise a download. It lives in the temp folder, so it may be gone by the time an old or archived chat is opened. */
+function ArtifactView({ sessionId, name, label, embed }: { sessionId: string; name: string; label: string; embed: boolean }) {
+  const [art, setArt] = React.useState<Artifact | null | undefined>(undefined);
+  React.useEffect(() => {
+    let live = true;
+    api.getArtifact(sessionId, name).then((a) => { if (live) setArt(a); }, () => { if (live) setArt(null); });
+    return () => { live = false; };
+  }, [sessionId, name]);
+  const box: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 'var(--radius-md)', boxShadow: 'inset 0 0 0 1px var(--border)', background: 'var(--bg-editor)', maxWidth: '100%' };
+  if (art === undefined) return <span style={{ ...box, color: 'var(--text-3)' }}><i className="ph ph-circle-notch" style={{ animation: 'helm-spin .9s linear infinite' }} />{label || name}</span>;
+  if (!art) return <span style={{ ...box, color: 'var(--text-3)' }}><i className="ph ph-clock-countdown" />{label || name}: this artifact has expired</span>;
+  const download = () => {
+    if (art.data == null) return;
+    const bytes = Uint8Array.from(atob(art.data), (c) => c.charCodeAt(0));
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([bytes], { type: art.mediaType }));
+    a.download = art.name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+  };
+  const button = <Button size="sm" variant="secondary" icon="download-simple" disabled={art.data == null} title={art.data == null ? 'Too large to download here' : undefined} onClick={download}>Download</Button>;
+  if (embed && art.data != null && EMBEDDABLE.test(art.mediaType)) return (
+    <span style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start', maxWidth: '100%' }}>
+      <img src={`data:${art.mediaType};base64,${art.data}`} alt={label || art.name} style={{ maxWidth: '100%', maxHeight: 420, borderRadius: 'var(--radius-md)', boxShadow: 'inset 0 0 0 1px var(--border)', objectFit: 'contain', background: 'var(--bg-editor)' }} />
+      <span style={{ display: 'flex', alignItems: 'center', gap: 8, font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)' }}>{art.name} · {fmtSize(art.size)}{button}</span>
+    </span>
+  );
+  return <span style={box}><i className="ph ph-file" style={{ color: 'var(--text-3)' }} /><span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label || art.name}</span><span style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)' }}>{fmtSize(art.size)}</span>{button}</span>;
+}
+
 /** Paragraphs, bullet and numbered lists, and `inline code`. Enough for agent prose. */
-function Rich({ text }: { text: string }) {
-  const inline = (t: string) => t.split(/(`[^`]+`)/g).map((p, i) => (p.startsWith('`') && p.endsWith('`') && p.length > 2 ? <code key={i} style={{ font: 'var(--type-data)', padding: '1px 4px', borderRadius: 3, background: 'var(--bg-active)' }}>{p.slice(1, -1)}</code> : <React.Fragment key={i}>{p.replace(/\*\*([^*]+)\*\*/g, '$1')}</React.Fragment>));
+function Rich({ text, sessionId }: { text: string; sessionId?: string }) {
+  const inline = (t: string) => t.split(/(`[^`]+`|!?\[[^\]]*\]\(artifact:[^)\s]+\))/g).map((p, i) => { const a = sessionId ? p.match(/^(!?)\[([^\]]*)\]\(artifact:([^)\s]+)\)$/) : null; if (a) return <ArtifactView key={i} sessionId={sessionId!} name={safeDecode(a[3])} label={a[2]} embed={!!a[1]} />; return inlineText(p, i); });
+  const inlineText = (p: string, i: number) => (p.startsWith('`') && p.endsWith('`') && p.length > 2 ? <code key={i} style={{ font: 'var(--type-data)', padding: '1px 4px', borderRadius: 3, background: 'var(--bg-active)' }}>{p.slice(1, -1)}</code> : <React.Fragment key={i}>{p.replace(/\*\*([^*]+)\*\*/g, '$1')}</React.Fragment>);
   const blocks: React.ReactNode[] = [];
   let list: { ordered: boolean; items: string[] } | null = null;
   let para: string[] = [];
@@ -190,7 +225,7 @@ function TranscriptItemView({ m, s, index, onDeny }: { m: TranscriptEvent; s: S;
       <Avatar agent name="Claude" size={22} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
         <span style={{ font: '500 12px/1 var(--font-sans)' }}>Claude</span>
-        <div className="selectable" style={{ font: '400 13px/1.6 var(--font-sans)', color: 'var(--text-1)', display: 'flex', flexDirection: 'column', gap: 6, wordBreak: 'break-word' }}><Rich text={m.text} /></div>
+        <div className="selectable" style={{ font: '400 13px/1.6 var(--font-sans)', color: 'var(--text-1)', display: 'flex', flexDirection: 'column', gap: 6, wordBreak: 'break-word' }}><Rich text={m.text} sessionId={s?.id} /></div>
       </div>
     </div>
   );
