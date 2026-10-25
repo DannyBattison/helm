@@ -476,3 +476,7 @@ Why: user request; the multi-column layouts, the Dashboard and the New session d
 ## D-114 · 2026-10-25 · Dialogs and select menus are clamped to the viewport on phones
 The dialog overlay's grid track is now `minmax(0, 1fr)`, so a nowrap child (a select label, a branch name, a folder path) can no longer stretch the dialog past the screen; this was making New session overflow horizontally. Select menus are limited to the viewport width and truncate long labels.
 Why: user report, New session modal overflowed horizontally on mobile.
+
+## D-115 · 2026-10-25 · A GitHub repository can be created from Add repository
+Add repository has a "Create new" tab: name, description, private or public, and an owner (the user or one of their organisations). `createRepo` in `github.ts` creates it with `auto_init` so it has a README and a default branch (sessions branch from origin and need one), then the repository is cloned into the clone root and added like any other. The token's existing `repo` scope is enough for personal repositories; organisation ones need the organisation to allow it.
+Why: user request.

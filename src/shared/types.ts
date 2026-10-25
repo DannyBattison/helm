@@ -769,6 +769,8 @@ export interface HelmApi {
   listGithubRepos(): Promise<GhRepo[]>;
   cloneRepos(ids: string[]): Promise<void>;
   cloneUrl(url: string, dir: string): Promise<void>;
+  listGithubOwners(): Promise<string[]>;
+  createGithubRepo(input: { name: string; description: string; private: boolean; owner?: string }): Promise<void>;
   inspectClone(path: string): Promise<{ ok: boolean; checks: { ok: boolean; warn?: boolean; text: string }[]; id?: string }>;
   addLocalRepo(path: string): Promise<void>;
   removeRepo(id: string): Promise<void>;
