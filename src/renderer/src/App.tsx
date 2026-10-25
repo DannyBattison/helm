@@ -5,7 +5,7 @@ import { theme as resolveTheme } from './lib';
 import { dismissToast, getUI, go, init, setUI, useUI } from './store';
 import { Button, Toast } from './ui';
 import { Activity, Dashboard } from './views/Dashboard';
-import { AddRepo, DeleteSession, MergePr, NewSession, Palette, RemoveRepo, RenameSession, SignIn } from './views/Dialogs';
+import { AddRepo, ClaudeLoginGate, DeleteSession, MergePr, NewSession, Palette, RemoveRepo, RenameSession, SignIn } from './views/Dialogs';
 import { Archive } from './views/Archive';
 import { ExternalSessionView, Repo } from './views/Repo';
 import { Session } from './views/Session';
@@ -93,9 +93,12 @@ export function App() {
     body = <Dashboard key={route.filter || 'all'} filter={route.filter} />;
   }
   const inCode = route.screen === 'session' && route.tab === 'code';
+  // On a server where Claude Code is not signed in yet, that comes first: the overlay covers the app and the app behind it is switched off.
+  const needsClaude = !!app.claudeLogin && !app.claudeLogin.loggedIn;
 
   return (
     <div style={{ position: 'relative', height: '100%', minWidth: 1180, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ display: 'contents' }} {...(needsClaude ? { inert: true } : {})}>
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
         <Sidebar />
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg-app)' }}>
@@ -112,6 +115,8 @@ export function App() {
       {renaming ? <RenameSession key={renaming} id={renaming} onClose={() => setUI({ renaming: null })} /> : null}
       {deleting ? <DeleteSession key={deleting} id={deleting} onClose={() => setUI({ deleting: null })} /> : null}
       {palette ? <Palette onClose={() => setUI({ palette: false })} toggleTheme={toggleTheme} /> : null}
+      </div>
+      {needsClaude ? <ClaudeLoginGate /> : null}
       <div style={{ position: 'absolute', right: 16, bottom: 40, zIndex: 60, display: 'flex', flexDirection: 'column', gap: 8 }}>
         {toasts.map((t) => (
           <Toast key={t.id} tone={t.tone} title={t.title} description={t.description} onClose={() => dismissToast(t.id)}

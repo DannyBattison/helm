@@ -14,6 +14,7 @@ export function createHost(send: Host['send'], allowLogin?: Host['allowLogin']):
     locale: process.env.HELM_LOCALE || 'en-US',
     send,
     allowLogin,
+    requireClaudeLogin: true,
     // No keychain on a server: the GitHub token sits in dataDir (0700) as plain text. See hosted-server/README.md.
     sdkClaudePath: () => undefined,
     cliClaudePath: () => undefined,

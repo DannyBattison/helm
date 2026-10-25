@@ -3,7 +3,8 @@ import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { readFile, stat, writeFile } from 'node:fs/promises';
 import { join, relative, resolve, isAbsolute } from 'node:path';
-import type { AppState, ExternalTranscript, HelmApi, HelmEvents, Settings, TranscriptEvent } from '../shared/types';
+import type { AppState, ClaudeLogin, ExternalTranscript, HelmApi, HelmEvents, Settings, TranscriptEvent } from '../shared/types';
+import { ClaudeAuth } from './claudeAuth';
 import * as G from './git';
 import * as GH from './github';
 import type { Host } from './host';
@@ -28,6 +29,7 @@ let stateTimer: NodeJS.Timeout | null = null;
 function buildState(): AppState {
   return {
     ready: true,
+    ...(host.requireClaudeLogin && claudeLogin ? { claudeLogin } : {}),
     user: store.data.user,
     repos: store.data.repos,
     sessions: store.data.sessions,
@@ -43,6 +45,16 @@ function buildState(): AppState {
     home
   };
 }
+let claudeLogin: ClaudeLogin | undefined;
+const claudeAuth = new ClaudeAuth(() => claudeExe() || 'claude');
+/** Asks Claude Code who is signed in and tells the UI if that changed. Only where the app has to sign it in itself. */
+async function refreshClaudeLogin(): Promise<ClaudeLogin | undefined> {
+  if (!host.requireClaudeLogin) return undefined;
+  const s = await claudeAuth.status();
+  if (JSON.stringify(s) !== JSON.stringify(claudeLogin)) { claudeLogin = s; emitState(); }
+  return s;
+}
+
 function emitState() {
   if (stateTimer) return;
   stateTimer = setTimeout(() => {
@@ -199,6 +211,21 @@ export const api: HelmApi = {
     emitState();
     return u;
   },
+  async claudeLoginStart() { return claudeAuth.startLogin(); },
+  async claudeLoginCode(code) {
+    const s = await claudeAuth.submitCode(String(code));
+    claudeLogin = s;
+    emitState();
+    return s;
+  },
+  async claudeLoginCancel() { claudeAuth.cancel(); },
+  async claudeLogout() {
+    const s = await claudeAuth.logout();
+    claudeLogin = s;
+    emitState();
+    return s;
+  },
+
   async signOut() {
     GH.cancelDeviceFlow();
     await GH.clearToken();
@@ -616,6 +643,7 @@ export async function start(h: Host) {
   if (!GH.getToken() && !process.env.HELM_DEV_SEED) store.data.user = null;
   claudeVersion = await detectClaude(store.data.settings.claudePath);
   host.setTheme?.(store.data.settings.theme);
+  if (host.requireClaudeLogin) { void refreshClaudeLogin(); setInterval(() => void refreshClaudeLogin(), 5 * 60_000); }
   setInterval(pollMerges, 120_000);
   void detectCurrency().then(refreshRates);
   sessions.autoArchive();

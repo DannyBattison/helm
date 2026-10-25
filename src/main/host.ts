@@ -27,6 +27,11 @@ export interface Host {
    * is the one person's own and leaves it out. Asked after GitHub says who it is and before anything is stored.
    */
   allowLogin?(login: string): boolean;
+  /**
+   * The app has to sign Claude Code in itself, because there is no one at the machine to run `claude` (a hosted server). The UI then makes
+   * signing in the first thing you do, before anything else works. The desktop app leaves this out: it uses the Claude Code you already have.
+   */
+  requireClaudeLogin?: boolean;
   /** Things that happen on the user's own computer, which a hosted server has no access to. */
   chooseFolder(): Promise<string | null>;
   openExternal(url: string): Promise<void>;

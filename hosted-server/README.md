@@ -23,21 +23,27 @@ Open `http://127.0.0.1:8787` and sign in with GitHub. The port is published on t
 | --- | --- |
 | `HELM_HOSTED_ALLOWED_USER` | **Required.** The one GitHub username allowed in (not case sensitive). Anyone else is turned away, and the server will not start without it or with more than one name. That person can run commands inside the container. |
 | `HELM_HOSTED_SECRET` | Signs the sign-in cookie. 32+ random characters (`openssl rand -hex 32`). If it is left out, everyone is signed out whenever the container restarts. |
-| `ANTHROPIC_API_KEY` | How agents authenticate. See below. |
-| `CLAUDE_CODE_OAUTH_TOKEN` | Optional alternative to the API key. See below. |
+| `ANTHROPIC_API_KEY` | Optional. An API key for agents, instead of signing in with Claude. See below. |
+| `CLAUDE_CODE_OAUTH_TOKEN` | Optional. A long-lived subscription token (`claude setup-token`), instead of signing in with Claude. |
 | `HELM_GIT_NAME`, `HELM_GIT_EMAIL` | Who agent commits are made as. |
 
 Without `docker`: `HELM_HOSTED_ALLOWED_USER=you HELM_HOSTED_SECRET=... npm start` after `npm run build`, with Node 22 and git installed, and the same variables.
 
-### Getting an Anthropic API key
+### Claude: sign in from the app (no key needed)
 
-1. Go to <https://console.anthropic.com/settings/keys> and sign in (the Anthropic Console, not claude.ai).
-2. **Create Key**, name it (for example `helm-hosted`), and copy it straight away: it starts `sk-ant-` and is shown only once. An old key cannot be looked up, only replaced.
-3. Paste it as `ANTHROPIC_API_KEY=` in `.env`, and make sure the Console account has credit (Settings, Billing). API use is billed per token there, separately from a Claude Pro or Max subscription.
+The first thing you see after signing in to GitHub, if the server's Claude Code is not signed in, is a full-screen overlay: **Sign in to Claude to start**. Nothing behind it can be used until it is done.
 
-### Using a Claude subscription instead
+1. **Sign in with Claude** opens Claude in a new tab (the button is there if the tab does not open).
+2. Approve it with your Claude account. Claude shows a code.
+3. Paste the code into the overlay and press **Continue**. The overlay goes away.
 
-`claude setup-token` (run on a computer where you are logged in to Claude Code) prints a long-lived token that the binary accepts as `CLAUDE_CODE_OAUTH_TOKEN`. It draws on your subscription instead of API credit. Anthropic's terms do not allow third-party apps to broker subscription logins on other people's behalf (see D-069); for a server only you use, running Claude Code itself under your own login is a judgement for you to make, so API keys are the documented route here.
+Behind the scenes the server runs `claude auth login` in a terminal, hands you the address it prints, and types the code you paste into the prompt it is waiting at. Claude Code keeps its login in `/home/helm/.claude`, inside the volume, so it survives restarts and every agent uses it. helm never sees a token: only the one-time code, passing from you to the command that asked for it. Settings, then Claude Code, shows who is signed in and has a **Sign out**.
+
+This uses your Claude **subscription**. Anthropic's terms limit sharing a subscription login with other people or apps (D-069), so use your own account, on a server only you use.
+
+### Or an API key, instead
+
+If `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`) is set in `.env`, agents use it and the overlay never appears. An API key comes from <https://console.anthropic.com/settings/keys> (create one; it starts `sk-ant-`, is shown once, and needs credit under Billing, billed per token and separately from a subscription).
 
 ## Signing in
 

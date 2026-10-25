@@ -242,8 +242,21 @@ export interface Lifetime {
   cost: number;
 }
 
+/** Whether Claude Code is signed in on a machine where the app has to do that itself (the hosted server). */
+export interface ClaudeLogin {
+  loggedIn: boolean;
+  /** `none`, the account's login (`claude.ai`), `api key` or `subscription token`. */
+  method: string;
+  email?: string;
+  plan?: string;
+  /** Why it could not be checked, when it could not. */
+  error?: string;
+}
+
 export interface AppState {
   ready: boolean;
+  /** Set only where the app signs Claude Code in itself (the hosted server); absent on the desktop. */
+  claudeLogin?: ClaudeLogin;
   user: User | null;
   repos: Repo[];
   sessions: Session[];
@@ -626,6 +639,12 @@ export interface HelmApi {
   /** Opens the repository in the editor chosen in Settings. With helm as the editor it opens the Code tab instead. */
   openRepoInEditor(repoId: string): Promise<void>;
   checkClaude(path: string): Promise<string | null>;
+  /** Starts signing Claude Code in with a Claude subscription: returns the address to open. */
+  claudeLoginStart(): Promise<{ url: string }>;
+  /** Gives the code shown after approving, and returns where Claude Code stands. Rejects with the reason when it did not sign in. */
+  claudeLoginCode(code: string): Promise<ClaudeLogin>;
+  claudeLoginCancel(): Promise<void>;
+  claudeLogout(): Promise<ClaudeLogin>;
 
   termOpen(sessionId: string | null, cols: number, rows: number): Promise<string>;
   termWrite(id: string, data: string): Promise<void>;
@@ -645,6 +664,8 @@ export interface HelmBridge {
   platform: string;
   /** Where the window's own buttons sit, so the title bar can leave room: the left (macOS), the right (Windows, Linux), or nowhere (a browser tab). Defaults from `platform`. */
   windowControls?: 'left' | 'right' | 'none';
+  /** True in the browser client of a hosted server. */
+  hosted?: boolean;
   invoke(channel: string, ...args: unknown[]): Promise<any>;
   on<K extends keyof HelmEvents>(channel: K, cb: (payload: HelmEvents[K]) => void): () => void;
 }

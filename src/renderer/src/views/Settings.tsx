@@ -102,6 +102,13 @@ export function Settings({ section }: { section?: string }) {
               <Field value={st.claudePath} onCommit={(v: string) => set({ claudePath: v.trim() })} placeholder="Path to claude (optional)" style={{ width: 260 }} />
               {app.claudeVersion ? <Badge tone="ready" dot>{app.claudeVersion}</Badge> : <Badge>bundled</Badge>}
             </SettingRow>
+            {app.claudeLogin ? (
+              <SettingRow title="Claude account" desc={app.claudeLogin.loggedIn
+                ? (/key|token/.test(app.claudeLogin.method) ? `Using the ${app.claudeLogin.method} set in this server's environment.` : `Signed in with your Claude subscription${app.claudeLogin.email ? ` as ${app.claudeLogin.email}` : ''}${app.claudeLogin.plan ? ` (${app.claudeLogin.plan})` : ''}.`)
+                : 'Not signed in. Agents cannot run until you sign in.'}>
+                {app.claudeLogin.loggedIn && !/key|token/.test(app.claudeLogin.method) ? <Button size="sm" variant="ghost" onClick={() => void api.claudeLogout()}>Sign out</Button> : null}
+              </SettingRow>
+            ) : null}
             <SettingRow title="Default model"><Select value={st.defaultModel} onChange={(e: any) => set({ defaultModel: e.target.value as ModelAlias })} options={MODEL_OPTIONS} /></SettingRow>
             <SettingRow title="Permission mode" desc={st.permMode === 'all' ? 'Agents run every command and edit every file without asking. The worktree keeps them off your checkout, but they can still reach the network and files outside it. Pre-approved patterns and approvals no longer matter.' : 'What an agent can do without asking you first.'}><Select value={st.permMode} onChange={(e: any) => set({ permMode: e.target.value as PermMode })} options={PERM_OPTIONS} /></SettingRow>
             <SettingRow title="Always allowed commands" desc="Comma separated patterns. * matches anything. Added to when you choose Always allow.">

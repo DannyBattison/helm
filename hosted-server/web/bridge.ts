@@ -65,6 +65,7 @@ export function createBridge(url: string): HelmBridge & { ready: Promise<void> }
     ready,
     platform: clientPlatform(),
     windowControls: 'none',
+    hosted: true,
     invoke(channel, ...args) {
       if (channel in local) return Promise.resolve(local[channel](...args));
       return new Promise((resolve, reject) => {
