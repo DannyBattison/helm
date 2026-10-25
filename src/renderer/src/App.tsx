@@ -120,8 +120,8 @@ export function App() {
       <div style={{ display: 'contents' }} {...(needsClaude ? { inert: true } : {})}>
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
         {narrow ? (drawer ? <>
-          <div onClick={() => setUI({ drawer: false })} style={{ position: 'absolute', inset: 0, zIndex: 40, background: 'rgba(0,0,0,0.45)' }} />
-          <div style={{ position: 'absolute', top: 0, bottom: 0, left: 0, zIndex: 41, maxWidth: '85%', display: 'flex' }}><Sidebar /></div>
+          <div onClick={() => setUI({ drawer: false })} style={{ position: 'absolute', inset: 0, zIndex: 40, background: 'rgba(0,0,0,0.45)', animation: 'helm-fade-in var(--dur-slow) var(--ease-out)' }} />
+          <div style={{ position: 'absolute', top: 0, bottom: 0, left: 0, zIndex: 41, width: 'min(300px, 86vw)', display: 'flex', boxShadow: 'var(--shadow-dialog)', animation: 'helm-drawer-in var(--dur-slow) var(--ease-out)' }}><Sidebar drawer /></div>
         </> : null) : <Sidebar />}
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg-app)' }}>
           <TitleBar crumbs={crumbs} theme={theme} setTheme={toggleTheme as any} />
@@ -144,7 +144,7 @@ export function App() {
       {palette ? <Palette onClose={() => setUI({ palette: false })} toggleTheme={toggleTheme} /> : null}
       </div>
       {needsClaude ? <ClaudeLoginGate /> : null}
-      <div style={{ position: 'absolute', right: 16, bottom: 40, zIndex: 60, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ position: 'absolute', right: narrow ? 8 : 16, left: narrow ? 8 : undefined, bottom: narrow ? 32 : 40, zIndex: 60, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
         {toasts.map((t) => (
           <Toast key={t.id} tone={t.tone} title={t.title} description={t.description} onClose={() => dismissToast(t.id)}
             actions={t.sessionId ? <>

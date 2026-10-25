@@ -14,9 +14,15 @@ body,
   height: 100%;
   overflow: hidden;
 }
+/* On a phone the browser's own bars come and go; the dynamic height keeps the status bar and the composer on screen. */
+#root {
+  height: 100dvh;
+}
 body {
   user-select: none;
   -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
 }
 input,
 textarea,
@@ -62,6 +68,54 @@ textarea {
 }
 .helm-row-hover:hover {
   background: var(--bg-hover);
+}
+@media (hover: none) {
+  .helm-row-hover:hover {
+    background: transparent;
+  }
+}
+
+/* A strip that scrolls sideways when it does not fit (tabs, filters, toolbars), without a scrollbar in the way. */
+.helm-hscroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.helm-hscroll::-webkit-scrollbar {
+  display: none;
+}
+
+@keyframes helm-drawer-in {
+  from { transform: translateX(-100%); }
+  to { transform: none; }
+}
+@keyframes helm-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Phones: iOS zooms into any field with text smaller than 16px, and does not zoom back out. */
+@media (max-width: 767px) {
+  input:not([type='checkbox']):not([type='radio']),
+  textarea:not(.monaco-editor textarea):not(.xterm textarea) {
+    font-size: 16px !important;
+  }
+}
+
+/* Touch screens: rows and buttons big enough for a finger. */
+@media (pointer: coarse) {
+  .helm-tap-row {
+    min-height: 40px !important;
+    height: auto !important;
+  }
+  .helm-tap-icon {
+    min-width: 36px !important;
+    min-height: 36px !important;
+  }
+  .helm-tap-btn {
+    min-height: 34px !important;
+  }
 }
 
 /* Syntax colours for code outside the editor: the same tokens the Monaco themes use. */

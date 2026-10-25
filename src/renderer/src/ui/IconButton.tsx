@@ -5,8 +5,8 @@ export function IconButton({ icon, label, size = 'md', active = false, badge = f
   const d = size === 'sm' ? 22 : size === 'lg' ? 32 : 28;
   const ic = size === 'sm' ? 14 : size === 'lg' ? 18 : 16;
   return (
-    <button type="button" title={label} aria-label={label} disabled={disabled} onClick={onClick}
-      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+    <button type="button" className="helm-tap-icon" title={label} aria-label={label} disabled={disabled} onClick={onClick}
+      onPointerEnter={(e) => { if (e.pointerType === 'mouse') setHover(true); }} onPointerLeave={() => setHover(false)}
       style={{ position: 'relative', width: d, height: d, display: 'inline-grid', placeItems: 'center', border: 'none', borderRadius: 'var(--radius-md)',
         background: active ? 'var(--bg-active)' : hover && !disabled ? 'var(--bg-hover)' : 'transparent',
         color: active || hover ? 'var(--text-1)' : 'var(--text-2)', cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.45 : 1,
