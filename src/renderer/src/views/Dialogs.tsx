@@ -91,6 +91,70 @@ export function SignIn() {
   );
 }
 
+
+// ------------------------------------------------------------------ sign in to Claude (hosted server)
+/**
+ * Shown over everything, and the app behind it switched off, when the server's Claude Code is not signed in: on a server nobody can run
+ * `claude` in front of it, so signing in is the first thing to do. Done when Claude Code reports that it is signed in.
+ */
+export function ClaudeLoginGate() {
+  const app = useApp();
+  const [step, setStep] = React.useState(0);
+  const [url, setUrl] = React.useState('');
+  const [code, setCode] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState(app.claudeLogin?.error || '');
+
+  const start = async () => {
+    setErr(''); setBusy(true);
+    try {
+      const r = await api.claudeLoginStart();
+      setUrl(r.url); setStep(1);
+      void api.openExternal(r.url);
+    } catch (e) { setErr(errText(e)); } finally { setBusy(false); }
+  };
+  const submit = async () => {
+    setErr(''); setBusy(true);
+    try { await api.claudeLoginCode(code); }
+    catch (e) { setErr(errText(e)); setStep(0); setCode(''); }
+    finally { setBusy(false); }
+  };
+  const startOver = () => { void api.claudeLoginCancel(); setStep(0); setCode(''); setErr(''); };
+  const text: React.CSSProperties = { margin: 0, font: '400 13px/1.55 var(--font-sans)', color: 'var(--text-2)' };
+
+  return (
+    <div role="dialog" aria-modal="true" aria-label="Sign in to Claude" style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'grid', placeItems: 'center', padding: 24, background: 'color-mix(in srgb, var(--bg-app) 86%, transparent)', backdropFilter: 'blur(6px)' }}>
+      <div style={{ width: 420, maxWidth: '100%', display: 'flex', flexDirection: 'column', gap: 18, padding: 28, borderRadius: 'var(--radius-lg)', background: 'var(--bg-panel)', boxShadow: 'inset 0 0 0 1px var(--border), 0 20px 60px rgba(0,0,0,.45)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <img src={glyph} width="30" height="30" alt="" />
+          <span style={{ font: '600 20px/1 var(--font-mono)', letterSpacing: '-0.02em', position: 'relative', top: '0.14em' }}>helm</span>
+        </div>
+        {step === 0 ? <>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <h1 style={{ margin: 0, font: '600 18px/1.3 var(--font-sans)' }}>Sign in to Claude to start</h1>
+            <p style={text}>helm runs Claude Code on this server, and it has to be signed in to your Claude account before agents can do anything. It uses your Claude subscription.</p>
+          </div>
+          <Button size="lg" variant="primary" fullWidth loading={busy} onClick={start}>Sign in with Claude</Button>
+          {err ? <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--status-error-text)' }}>{err}</span> : null}
+          <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Use your own account, on a server only you use: Anthropic's terms limit sharing a subscription login with other people or apps.</span>
+        </> : <>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <h1 style={{ margin: 0, font: '600 18px/1.3 var(--font-sans)' }}>Approve it on Claude, then paste the code</h1>
+            <p style={text}>We opened Claude in a new tab. Approve the sign-in there, and it shows a code. Paste it here to finish. If the tab did not open, use the button below.</p>
+          </div>
+          <Button variant="secondary" fullWidth iconRight="arrow-square-out" onClick={() => api.openExternal(url)}>Open Claude again</Button>
+          <Input mono autoFocus value={code} onChange={(e: any) => setCode(e.target.value)} onKeyDown={(e: any) => { if (e.key === 'Enter' && code.trim() && !busy) void submit(); }} placeholder="Paste the code here" />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Button variant="primary" style={{ flex: 1 }} loading={busy} disabled={!code.trim()} onClick={submit}>Continue</Button>
+            <Button variant="ghost" onClick={startOver}>Start over</Button>
+          </div>
+          {err ? <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--status-error-text)' }}>{err}</span> : null}
+        </>}
+      </div>
+    </div>
+  );
+}
+
 // ------------------------------------------------------------------ add repository
 export function AddRepo({ onClose }: { onClose(): void }) {
   const app = useApp();

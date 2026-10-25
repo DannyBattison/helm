@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { highlightBlock, highlightLine, langFromPath, langFromTag } from '../src/renderer/src/highlight';
+import { highlightBlock, highlightCommand, highlightLine, langFromPath, langFromTag } from '../src/renderer/src/highlight';
 
 describe('language from a file name', () => {
   it('knows common extensions and special file names', () => {
@@ -111,4 +111,23 @@ describe('highlighting a line', () => {
   it('escapes markup so highlighted text cannot inject HTML', () => {
     expect(highlightLine('const s = "<img src=x onerror=alert(1)>";', 'typescript')).not.toContain('<img');
   });
+});
+
+describe('detection stays fast', () => {
+  const time = (f: () => unknown) => { const t = performance.now(); f(); return performance.now() - t; };
+  // A block with no language tag, in the style of an agent's "run these" snippet, once took tens of seconds.
+  const cases: Record<string, string> = {
+    'shell snippet': 'cd fulfilment\nnpx wrangler login\n',
+    'long words': ('abc-def ghi_jkl '.repeat(400) + '\n').repeat(6),
+    'many short lines': Array.from({ length: 2500 }, (_, i) => `step ${i} do the thing ${i}`).join('\n'),
+    'selector-like prose': Array.from({ length: 300 }, (_, i) => `word${i} other${i} more${i} third${i} fourth${i}`).join('\n'),
+    'unbalanced braces': ('a b c d e f g h i j k l m n o p q r s t u v w x y z\n').repeat(300) + '{',
+    'one huge line': 'x '.repeat(9000)
+  };
+  for (const [name, text] of Object.entries(cases)) {
+    it(`${name} is detected, or not, in well under a second`, () => {
+      expect(time(() => highlightBlock(text, null))).toBeLessThan(500);
+      expect(time(() => highlightCommand(text))).toBeLessThan(500);
+    });
+  }
 });

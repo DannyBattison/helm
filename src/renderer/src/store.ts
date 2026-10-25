@@ -54,7 +54,16 @@ export interface UI {
 }
 
 function loadRoute(): Route {
-  try { return JSON.parse(localStorage.getItem('helm-route') || '') || { screen: 'overview' }; } catch { return { screen: 'overview' }; }
+  try {
+    // If the last start never got going (the window froze on the page it restored), do not go back to that page.
+    const started = localStorage.getItem('helm-start-at');
+    const settled = localStorage.getItem('helm-start-ok');
+    const crashed = started && settled !== started;
+    localStorage.setItem('helm-start-at', String(Date.now()));
+    setTimeout(() => { try { localStorage.setItem('helm-start-ok', localStorage.getItem('helm-start-at') || ''); } catch { /* storage unavailable */ } }, 6000);
+    if (crashed) return { screen: 'overview' };
+    return JSON.parse(localStorage.getItem('helm-route') || '') || { screen: 'overview' };
+  } catch { return { screen: 'overview' }; }
 }
 
 let ui: UI = { app: null, route: loadRoute(), transcripts: {}, externals: {}, toasts: [], adding: false, newSession: null, deleting: null, mergingPr: null, renaming: null, checkpointsOf: null, restoring: null, forking: null, continuing: null, remembering: null, removingRepo: null, showArchived: (() => { try { return localStorage.getItem('helm-show-archived') === '1'; } catch { return false; } })(), palette: false, term: false };

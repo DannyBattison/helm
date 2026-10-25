@@ -1,0 +1,13 @@
+.git
+.claude
+node_modules
+hosted/node_modules
+hosted/dist
+out
+release
+dist
+*.log
+tests
+hosted/tests
+design_handoff_helm_desktop
+**/.env

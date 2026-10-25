@@ -1,0 +1,29 @@
+# helm hosted server, for trying it as if it were hosted.
+#
+#   cd hosted
+#   cp .env.example .env     # then fill it in: the allowed GitHub user, a secret, the Anthropic key
+#   docker compose up --build
+#
+# then open http://127.0.0.1:8787 and sign in with GitHub. The port is published on this computer only; put TLS in front before it is
+# reachable from anywhere else.
+# Keeps the volume's name the same wherever the project is checked out.
+name: helm-hosted-poc
+
+services:
+  helm-hosted:
+    build:
+      # The image is built from the repository root: it needs src/ as well as hosted/.
+      context: ..
+      dockerfile: hosted/Dockerfile
+    image: helm-hosted
+    ports:
+      - "127.0.0.1:8787:8787"
+    env_file:
+      - .env
+    volumes:
+      # State, the GitHub token, clones, worktrees and Claude Code's login. `docker compose down -v` forgets all of it.
+      - helm-home:/home/helm
+    restart: unless-stopped
+
+volumes:
+  helm-home:

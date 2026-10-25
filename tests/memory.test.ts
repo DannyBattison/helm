@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { appendInstruction } from '../src/main/memory';
+import { appendInstruction } from '../src/core/memory';
 import { mentionedPaths, memoryHealth, memoryReads, similarity, type MemoryFile } from '../src/shared/memoryhealth';
 
 const NOW = new Date(2026, 9, 21).getTime();

@@ -331,8 +331,8 @@ export function ExternalSessionView({ repoId, id }: { repoId: string; id: string
             renderItem={(m) => <TranscriptItem m={m} s={null as any} onDeny={() => undefined} />}
             header={win.start > 0 ? <div style={{ font: '400 12px/1.4 var(--font-sans)', color: 'var(--text-3)', textAlign: 'center' }}>{win.start} earlier events. Scroll up to load them.</div> : null}
             footer={<>
-              {active ? <div style={{ marginLeft: 32, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1 var(--font-sans)', color: 'var(--status-working-text)' }}><i className="ph ph-circle-notch" style={{ fontSize: 14, animation: 'helm-spin .9s linear infinite' }} />Updating while it runs</div> : null}
-              <div style={{ marginLeft: 32, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>This session was started outside helm, so it is read-only here. To keep going, continue it where it started.</div>
+              {active ? <div style={{ marginLeft: 44, marginRight: 12, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1 var(--font-sans)', color: 'var(--status-working-text)' }}><i className="ph ph-circle-notch" style={{ fontSize: 14, animation: 'helm-spin .9s linear infinite' }} />Updating while it runs</div> : null}
+              <div style={{ marginLeft: 44, marginRight: 12, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>This session was started outside helm, so it is read-only here. To keep going, continue it where it started.</div>
             </>} />
         )}
       </div>

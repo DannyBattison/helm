@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Session } from '../src/shared/types';
-import { parseDiff, parseGithubUrl, isGenerated } from '../src/main/git';
-import { commandPattern, globMatch, hasShellControl, weekStart } from '../src/main/util';
+import { parseDiff, parseGithubUrl, isGenerated } from '../src/core/git';
+import { commandPattern, globMatch, hasShellControl, weekStart } from '../src/core/util';
 import { fmtTokens, laneData, NOW_AT } from '../src/renderer/src/lib';
 import { currencyForRegion, fmtMoney, fromDisplay, toDisplay } from '../src/shared/money';
 

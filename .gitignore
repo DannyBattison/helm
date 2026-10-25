@@ -33,3 +33,10 @@ desktop.ini
 # design handoff bundle (reference material, not part of the app)
 design_handoff_helm_desktop/
 Multi-agent desktop application design.zip
+
+# local settings and secrets
+.env
+
+# Claude Code's own worktrees and local settings
+.claude/worktrees/
+.claude/settings.local.json

@@ -4,5 +4,5 @@
     "strict": false, "noImplicitAny": false, "skipLibCheck": true, "esModuleInterop": true, "noEmit": true, "allowJs": false,
     "types": ["vite/client"], "paths": { "@shared/*": ["./src/shared/*"], "@/*": ["./src/renderer/src/*"] }
   },
-  "include": ["src/renderer/**/*", "src/shared/**/*", "src/preload/index.d.ts"]
+  "include": ["src/renderer/**/*", "src/shared/**/*"]
 }

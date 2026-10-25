@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import messages from './fixtures/subagent-messages.json';
-import { SessionManager } from '../src/main/sessions';
+import { SessionManager } from '../src/core/sessions';
 
 // Real messages from Claude Code's getSubagentMessages for a subagent that read README.md.
 describe('subagent transcript conversion', () => {
