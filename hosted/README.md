@@ -66,3 +66,7 @@ Signing in asks GitHub for repository access (helm needs it), and the token is k
 - No sandbox, no egress control, no resource limits. The VM or container this runs in is the boundary.
 - A dropped connection can miss transcript events; the UI refetches `state` on reconnect but not open transcripts.
 - Desktop notifications, badges and "open in VS Code" do nothing.
+
+### Published image
+
+`.github/workflows/hosted-image.yml` builds this image and pushes it to `ghcr.io/<owner>/helm-hosted` (`latest` from main, a version for each `v*` tag). On a server: `docker pull ghcr.io/<owner>/helm-hosted:latest`, then run it with the same `.env` and volume as `docker-compose.yml` (replace `build:` with `image:`). The package starts out private: make it public in its settings on GitHub, or `docker login ghcr.io` on the server with a token that has `read:packages`.
