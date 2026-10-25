@@ -7,8 +7,8 @@ import { api, on, platform, windowControls } from '../api';
 import { fontStack } from '../fonts';
 import glyph from '../assets/helm-glyph-violet.svg';
 import { ago, elapsed, fmtTokens, isFreeGroup, lifetimeTokens, livePlan, reposWithSessions, runningSubagents, subagentTree, totals, untilReset } from '../lib';
-import { go, refreshExternals, setUI, toast, useApp, useMoney, useUI, useTranscript, type Route } from '../store';
-import { Avatar, Badge, Breadcrumbs, ContextMenu, Grip, IconButton, Kbd, Meter, TreeItem, usePaneWidth, type MenuItem } from '../ui';
+import { getUI, go, refreshExternals, setUI, toast, useApp, useMoney, useUI, useTranscript, type Route } from '../store';
+import { Avatar, Badge, Breadcrumbs, ContextMenu, Grip, IconButton, Kbd, Meter, TreeItem, useNarrow, usePaneWidth, type MenuItem } from '../ui';
 
 const mac = () => platform() === 'darwin';
 
@@ -218,15 +218,17 @@ export function Sidebar() {
 export function TitleBar({ crumbs, theme, setTheme }: { crumbs: any[]; theme: 'dark' | 'light'; setTheme(t: 'dark' | 'light'): void }) {
   const app = useApp();
   const need = app.sessions.filter((s) => s.status === 'attention').length;
+  const narrow = useNarrow();
   return (
-    <div className="drag" style={{ height: 'var(--titlebar-h)', flex: 'none', display: 'flex', alignItems: 'center', gap: 12, padding: '0 ' + (windowControls() === 'right' ? 150 : 10) + 'px 0 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg-app)' }}>
-      <div style={{ flex: 1, minWidth: 0 }}><Breadcrumbs items={crumbs || []} /></div>
-      <button type="button" onClick={() => setUI({ palette: true })} style={{ width: 340, height: 26, flex: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '0 6px 0 10px', border: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border)', color: 'var(--text-3)', font: '400 12px/1 var(--font-sans)', cursor: 'pointer' }}>
+    <div className="drag" style={{ height: 'var(--titlebar-h)', flex: 'none', display: 'flex', alignItems: 'center', gap: narrow ? 6 : 12, padding: '0 ' + (windowControls() === 'right' ? 150 : 10) + 'px 0 ' + (narrow ? 8 : 16) + 'px', borderBottom: '1px solid var(--border)', background: 'var(--bg-app)' }}>
+      {narrow ? <IconButton icon="list" label="Menu" onClick={() => setUI({ drawer: !getUI().drawer })} /> : null}
+      <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}><Breadcrumbs items={crumbs || []} /></div>
+      {narrow ? <IconButton icon="magnifying-glass" label="Search" onClick={() => setUI({ palette: true })} /> : <button type="button" onClick={() => setUI({ palette: true })} style={{ width: 340, height: 26, flex: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '0 6px 0 10px', border: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border)', color: 'var(--text-3)', font: '400 12px/1 var(--font-sans)', cursor: 'pointer' }}>
         <i className="ph ph-magnifying-glass" style={{ fontSize: 13 }} />
         <span style={{ flex: 1, textAlign: 'left' }}>Search sessions and repositories</span>
         <Kbd keys={[mac() ? '⌘' : 'Ctrl', 'K']} />
-      </button>
-      <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 2 }}>
+      </button>}
+      <div style={{ flex: narrow ? 'none' : 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 2 }}>
         <IconButton icon="bell" label="Inbox" badge={need > 0} onClick={() => go({ screen: 'inbox' })} />
         <IconButton icon={theme === 'dark' ? 'sun' : 'moon'} label="Toggle theme" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
         <span style={{ width: 1, height: 16, background: 'var(--border)', margin: '0 6px' }} />

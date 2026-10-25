@@ -127,3 +127,17 @@ export function useColumns(key: string, cols: Col[]) {
   );
   return { template, cell, reset };
 }
+
+/** True while the window is narrower than `max` pixels. */
+export function useNarrow(max = 900) {
+  const query = `(max-width: ${max - 1}px)`;
+  const [narrow, setNarrow] = React.useState(() => window.matchMedia(query).matches);
+  React.useEffect(() => {
+    const mq = window.matchMedia(query);
+    const h = () => setNarrow(mq.matches);
+    h();
+    mq.addEventListener('change', h);
+    return () => mq.removeEventListener('change', h);
+  }, [query]);
+  return narrow;
+}
