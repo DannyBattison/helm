@@ -10,6 +10,7 @@ import * as GH from './github';
 import { Companion } from './companion';
 import { installLogging, logFile, logLine, recentLog } from './log';
 import { cleanHeavy, dirSize, reclaimableBytes } from './disk';
+import { readArtifact } from './artifacts';
 import { diagnostics } from '../shared/diagnostics';
 import { memoryHealth, memoryReads, STALE_DAYS, type MemoryFile, type MemoryUsage } from '../shared/memoryhealth';
 import type { Host } from './host';
@@ -380,6 +381,7 @@ export const api: HelmApi = {
   async setRepoMaxSubagents(id, max) { repos.must(id).maxSubagents = max ?? undefined; store.save(); emitState(); },
   resolveAsk: (id, askId, answer) => sessions.resolveAsk(id, askId, answer),
   getTranscript: (id) => store.transcript(id),
+  getArtifact: (id, name) => readArtifact(id, name),
 
   async workspaceInfo(id) {
     const w = ws(id);
