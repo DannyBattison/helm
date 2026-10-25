@@ -503,7 +503,7 @@ function UsagePanel({ s }: { s: S }) {
   const n = (v: string, l: string) => <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}><span style={{ font: '500 15px/1 var(--font-mono)' }}>{v}</span><span style={{ font: '400 11.5px/1 var(--font-sans)', color: 'var(--text-3)' }}>{l}</span></div>;
   const files = Object.entries(s.filesTouched);
   return (
-    <aside style={{ position: 'relative', width, flex: 'none', borderLeft: '1px solid var(--border)', overflow: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 20, background: 'var(--bg-panel)' }}>
+    <aside className="helm-hide-phone" style={{ position: 'relative', width, flex: 'none', borderLeft: '1px solid var(--border)', overflow: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 20, background: 'var(--bg-panel)' }}>
       <Grip edge="left" onMouseDown={grip} onDoubleClick={resetWidth} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <span style={label}>Usage</span>
@@ -586,7 +586,7 @@ function SubagentView({ s, subId }: { s: S; subId: string }) {
               <div style={{ marginLeft: 44, marginRight: 12, font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>This transcript is read-only. Message the parent agent from the session's conversation.</div>
             </>} />
         </div>
-        <aside style={{ position: 'relative', width, flex: 'none', borderLeft: '1px solid var(--border)', overflow: 'auto', padding: 16, background: 'var(--bg-panel)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <aside className="helm-hide-phone" style={{ position: 'relative', width, flex: 'none', borderLeft: '1px solid var(--border)', overflow: 'auto', padding: 16, background: 'var(--bg-panel)', display: 'flex', flexDirection: 'column', gap: 10 }}>
           <Grip edge="left" onMouseDown={grip} onDoubleClick={resetWidth} />
           <span style={label}>All subagents</span>
           <SubagentTree s={s} selected={subId} />

@@ -286,8 +286,8 @@ function ChangesView({ s }: { s: Session }) {
   );
 
   return (
-    <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-      <div style={{ position: 'relative', width: lw, flex: 'none', display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border)', background: 'var(--bg-sidebar)' }}>
+    <div className="helm-split" style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+      <div className="helm-list" style={{ position: 'relative', width: lw, flex: 'none', display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border)', background: 'var(--bg-sidebar)' }}>
         <Grip onMouseDown={lgrip} onDoubleClick={lreset} />
         <div style={{ height: 34, flex: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px' }}>
           <Checkbox checked={allOn} onChange={(on) => setUnchecked(on ? new Set() : new Set((sum?.files || []).filter((f) => pickable(f.path)).map((f) => f.path)))} />
@@ -316,7 +316,7 @@ function ChangesView({ s }: { s: Session }) {
         </div>
       </div>
 
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg-editor)' }}>
+      <div className="helm-main" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg-editor)' }}>
         <div style={{ height: 38, flex: 'none', display: 'flex', alignItems: 'center', gap: 10, padding: '0 10px 0 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg-panel)' }}>
           <span style={{ font: '400 12.5px/1 var(--font-mono)', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sel}</span>
           {file ? <DiffStat additions={file.add} deletions={file.del} /> : null}

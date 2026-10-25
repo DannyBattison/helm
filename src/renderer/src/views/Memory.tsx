@@ -108,8 +108,8 @@ export function RepoMemory({ repo }: { repo: R }) {
   if (!mem) return <div style={{ flex: 1, padding: 20, display: 'flex', flexDirection: 'column', gap: 10 }}>{[60, 80, 50, 70].map((w, i) => <Skeleton key={i} w={w + '%'} h={14} />)}</div>;
   const empty = !mem.memories.length && !mem.instructions.length;
   return (
-    <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-      <div style={{ width: 380, flex: 'none', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+    <div className="helm-split" style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+      <div className="helm-list" style={{ width: 380, flex: 'none', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8, flex: 'none' }}>
           <Input value={q} placeholder={`Search ${mem.memories.filter((m) => !m.index).length} memories`} onChange={(e: any) => setQ(e.target.value)} />
           {ins && ins.issues.length ? <div onClick={() => setFlagged(!flagged)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 'var(--radius-md)', cursor: 'pointer', background: flagged ? 'var(--status-attention-bg)' : 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px ' + (flagged ? 'var(--status-attention)' : 'var(--border)'), font: '400 12px/1.3 var(--font-sans)', color: 'var(--text-2)' }}><i className="ph ph-warning" style={{ color: 'var(--status-attention-text)' }} />{new Set(ins.issues.map((i) => i.path)).size} {new Set(ins.issues.map((i) => i.path)).size === 1 ? 'memory needs' : 'memories need'} a look<span style={{ flex: 1 }} /><span style={{ color: 'var(--text-3)' }}>{flagged ? 'Show all' : 'Show only these'}</span></div> : null}

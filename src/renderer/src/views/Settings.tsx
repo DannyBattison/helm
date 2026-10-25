@@ -5,7 +5,7 @@ import { livePlan, untilReset } from '../lib';
 import { CURRENCIES, rateFor } from '@shared/money';
 import { BUNDLED_FONTS, fontStack, SYSTEM_DEFAULT, systemFonts, systemUiFonts, uiStack, UI_BUNDLED_FONTS, dataStack } from '../fonts';
 import { toast, useApp, useMoney } from '../store';
-import { Avatar, Badge, Button, Input, Meter, SegmentedControl, Select, Switch, TreeItem, useColumns } from '../ui';
+import { Avatar, Badge, Button, Input, Meter, SegmentedControl, Select, Switch, TreeItem, useColumns, useNarrow } from '../ui';
 
 const errText = (e: any) => String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '');
 const set = (patch: Partial<SettingsT>) => void api.updateSettings(patch);
@@ -67,7 +67,7 @@ function CompanionSection({ st, set, state }: { st: any; set(p: any): void; stat
 
 function SettingRow({ title, desc, children }: { title: React.ReactNode; desc?: React.ReactNode; children?: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 24, padding: '14px 0', borderTop: '1px solid var(--border-subtle)' }}>
+    <div className="helm-setting" style={{ display: 'flex', alignItems: 'center', gap: 24, padding: '14px 0', borderTop: '1px solid var(--border-subtle)' }}>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
         <span style={{ font: '500 13px/1.3 var(--font-sans)' }}>{title}</span>
         {desc ? <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>{desc}</span> : null}
@@ -108,6 +108,7 @@ function FontRow({ title, desc, value, onChange, bundled, system, stack }: { tit
 }
 
 export function Settings({ section }: { section?: string }) {
+  const narrow = useNarrow();
   const hosted = !!window.helmBridge.hosted;
   const app = useApp();
   const st = app.settings;
@@ -129,12 +130,18 @@ export function Settings({ section }: { section?: string }) {
     </SettingRow>
   );
   return (
-    <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-      <nav style={{ width: 200, flex: 'none', padding: '16px 8px', borderRight: '1px solid var(--border)' }}>
-        {nav.map(([k, l, ic]) => <TreeItem key={k} icon={ic} label={l} selected={sec === k} onClick={() => setSec(k)} />)}
-      </nav>
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: narrow ? 'column' : 'row' }}>
+      {narrow ? (
+        <nav style={{ flex: 'none', padding: '8px 12px', borderBottom: '1px solid var(--border)', display: 'flex' }}>
+          <SegmentedControl value={sec} onChange={setSec} options={nav.map(([value, label, icon]) => ({ value, label, icon }))} />
+        </nav>
+      ) : (
+        <nav style={{ width: 200, flex: 'none', padding: '16px 8px', borderRight: '1px solid var(--border)' }}>
+          {nav.map(([k, l, ic]) => <TreeItem key={k} icon={ic} label={l} selected={sec === k} onClick={() => setSec(k)} />)}
+        </nav>
+      )}
       <div style={{ flex: 1, minWidth: 0, overflow: 'auto' }}>
-        <div style={{ maxWidth: 720, padding: '24px 32px 40px' }}>
+        <div style={{ maxWidth: 720, padding: narrow ? '16px 14px 32px' : '24px 32px 40px' }}>
           {sec === 'account' ? <>
             <H sub="helm signs in with GitHub only. Repositories, pull requests and history all come from this account.">Account</H>
             <SettingRow title={<span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Avatar name={app.user?.login || '?'} src={app.user?.avatar || undefined} size={24} />{app.user?.name || app.user?.login} <Badge mono>@{app.user?.login}</Badge></span>} desc="Signed in with GitHub · scopes: repo, read:org, workflow">
