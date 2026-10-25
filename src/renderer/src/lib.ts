@@ -125,10 +125,11 @@ export function livePlan(app: AppState) {
   return { fiveHour: ok(app.plan.fiveHour), weekly: ok(app.plan.weekly) };
 }
 
-export const subagentTree = (s: Session) => {
+/** The subagents to list: archived ones (handed back with nothing to review) only when asked for. */
+export const subagentTree = (s: Session, withArchived = false) => {
   const out: { a: Session['subagents'][number]; depth: number }[] = [];
   const walk = (parent: string | null, depth: number) => {
-    for (const a of s.subagents || []) if (a.parentId === parent) { out.push({ a, depth }); walk(a.id, depth + 1); }
+    for (const a of s.subagents || []) if (a.parentId === parent && (withArchived || !a.archived)) { out.push({ a, depth }); walk(a.id, depth + 1); }
   };
   walk(null, 0);
   return out;

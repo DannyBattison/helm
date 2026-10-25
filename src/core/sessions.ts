@@ -679,11 +679,18 @@ export class SessionManager {
   private async finishSubagent(s: Session, rt: Runtime, a: Subagent, status: Subagent['status']) {
     a.status = status;
     a.endedAt = Date.now();
+    // Handed back with nothing for the owner to review: the parent has what it needs, so tidy the subagent away.
+    if (status === 'done' && !a.changed) a.archived = true;
     rt.admitted.delete(a.id);
     await this.syncSubagent(s, a);
     await this.patchSubagent(rt, a);
     this.scheduleStats(s, rt);
     this.touch();
+  }
+
+  /** A subagent (and the ones above it) changed files, so it is not archived when it hands back. */
+  private markChanged(s: Session, sub?: Subagent) {
+    for (let a = sub; a && !a.changed; a = a.parentId ? s.subagents.find((x) => x.id === a!.parentId) : undefined) a.changed = true;
   }
 
   private subSyncAt = new Map<string, number>();
@@ -834,6 +841,7 @@ export class SessionManager {
     }
     if (EDIT_TOOLS.has(name)) {
       const file = rel(wt, String(input.file_path || input.notebook_path || ''));
+      this.markChanged(s, sub);
       this.activity(s, 'edit', (sub ? `${sub.description}: ` : '') + `${name === 'Write' ? 'wrote' : 'edited'} ${file}`, { detail: file });
       const lines: [string, string][] = [];
       let add = 0, del = 0;
@@ -961,6 +969,7 @@ export class SessionManager {
     if (!m) return;
     const now = Date.now();
     s.commits.push({ hash: m[1], at: now });
+    this.markChanged(s, s.subagents.find((x) => tkey === `${s.id}~${x.id}`));
     s.stuck = undefined;
     s.fileEdits = undefined;
     await this.push(tkey, { k: 'commit', hash: m[1], msg: m[2], t: now });
