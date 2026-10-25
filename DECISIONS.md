@@ -460,3 +460,11 @@ Why: user request, now that there are two ways to distribute helm.
 ## D-110 · 2026-10-25 · The hosted image is built and published to ghcr.io by a workflow
 `.github/workflows/hosted-image.yml` builds `hosted/Dockerfile` from the repository root and pushes `ghcr.io/<owner>/helm-hosted`: `latest` and `sha-<commit>` on every push to main that touches the app or the server, `<version>`, `<major.minor>` and `latest` for a `v*` tag, a branch tag for a manual run of another branch. Pull requests build the image without publishing it. It uses the workflow's own token (no secrets to set up) and builds for linux/amd64 only unless a manual run asks for arm64 as well, since an arm64 build runs under emulation and is slow. The first published package is private; making it public, or giving the server a token that can read packages, is done in the package settings on GitHub.
 Why: user request.
+
+## D-111 · 2026-10-25 · Below 900px wide the sidebar is a drawer
+The app no longer has a fixed minimum width of 1180px (now 320px). In a window narrower than 900px (`useNarrow`) the sidebar leaves the layout and opens as a drawer over the content from a menu button in the title bar; the search box becomes an icon, and the drawer closes on navigation, on Escape and on a tap outside it. Wider windows are unchanged.
+Why: user request, to make the UI responsive.
+
+## D-112 · 2026-10-25 · The drawer is for mobile widths only: below 768px
+D-111 switched to the drawer below 900px, which also caught small laptop and tablet windows. The breakpoint is now 768px, so only phone-sized windows get the drawer; everything wider keeps the sidebar.
+Why: user correction, the drawer was meant for mobile.

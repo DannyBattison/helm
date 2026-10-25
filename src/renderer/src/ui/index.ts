@@ -21,7 +21,7 @@ export { Tabs } from './Tabs';
 export { Toast } from './Toast';
 export { Tooltip } from './Tooltip';
 export { TreeItem } from './TreeItem';
-export { Grip, useColumns, usePaneWidth } from './resize';
+export { Grip, useColumns, useNarrow, usePaneWidth } from './resize';
 export type { Col } from './resize';
 export { Skeleton } from './Skeleton';
 export { ContextMenu } from './ContextMenu';
