@@ -24,7 +24,7 @@ export function Select({ value, defaultValue, options = [], icon, mono = false, 
     const r = btn.current.getBoundingClientRect();
     const below = window.innerHeight - r.bottom;
     const up = below < 200 && r.top > below;
-    setPos({ left: r.left, minWidth: Math.max(r.width, 140), ...(up ? { bottom: window.innerHeight - r.top + 4, maxHeight: r.top - 12 } : { top: r.bottom + 4, maxHeight: below - 12 }) });
+    setPos({ left: r.left, minWidth: Math.min(Math.max(r.width, 140), window.innerWidth - 16), maxWidth: window.innerWidth - Math.max(r.left, 8) - 8, ...(up ? { bottom: window.innerHeight - r.top + 4, maxHeight: r.top - 12 } : { top: r.bottom + 4, maxHeight: below - 12 }) });
     setHi(Math.max(0, norm.findIndex((o) => o.value === cur)));
     setOpen(true);
   };
@@ -73,7 +73,7 @@ export function Select({ value, defaultValue, options = [], icon, mono = false, 
               <div key={o.value} role="option" className="helm-tap-row" aria-selected={on} data-hi={i === hi} onMouseEnter={() => setHi(i)} onClick={() => pick(o.value)}
                 style={{ display: 'flex', alignItems: 'center', gap: 8, height: 28, padding: '0 8px 0 10px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', whiteSpace: 'nowrap',
                   background: i === hi ? 'var(--bg-hover)' : 'transparent', color: on ? 'var(--text-1)' : 'var(--text-2)', font: mono ? '400 12px/1 var(--font-mono)' : '400 13px/1 var(--font-sans)' }}>
-                <span style={{ flex: 1 }}>{o.label}</span>
+                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{o.label}</span>
                 {on ? <i className="ph ph-check" style={{ fontSize: 13, color: 'var(--accent-text)' }} /> : null}
               </div>
             );

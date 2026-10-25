@@ -5,7 +5,7 @@ export function Dialog({ open = true, title, description, children, footer, widt
   const narrow = useNarrow();
   if (!open) return null;
   const box = (
-    <div role="dialog" aria-modal="true" style={{ width, maxWidth: '100%', maxHeight: inline ? undefined : narrow ? 'calc(100dvh - 24px)' : 'calc(100vh - 48px)', display: 'flex', flexDirection: 'column', borderRadius: 'var(--radius-xl)', background: 'var(--bg-overlay)', boxShadow: 'var(--shadow-dialog)', animation: 'helm-in var(--dur-slow) var(--ease-out)', ...style }}>
+    <div role="dialog" aria-modal="true" style={{ width, maxWidth: '100%', minWidth: 0, maxHeight: inline ? undefined : narrow ? 'calc(100dvh - 24px)' : 'calc(100vh - 48px)', display: 'flex', flexDirection: 'column', borderRadius: 'var(--radius-xl)', background: 'var(--bg-overlay)', boxShadow: 'var(--shadow-dialog)', animation: 'helm-in var(--dur-slow) var(--ease-out)', ...style }}>
       <header style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: narrow ? '14px 10px 0 16px' : '16px 16px 0 20px' }}>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
           <div style={{ font: '600 16px/1.3 var(--font-sans)', color: 'var(--text-1)' }}>{title}</div>
@@ -18,5 +18,5 @@ export function Dialog({ open = true, title, description, children, footer, widt
     </div>
   );
   if (inline) return box;
-  return <div style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'grid', placeItems: 'center', background: 'var(--scrim)', padding: narrow ? 12 : 24 }} onClick={e => { if (e.target === e.currentTarget && onClose) onClose(); }}>{box}</div>;
+  return <div style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', placeItems: 'center', background: 'var(--scrim)', padding: narrow ? 12 : 24 }} onClick={e => { if (e.target === e.currentTarget && onClose) onClose(); }}>{box}</div>;
 }
