@@ -6,6 +6,8 @@ import type { Workflow, WorkflowRun } from './workflows';
 import type { SearchResults } from './search';
 import type { HealthIssue, MemoryUsage } from './memoryhealth';
 import type { Report } from './reports';
+import type { AutomatedAgent } from './automations';
+export type { AutomatedAgent };
 export type { Workflow, WorkflowRun, Report, Conflict, Issue, SearchResults, HealthIssue, MemoryUsage };
 
 export type Status = 'working' | 'attention' | 'ready' | 'idle' | 'error';
@@ -39,6 +41,13 @@ export interface Repo {
   maxSubagents?: number;
 }
 
+/** An artifact (an uploaded file) of a repository: copied into every session's worktree, never committed. */
+export interface RepoArtifact {
+  name: string;
+  size: number;
+  modified: number;
+}
+
 export interface AskQuestion {
   question: string;
   header?: string;
@@ -53,6 +62,8 @@ export interface PendingAsk {
   head: string;
   note: string;
   tool?: string;
+  /** A few words on what the command does, for approvals of commands. */
+  summary?: string;
   /** Bash command, for approvals of commands. */
   command?: string;
   /** Pattern offered by "Always allow", e.g. `pnpm test *`. */
@@ -114,6 +125,8 @@ export interface Session {
   branch: string;
   base: string;
   worktree: string;
+  /** Files uploaded for this session alone, kept in `dir` outside the worktree. */
+  uploads?: { dir: string; files: { name: string; size: number }[] };
   model: ModelAlias;
   modelName?: string;
   permMode: PermMode;
@@ -135,6 +148,8 @@ export interface Session {
   editing?: { file: string; line: number };
   error?: string;
   prUrl?: string;
+  /** Files the agent handed over (`artifact:` links in its replies). They wait in the Inbox until dismissed or downloaded; archiving the session dismisses them. */
+  artifacts?: SessionArtifact[];
   removeAfterMerge: boolean;
   /** Delete the branch, here and on GitHub, once merged. Sessions saved before this existed follow `removeAfterMerge`. */
   deleteBranchAfterMerge?: boolean;
@@ -162,6 +177,8 @@ export interface Session {
   group?: string;
   /** Where the work came from, such as a GitHub issue or pull request comment. */
   source?: { kind: 'issue' | 'pr'; number: number; url: string; title: string };
+  /** Started by an automated agent. */
+  automation?: { id: string; name: string };
   /** Last checkpoint number taken. Checkpoints are git refs named refs/helm/<session>/<n>. */
   checkpoints?: number;
   /** The result of the last self-review. */
@@ -224,6 +241,9 @@ export interface DailyUsage {
 }
 
 /** A file an agent put in its session's artifact folder. `data` (base64) is null when the file is too large to send. */
+/** An artifact a session's agent linked to, as the Inbox tracks it. */
+export interface SessionArtifact { name: string; label: string; at: number; dismissed?: boolean }
+/** The file itself, as sent to the window. */
 export interface Artifact { name: string; mediaType: string; size: number; data: string | null }
 
 export type TranscriptEvent =
@@ -232,9 +252,9 @@ export type TranscriptEvent =
   | { k: 'agent'; text: string; list?: string[] }
   | { k: 'tools'; items: [string, string, string][] }
   | { k: 'edit'; file: string; add: number; del: number; lines: [string, string][] }
-  | { k: 'bash'; id: string; cmd: string; out: string; ok: boolean; meta: string; done: boolean }
+  | { k: 'bash'; id: string; cmd: string; summary?: string; out: string; ok: boolean; meta: string; done: boolean }
   | { k: 'commit'; hash: string; msg: string; t: number }
-  | { k: 'permission'; askId: string; cmd: string; tool: string; why: string; pattern?: string; resolved?: 'approved' | 'always' | 'denied' }
+  | { k: 'permission'; askId: string; cmd: string; summary?: string; tool: string; why: string; pattern?: string; resolved?: 'approved' | 'always' | 'denied' }
   | { k: 'question'; askId: string; questions: AskQuestion[]; answered?: string }
   | { k: 'note'; tone: 'attention' | 'error' | 'neutral'; text: string };
 
@@ -260,14 +280,22 @@ export type ActivityKind =
 
 export interface Settings {
   theme: ThemePref;
+  /** Colour scheme id (see shared/schemes.ts); 'helm' is the stylesheet's own colours. */
+  colorScheme: string;
+  /** Accent colour (#rrggbb) over the scheme's own; empty keeps the scheme's. */
+  accentColor: string;
+  /** Status colours (#rrggbb) over the defaults, by key: working, attention, ready, error. */
+  statusColors: Record<string, string>;
   githubClientId: string;
   claudePath: string;
   defaultModel: ModelAlias;
   permMode: PermMode;
   alwaysAllow: string[];
   runTests: boolean;
-  /** Tell the agent to push its branch after every commit. */
-  pushOnCommit: boolean;
+  /** On launch, restart agents that were working when helm closed, so quitting does not lose their place. */
+  resumeOnLaunch: boolean;
+  /** Push the branch to GitHub right after every commit, the agent's or one made from the Changes panel. */
+  autoPush: boolean;
   /** Who the agent's commits are credited to: you, with Claude as a co-author, or Claude alone. */
   commitAuthor: 'coauthor' | 'sole';
   worktreeRoot: string;
@@ -342,6 +370,8 @@ export interface Settings {
   terminalShellCustom: string;
   /** Which key sends a message from the composer. Enter sends and Shift+Enter starts a new line, or Ctrl/Cmd+Enter sends and Enter starts a new line. */
   sendKey: 'enter' | 'mod-enter';
+  /** Keyboard shortcuts changed from their defaults, by action id (see `shared/shortcuts.ts`). Absent means the default. */
+  shortcuts: Record<string, string>;
   /** Show the organisation or user before each repository name in the left tree (`acme/` storefront). */
   showOwner: boolean;
   uiFont: string;
@@ -438,6 +468,8 @@ export interface AppState {
   /** Counts every event logged, so a page can tell when to read the log again. */
   activitySeq: number;
   settings: Settings;
+  /** Automated agents, global and per repository. */
+  automations: AutomatedAgent[];
   /** Spend per repo id since the start of the current week (Monday). */
   weekSpend: Record<string, number>;
   /** Lifetime usage per repository id. */
@@ -627,6 +659,12 @@ export interface WorktreeInfo {
   main: boolean;
 }
 
+export interface CheckRun {
+  name: string;
+  state: 'pending' | 'passing' | 'failing' | 'skipped';
+  url: string;
+}
+
 export interface PullRequest {
   number: number;
   title: string;
@@ -636,6 +674,8 @@ export interface PullRequest {
   draft: boolean;
   url: string;
   checks: 'pending' | 'passing' | 'failing' | 'none';
+  /** The individual checks behind `checks`, each with its page on GitHub. */
+  checkRuns?: CheckRun[];
 }
 
 export interface ReviewComment {
@@ -657,9 +697,25 @@ export interface NewSessionInput {
   after?: string;
   /** What the task came from, such as a GitHub issue. */
   source?: Session['source'];
+  /** Images attached to the task. */
+  images?: MessageImage[];
+  /** The automated agent that started it. */
+  automation?: Session['automation'];
   /** Start from this effort level instead of the default. */
   effort?: Effort;
+  /** Files of any type for this agent alone. They are saved outside the worktree and only this session can read them. */
+  files?: SessionFileUpload[];
 }
+
+export interface SessionFileUpload {
+  name: string;
+  /** The file's bytes, base64 encoded. */
+  data: string;
+}
+
+export const MAX_UPLOAD_FILES = 10;
+export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+export const MAX_UPLOAD_TOTAL = 12 * 1024 * 1024;
 
 export interface CreatePrInput {
   sessionId: string;
@@ -818,6 +874,10 @@ export interface HelmApi {
   sendMessage(sessionId: string, text: string, images?: MessageImage[]): Promise<void>;
   setSessionEffort(sessionId: string, effort: Effort | null): Promise<void>;
   interrupt(sessionId: string): Promise<void>;
+  /** The emergency stop: interrupts every working agent at once and holds the queue. Resolves to how many were interrupted. */
+  haltAll(): Promise<number>;
+  /** Continues every agent that was paused, halted or stopped when helm closed, and lets queued sessions start again. Resolves to how many were continued. */
+  resumeAll(): Promise<number>;
   stopSession(sessionId: string): Promise<void>;
   resumeSession(sessionId: string): Promise<void>;
   /** What deleting a session would remove or lose, so the dialog can say so. */
@@ -837,10 +897,21 @@ export interface HelmApi {
   /** Re-reads a subagent's transcript from Claude Code's session file. */
   refreshSubagent(sessionId: string, subId: string): Promise<void>;
   setRepoMaxSubagents(repoId: string, max: number | null): Promise<void>;
+  /** Files uploaded to a repository, copied into every session's worktree (new and resumed) and kept out of git. */
+  listRepoArtifacts(repoId: string): Promise<RepoArtifact[]>;
+  addRepoArtifact(repoId: string, name: string, base64: string): Promise<void>;
+  removeRepoArtifact(repoId: string, name: string): Promise<void>;
+  /** Creates an automated agent (no `id`), or replaces the one with that id. Returns its id. */
+  saveAutomation(agent: Omit<AutomatedAgent, 'id' | 'createdAt' | 'lastRun'> & { id?: string }): Promise<string>;
+  deleteAutomation(id: string): Promise<void>;
+  /** Starts an automated agent now, in each repository it covers. Returns how many sessions started. */
+  runAutomation(id: string): Promise<number>;
   resolveAsk(sessionId: string, askId: string, answer: { decision: 'approve' | 'always' | 'deny'; text?: string } | { answers: Record<string, string> } | { addBudget: number }): Promise<void>;
   getTranscript(sessionId: string): Promise<TranscriptEvent[]>;
   /** A file the agent made for the user (`artifact:` links in its replies), or null if it no longer exists. */
   getArtifact(sessionId: string, name: string): Promise<Artifact | null>;
+  /** Takes an artifact off the Inbox. The file stays, and its link in the conversation still works. */
+  dismissArtifact(sessionId: string, name: string): Promise<void>;
 
   /** A workspace id is a session id, or `repo:<owner/name>` for the repository's own checkout. */
   workspaceInfo(ws: string): Promise<WorkspaceInfo>;

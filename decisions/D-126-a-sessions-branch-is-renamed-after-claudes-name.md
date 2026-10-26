@@ -1,0 +1,3 @@
+## D-126 · 2026-10-26 · A session's branch is renamed after Claude's name for it, once that exists
+A branch starts out named from the first words of the prompt. When Claude Code gives the conversation its own short name, helm renames the branch to the branch prefix plus a slug of that name (`git branch -m`, with `-2`, `-3` … if the name is taken), once per session. It is skipped when "push after every commit" is on (the agent was told the old name), when the branch is already on GitHub or has a pull request, and for free agents. The worktree folder and session id keep the prompt-based name. A name you set yourself does not rename the branch.
+Why: user request, so branches read like the friendly name instead of the prompt.

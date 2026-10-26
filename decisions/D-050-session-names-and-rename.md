@@ -1,0 +1,3 @@
+## D-50 · 2026-10-23 · Session names and rename
+Claude Code names each conversation after its first turns (the SDK exposes it as the session `summary`). helm reads it at the end of every turn, ignoring it when it is just the first prompt echoed back, and shows it in the left tree, the session header and Needs-you cards instead of the slug. You can rename from the right-click menu (or by double-clicking the header title); your name wins, and is also written back to Claude Code with `renameSession` so VS Code shows the same name. "Use Claude's name" clears it. The branch and worktree are never renamed; the original id stays as the tooltip/fallback.
+Why: user request.

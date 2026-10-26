@@ -42,7 +42,7 @@ export function ContextMenu({ x, y, items, onClose }: { x: number; y: number; it
         <React.Fragment key={i}>
           {it.separator ? <div style={{ height: 1, margin: '4px 6px', background: 'var(--border-subtle)' }} /> : null}
           <div role="menuitem" className="helm-tap-row" aria-disabled={it.disabled} onMouseEnter={() => !it.disabled && setHi(i)} onClick={() => { if (it.disabled) return; onClose(); it.onClick(); }}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, height: 28, padding: '0 10px', borderRadius: 'var(--radius-sm)', whiteSpace: 'nowrap', font: '400 13px/1 var(--font-sans)', cursor: it.disabled ? 'default' : 'pointer', opacity: it.disabled ? 0.45 : 1,
+            style={{ display: 'flex', alignItems: 'center', gap: 8, height: 28, padding: '0 10px', borderRadius: 'var(--radius-sm)', whiteSpace: 'nowrap', font: '400 13px/1.5 var(--font-sans)', cursor: it.disabled ? 'default' : 'pointer', opacity: it.disabled ? 0.45 : 1,
               background: hi === i ? 'var(--bg-hover)' : 'transparent', color: it.danger ? 'var(--status-error-text)' : 'var(--text-1)' }}>
             <i className={'ph ph-' + (it.icon || 'dot')} style={{ fontSize: 14, color: it.danger ? 'var(--status-error-text)' : 'var(--text-3)', width: 14, visibility: it.icon ? 'visible' : 'hidden' }} />
             {it.label}

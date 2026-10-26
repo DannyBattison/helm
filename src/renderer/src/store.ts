@@ -151,3 +151,16 @@ export function useMoney() {
 }
 
 export const useSubscription = () => useUI((u) => u.app?.settings.billing === 'subscription');
+
+/** The emergency stop: interrupts every working agent, and says how many it stopped. */
+export const haltAll = () => api.haltAll()
+  .then((n) => toast({ tone: 'neutral', title: n ? `Interrupted ${n} ${n === 1 ? 'agent' : 'agents'}` : 'No agents were working' }))
+  .catch((e) => toast({ tone: 'error', title: 'Could not interrupt the agents', description: String(e?.message || e) }));
+
+/** Whether Continue all would pick this session up: interrupted by the user, or stopped when helm closed. Mirrors `resumeAll` in core. */
+export const isResumable = (s: Session) => s.status === 'idle' && !s.queued && !s.archivedAt && !s.mergedAt && !s.worktreeGone && /^(Paused|Stopped when helm closed)/.test(s.step);
+
+/** Continues every paused agent, and says how many. */
+export const resumeAll = () => api.resumeAll()
+  .then((n) => toast({ tone: 'neutral', title: n ? `Resumed ${n} ${n === 1 ? 'agent' : 'agents'}` : 'No paused agents to resume' }))
+  .catch((e) => toast({ tone: 'error', title: 'Could not resume the agents', description: String(e?.message || e) }));

@@ -3,7 +3,7 @@ import React from 'react';
 /** `compact` (phones) shows earlier crumbs as their icon alone, so the last one, the page you are on, keeps the room. */
 export function Breadcrumbs({ items = [], mono = false, compact = false, style }: any) {
   return (
-    <nav style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, font: mono ? '400 12px/1 var(--font-mono)' : '400 12px/1 var(--font-sans)', color: 'var(--text-3)', ...style }}>
+    <nav style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, font: mono ? '400 12px/1.5 var(--font-mono)' : '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)', ...style }}>
       {items.map((it, i) => {
         const last = i === items.length - 1;
         const o = typeof it === 'string' ? { label: it } : it;

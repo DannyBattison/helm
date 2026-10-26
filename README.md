@@ -1,60 +1,60 @@
 # helm
 
-A desktop app for supervising many Claude Code sessions across many GitHub repositories at once.
+[![CI](https://github.com/DannyBattison/helm/actions/workflows/ci.yml/badge.svg)](https://github.com/DannyBattison/helm/actions/workflows/ci.yml)
+[![Coverage](https://codecov.io/gh/DannyBattison/helm/branch/main/graph/badge.svg)](https://codecov.io/gh/DannyBattison/helm)
+[![Buy me a coffee](https://img.shields.io/badge/buy%20me%20a%20coffee-%E2%98%95-yellow)](https://buymeacoffee.com/dannybattison)
 
-- Sign in with GitHub, add repositories (clone from your account, from a URL, or register an existing clone), and start sessions.
-- Every session runs in its own git worktree on an `agent/<name>` branch. Your checkout is never touched.
-- One window for what every agent is doing: approve commands, answer questions, watch plan usage or cost budgets, browse and edit code (Monaco) in a session or in your own checkout, review diffs, open pull requests, browse history.
-- Local Claude Code sessions started elsewhere (VS Code, the CLI) show up read-only in the sidebar, the Overview and each repository's Claude sessions tab.
-- Code is syntax-highlighted everywhere it appears, with a language only when helm is confident; fonts for the interface, data and code are configurable.
-- Subagents show as a tree under their session, each with its own transcript, and are limited per session and per repository.
-- Works for subscriptions (shows your Claude plan usage, with optional percentage limits) and for API tokens (dollar budgets, in your currency).
-- An Inbox for everything waiting on you (approvals, questions, limits, failures, finished work), cleared from the keyboard, with a tray or menu-bar menu that can approve, deny or answer without opening the window.
-- Free agents: sessions that are not tied to a repository, working in a scratch folder of their own (or a folder you choose), for research, writing, scripts and one-off jobs.
-- Checkpoints before every message you send: restore the worktree, or fork a new session from any of your messages. Compare several runs of one task and keep the best.
-- Review at hunk level (accept, ask, reject), a read-only review by Claude, and a forecast of which sessions would conflict.
-- Reports: spend, throughput, approvals, quality, a digest, an audit log and disk use, with CSV export.
-- A queue (limit sessions working at once, or start one after another is merged), GitHub issues and review comments as sessions, continuing sessions started outside helm.
-- ⌘K searches conversations, commits and code as well as sessions and repositories.
+Supervise many Claude Code sessions across many GitHub repositories, from one window. Available as a desktop app or in your browser.
 
-Design reference: `design_handoff_helm_desktop/` (not tracked in git). Decisions and deviations are logged in [DECISIONS.md](DECISIONS.md).
+**Website and downloads: [takethehelm.dev](https://takethehelm.dev)**
 
-## Run
+## Features
+
+- **Isolated sessions.** Each session works in its own git worktree on an `agent/<name>` branch. Your checkout is never touched.
+- **One place for everything.** Approve commands, answer questions, and watch plan usage or cost budgets across all agents.
+- **Inbox.** Everything waiting on you, cleared from the keyboard or from the tray menu.
+- **Review.** Diffs with hunk-level accept/ask/reject, a read-only review by Claude, and a forecast of which sessions would conflict. Open and merge pull requests.
+- **Checkpoints.** Restore a worktree or fork a session from any of your messages. Compare runs of one task and keep the best.
+- **Code and terminal.** Browse and edit code (Monaco) in a session or your own checkout.
+- **Subagents, queues and free agents.** Subagent trees, per-session limits, queued sessions, GitHub issues as sessions, and agents not tied to a repository.
+- **Reports.** Spend, throughput, approvals, an audit log and CSV export. Works with a Claude subscription or API tokens.
+- **Search.** ⌘K across sessions, conversations, commits and code.
+
+## Hosted version
+
+Run helm on a server and use it from a browser:
+
+```
+docker run -d --name helm -p 127.0.0.1:8787:8787 \
+  -v helm-home:/home/helm \
+  -e HELM_HOSTED_ALLOWED_USER=your-github-username \
+  -e HELM_HOSTED_SECRET=$(openssl rand -hex 32) \
+  ghcr.io/dannybattison/helm-hosted:latest
+```
+
+Open <http://127.0.0.1:8787>, sign in with GitHub, then sign in to Claude when asked.
+
+- `HELM_HOSTED_ALLOWED_USER` (required): the one GitHub user allowed in. That person can run commands in the container.
+- `HELM_HOSTED_SECRET`: signs the login cookie. Keep it fixed or you are signed out on every restart.
+- `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` (optional): use a key or token instead of signing in to Claude in the app.
+- `HELM_GIT_NAME`, `HELM_GIT_EMAIL` (optional): who agent commits are made as.
+- The `helm-home` volume holds all state, clones and logins.
+
+Put TLS in front before exposing it beyond your own machine. If the image is private, make the package public on GitHub or `docker login ghcr.io`. More in [hosted/README.md](hosted/README.md).
+
+## Develop
 
 ```
 npm install
-npm run dev        # development with hot reload
-npm run build      # production bundles into desktop/out/
-npm run pack       # unpacked app in release/ (npm run dist for an installer)
-npm test           # logic tests
+npm run dev        # desktop app with hot reload
+npm run build      # production bundles
+npm run dist       # installers
+npm test           # tests
 npm run typecheck
 ```
 
-Requires Node 22+, git on PATH, and a Claude login. If the terminal reports that `conpty.node` is missing, run `npm rebuild @homebridge/node-pty-prebuilt-multiarch`. helm runs sessions with the Claude Agent SDK, which uses the credentials from your Claude Code login or `ANTHROPIC_API_KEY`. The SDK ships its own Claude Code binary; set a CLI path in Settings to use yours instead.
+Needs Node 22+, git, and a Claude login (or `ANTHROPIC_API_KEY`). Layout: `src/core` (the app's logic, no Electron), `src/renderer` (React UI, shared), `desktop/` (Electron), `hosted/` (browser version). Decisions are logged in [decisions/](decisions/).
 
-## GitHub sign-in
+## Support
 
-helm signs in with GitHub's OAuth device flow, using a registered OAuth app whose public client ID is built in (`src/core/store.ts`). Click Continue with GitHub, enter the code in your browser, approve. To use your own OAuth app (device flow enabled, no secret needed), set `HELM_GITHUB_CLIENT_ID` or change it in Settings → Account.
-
-You can also sign in with a personal access token (scopes `repo`, `read:org`, `workflow`). The token is stored encrypted with the OS keychain via Electron `safeStorage`.
-
-## How it works
-
-The repository has three parts: the app itself (`src/`), and one folder for each way of running it.
-
-- `src/core`: everything the app does, with no Electron in it: the main process owns all state and persists it under the user data directory. `sessions.ts` drives the Agent SDK (`canUseTool` for approvals, interrupt, resume, budgets), `git.ts` and `repos.ts` use the git CLI, `github.ts` the GitHub API, `terminal.ts` node-pty.
-- `src/renderer`: React, the UI, which both versions share. `ui/` holds the design-system primitives, `views/` the screens, `styles/tokens/` the design tokens. It reaches the rest only through `HelmBridge` and the typed `HelmApi` in `src/shared/types.ts`.
-- `src/shared`: types and pure logic used by both sides.
-- `desktop/`: the Electron app and nothing else of it. `main/` creates the window, tray, updater, native dialogs and keychain around the core; `preload/` is the thin bridge; `build/` and `resources/` hold icons; `electron.vite.config.ts` bundles it; installer settings are the `build` key of `package.json`.
-- `hosted/`: helm in a browser. A Node server that runs the same core, a web client that mounts the same renderer, and the Docker files (`Dockerfile`, `docker-compose.yml`). See [hosted/README.md](hosted/README.md).
-
-Worktrees are created at `~/.helm/worktrees/<repo>/<session>`; clones go to `~/code/<owner>/<name>`. Both are configurable.
-
-## Releases and updates
-
-`npm run release` builds installers and publishes them to GitHub Releases, which is also where the app looks for updates (Settings → About and support). Pushing a tag such as `v0.2.0` runs `.github/workflows/release.yml` to do that for macOS, Windows and Linux. Without certificates the installers are unsigned. To sign them, add repository secrets: `CSC_LINK` and `CSC_KEY_PASSWORD` (a Developer ID Application certificate, as base64 .p12), `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID` (these turn on notarization), and `WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD` for Windows. Auto-update and signing have not been exercised against a real release yet.
-
-## Not built yet
-
-- Per-hunk partial commits (a hunk can be accepted or rejected, but a commit still takes whole files).
-- Scheduled and event-triggered sessions, session templates, and an automatic test-and-lint gate.
+If helm is useful to you, you can [buy me a coffee](https://buymeacoffee.com/dannybattison).

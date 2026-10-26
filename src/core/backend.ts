@@ -48,6 +48,8 @@ export interface AgentStartOptions {
   /** Extra environment for anything the agent runs, such as the git author. */
   env?: Record<string, string>;
   remoteControl?: boolean;
+  /** Folders outside the working directory the agent may read, such as files the user uploaded. */
+  extraDirs?: string[];
   /** Asked before a tool runs, to let the user decide. */
   canUseTool(tool: string, input: Record<string, unknown>, detail: { decisionReason?: string; description?: string }): Promise<ToolDecision>;
   /** Asked before a subagent starts. Returns why it may not, or nothing to let it start. */
@@ -192,6 +194,7 @@ export class ClaudeBackend implements AgentBackend {
       allowDangerouslySkipPermissions: true,
       abortController: abort,
       settingSources: ['user', 'project', 'local'],
+      ...(o.extraDirs?.length ? { additionalDirectories: o.extraDirs } : {}),
       systemPrompt: { type: 'preset', preset: 'claude_code', append: o.systemAppend },
       canUseTool: (tool: string, input: Record<string, unknown>, d: any) => o.canUseTool(tool, input, d),
       hooks: {

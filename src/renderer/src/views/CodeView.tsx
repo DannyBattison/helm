@@ -4,6 +4,7 @@ import { api, platform } from '../api';
 import { fontStack } from '../fonts';
 import { langOf } from '../lib';
 import { toast, useApp } from '../store';
+import { isShortcut, useShortcutKeys } from '../shortcuts';
 import { Badge, Breadcrumbs, Button, Grip, Input, Kbd, SegmentedControl, Skeleton, Switch, Tabs, TreeItem, usePaneWidth } from '../ui';
 import { TerminalDrawer } from './Shell';
 
@@ -12,8 +13,6 @@ let monacoP: Promise<MonacoNS> | null = null;
 const loadMonaco = () => (monacoP ||= Promise.all([import('../monaco'), document.fonts.load('400 12.5px "Monaspace Neon"').catch(() => null)]).then(([m]) => m));
 
 const gColor: Record<string, string> = { M: 'var(--status-attention-text)', A: 'var(--diff-add-fg)', D: 'var(--diff-del-fg)' };
-const mod = (e: { metaKey: boolean; ctrlKey: boolean }) => (platform() === 'darwin' ? e.metaKey : e.ctrlKey);
-const MODK = () => (platform() === 'darwin' ? '⌘' : 'Ctrl');
 const errText = (e: any) => String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '');
 
 /** Subsequence match that prefers hits in the file name. */
@@ -57,8 +56,8 @@ function QuickOpen({ ws, onPick, onClose }: { ws: string; onPick(p: string): voi
             }} />
         </div>
         <div style={{ maxHeight: 380, overflow: 'auto', padding: 6 }}>
-          {files == null ? <div style={{ padding: 14, font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>Listing files…</div> : null}
-          {files && shown.length === 0 ? <div style={{ padding: 14, font: '400 13px/1 var(--font-sans)', color: 'var(--text-3)' }}>No file matches.</div> : null}
+          {files == null ? <div style={{ padding: 14, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Listing files…</div> : null}
+          {files && shown.length === 0 ? <div style={{ padding: 14, font: '400 13px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>No file matches.</div> : null}
           {shown.map((p, n) => {
             const k = p.lastIndexOf('/');
             return (
@@ -90,14 +89,14 @@ function SearchPanel({ ws, open }: { ws: string; open(path: string, line: number
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <div style={{ padding: '0 8px 8px', display: 'flex', gap: 6, alignItems: 'center' }}>
         <Input autoFocus mono icon="magnifying-glass" size="sm" placeholder="Search in files" value={q} onChange={(e: any) => setQ(e.target.value)} style={{ flex: 1 }} />
-        <button type="button" className="helm-tap-icon" title="Match case" onClick={() => setMatchCase(!matchCase)} style={{ width: 24, height: 24, border: 'none', borderRadius: 'var(--radius-md)', background: matchCase ? 'var(--bg-selected)' : 'transparent', color: matchCase ? 'var(--accent-text)' : 'var(--text-3)', cursor: 'pointer', font: '600 11px/1 var(--font-mono)' }}>Aa</button>
+        <button type="button" className="helm-tap-icon" title="Match case" onClick={() => setMatchCase(!matchCase)} style={{ width: 24, height: 24, border: 'none', borderRadius: 'var(--radius-md)', background: matchCase ? 'var(--bg-selected)' : 'transparent', color: matchCase ? 'var(--accent-text)' : 'var(--text-3)', cursor: 'pointer', font: '600 11px/1.5 var(--font-mono)' }}>Aa</button>
       </div>
       <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '0 4px 8px' }}>
-        {hits && hits.length === 0 ? <div style={{ padding: '8px 10px', font: '400 12px/1.4 var(--font-sans)', color: 'var(--text-3)' }}>No results.</div> : null}
-        {hits && hits.length >= 400 ? <div style={{ padding: '4px 10px', font: '400 11px/1.4 var(--font-sans)', color: 'var(--text-3)' }}>Showing the first 400 results.</div> : null}
+        {hits && hits.length === 0 ? <div style={{ padding: '8px 10px', font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>No results.</div> : null}
+        {hits && hits.length >= 400 ? <div style={{ padding: '4px 10px', font: '400 11px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Showing the first 400 results.</div> : null}
         {[...groups].map(([path, list]) => (
           <div key={path} style={{ marginBottom: 6 }}>
-            <div style={{ padding: '4px 8px', font: '500 11.5px/1.2 var(--font-mono)', color: 'var(--text-2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={path}>{path} <span style={{ color: 'var(--text-3)' }}>{list.length}</span></div>
+            <div style={{ padding: '4px 8px', font: '500 11.5px/1.5 var(--font-mono)', color: 'var(--text-2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={path}>{path} <span style={{ color: 'var(--text-3)' }}>{list.length}</span></div>
             {list.map((h) => (
               <div key={h.line} onClick={() => open(h.path, h.line)} className="helm-row-hover" style={{ display: 'flex', gap: 8, minHeight: 22, padding: '2px 8px 2px 14px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', font: '400 11.5px/1.5 var(--font-mono)' }}>
                 <span style={{ color: 'var(--text-3)', minWidth: 28, textAlign: 'right' }}>{h.line}</span>
@@ -163,16 +162,16 @@ function Explorer({ ws, s, sig, active, open, branch }: { ws: string; s?: Sessio
         <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '0 4px 8px' }}>
           {only === 'changed' ? changed.map((c) => (
             <TreeItem key={c.path} mono icon="file-code" selected={active === c.path} label={c.path} onClick={() => open(c.path)}
-              trailing={<span style={{ font: '500 11px/1 var(--font-mono)', color: gColor[c.status], width: 10, textAlign: 'center' }}>{c.status}</span>} />
+              trailing={<span style={{ font: '500 11px/1.5 var(--font-mono)', color: gColor[c.status], width: 10, textAlign: 'center' }}>{c.status}</span>} />
           )) : !kids[''] ? [60, 40, 70, 50, 65, 45, 55].map((w, i) => <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, height: 26, padding: '0 8px 0 ' + (20 + (i % 3 === 1 ? 14 : 0)) + 'px' }}><Skeleton w={13} h={13} r={3} /><Skeleton w={w + '%'} h={9} /></div>) : rows.map(({ e, d }) => (
             <TreeItem key={e.path} depth={d} mono selected={active === e.path} icon={e.dir ? (expanded[e.path] ? 'folder-open' : 'folder-simple') : 'file-code'}
               expandable={e.dir} expanded={!!expanded[e.path]} label={e.name} onClick={() => (e.dir ? toggle(e) : open(e.path))}
               trailing={<span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 {editing === e.path ? <i className="ph ph-robot" title={`${s?.id} is editing`} style={{ fontSize: 12, color: 'var(--status-working-text)' }} /> : null}
-                {e.git ? <span style={{ font: '500 11px/1 var(--font-mono)', color: gColor[e.git], width: 10, textAlign: 'center' }}>{e.dir ? '•' : e.git}</span> : null}
+                {e.git ? <span style={{ font: '500 11px/1.5 var(--font-mono)', color: gColor[e.git], width: 10, textAlign: 'center' }}>{e.dir ? '•' : e.git}</span> : null}
               </span>} />
           ))}
-          {only === 'changed' && changed.length === 0 ? <div style={{ padding: '8px 10px', font: '400 12px/1.4 var(--font-sans)', color: 'var(--text-3)' }}>No changes here.</div> : null}
+          {only === 'changed' && changed.length === 0 ? <div style={{ padding: '8px 10px', font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>No changes here.</div> : null}
         </div>
       )}
       {!s && changed.length > 0 ? (
@@ -181,7 +180,7 @@ function Explorer({ ws, s, sig, active, open, branch }: { ws: string; s?: Sessio
           <Button size="sm" variant="primary" icon="git-commit" loading={busy} disabled={!msg.trim()} onClick={commit}>Commit {changed.length} {changed.length === 1 ? 'file' : 'files'}</Button>
         </div>
       ) : null}
-      <div style={{ flex: 'none', borderTop: '1px solid var(--border-subtle)', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 6, font: '400 11px/1.3 var(--font-mono)', color: 'var(--text-3)' }}>
+      <div style={{ flex: 'none', borderTop: '1px solid var(--border-subtle)', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 6, font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>
         <i className={'ph ph-' + (s ? 'tree-structure' : 'git-branch')} style={{ fontSize: 12 }} /><span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s ? 'worktree · ' : ''}{branch}</span>
       </div>
     </div>
@@ -194,6 +193,8 @@ function Explorer({ ws, s, sig, active, open, branch }: { ws: string; s?: Sessio
  */
 export function CodeView({ wsId, session: s, themeKey, branch, open }: { wsId: string; session?: Session; themeKey: 'dark' | 'light'; branch: string; /** A file to show once the editor is ready, at a line. */ open?: { path: string; line?: number } }) {
   const app = useApp();
+  const saveKeys = useShortcutKeys('saveFile'), openKeys = useShortcutKeys('quickOpen');
+  const joinKeys = (k: string[]) => k.join(platform() === 'darwin' ? '' : '+');
   const host = React.useRef<HTMLDivElement>(null);
   const diffHost = React.useRef<HTMLDivElement>(null);
   const editor = React.useRef<any>(null);
@@ -381,8 +382,8 @@ export function CodeView({ wsId, session: s, themeKey, branch, open }: { wsId: s
   return (
     <div className="helm-split" style={{ flex: 1, minHeight: 0, display: 'flex' }}
       onKeyDown={(e) => {
-        if (mod(e) && e.key.toLowerCase() === 'p') { e.preventDefault(); setQuick(true); }
-        else if (mod(e) && e.key.toLowerCase() === 's') { e.preventDefault(); saveRef.current(); }
+        if (isShortcut(e, 'quickOpen')) { e.preventDefault(); setQuick(true); }
+        else if (isShortcut(e, 'saveFile')) { e.preventDefault(); saveRef.current(); }
       }}>
       <Explorer ws={wsId} s={s} sig={sig} active={active} open={(p, l) => void openFile(p, l)} branch={branch} />
       <div className="helm-main" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg-editor)' }}>
@@ -394,8 +395,8 @@ export function CodeView({ wsId, session: s, themeKey, branch, open }: { wsId: s
         <div style={{ height: 30, flex: 'none', display: 'flex', alignItems: 'center', gap: 10, padding: '0 10px 0 16px', borderBottom: '1px solid var(--border-subtle)' }}>
           <Breadcrumbs mono items={crumbs} style={{ flex: 1 }} />
           {s?.status === 'working' && s.editing ? <Badge tone="working" dot>{s.id} is editing line {s.editing.line}</Badge> : null}
-          {active && dirty[active] ? <Button size="sm" variant="secondary" icon="floppy-disk" kbd={MODK() + (platform() === 'darwin' ? '' : '+') + 'S'} onClick={save}>Save</Button> : null}
-          <Button size="sm" variant="ghost" icon="file-magnifying-glass" kbd={MODK() + (platform() === 'darwin' ? '' : '+') + 'P'} onClick={() => setQuick(true)}>Open</Button>
+          {active && dirty[active] ? <Button size="sm" variant="secondary" icon="floppy-disk" kbd={joinKeys(saveKeys)} onClick={save}>Save</Button> : null}
+          <Button size="sm" variant="ghost" icon="file-magnifying-glass" kbd={joinKeys(openKeys)} onClick={() => setQuick(true)}>Open</Button>
           {s ? <Switch checked={follow} onChange={setFollow} label={<span style={{ fontSize: 12, color: 'var(--text-2)' }}>Follow agent</span>} /> : null}
           <Button size="sm" variant={diff ? 'secondary' : 'ghost'} icon="git-diff" disabled={!active} onClick={() => setDiff(!diff)}>Diff</Button>
           <Button size="sm" variant={blame ? 'secondary' : 'ghost'} icon="user-list" onClick={() => setBlame(!blame)}>Blame</Button>
@@ -408,8 +409,8 @@ export function CodeView({ wsId, session: s, themeKey, branch, open }: { wsId: s
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center', font: '400 13px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>
                 <span>{s ? "Pick a file in the explorer. Saving writes to this session's worktree." : 'Pick a file in the explorer. Saving writes to your checkout.'}</span>
                 <span style={{ display: 'flex', gap: 14, fontSize: 12 }}>
-                  <span><Kbd keys={[MODK(), 'P']} /> open a file</span>
-                  <span><Kbd keys={[MODK(), 'S']} /> save</span>
+                  <span><Kbd keys={openKeys} /> open a file</span>
+                  <span><Kbd keys={saveKeys} /> save</span>
                 </span>
               </div>
             </div>

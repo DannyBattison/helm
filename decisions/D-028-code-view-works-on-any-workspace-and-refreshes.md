@@ -1,0 +1,3 @@
+## D-28 · 2026-10-23 · Code view works on any workspace and refreshes from disk
+A workspace is a session worktree or `repo:<owner/name>`, the repository's own checkout. Open clean files reload from disk when the window regains focus, so edits made in another editor appear. The inline Diff compares against the merge-base with the session's base (HEAD for your checkout), and the working-copy side stays editable. The commit box appears for your own checkout only; sessions commit through the Changes tab.
+Why: user wants to browse and edit code hands-on, alongside other tools such as the VS Code extension.

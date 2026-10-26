@@ -1,0 +1,3 @@
+## D-80 · 2026-10-23 · Conflict forecast
+Every 20 seconds, and only when a session's commits, files or line counts have changed, helm compares each pair of live sessions in a repository, and each against its base, using `git merge-tree --write-tree --name-only` (git 2.38 or newer, in memory, touching no worktree). Two files edited by both sessions but not yet committed are reported as overlaps from `filesTouched`, since git only sees commits; older git gets overlaps only. Results are shown as a banner on Overview, a badge on the session header, and in `AppState.forecast`. At most 14 sessions per repository are compared.
+Why: user request. Parallel agents touching the same files is the main way many sessions go wrong.

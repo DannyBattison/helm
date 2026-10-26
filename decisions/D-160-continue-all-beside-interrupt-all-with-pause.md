@@ -1,0 +1,3 @@
+## D-160 · 2026-10-26 · Continue all beside Interrupt all, with pause and play icons
+The sidebar and top bar now show a play button (Continue all agents) to the left of the interrupt button, and interrupt uses a pause icon instead of the hand. Continue is clickable only when some session was interrupted by the user or stopped when helm closed (idle, not queued, archived, merged or missing its worktree, with a step of "Paused…" or "Stopped when helm closed"); the top bar one appears only then. It calls the existing `resumeAll`, and `isResumable` in the renderer store mirrors that filter.
+Why: user request.

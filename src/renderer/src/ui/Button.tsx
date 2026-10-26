@@ -29,7 +29,7 @@ export function Button({ variant = 'secondary', size = 'md', icon, iconRight, kb
       {loading ? <i className="ph ph-circle-notch" style={{ fontSize: s.ic, animation: 'helm-spin .8s linear infinite' }} /> : icon ? <i className={'ph ph-' + icon} style={{ fontSize: s.ic }} /> : null}
       {children}
       {iconRight ? <i className={'ph ph-' + iconRight} style={{ fontSize: s.ic }} /> : null}
-      {kbd ? <span style={{ font: '400 11px/1 var(--font-mono)', opacity: 0.6, marginLeft: 2 }}>{kbd}</span> : null}
+      {kbd ? <span style={{ font: '400 11px/1.5 var(--font-mono)', opacity: 0.6, marginLeft: 2 }}>{kbd}</span> : null}
     </button>
   );
 }
