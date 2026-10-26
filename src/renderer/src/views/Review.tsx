@@ -112,6 +112,8 @@ export const useForecast = () => useApp().forecast || [];
 const label = (c: Conflict, me?: string) => (me && c.a !== me ? c.a : c.b);
 
 /** Sessions that would conflict, for the Overview. Each line opens one of the sessions. */
+const resolve = (c: Conflict) => api.resolveConflict(c.a, c.b).then(() => { toast({ tone: 'ready', title: 'Asked the agent to resolve it' }); go({ screen: 'session', id: c.a, tab: 'conversation' }); }).catch(fail('Could not ask the agent'));
+
 export function ForecastNotice({ conflicts }: { conflicts: Conflict[] }) {
   const app = useApp();
   if (!conflicts.length) return null;
@@ -125,6 +127,7 @@ export function ForecastNotice({ conflicts }: { conflicts: Conflict[] }) {
           {' '}{c.kind === 'conflict' ? 'would conflict with' : 'edits the same files as'}{' '}
           {c.b.startsWith('origin/') ? <b>{c.b}</b> : <a href="#" onClick={(e) => { e.preventDefault(); go({ screen: 'session', id: c.b, tab: 'changes' }); }}>{name(c.b)}</a>}
           <span style={{ font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-3)', marginLeft: 8 }}>{c.files.slice(0, 3).join(', ')}{c.files.length > 3 ? ` +${c.files.length - 3}` : ''}</span>
+          {c.kind === 'conflict' ? <Button size="sm" variant="ghost" icon="magic-wand" style={{ marginLeft: 8 }} onClick={() => void resolve(c)}>Resolve</Button> : null}
         </div>
       ))}
       {conflicts.length > 6 ? <span style={{ font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>and {conflicts.length - 6} more</span> : null}
@@ -137,7 +140,13 @@ export function SessionConflicts({ s }: { s: Session }) {
   if (!mine.length) return null;
   const hard = mine.some((c) => c.kind === 'conflict');
   const text = mine.map((c) => `${c.kind === 'conflict' ? 'Conflicts with' : 'Same files as'} ${label(c, s.id)}: ${c.files.slice(0, 4).join(', ')}${c.files.length > 4 ? '…' : ''}`).join('\n');
-  return <Badge tone={hard ? 'error' : 'attention'} icon="git-merge"><span title={text}>{hard ? 'Would conflict' : 'Overlaps'} · {mine.length}</span></Badge>;
+  const mineHard = mine.find((c) => c.kind === 'conflict' && c.a === s.id);
+  return (
+    <>
+      <Badge tone={hard ? 'error' : 'attention'} icon="git-merge"><span title={text}>{hard ? 'Would conflict' : 'Overlaps'} · {mine.length}</span></Badge>
+      {mineHard ? <Button size="sm" variant="ghost" icon="magic-wand" onClick={() => void resolve(mineHard)}>Resolve</Button> : null}
+    </>
+  );
 }
 
 // ------------------------------------------------------------------ compare
