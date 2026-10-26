@@ -14,8 +14,12 @@ describe('commandSummary', () => {
     expect(commandSummary('npm run build')).toBe('Run the build script');
   });
   it('skips cd, env assignments and notes when more follows', () => {
-    expect(commandSummary('cd app && npm test && git status')).toBe('Run the tests and more');
+    expect(commandSummary('cd app && npm test && git status')).toBe('Run the tests, Check git status');
     expect(commandSummary('CI=1 npx vitest run')).toBe('Run npx');
+  });
+  it('lists the first three steps of a chain and counts the rest', () => {
+    expect(commandSummary('git add . && git commit -m x && git push')).toBe('Stage changes, Commit changes, Push to GitHub');
+    expect(commandSummary('npm ci && npm run build && npm test && git status && ls')).toBe('Install dependencies, Run the build script, Run the tests and 2 more');
   });
   it('falls back to the program name', () => {
     expect(commandSummary('ffmpeg -i a.mp4 b.gif')).toBe('Run ffmpeg');
