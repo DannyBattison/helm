@@ -4,6 +4,7 @@ import { api, platform } from '../api';
 import { fontStack } from '../fonts';
 import { langOf } from '../lib';
 import { toast, useApp } from '../store';
+import { isShortcut, useShortcutKeys } from '../shortcuts';
 import { Badge, Breadcrumbs, Button, Grip, Input, Kbd, SegmentedControl, Skeleton, Switch, Tabs, TreeItem, usePaneWidth } from '../ui';
 import { TerminalDrawer } from './Shell';
 
@@ -12,8 +13,6 @@ let monacoP: Promise<MonacoNS> | null = null;
 const loadMonaco = () => (monacoP ||= Promise.all([import('../monaco'), document.fonts.load('400 12.5px "Monaspace Neon"').catch(() => null)]).then(([m]) => m));
 
 const gColor: Record<string, string> = { M: 'var(--status-attention-text)', A: 'var(--diff-add-fg)', D: 'var(--diff-del-fg)' };
-const mod = (e: { metaKey: boolean; ctrlKey: boolean }) => (platform() === 'darwin' ? e.metaKey : e.ctrlKey);
-const MODK = () => (platform() === 'darwin' ? '⌘' : 'Ctrl');
 const errText = (e: any) => String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '');
 
 /** Subsequence match that prefers hits in the file name. */
@@ -194,6 +193,8 @@ function Explorer({ ws, s, sig, active, open, branch }: { ws: string; s?: Sessio
  */
 export function CodeView({ wsId, session: s, themeKey, branch, open }: { wsId: string; session?: Session; themeKey: 'dark' | 'light'; branch: string; /** A file to show once the editor is ready, at a line. */ open?: { path: string; line?: number } }) {
   const app = useApp();
+  const saveKeys = useShortcutKeys('saveFile'), openKeys = useShortcutKeys('quickOpen');
+  const joinKeys = (k: string[]) => k.join(platform() === 'darwin' ? '' : '+');
   const host = React.useRef<HTMLDivElement>(null);
   const diffHost = React.useRef<HTMLDivElement>(null);
   const editor = React.useRef<any>(null);
@@ -381,8 +382,8 @@ export function CodeView({ wsId, session: s, themeKey, branch, open }: { wsId: s
   return (
     <div className="helm-split" style={{ flex: 1, minHeight: 0, display: 'flex' }}
       onKeyDown={(e) => {
-        if (mod(e) && e.key.toLowerCase() === 'p') { e.preventDefault(); setQuick(true); }
-        else if (mod(e) && e.key.toLowerCase() === 's') { e.preventDefault(); saveRef.current(); }
+        if (isShortcut(e, 'quickOpen')) { e.preventDefault(); setQuick(true); }
+        else if (isShortcut(e, 'saveFile')) { e.preventDefault(); saveRef.current(); }
       }}>
       <Explorer ws={wsId} s={s} sig={sig} active={active} open={(p, l) => void openFile(p, l)} branch={branch} />
       <div className="helm-main" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg-editor)' }}>
@@ -394,8 +395,8 @@ export function CodeView({ wsId, session: s, themeKey, branch, open }: { wsId: s
         <div style={{ height: 30, flex: 'none', display: 'flex', alignItems: 'center', gap: 10, padding: '0 10px 0 16px', borderBottom: '1px solid var(--border-subtle)' }}>
           <Breadcrumbs mono items={crumbs} style={{ flex: 1 }} />
           {s?.status === 'working' && s.editing ? <Badge tone="working" dot>{s.id} is editing line {s.editing.line}</Badge> : null}
-          {active && dirty[active] ? <Button size="sm" variant="secondary" icon="floppy-disk" kbd={MODK() + (platform() === 'darwin' ? '' : '+') + 'S'} onClick={save}>Save</Button> : null}
-          <Button size="sm" variant="ghost" icon="file-magnifying-glass" kbd={MODK() + (platform() === 'darwin' ? '' : '+') + 'P'} onClick={() => setQuick(true)}>Open</Button>
+          {active && dirty[active] ? <Button size="sm" variant="secondary" icon="floppy-disk" kbd={joinKeys(saveKeys)} onClick={save}>Save</Button> : null}
+          <Button size="sm" variant="ghost" icon="file-magnifying-glass" kbd={joinKeys(openKeys)} onClick={() => setQuick(true)}>Open</Button>
           {s ? <Switch checked={follow} onChange={setFollow} label={<span style={{ fontSize: 12, color: 'var(--text-2)' }}>Follow agent</span>} /> : null}
           <Button size="sm" variant={diff ? 'secondary' : 'ghost'} icon="git-diff" disabled={!active} onClick={() => setDiff(!diff)}>Diff</Button>
           <Button size="sm" variant={blame ? 'secondary' : 'ghost'} icon="user-list" onClick={() => setBlame(!blame)}>Blame</Button>
@@ -408,8 +409,8 @@ export function CodeView({ wsId, session: s, themeKey, branch, open }: { wsId: s
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center', font: '400 13px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>
                 <span>{s ? "Pick a file in the explorer. Saving writes to this session's worktree." : 'Pick a file in the explorer. Saving writes to your checkout.'}</span>
                 <span style={{ display: 'flex', gap: 14, fontSize: 12 }}>
-                  <span><Kbd keys={[MODK(), 'P']} /> open a file</span>
-                  <span><Kbd keys={[MODK(), 'S']} /> save</span>
+                  <span><Kbd keys={openKeys} /> open a file</span>
+                  <span><Kbd keys={saveKeys} /> save</span>
                 </span>
               </div>
             </div>

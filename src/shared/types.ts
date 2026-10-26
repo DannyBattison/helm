@@ -342,6 +342,8 @@ export interface Settings {
   terminalShellCustom: string;
   /** Which key sends a message from the composer. Enter sends and Shift+Enter starts a new line, or Ctrl/Cmd+Enter sends and Enter starts a new line. */
   sendKey: 'enter' | 'mod-enter';
+  /** Keyboard shortcuts changed from their defaults, by action id (see `shared/shortcuts.ts`). Absent means the default. */
+  shortcuts: Record<string, string>;
   /** Show the organisation or user before each repository name in the left tree (`acme/` storefront). */
   showOwner: boolean;
   uiFont: string;

@@ -5,7 +5,8 @@ import { livePlan, untilReset } from '../lib';
 import { CURRENCIES, rateFor } from '@shared/money';
 import { BUNDLED_FONTS, fontStack, SYSTEM_DEFAULT, systemFonts, systemUiFonts, uiStack, UI_BUNDLED_FONTS, dataStack } from '../fonts';
 import { toast, useApp, useMoney } from '../store';
-import { Avatar, Badge, Button, Input, Meter, SegmentedControl, Select, Switch, TreeItem, useColumns, useNarrow } from '../ui';
+import { comboFromEvent, comboKeys, comboProblem, normalizeCombo, SHORTCUT_ACTIONS, shortcutConflict, shortcutOf } from '@shared/shortcuts';
+import { Avatar, Badge, Button, Input, Kbd, Meter, SegmentedControl, Select, Switch, TreeItem, useColumns, useNarrow } from '../ui';
 
 const errText = (e: any) => String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '');
 const set = (patch: Partial<SettingsT>) => void api.updateSettings(patch);
@@ -61,6 +62,58 @@ function CompanionSection({ st, set, state }: { st: any; set(p: any): void; stat
     <SettingRow title="What is sent" desc="A summary of each session (title, status, branch, tokens, any question it is waiting on), recent activity, plan usage, and the conversation of a session while someone has it open on the website. Commands and messages pass through your server. File contents and your GitHub token are never sent." />
     <SettingRow title="Unlink this computer" desc="Forget the link. Turning the companion on again signs in to GitHub afresh.">
       <Button size="sm" variant="ghost" icon="link-break" disabled={state.state === 'off' && !st.companionEnabled} onClick={() => api.companionUnlink()}>Unlink</Button>
+    </SettingRow>
+  </>;
+}
+
+/** Every shortcut that can be changed. Click one, then press the new keys; Esc cancels and Backspace turns the shortcut off. */
+function ShortcutsSection({ st, set }: { st: SettingsT; set(p: Partial<SettingsT>): void }) {
+  const mac = platform() === 'darwin';
+  const [editing, setEditing] = React.useState<string | null>(null);
+  const [msg, setMsg] = React.useState<{ id: string; text: string } | null>(null);
+  const mine = st.shortcuts || {};
+  const save = (id: string, combo: string) => {
+    const next = { ...mine };
+    if (combo === SHORTCUT_ACTIONS.find((a) => a.id === id)!.default) delete next[id]; else next[id] = combo;
+    set({ shortcuts: next });
+  };
+  React.useEffect(() => {
+    if (!editing) return;
+    // Capture phase, so the shortcut being pressed does not also run the action it is currently set to.
+    const onKey = (e: KeyboardEvent) => {
+      e.preventDefault(); e.stopPropagation();
+      if (e.key === 'Escape') { setEditing(null); setMsg(null); return; }
+      if (e.key === 'Backspace' && !e.metaKey && !e.ctrlKey && !e.altKey) { save(editing, ''); setEditing(null); setMsg(null); return; }
+      const combo = comboFromEvent(e, mac);
+      if (!combo) return;
+      const problem = comboProblem(combo);
+      if (problem) { setMsg({ id: editing, text: problem }); return; }
+      const clash = shortcutConflict(mine, editing, combo);
+      if (clash) { setMsg({ id: editing, text: `Already used for “${clash.label}”. Change that one first.` }); return; }
+      save(editing, normalizeCombo(combo));
+      setEditing(null); setMsg(null);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [editing, mine]);
+  const changed = Object.keys(mine).length > 0;
+  return <>
+    <H sub="Click a shortcut, then press the keys you want. Mod is Cmd on a Mac and Ctrl everywhere else.">Keyboard shortcuts</H>
+    {SHORTCUT_ACTIONS.map((a) => {
+      const combo = shortcutOf(mine, a.id);
+      const isEditing = editing === a.id;
+      return (
+        <SettingRow key={a.id} title={a.label} desc={msg?.id === a.id ? <span style={{ color: 'var(--status-attention-text)' }}>{msg.text}</span> : a.desc}>
+          <button type="button" onClick={() => { setEditing(isEditing ? null : a.id); setMsg(null); }} aria-label={`Change the shortcut for ${a.label}`}
+            style={{ minWidth: 120, height: 28, padding: '0 10px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4, border: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', cursor: 'pointer', color: 'var(--text-2)', font: '400 12px/1 var(--font-sans)', boxShadow: isEditing ? 'var(--ring-focus), inset 0 0 0 1px var(--accent)' : 'inset 0 0 0 1px var(--border-strong)' }}>
+            {isEditing ? 'Press the keys…' : combo ? <Kbd keys={comboKeys(combo, mac)} /> : 'Not set'}
+          </button>
+          <Button size="sm" variant="ghost" icon="arrow-counter-clockwise" disabled={!(a.id in mine)} onClick={() => { const next = { ...mine }; delete next[a.id]; set({ shortcuts: next }); }}>Reset</Button>
+        </SettingRow>
+      );
+    })}
+    <SettingRow title="Reset all" desc="Puts every shortcut back to its default.">
+      <Button size="sm" disabled={!changed} onClick={() => { set({ shortcuts: {} }); setEditing(null); setMsg(null); }}>Reset all shortcuts</Button>
     </SettingRow>
   </>;
 }
@@ -122,7 +175,7 @@ export function Settings({ section }: { section?: string }) {
   const subCols = useColumns('subagent-repos', [{ w: 1, min: 160, flex: true }, { w: 170, min: 110, fixed: true }]);
   const pctOptions = [{ value: '0', label: 'Off' }, { value: '50', label: '50%' }, { value: '70', label: '70%' }, { value: '80', label: '80%' }, { value: '90', label: '90%' }];
   const subLimits = (extra: number[]) => [...new Set([0, 1, 2, 3, 4, 6, 8, 12, ...extra])].sort((a, b) => a - b).map((n) => ({ value: String(n), label: n === 0 ? 'Off' : String(n) }));
-  const nav = [['account', 'Account', 'github-logo'], ['agents', 'Claude Code', 'robot'], ['worktrees', 'Worktrees', 'tree-structure'], ['budgets', 'Usage', 'coins'], ...(hosted ? [] : [['companion', 'Companion', 'broadcast']]), ['notifications', 'Notifications', 'bell'], ['appearance', 'Appearance', 'paint-brush'], ['about', 'About and support', 'info']];
+  const nav = [['account', 'Account', 'github-logo'], ['agents', 'Claude Code', 'robot'], ['worktrees', 'Worktrees', 'tree-structure'], ['budgets', 'Usage', 'coins'], ...(hosted ? [] : [['companion', 'Companion', 'broadcast']]), ['notifications', 'Notifications', 'bell'], ['appearance', 'Appearance', 'paint-brush'], ['shortcuts', 'Keyboard shortcuts', 'keyboard'], ['about', 'About and support', 'info']];
   const notif = (key: 'notifyAttention' | 'notifyReady' | 'notifyFailed' | 'notifyChecks', title: string) => (
     <SettingRow title={title}>
       <Switch checked={st[key].desktop} onChange={(v: boolean) => set({ [key]: { ...st[key], desktop: v } })} label="Desktop" />
@@ -305,6 +358,7 @@ export function Settings({ section }: { section?: string }) {
             <SettingRow title="Tray icon" desc="Keep helm in the system tray or menu bar, with a count of what needs you and a menu to jump to it."><Switch checked={st.tray} onChange={(v: boolean) => set({ tray: v })} /></SettingRow>
             </>}
           </> : null}
+          {sec === 'shortcuts' ? <ShortcutsSection st={st} set={set} /> : null}
           {sec === 'about' ? <>
             <H sub="Updates, and what to send if something goes wrong.">About and support</H>
             {hosted ? null : <>

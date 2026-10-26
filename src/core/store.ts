@@ -58,6 +58,7 @@ export const defaultSettings = (): Settings => ({
   terminalShell: 'auto',
   terminalShellCustom: '',
   sendKey: 'mod-enter',
+  shortcuts: {},
   interruptKey: 'esc',
   showOwner: true,
   uiFont: 'Mona Sans',

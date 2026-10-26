@@ -4,6 +4,7 @@ import { dataStack, fontStack, uiStack } from './fonts';
 import { theme as resolveTheme } from './lib';
 import { dismissToast, getUI, go, init, setUI, useUI } from './store';
 import { Button, Toast, useNarrow } from './ui';
+import { isShortcut } from './shortcuts';
 import { Activity, Dashboard } from './views/Dashboard';
 import { AddRepo, ClaudeLoginGate, DeleteSession, MergePr, NewSession, Palette, RemoveRepo, RenameSession, SignIn } from './views/Dialogs';
 import { Archive } from './views/Archive';
@@ -58,13 +59,11 @@ export function App() {
   const toggleTheme = () => void api.updateSettings({ theme: theme === 'dark' ? 'light' : 'dark' });
 
   React.useEffect(() => {
-    const mac = platform() === 'darwin';
     const onKey = (e: KeyboardEvent) => {
-      const m = mac ? e.metaKey : e.ctrlKey;
-      if (m && e.key.toLowerCase() === 'k') { e.preventDefault(); setUI({ palette: true }); }
+      if (isShortcut(e, 'palette')) { e.preventDefault(); setUI({ palette: true }); }
       // Browsers reserve Cmd/Ctrl+N for a new window and often never deliver it, so Alt+N also works.
-      else if ((m && e.key.toLowerCase() === 'n') || (e.altKey && !e.ctrlKey && !e.metaKey && e.code === 'KeyN')) { e.preventDefault(); const r = getUI().route; setUI({ newSession: r.screen === 'repo' ? { repoId: r.id } : {} }); }
-      else if (e.ctrlKey && e.key === '`') { e.preventDefault(); setUI({ term: !getUI().term }); }
+      else if (isShortcut(e, 'newSession') || isShortcut(e, 'newSessionAlt')) { e.preventDefault(); const r = getUI().route; setUI({ newSession: r.screen === 'repo' ? { repoId: r.id } : {} }); }
+      else if (isShortcut(e, 'terminal')) { e.preventDefault(); setUI({ term: !getUI().term }); }
       else if (e.key === 'Escape') setUI({ palette: false, drawer: false });
     };
     window.addEventListener('keydown', onKey);

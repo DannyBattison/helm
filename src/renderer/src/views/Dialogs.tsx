@@ -6,6 +6,7 @@ import { tilde } from '../lib';
 import { getUI, go, setUI, toast, useApp, useMoney } from '../store';
 import { Badge, Button, Checkbox, Dialog, IconButton, Input, Kbd, Select, Tabs, useNarrow } from '../ui';
 import { MODEL_OPTIONS, PERM_OPTIONS } from './Settings';
+import { useShortcutKeys } from '../shortcuts';
 import { AttachmentChips, IMAGE_TYPES, readAttachments, type Draft } from './attach';
 import { VariantEditor, type Variant } from './Review';
 
@@ -552,6 +553,7 @@ export function RemoveRepo({ id, onClose }: { id: string; onClose(): void }) {
 // ------------------------------------------------------------------ command palette
 export function Palette({ onClose, toggleTheme }: { onClose(): void; toggleTheme(): void }) {
   const app = useApp();
+  const newKeys = useShortcutKeys('newSession');
   const [q, setQ] = React.useState('');
   const [i, setI] = React.useState(0);
   type Item = { key: string; label: string; hint?: string; icon: string; section?: string; run(): void };
@@ -574,7 +576,7 @@ export function Palette({ onClose, toggleTheme }: { onClose(): void; toggleTheme
     { key: 'a-reports', label: 'Reports', icon: 'chart-line-up', run: () => go({ screen: 'reports' }) },
     { key: 'a-act', label: 'Activity', icon: 'pulse', run: () => go({ screen: 'activity' }) },
     { key: 'a-set', label: 'Settings', icon: 'gear-six', run: () => go({ screen: 'settings' }) },
-    { key: 'a-new', label: 'New session', icon: 'plus', hint: mac() ? '⌘N' : 'Ctrl+N', run: () => setUI({ newSession: {} }) },
+    { key: 'a-new', label: 'New session', icon: 'plus', hint: newKeys.join(mac() ? '' : '+'), run: () => setUI({ newSession: {} }) },
     { key: 'a-free', label: 'New free agent (no repository)', icon: 'robot', run: () => setUI({ newSession: { repoId: '@free' } }) },
     { key: 'a-add', label: 'Add repository', icon: 'book-bookmark', run: () => setUI({ adding: true }) },
     { key: 'a-theme', label: 'Toggle theme', icon: 'sun', run: toggleTheme },
