@@ -559,3 +559,7 @@ Why: user request.
 ## D-135 · 2026-10-26 · Auto push: helm pushes after every commit, and it is a setting (on by default)
 "Push after every commit" only asked the agent to push, which it could forget. The setting is now `autoPush` ("Auto push" in Settings → Git, replacing `pushOnCommit`), on by default. When on, helm itself runs `git push -u origin <branch>` right after it sees the agent commit (one push at a time per session) and after a commit from the Changes panel (`commitOnly`, also for a repository's own checkout). The agent is told not to push, since helm does. A failed push is written to the activity log and retried at the next commit; it never blocks the commit. Free agents have no remote and are skipped. Because the branch is on GitHub from the first commit, the rename-after-Claude-names-it step now leaves it alone (it already skipped pushed branches). The old stored `pushOnCommit` value is ignored. Not run in the app; `tsc` is not installed in the worktree.
 Why: user request.
+
+## D-136 · 2026-10-26 · The merge dialog lists the pull request's checks, each a link to GitHub
+Under "Its checks are still running" (or failing) the merge dialog now lists every check run with its state (Running, Passed, Failed, Skipped); clicking one opens its page on GitHub. `PullRequest` gains `checkRuns` (name, state, URL), filled from the same check-runs request that already gave the summary, for open pull requests only. Older commit statuses (not check runs) are still not shown. Not run in the app; `tsc` is not installed in the worktree.
+Why: user request.

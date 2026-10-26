@@ -419,6 +419,24 @@ export function MergePr({ target, onClose }: { target: { repoId: string; number:
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {pr && pr.state !== 'open' ? <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>It is already {pr.state}.</span> : null}
         {note ? <span style={{ display: 'flex', gap: 8, alignItems: 'flex-start', font: '400 12px/1.45 var(--font-sans)', color: 'var(--status-attention-text)' }}><i className="ph-fill ph-warning-circle" style={{ fontSize: 14, marginTop: 1, flex: 'none' }} />{note}</span> : null}
+        {pr?.checkRuns?.length ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span style={{ font: '500 12px/1 var(--font-sans)', marginBottom: 4 }}>Checks</span>
+            {pr.checkRuns.map((c, i) => {
+              const tone = c.state === 'passing' ? 'ready' : c.state === 'failing' ? 'error' : c.state === 'pending' ? 'working' : 'idle';
+              const icon = c.state === 'passing' ? 'check-circle' : c.state === 'failing' ? 'x-circle' : c.state === 'pending' ? 'circle-notch' : 'minus-circle';
+              return (
+                <a key={i} href={c.url} title="View on GitHub" onClick={(e) => { e.preventDefault(); void api.openExternal(c.url); }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 6px', borderRadius: 'var(--radius-sm)', textDecoration: 'none', color: 'var(--text-1)', font: '400 12.5px/1.3 var(--font-sans)', cursor: 'pointer' }}>
+                  <i className={'ph-fill ph-' + icon} style={{ fontSize: 14, flex: 'none', color: 'var(--status-' + tone + (tone === 'idle' ? '' : '-text') + ', var(--text-3))', ...(c.state === 'pending' ? { animation: 'helm-spin .9s linear infinite' } : null) }} />
+                  <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
+                  <span style={{ font: '400 11.5px/1 var(--font-sans)', color: 'var(--text-3)' }}>{c.state === 'pending' ? 'Running' : c.state === 'passing' ? 'Passed' : c.state === 'failing' ? 'Failed' : 'Skipped'}</span>
+                  <i className="ph ph-arrow-square-out" style={{ fontSize: 13, color: 'var(--text-3)' }} />
+                </a>
+              );
+            })}
+          </div>
+        ) : null}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <span style={{ font: '500 12px/1 var(--font-sans)' }}>How</span>
           <Select value={method} onChange={(e: any) => setMethod(e.target.value)} options={[{ value: 'merge', label: 'Merge commit' }, { value: 'squash', label: 'Squash and merge' }, { value: 'rebase', label: 'Rebase and merge' }]} />

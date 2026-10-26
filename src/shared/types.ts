@@ -627,6 +627,12 @@ export interface WorktreeInfo {
   main: boolean;
 }
 
+export interface CheckRun {
+  name: string;
+  state: 'pending' | 'passing' | 'failing' | 'skipped';
+  url: string;
+}
+
 export interface PullRequest {
   number: number;
   title: string;
@@ -636,6 +642,8 @@ export interface PullRequest {
   draft: boolean;
   url: string;
   checks: 'pending' | 'passing' | 'failing' | 'none';
+  /** The individual checks behind `checks`, each with its page on GitHub. */
+  checkRuns?: CheckRun[];
 }
 
 export interface ReviewComment {
