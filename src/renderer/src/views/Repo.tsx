@@ -391,7 +391,7 @@ function ExternalSessions({ repo, onCount }: { repo: R; onCount(n: number): void
 }
 
 /** Browse and edit the repository's own checkout, or any session's worktree. */
-function RepoCode({ repo, themeKey }: { repo: R; themeKey: 'dark' | 'light' }) {
+function RepoCode({ repo, themeKey, open }: { repo: R; themeKey: 'dark' | 'light'; open?: { path: string; line?: number } }) {
   const app = useApp();
   const [ws, setWs] = React.useState('repo:' + repo.id);
   const [info, setInfo] = React.useState<{ branch: string; dirty: number } | null>(null);
@@ -408,16 +408,18 @@ function RepoCode({ repo, themeKey }: { repo: R; themeKey: 'dark' | 'light' }) {
         <span style={{ flex: 1 }} />
         <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{session ? 'Saving writes to this session’s worktree.' : 'Saving writes straight to your checkout.'}</span>
       </div>
-      <CodeView key={ws} wsId={ws} session={session} branch={info?.branch || repo.defaultBranch} themeKey={themeKey} />
+      <CodeView key={ws} wsId={ws} session={session} branch={info?.branch || repo.defaultBranch} themeKey={themeKey} open={ws === 'repo:' + repo.id ? open : undefined} />
     </div>
   );
 }
 
-export function Repo({ id, themeKey, tab: firstTab }: { id: string; themeKey: 'dark' | 'light'; tab?: string }) {
+export function Repo({ id, themeKey, tab: firstTab, hash, file, line }: { id: string; themeKey: 'dark' | 'light'; tab?: string; hash?: string; file?: string; line?: number }) {
   const app = useApp();
   const repo = app.repos.find((r) => r.id === id);
   const [tab, setTab] = React.useState(firstTab || 'history');
   const [sel, setSel] = React.useState(0);
+  const listRef = React.useRef<HTMLDivElement>(null);
+  const jumped = React.useRef(false);
   const [history, setHistory] = React.useState<HistoryCommit[] | null>(null);
   const [wts, setWts] = React.useState<WorktreeInfo[] | null>(null);
   const pushes = usePush(id);
@@ -451,6 +453,13 @@ export function Repo({ id, themeKey, tab: firstTab }: { id: string; themeKey: 'd
   React.useEffect(() => { if (tab === 'worktrees' || wts) void loadWts(); }, [tab, id, sessSig]);
   React.useEffect(() => { setPrs(null); setPrErr(''); api.repoPulls(id).then(setPrs).catch((e) => { setPrs([]); setPrErr(errText(e)); }); }, [id]);
 
+  // Arriving from a search result: select that commit and scroll to it, reading further back if it is not loaded yet.
+  React.useEffect(() => {
+    if (!hash || jumped.current || !history) return;
+    const at = history.findIndex((c) => c.hash === hash || c.hash.startsWith(hash));
+    if (at >= 0) { jumped.current = true; setSel(at); requestAnimationFrame(() => listRef.current?.scrollTo({ top: Math.max(0, at * ROW - 120) })); }
+    else if (history.length >= limit && limit < 3000 && !more) { setMore(true); setLimit((l) => l + 300); }
+  }, [hash, history, limit, more]);
   const commit = history?.[Math.min(sel, (history?.length || 1) - 1)];
   React.useEffect(() => {
     setFiles(null);
@@ -501,7 +510,7 @@ export function Repo({ id, themeKey, tab: firstTab }: { id: string; themeKey: 'd
             <div style={{ display: 'grid', gridTemplateColumns: col.template, gap: 12, alignItems: 'center', height: 30, flex: 'none', padding: '0 16px 0 0', borderBottom: '1px solid var(--border)', ...head }}>
               <span />{col.cell(1, 'Message')}{col.cell(2, 'Author')}{col.cell(3, 'Commit')}<span style={{ textAlign: 'right' }}>When</span>
             </div>
-            <div onScroll={(e) => {
+            <div ref={listRef} onScroll={(e) => {
               const el = e.currentTarget;
               if (history && history.length >= limit && limit < 3000 && !more && el.scrollHeight - el.scrollTop - el.clientHeight < 500) { setMore(true); setLimit((l) => l + 300); }
             }} style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
@@ -513,7 +522,7 @@ export function Repo({ id, themeKey, tab: firstTab }: { id: string; themeKey: 'd
           </div>
           {commit && !narrow ? <CommitDetail repo={repo} c={commit} files={files} onOpen={(path) => setDiff({ path })} /> : null}
         </div>
-      ) : tab === 'code' ? <RepoCode repo={repo} themeKey={themeKey} />
+      ) : tab === 'code' ? <RepoCode repo={repo} themeKey={themeKey} open={file ? { path: file, line } : undefined} />
         : tab === 'memory' ? <RepoMemory repo={repo} />
         : tab === 'issues' ? <Issues repoId={repo.id} />
         : tab === 'actions' ? <Actions repoId={repo.id} />

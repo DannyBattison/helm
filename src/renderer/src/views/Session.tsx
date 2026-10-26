@@ -611,7 +611,7 @@ function SubagentView({ s, subId }: { s: S; subId: string }) {
   );
 }
 
-export function Session({ id, tab, setTab, themeKey, sub, file, line }: { id: string; tab: string; setTab(t: string): void; themeKey: 'dark' | 'light'; sub?: string; file?: string; line?: number }) {
+export function Session({ id, tab, setTab, themeKey, sub, file, line, msg }: { id: string; tab: string; setTab(t: string): void; themeKey: 'dark' | 'light'; sub?: string; file?: string; line?: number; msg?: number }) {
   const app = useApp();
   const s = app.sessions.find((x) => x.id === id);
   const items = useTranscript(id);
@@ -652,7 +652,7 @@ export function Session({ id, tab, setTab, themeKey, sub, file, line }: { id: st
     <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <div style={{ flex: 1, minHeight: 0 }}>
-          <TranscriptList items={items || []} renderItem={(m, i) => <TranscriptItem m={m} s={s} index={i} onDeny={() => input.current?.focus()} />}
+          <TranscriptList items={items || []} focusIndex={msg} renderItem={(m, i) => <TranscriptItem m={m} s={s} index={i} onDeny={() => input.current?.focus()} />}
             header={!items ? <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Loading conversation…</span> : null}
             footer={<>
               {s.status === 'working' ? (

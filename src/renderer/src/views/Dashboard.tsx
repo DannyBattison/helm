@@ -20,7 +20,7 @@ export function Lane({ s, now }: { s: Session; now: number }) {
   return (
     <div style={{ position: 'relative', height: 20 }}>
       <div style={{ position: 'absolute', left: 0, right: 0, top: 10, height: 1, background: 'var(--border-subtle)' }} />
-      {segs.map(([a, b, st], i) => <div key={i} style={{ position: 'absolute', top: 6, height: 8, left: lanePct(a), width: lanePct(b - a), borderRadius: 2, background: LANE_COLOR[st], opacity: st === 'working' ? 0.85 : 1 }} />)}
+      {segs.map(([a, b, st], i) => <div key={i} style={{ position: 'absolute', top: 6, height: 8, left: lanePct(a), width: lanePct(b - a), borderRadius: `${i === 0 ? 2 : 0}px ${i === segs.length - 1 ? 2 : 0}px ${i === segs.length - 1 ? 2 : 0}px ${i === 0 ? 2 : 0}px`, background: LANE_COLOR[st], opacity: st === 'working' ? 0.85 : 1 }} />)}
       {marks.map((m, i) => <div key={'m' + i} title="Commit" style={{ position: 'absolute', top: 3, left: lanePct(m), width: 2, height: 14, marginLeft: -1, borderRadius: 1, background: 'var(--text-1)', boxShadow: '0 0 0 1.5px var(--bg-panel)' }} />)}
       <div style={{ position: 'absolute', top: -2, bottom: -2, left: lanePct(104), width: 1, background: 'var(--text-3)' }} />
     </div>
