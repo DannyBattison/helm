@@ -1,0 +1,3 @@
+## D-142 · 2026-10-26 · Text cut with an ellipsis gets a 1.5 line height, whatever its inline font says
+D-130 raised the tokens, but most truncated labels set their own tight `font: …/1` or `/1.2` inline, in a box with `overflow: hidden`, which still shaved the bottom pixel off p, y and g. A global rule in `styles/index.css` matches any element whose inline style has `text-overflow: ellipsis` and sets `line-height: 1.5 !important` (`!important` is needed to beat the inline `font` shorthand). The phone breadcrumb, the phone status bar and the session header's row, which clip without an ellipsis, were changed by hand. Not looked at in the app.
+Why: user request.

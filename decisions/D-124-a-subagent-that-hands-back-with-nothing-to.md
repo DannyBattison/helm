@@ -1,0 +1,3 @@
+## D-124 · 2026-10-25 · A subagent that hands back with nothing to review is archived
+When a subagent finishes successfully and neither it nor a subagent under it edited a file or committed (`Subagent.changed`), it is marked `archived`: left out of the sidebar tree and the session's subagent list (a "Show N archived" button brings them back) and its card in the conversation drops the summary, though the transcript still opens. Failed and stopped subagents are not archived, and neither are ones that changed something, since the owner may want to look at those. Edits made through Bash are not seen, only the edit tools and `git commit`.
+Why: user request.

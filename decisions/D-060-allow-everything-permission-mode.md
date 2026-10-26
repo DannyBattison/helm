@@ -1,0 +1,3 @@
+## D-60 · 2026-10-23 · Allow everything permission mode
+A fourth permission mode, "Allow everything", in Settings, the new-session dialog and each session's composer. It maps to the SDK's `bypassPermissions`, so no command or edit asks for approval. Every session is started with `allowDangerouslySkipPermissions` so a running conversation can be switched into it from the composer; that flag alone does not change the mode. Budgets, plan-usage pauses and the subagent limits still apply, because they do not depend on the approval prompt. The setting says plainly that the worktree protects your checkout but not the network or files outside it.
+Why: user request.

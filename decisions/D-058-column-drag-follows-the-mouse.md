@@ -1,0 +1,3 @@
+## D-58 · 2026-10-23 · Column drag follows the mouse
+Dragging a column's right edge moves that edge, and only to where the mouse goes. Before the flexible column (or in a table with none) the column itself grows and the flexible column absorbs it. The flexible column's edge takes width from the column on its right. After the flexible column, which is anchored to the table's right edge, a column and its right neighbour trade width, because growing it alone moved its left edge instead. Where a column has no sized neighbour to trade with (the last column before a fixed one), there is no handle, since its edge cannot move.
+Why: user report that dragging right could expand a column to the left.

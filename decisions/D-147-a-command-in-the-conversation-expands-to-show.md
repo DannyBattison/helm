@@ -1,0 +1,3 @@
+## D-147 · 2026-10-26 · A command in the conversation expands to show the whole command and its output
+The one-line row for a command the agent ran is still cut short, but when the command or its result does not fit (over 80 characters, several lines, or output over 40 characters or several lines) it shows a caret and the row can be clicked (unless text is selected) to open the full command, highlighted, wrapping and with a copy button, plus the output in a scrollable box. A multi-line command shows its first line and an ellipsis when closed. Permission requests already showed the whole command and are unchanged. The output is whatever helm already keeps for the row, so it may itself be shortened. Not run in the app.
+Why: user request.
