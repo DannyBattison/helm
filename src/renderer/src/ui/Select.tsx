@@ -6,18 +6,23 @@ type Opt = { value: string; label: string };
 /**
  * A styled listbox in place of the native <select>, which draws an OS-coloured list that ignores the tokens.
  * `onChange` receives `{ target: { value } }` so it can replace a native handler unchanged.
+ * With `multiple`, `value` is a string[], picking toggles an option and keeps the list open, and `placeholder` shows when none are picked.
  */
-export function Select({ value, defaultValue, options = [], icon, mono = false, size = 'md', disabled = false, onChange, style }: any) {
+export function Select({ value, defaultValue, options = [], icon, mono = false, size = 'md', disabled = false, multiple = false, placeholder = '', onChange, style }: any) {
   const norm: Opt[] = options.map((o: any) => (typeof o === 'string' ? { value: o, label: o } : o));
   const [inner, setInner] = React.useState(defaultValue ?? norm[0]?.value);
   const cur = value ?? inner;
+  const sel: string[] = multiple ? (Array.isArray(cur) ? cur : []) : [];
+  const isOn = (v: string) => (multiple ? sel.includes(v) : v === cur);
   const [open, setOpen] = React.useState(false);
   const [hi, setHi] = React.useState(0);
   const [pos, setPos] = React.useState<React.CSSProperties>({});
   const btn = React.useRef<HTMLButtonElement>(null);
   const menu = React.useRef<HTMLDivElement>(null);
   const h = size === 'sm' ? 24 : size === 'lg' ? 32 : 28;
-  const label = norm.find((o) => o.value === cur)?.label ?? String(cur ?? '');
+  const label = multiple
+    ? (sel.length ? sel.map((v) => norm.find((o) => o.value === v)?.label ?? v).join(', ') : placeholder)
+    : norm.find((o) => o.value === cur)?.label ?? String(cur ?? '');
 
   const show = () => {
     if (disabled || !btn.current) return;
@@ -25,10 +30,16 @@ export function Select({ value, defaultValue, options = [], icon, mono = false, 
     const below = window.innerHeight - r.bottom;
     const up = below < 200 && r.top > below;
     setPos({ left: r.left, minWidth: Math.min(Math.max(r.width, 140), window.innerWidth - 16), maxWidth: window.innerWidth - Math.max(r.left, 8) - 8, ...(up ? { bottom: window.innerHeight - r.top + 4, maxHeight: r.top - 12 } : { top: r.bottom + 4, maxHeight: below - 12 }) });
-    setHi(Math.max(0, norm.findIndex((o) => o.value === cur)));
+    setHi(Math.max(0, norm.findIndex((o) => isOn(o.value))));
     setOpen(true);
   };
   const pick = (v: string) => {
+    if (multiple) {
+      const next = sel.includes(v) ? sel.filter((x) => x !== v) : [...sel, v];
+      setInner(next as any);
+      onChange && onChange({ target: { value: next } });
+      return;
+    }
     setInner(v);
     setOpen(false);
     onChange && onChange({ target: { value: v } });
@@ -66,9 +77,9 @@ export function Select({ value, defaultValue, options = [], icon, mono = false, 
         <i className="ph ph-caret-up-down" style={{ position: 'absolute', right: 7, fontSize: 13, color: 'var(--text-3)', pointerEvents: 'none' }} />
       </button>
       {open ? createPortal(
-        <div ref={menu} role="listbox" style={{ position: 'fixed', zIndex: 300, overflowY: 'auto', padding: 4, borderRadius: 'var(--radius-lg)', background: 'var(--bg-overlay)', boxShadow: 'var(--shadow-popover)', animation: 'helm-in var(--dur) var(--ease-out)', ...pos }}>
+        <div ref={menu} role="listbox" aria-multiselectable={multiple || undefined} style={{ position: 'fixed', zIndex: 300, overflowY: 'auto', padding: 4, borderRadius: 'var(--radius-lg)', background: 'var(--bg-overlay)', boxShadow: 'var(--shadow-popover)', animation: 'helm-in var(--dur) var(--ease-out)', ...pos }}>
           {norm.map((o, i) => {
-            const on = o.value === cur;
+            const on = isOn(o.value);
             return (
               <div key={o.value} role="option" className="helm-tap-row" aria-selected={on} data-hi={i === hi} onMouseEnter={() => setHi(i)} onClick={() => pick(o.value)}
                 style={{ display: 'flex', alignItems: 'center', gap: 8, height: 28, padding: '0 8px 0 10px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', whiteSpace: 'nowrap',
