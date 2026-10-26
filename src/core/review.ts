@@ -14,19 +14,24 @@ import { run, uid } from './util';
 const HELM_IDENT = { GIT_AUTHOR_NAME: 'helm', GIT_AUTHOR_EMAIL: 'helm@localhost', GIT_COMMITTER_NAME: 'helm', GIT_COMMITTER_EMAIL: 'helm@localhost' };
 const refPrefix = (id: string) => `refs/helm/${id}/`;
 
-export async function takeCheckpoint(wt: string, sessionId: string, n: number, label: string): Promise<string> {
+/** A commit holding the worktree as it is now (uncommitted and untracked files included), parented on HEAD. Moves no branch and stages nothing. */
+export async function snapshotCommit(wt: string, label: string): Promise<string> {
   const index = join(tmpdir(), `helm-index-${uid()}`);
   const env = { ...process.env, ...HELM_IDENT, GIT_INDEX_FILE: index };
   try {
     await run('git', ['read-tree', 'HEAD'], { cwd: wt, env });
     await run('git', ['add', '-A'], { cwd: wt, env, timeout: 60_000 });
     const tree = (await run('git', ['write-tree'], { cwd: wt, env })).trim();
-    const commit = (await run('git', ['commit-tree', tree, '-p', 'HEAD', '-m', label], { cwd: wt, env })).trim();
-    await git(wt, 'update-ref', refPrefix(sessionId) + n, commit);
-    return commit;
+    return (await run('git', ['commit-tree', tree, '-p', 'HEAD', '-m', label], { cwd: wt, env })).trim();
   } finally {
     await rm(index, { force: true }).catch(() => undefined);
   }
+}
+
+export async function takeCheckpoint(wt: string, sessionId: string, n: number, label: string): Promise<string> {
+  const commit = await snapshotCommit(wt, label);
+  await git(wt, 'update-ref', refPrefix(sessionId) + n, commit);
+  return commit;
 }
 
 export async function listCheckpoints(wt: string, sessionId: string): Promise<Checkpoint[]> {
@@ -102,23 +107,35 @@ export async function forecastRepo(repo: Repo, sessions: Session[], now = Date.n
   let supported = true;
   const heads = new Map<string, boolean>();
   const exists = async (b: string) => heads.get(b) ?? (heads.set(b, await gitOk(repo.localPath, 'rev-parse', '--verify', '--quiet', `refs/heads/${b}`)), heads.get(b)!);
+  // What each session would merge: its worktree as it is now, uncommitted work included, else its branch. Null when git cannot be asked.
+  const tips = new Map<string, string | null>();
+  for (const s of live) {
+    let tip: string | null = null;
+    if (s.worktree) tip = await snapshotCommit(s.worktree, 'helm forecast').catch(() => null);
+    if (!tip && s.commits.length && (await exists(s.branch))) tip = s.branch;
+    tips.set(s.id, tip);
+  }
   for (let i = 0; i < live.length; i++) {
     const a = live[i];
-    if (supported && a.commits.length && (await exists(a.branch))) {
-      const r = await mergeTree(repo.localPath, a.branch, a.base);
+    const ta = tips.get(a.id);
+    if (supported && ta) {
+      const r = await mergeTree(repo.localPath, ta, a.base);
       if (r === 'unsupported') supported = false;
       else if (r !== 'clean') out.push({ repoId: repo.id, a: a.id, b: a.base.startsWith('origin/') ? a.base : 'origin/' + a.base, files: r.files, kind: 'conflict', at: now });
     }
     for (let j = i + 1; j < live.length; j++) {
       const b = live[j];
+      const tb = tips.get(b.id);
       let files: string[] = [];
       let kind: Conflict['kind'] = 'overlap';
-      if (supported && a.commits.length && b.commits.length && (await exists(a.branch)) && (await exists(b.branch))) {
-        const r = await mergeTree(repo.localPath, a.branch, b.branch);
+      let checked = false;
+      if (supported && ta && tb) {
+        const r = await mergeTree(repo.localPath, ta, tb);
         if (r === 'unsupported') supported = false;
-        else if (r !== 'clean') { files = r.files; kind = 'conflict'; }
+        else { checked = true; if (r !== 'clean') { files = r.files; kind = 'conflict'; } }
       }
-      if (!files.length) files = overlap(a, b);
+      // Editing the same file is only worth a warning when git could not check whether the edits clash.
+      if (!checked) files = overlap(a, b);
       if (files.length) out.push({ repoId: repo.id, a: a.id, b: b.id, files, kind, at: now });
     }
   }
