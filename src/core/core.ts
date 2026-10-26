@@ -4,7 +4,8 @@ import { existsSync } from 'node:fs';
 import * as os from 'node:os';
 import { appendFile, readFile, statfs, stat, writeFile } from 'node:fs/promises';
 import { join, relative, resolve, isAbsolute } from 'node:path';
-import type { AppState, ClaudeLogin, ExternalTranscript, HelmApi, HelmEvents, Settings, SystemStatus, TranscriptEvent, WorktreeUsage } from '../shared/types';
+import type { AppState, ClaudeLogin, ExternalTranscript, HelmApi, HelmEvents, Settings, TranscriptEvent, WorktreeUsage } from '../shared/types';
+import type { SystemStatus } from '../shared/system';
 import { ClaudeAuth } from './claudeAuth';
 import * as G from './git';
 import * as GH from './github';
@@ -792,7 +793,7 @@ export const api: HelmApi = {
         const id = `${f.blocks}:${f.bfree}`;
         if (seen.has(id)) { disks[disks.length - 1].label += ' and ' + label.toLowerCase(); continue; }
         seen.add(id);
-        disks.push({ label, total: f.blocks * f.bsize, free: f.bavail * f.bsize });
+        disks.push({ label, path, total: f.blocks * f.bsize, free: f.bavail * f.bsize });
       } catch { /* a path that is gone has no disk to report */ }
     }
     const m = process.memoryUsage();
