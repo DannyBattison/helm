@@ -1,5 +1,6 @@
 /** Types shared by the main process, preload and renderer. */
 
+import type { SystemStatus } from './system';
 import type { Conflict } from './forecast';
 import type { Issue } from './issues';
 import type { Workflow, WorkflowRun } from './workflows';
@@ -1010,6 +1011,8 @@ export interface HelmApi {
   cleanWorktree(sessionId: string): Promise<number>;
   /** Removes a finished session's worktree (the branch and the conversation stay). Refused with uncommitted or unpushed work. */
   dropWorktree(sessionId: string): Promise<void>;
+  /** CPU, memory, disk and load of the machine helm runs on (the server, when hosted), and of helm itself. CPU use is measured between calls, so the first has none. */
+  systemStatus(): Promise<SystemStatus>;
   checkForUpdates(): Promise<UpdateStatus>;
   installUpdate(): Promise<void>;
   /** Saves a support bundle: versions, settings, session states and the recent log, with private text left out and secrets masked. */

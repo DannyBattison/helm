@@ -1,9 +1,10 @@
 import { getSessionInfo, getSessionMessages, listSessions, query } from '@anthropic-ai/claude-agent-sdk';
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { appendFile, readFile, stat, writeFile } from 'node:fs/promises';
+import * as os from 'node:os';
+import { appendFile, readFile, statfs, stat, writeFile } from 'node:fs/promises';
 import { join, relative, resolve, isAbsolute } from 'node:path';
-import type { AppState, ClaudeLogin, ExternalTranscript, HelmApi, HelmEvents, Settings, TranscriptEvent, WorktreeUsage } from '../shared/types';
+import type { AppState, ClaudeLogin, ExternalTranscript, HelmApi, HelmEvents, Settings, SystemStatus, TranscriptEvent, WorktreeUsage } from '../shared/types';
 import { ClaudeAuth } from './claudeAuth';
 import * as G from './git';
 import * as GH from './github';
@@ -12,6 +13,7 @@ import { installLogging, logFile, logLine, recentLog } from './log';
 import { cleanHeavy, dirSize, reclaimableBytes } from './disk';
 import { readArtifact } from './artifacts';
 import { addRepoArtifact, listRepoArtifacts, removeRepoArtifact, setRepoArtifactDir } from './repoartifacts';
+import { cpuTimes, cpuUse, HISTORY_LIMIT, parseLimit, type CpuTimes, type SystemPoint } from '../shared/system';
 import { diagnostics } from '../shared/diagnostics';
 import { memoryHealth, memoryReads, STALE_DAYS, type MemoryFile, type MemoryUsage } from '../shared/memoryhealth';
 import type { Host } from './host';
@@ -36,6 +38,37 @@ import { auditCsv, buildReport, digestMarkdown, sessionsCsv, spendCsv, type Repo
 let host: Host;
 let claudeVersion: string | null = null;
 let forecast: import('../shared/forecast').Conflict[] = [];
+let lastCpu: CpuTimes | null = null;
+let lastProc: { t: number; us: number } | null = null;
+const sysHistory: SystemPoint[] = [];
+
+/** Memory of the machine, or of the container when it has a limit: that is the ceiling that matters on a server. */
+async function memoryLimit(): Promise<{ total: number; used: number; limited: boolean }> {
+  const read = (f: string) => readFile(f, 'utf8').catch(() => null);
+  const [lim2, cur2, lim1, cur1] = await Promise.all([read('/sys/fs/cgroup/memory.max'), read('/sys/fs/cgroup/memory.current'), read('/sys/fs/cgroup/memory/memory.limit_in_bytes'), read('/sys/fs/cgroup/memory/memory.usage_in_bytes')]);
+  const limit = parseLimit(lim2, os.totalmem()) ?? parseLimit(lim1, os.totalmem());
+  const cg = Number((parseLimit(lim2, os.totalmem()) ? cur2 : cur1) ?? NaN);
+  const total = limit ?? os.totalmem();
+  return { total, limited: !!limit, used: limit && Number.isFinite(cg) && cg > 0 ? Math.min(total, cg) : total - os.freemem() };
+}
+
+/** Takes a reading and adds it to the history, unless one was taken in the last 2 s (then that one is returned). */
+async function sampleSystem(fresh = false): Promise<SystemPoint & { cpu: number | null }> {
+  const last = sysHistory[sysHistory.length - 1];
+  if (fresh && last && Date.now() - last.t < 2000) return last;
+  const cpus = os.cpus();
+  const now = cpuTimes(cpus);
+  const cpu = cpuUse(lastCpu, now);
+  lastCpu = now;
+  const pu = process.cpuUsage(), t = Date.now();
+  const proc = lastProc && t > lastProc.t ? Math.min(1, (pu.user + pu.system - lastProc.us) / 1000 / (t - lastProc.t) / Math.max(1, cpus.length)) : null;
+  lastProc = { t, us: pu.user + pu.system };
+  const disk = await statfs(host.dataDir).then((f) => f.bavail * f.bsize).catch(() => null);
+  const pt: SystemPoint = { t, cpu, mem: (await memoryLimit()).used, rss: process.memoryUsage().rss, proc, load: os.loadavg()[0], disk };
+  sysHistory.push(pt);
+  if (sysHistory.length > HISTORY_LIMIT) sysHistory.shift();
+  return pt;
+}
 const usageCache = new Map<string, { at: number; bytes: number; partial: boolean; reclaimable: number; dirs: string[]; dirty: number; unpushed: number }>();
 const store = new Store();
 
@@ -738,6 +771,29 @@ export const api: HelmApi = {
     store.save();
     emitState();
   },
+  async systemStatus() {
+    const pt = await sampleSystem(true);
+    const disks: SystemStatus['disks'] = [];
+    const seen = new Set<string>();
+    for (const [label, path] of [['helm data', host.dataDir], ['Worktrees', store.data.sessions.find((s) => !s.worktreeGone)?.worktree || home]] as const) {
+      try {
+        const f = await statfs(path);
+        const id = `${f.blocks}:${f.bfree}`;
+        if (seen.has(id)) { disks[disks.length - 1].label += ' and ' + label.toLowerCase(); continue; }
+        seen.add(id);
+        disks.push({ label, total: f.blocks * f.bsize, free: f.bavail * f.bsize });
+      } catch { /* a path that is gone has no disk to report */ }
+    }
+    const m = process.memoryUsage();
+    const mem = await memoryLimit();
+    const la = os.loadavg();
+    return {
+      at: pt.t, platform: process.platform, arch: process.arch, hostname: os.hostname(), uptime: os.uptime(), cpu: pt.cpu, cores: os.cpus().length, model: os.cpus()[0]?.model.trim() || '',
+      load: [la[0], la[1], la[2]] as [number, number, number], memory: { total: mem.total, used: pt.mem, limited: mem.limited },
+      process: { rss: m.rss, heap: m.heapUsed, cpu: pt.proc, pid: process.pid }, disks, history: sysHistory.slice(),
+      sessions: { running: store.data.sessions.filter((s) => sessions.isRunning(s.id)).length, total: store.data.sessions.filter((s) => !s.archivedAt).length }
+    } satisfies SystemStatus;
+  },
   async checkForUpdates() { return host.updates ? host.updates.check() : { state: 'dev' as const }; },
   async installUpdate() { host.updates?.install(); },
   async saveDiagnostics() {
@@ -1020,6 +1076,9 @@ export async function start(h: Host) {
   claudeVersion = await detectClaude(store.data.settings.claudePath);
   host.setTheme?.(store.data.settings.theme);
   if (host.requireClaudeLogin) { void refreshClaudeLogin(); setInterval(() => void refreshClaudeLogin(), 5 * 60_000); }
+  // Sampled all the time, so the System graphs already have a past when the tab is opened.
+  void sampleSystem();
+  setInterval(() => void sampleSystem(), 5000).unref?.();
   setInterval(pollMerges, 120_000);
   setInterval(() => void automations.tick(), 60_000);
   setTimeout(() => void automations.tick(), 30_000);

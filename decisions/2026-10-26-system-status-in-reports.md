@@ -1,0 +1,3 @@
+## 2026-10-26 · System status lives in Reports as a System tab
+
+CPU, memory, load, disk and helm's own process are read in `core.ts` (`systemStatus`), which both the desktop and the hosted server run, so it needs no host-specific code and reports the machine helm actually runs on (the server when hosted). In a container, memory is measured against the cgroup limit rather than the host. The core samples every 5 s into a one-hour ring buffer from startup, so the graphs have history when the tab opens; the tab polls every 3 s. It replaces the Disk tab in Reports: the System tab shows the machine first, then the session worktrees (the old Disk content).
