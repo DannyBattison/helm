@@ -6,6 +6,8 @@ import type { Workflow, WorkflowRun } from './workflows';
 import type { SearchResults } from './search';
 import type { HealthIssue, MemoryUsage } from './memoryhealth';
 import type { Report } from './reports';
+import type { AutomatedAgent } from './automations';
+export type { AutomatedAgent };
 export type { Workflow, WorkflowRun, Report, Conflict, Issue, SearchResults, HealthIssue, MemoryUsage };
 
 export type Status = 'working' | 'attention' | 'ready' | 'idle' | 'error';
@@ -169,6 +171,8 @@ export interface Session {
   group?: string;
   /** Where the work came from, such as a GitHub issue or pull request comment. */
   source?: { kind: 'issue' | 'pr'; number: number; url: string; title: string };
+  /** Started by an automated agent. */
+  automation?: { id: string; name: string };
   /** Last checkpoint number taken. Checkpoints are git refs named refs/helm/<session>/<n>. */
   checkpoints?: number;
   /** The result of the last self-review. */
@@ -445,6 +449,8 @@ export interface AppState {
   /** Counts every event logged, so a page can tell when to read the log again. */
   activitySeq: number;
   settings: Settings;
+  /** Automated agents, global and per repository. */
+  automations: AutomatedAgent[];
   /** Spend per repo id since the start of the current week (Monday). */
   weekSpend: Record<string, number>;
   /** Lifetime usage per repository id. */
@@ -664,6 +670,8 @@ export interface NewSessionInput {
   after?: string;
   /** What the task came from, such as a GitHub issue. */
   source?: Session['source'];
+  /** The automated agent that started it. */
+  automation?: Session['automation'];
   /** Start from this effort level instead of the default. */
   effort?: Effort;
 }
@@ -848,6 +856,11 @@ export interface HelmApi {
   listRepoArtifacts(repoId: string): Promise<RepoArtifact[]>;
   addRepoArtifact(repoId: string, name: string, base64: string): Promise<void>;
   removeRepoArtifact(repoId: string, name: string): Promise<void>;
+  /** Creates an automated agent (no `id`), or replaces the one with that id. Returns its id. */
+  saveAutomation(agent: Omit<AutomatedAgent, 'id' | 'createdAt' | 'lastRun'> & { id?: string }): Promise<string>;
+  deleteAutomation(id: string): Promise<void>;
+  /** Starts an automated agent now, in each repository it covers. Returns how many sessions started. */
+  runAutomation(id: string): Promise<number>;
   resolveAsk(sessionId: string, askId: string, answer: { decision: 'approve' | 'always' | 'deny'; text?: string } | { answers: Record<string, string> } | { addBudget: number }): Promise<void>;
   getTranscript(sessionId: string): Promise<TranscriptEvent[]>;
   /** A file the agent made for the user (`artifact:` links in its replies), or null if it no longer exists. */

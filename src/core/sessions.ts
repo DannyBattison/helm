@@ -243,6 +243,7 @@ export class SessionManager {
       claudeSessionId, effort: extra.effort, parentId: extra.parentId, group: extra.group, source: extra.source
     };
     s.source ??= input.source;
+    s.automation = input.automation;
     s.effort ??= input.effort;
     // Wait when another session has to be merged first, or when too many sessions are already working.
     const wait = input.after ? { after: input.after, since: now } : { since: now };
