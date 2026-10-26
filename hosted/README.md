@@ -25,6 +25,22 @@ If the image is private, make the package public in its GitHub settings, or `doc
 
 To build it yourself instead: `cd hosted && cp .env.example .env && docker compose up --build`.
 
+### What is in the image
+
+Always: Node and npm, bash and coreutils, git, gh, ssh, curl, ripgrep, tini as PID 1, a non-root user, `LANG=C.UTF-8` and `PYTHONUNBUFFERED=1`. The rest is picked by categories, with the `INCLUDE` build argument (separated by `|`, any case, or `ALL`):
+
+| Category | Adds |
+| --- | --- |
+| `CORE` | Python 3, pip, venv and `/opt/venv` with requests, httpx, pandas, numpy, beautifulsoup4, lxml, pyyaml, pydantic, matplotlib; zip, unzip, less, tree, file |
+| `SEARCH` | fd, jq, yq |
+| `NETWORK` | wget, dig, ping |
+| `EDITING` | vim, nano, patch, diffutils, build-essential, sqlite3 |
+| `DOCUMENTS` | poppler-utils, LibreOffice (headless), pandoc |
+| `MEDIA` | ffmpeg, ImageMagick, Tesseract |
+| `BROWSING` | Playwright and Chromium (turns on `CORE`) |
+
+The default is `CORE|SEARCH|NETWORK|EDITING|BROWSING` (`:latest`), which is already large because of Chromium. `:latest-full` is `ALL`, which adds LibreOffice, pandoc, ffmpeg, ImageMagick and Tesseract. To leave the browser out, use `INCLUDE=CORE|SEARCH|NETWORK|EDITING`. To choose your own: `docker build -f hosted/Dockerfile --build-arg 'INCLUDE=CORE|SEARCH|DOCUMENTS|BROWSING' -t helm-hosted .`
+
 ## Configuring
 
 Put settings in an env file (`docker run --env-file helm.env …`, or `.env` for compose) rather than `-e` flags. That keeps the secret stable when you recreate the container.

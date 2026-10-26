@@ -6,6 +6,9 @@
 #   pull request      -> built to check it still builds, not published
 #   run it by hand    -> from the Actions tab, to publish whatever branch you pick (tagged with the branch name)
 #
+# Two variants are built: the slim image (the tags above) and the full one, with LibreOffice, ffmpeg, pandoc, OCR and Playwright/Chromium,
+# whose tags end in -full (:latest-full, :0.2.0-full ...).
+#
 # It needs no secrets: the workflow's own token may push to the package of the repository it runs in. The first published image is private;
 # make it public (or give your server a token that can read packages) under the package's settings on GitHub.
 # Pulling it on the server: docker pull ghcr.io/<owner>/helm-hosted:latest
@@ -33,6 +36,14 @@ concurrency:
 jobs:
   image:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - include: CORE|SEARCH|NETWORK|EDITING|BROWSING
+            suffix: ''
+          - include: ALL
+            suffix: -full
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3
@@ -48,6 +59,8 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v5
         with:
+          flavor: |
+            suffix=${{ matrix.suffix }},onlatest=true
           images: ghcr.io/${{ github.repository_owner }}/helm-hosted
           tags: |
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') }}
@@ -62,9 +75,10 @@ jobs:
         with:
           context: .
           file: hosted/Dockerfile
+          build-args: INCLUDE=${{ matrix.include }}
           platforms: ${{ inputs.platforms || 'linux/amd64' }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=image${{ matrix.suffix }}
+          cache-to: type=gha,mode=max,scope=image${{ matrix.suffix }}

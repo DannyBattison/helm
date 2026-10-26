@@ -628,3 +628,11 @@ Why: user request.
 ## D-152 · 2026-10-26 · Pull request titles are brief and the description stays current
 The title suggested for a new pull request is the first line of the task cut to 72 characters at a word boundary (`prTitle`), and helm cuts any title to 200 before sending it, since long ones made GitHub refuse the request. The full task, every commit and the file counts go in the description, inside a `<!-- helm:summary -->` block. While the pull request is open, helm rewrites that block after it pushes a session branch and at its two-minute poll whenever the commits changed, so later pushes show in the description. A description with no block (the user rewrote it) is never touched, and the title is never changed after opening. Tests only; not run against GitHub.
 Why: user request.
+
+## D-136 · 2026-10-26 · The hosted image ships the common agent tools, chosen by category
+`hosted/Dockerfile` takes an `INCLUDE` build argument: categories separated by `|` (CORE, SEARCH, NETWORK, EDITING, DOCUMENTS, MEDIA, BROWSING, or ALL). The default, `CORE|SEARCH|NETWORK|EDITING`, is `:latest`: Python 3 with a `/opt/venv` of the usual data libraries (owned by the helm user), ripgrep, fd, jq, yq, build-essential, sqlite3, wget, dig, ping, vim, nano and patch, on top of the always-present Node, git, gh, ssh, curl and tini. ALL (`:latest-full`) adds poppler, LibreOffice headless, pandoc, ffmpeg, ImageMagick, Tesseract and Playwright with Chromium; BROWSING turns on CORE. `PYTHONUNBUFFERED=1` and `LANG=C.UTF-8` are set. `hosted-image.yml` builds both with a matrix; the full tags end in `-full`. Go and composer were left out as optional. yq is pinned and downloaded from GitHub releases. Not built: docker is not available here, so the Dockerfile and workflow are untested.
+Why: user request.
+
+## D-137 · 2026-10-26 · BROWSING is in the default image
+The default `INCLUDE` (and so `:latest`) is now `CORE|SEARCH|NETWORK|EDITING|BROWSING`, so agents can run headless tests of web apps with Playwright and Chromium without a custom build. This makes the default image much larger (Chromium and its libraries); `INCLUDE=CORE|SEARCH|NETWORK|EDITING` gives the old one. Supersedes the default named in D-136. Not built (no Docker here).
+Why: user request.
