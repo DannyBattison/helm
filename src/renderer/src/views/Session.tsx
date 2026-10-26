@@ -53,8 +53,8 @@ function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string
         </div>
         {s.queued ? <><Button variant="primary" icon="play" onClick={() => guard(api.startQueued(s.id))}>Start now</Button><Button variant="ghost" onClick={() => guard(api.cancelQueued(s.id))}>Cancel</Button></> : null}
         {s.status === 'idle' && /^Stopped/.test(s.step) ? <Button variant="secondary" icon="play" onClick={() => guard(api.resumeSession(s.id))}>Resume</Button> : null}
-        {s.status === 'working' ? <Button variant="ghost" icon="pause" title="Halt the agent's current turn but keep the session open, so you can redirect it with a new message." onClick={() => guard(api.interrupt(s.id))}>Pause</Button> : null}
-        {running ? <Button variant="ghost" icon="stop" title="End the session entirely, discarding any pending prompts. You'd need to Resume to start it again." onClick={() => guard(api.stopSession(s.id))}>Stop</Button> : null}
+        {s.status === 'working' ? <Tooltip side="bottom" wide content="Halt the agent's current turn but keep the session open, so you can redirect it with a new message."><Button variant="ghost" icon="pause" onClick={() => guard(api.interrupt(s.id))}>Pause</Button></Tooltip> : null}
+        {running ? <Tooltip side="bottom" wide content="End the session entirely, discarding any pending prompts. You'd need to Resume to start it again."><Button variant="ghost" icon="stop" onClick={() => guard(api.stopSession(s.id))}>Stop</Button></Tooltip> : null}
         {push.commits && !s.worktreeGone ? <span title={push.tip}><Button variant="secondary" icon="cloud-arrow-up" loading={push.busy} onClick={push.push}>Push · {push.commits}</Button></span> : null}
         {!s.worktreeGone && !(s.free && !s.free.managed) ? <IconButton icon="clock-counter-clockwise" label="Checkpoints" onClick={() => setUI({ checkpointsOf: s.id })} /> : null}
         {s.claudeSessionId && !s.worktreeGone && !s.free ? <IconButton icon="git-fork" label="Fork this session" onClick={() => setUI({ forking: { sessionId: s.id, index: null, text: '' } })} /> : null}
