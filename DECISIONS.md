@@ -655,4 +655,7 @@ Why: user request; almost every command is chained, so "and more" was on every p
 
 ## D-159 · 2026-10-26 · A new session can be given files of any type for that agent alone
 The New session dialog has Attach files (or drop them on the task box): any file type, up to 10 files, 10 MB each and 12 MB together (the hosted socket limit is 16 MB and the files travel as base64). The core saves them in `<data dir>/uploads/<session id>/`, outside the worktree so they are never committed or seen by other sessions, adds that folder to the agent's readable folders (`additionalDirectories`) on every start, and tells the agent their names and location in its system prompt. File names are reduced to a bare name and made unique. The folder is deleted with the session. Images attached in the dialog still go in the first message as before; any other file is saved as described here.
+
+## D-160 · 2026-10-26 · Continue all beside Interrupt all, with pause and play icons
+The sidebar and top bar now show a play button (Continue all agents) to the left of the interrupt button, and interrupt uses a pause icon instead of the hand. Continue is clickable only when some session was interrupted by the user or stopped when helm closed (idle, not queued, archived, merged or missing its worktree, with a step of "Paused…" or "Stopped when helm closed"); the top bar one appears only then. It calls the existing `resumeAll`, and `isResumable` in the renderer store mirrors that filter.
 Why: user request.
