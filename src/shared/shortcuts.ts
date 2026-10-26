@@ -14,7 +14,7 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
   { id: 'palette', label: 'Search', desc: 'Opens the search for sessions, repositories and commands.', default: 'Mod+K' },
   { id: 'newSession', label: 'New session', desc: 'Opens the new session dialog. Browsers keep Cmd/Ctrl+N for a new window, so use the alternative below there.', default: 'Mod+N' },
   { id: 'newSessionAlt', label: 'New session (alternative)', desc: 'A second shortcut for the same thing, for browsers that do not pass the first one on.', default: 'Alt+N' },
-  { id: 'haltAll', label: 'Interrupt all agents', desc: 'The emergency stop: interrupts every working agent at once. Queued sessions stay queued until you start or message one.', default: 'Mod+Shift+X' },
+  { id: 'haltAll', label: 'Interrupt all agents', desc: 'The emergency stop (pause): interrupts every working agent at once. Queued sessions stay queued until you start or message one.', default: 'Mod+Shift+X' },
   { id: 'resumeAll', label: 'Resume all agents', desc: 'Continues every paused or halted agent and lets queued sessions start again.', default: 'Mod+Shift+E' },
   { id: 'terminal', label: 'Terminal', desc: 'Shows or hides the terminal drawer.', default: 'Ctrl+`' },
   { id: 'quickOpen', label: 'Open a file', desc: 'In the Code tab: jump to a file by name.', default: 'Mod+P' },
