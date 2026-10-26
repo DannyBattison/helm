@@ -186,6 +186,31 @@ function Rich({ text, sessionId }: { text: string; sessionId?: string }) {
   return <>{blocks}</>;
 }
 
+/** A command the agent ran. One line, cut short; click it to see the whole command and what it printed. */
+function BashRow({ m, box }: { m: Extract<TranscriptEvent, { k: 'bash' }>; box: React.CSSProperties }) {
+  const [open, setOpen] = React.useState(false);
+  const result = m.ok && m.out === '✓' ? '✓ done' : m.out;
+  const long = m.cmd.length > 80 || m.cmd.includes('\n') || result.length > 40 || result.includes('\n');
+  return (
+    <div style={{ marginLeft: 44, marginRight: 12, ...box }}>
+      <div onClick={long ? () => { if (!window.getSelection()?.toString()) setOpen(!open); } : undefined} style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 30, padding: '0 10px', background: 'var(--bg-editor)', cursor: long ? 'pointer' : undefined }}>
+        <i className="ph ph-terminal" style={{ fontSize: 13, color: 'var(--text-3)' }} />
+        <span className="selectable" style={{ font: '400 12px/1.5 var(--font-mono)', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><span style={{ color: 'var(--text-3)' }}>$ </span><Hl text={m.cmd.split('\n')[0]} lang="bash" />{m.cmd.includes('\n') ? <span style={{ color: 'var(--text-3)' }}> …</span> : null}</span>
+        {m.done ? <span style={{ font: '400 12px/1.5 var(--font-mono)', color: m.ok ? 'var(--diff-add-fg)' : 'var(--diff-del-fg)', maxWidth: 260, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{result.split('\n')[0]}</span>
+          : <i className="ph ph-circle-notch" style={{ fontSize: 13, color: 'var(--status-working-text)', animation: 'helm-spin .9s linear infinite' }} />}
+        <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{m.meta}</span>
+        {long ? <i className={'ph ph-caret-' + (open ? 'up' : 'down')} aria-label={open ? 'Collapse' : 'Show the full command'} style={{ fontSize: 12, color: 'var(--text-3)' }} /> : null}
+      </div>
+      {open ? (
+        <div style={{ borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-editor)', padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <CopyBox text={m.cmd}><pre className="selectable" style={{ margin: 0, font: '400 12px/1.5 var(--font-mono)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}><Cmd text={m.cmd} /></pre></CopyBox>
+          {m.done && result && result !== '✓ done' ? <pre className="selectable" style={{ margin: 0, font: '400 12px/1.5 var(--font-mono)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', color: m.ok ? 'var(--text-2)' : 'var(--diff-del-fg)', maxHeight: 320, overflow: 'auto' }}>{result}</pre> : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function TranscriptItemView({ m, s, index, onDeny }: { m: TranscriptEvent; s: S; index?: number; onDeny(): void }) {
   const app = useApp();
   const [hover, setHover] = React.useState(false);
@@ -248,17 +273,7 @@ function TranscriptItemView({ m, s, index, onDeny }: { m: TranscriptEvent; s: S;
       </pre>
     </div>
   );
-  if (m.k === 'bash') return (
-    <div style={{ marginLeft: 44, marginRight: 12, ...box }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 30, padding: '0 10px', background: 'var(--bg-editor)' }}>
-        <i className="ph ph-terminal" style={{ fontSize: 13, color: 'var(--text-3)' }} />
-        <span className="selectable" style={{ font: '400 12px/1.5 var(--font-mono)', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><span style={{ color: 'var(--text-3)' }}>$ </span><Hl text={m.cmd} lang="bash" /></span>
-        {m.done ? <span style={{ font: '400 12px/1.5 var(--font-mono)', color: m.ok ? 'var(--diff-add-fg)' : 'var(--diff-del-fg)', maxWidth: 260, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.ok && m.out === '✓' ? '✓ done' : m.out}</span>
-          : <i className="ph ph-circle-notch" style={{ fontSize: 13, color: 'var(--status-working-text)', animation: 'helm-spin .9s linear infinite' }} />}
-        <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{m.meta}</span>
-      </div>
-    </div>
-  );
+  if (m.k === 'bash') return <BashRow m={m} box={box} />;
   if (m.k === 'commit') return (
     <div style={{ marginLeft: 44, marginRight: 12, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>
       <i className="ph ph-git-commit" style={{ fontSize: 15, color: 'var(--text-1)' }} />
