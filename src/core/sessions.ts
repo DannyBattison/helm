@@ -1402,8 +1402,32 @@ export class SessionManager {
       const t = i?.summary?.trim();
       if (!t || t === i?.firstPrompt?.trim() || t === s.title) return;
       s.title = t;
+      await this.nameBranch(s, t);
       this.touch();
     } catch { /* no title yet */ }
+  }
+
+  /** Once Claude Code has named the conversation, name the branch after it instead of the prompt. Only while nothing depends on the old name. */
+  private async nameBranch(s: Session, title: string) {
+    const st = this.store.data.settings;
+    if (s.free || s.branchNamed || !s.branch || !s.branch.startsWith(st.branchPrefix)) return;
+    s.branchNamed = true;
+    // The agent is told the branch name when it must push, and a pushed branch may already have a pull request.
+    if (st.pushOnCommit || s.prUrl) return;
+    const repo = this.repoOf(s);
+    if (await G.gitOk(repo.localPath, 'rev-parse', '--verify', '--quiet', 'refs/remotes/origin/' + s.branch)) return;
+    const base = st.branchPrefix + slug(title);
+    let branch = base;
+    for (let n = 2; branch !== s.branch && (await this.branchExists(repo.localPath, branch)); n++) branch = base + '-' + n;
+    if (branch === s.branch) return;
+    if (!(await G.gitOk(s.worktree, 'branch', '-m', s.branch, branch))) return;
+    s.branch = branch;
+    this.activity(s, 'git', `branch renamed to ${branch}`, { who: 'helm' });
+  }
+
+  private async branchExists(repoPath: string, branch: string) {
+    return (await G.gitOk(repoPath, 'rev-parse', '--verify', '--quiet', 'refs/heads/' + branch))
+      || (await G.gitOk(repoPath, 'rev-parse', '--verify', '--quiet', 'refs/remotes/origin/' + branch));
   }
 
   async rename(id: string, title: string) {
