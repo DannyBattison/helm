@@ -299,6 +299,8 @@ export interface Settings {
   /** Who the agent's commits are credited to: you, with Claude as a co-author, or Claude alone. */
   commitAuthor: 'coauthor' | 'sole';
   worktreeRoot: string;
+  /** Offer free agents (not tied to a repository) when starting a session. Existing ones keep working when off. */
+  freeAgents: boolean;
   /** Where scratch folders for free agents are made. */
   freeRoot: string;
   cloneRoot: string;

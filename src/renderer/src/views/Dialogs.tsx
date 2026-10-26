@@ -366,7 +366,7 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
       </>}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div style={{ display: 'flex', flexDirection: narrow ? 'column' : 'row', gap: 8 }}>
-          <Select value={repo} onChange={(e: any) => { setRepo(e.target.value); if (e.target.value === '@free') setCompare(false); }} options={[{ value: '@free', label: 'No repository (free agent)' }, ...app.repos.map((x) => ({ value: x.id, label: x.id }))]} style={{ flex: narrow ? 'none' : 1, minWidth: 0 }} icon={free ? 'robot' : 'book-bookmark'} />
+          <Select value={repo} onChange={(e: any) => { setRepo(e.target.value); if (e.target.value === '@free') setCompare(false); }} options={[...(app.settings.freeAgents || free || !app.repos.length ? [{ value: '@free', label: 'No repository (free agent)' }] : []), ...app.repos.map((x) => ({ value: x.id, label: x.id }))]} style={{ flex: narrow ? 'none' : 1, minWidth: 0 }} icon={free ? 'robot' : 'book-bookmark'} />
           {free ? <Button variant="secondary" icon="folder-open" onClick={() => void api.chooseFolder().then((f) => f && setFolder(f))}>{folder ? 'Change folder…' : 'Use my own folder…'}</Button>
             : <Select value={base} onChange={(e: any) => setBase(e.target.value)} options={bases.length ? bases.map((b) => ({ value: b.ref, label: b.label })) : [base]} mono icon="git-branch" />}
         </div>
@@ -625,7 +625,7 @@ export function Palette({ onClose, toggleTheme }: { onClose(): void; toggleTheme
     { key: 'a-new', label: 'New session', icon: 'plus', hint: newKeys.join(mac() ? '' : '+'), run: () => setUI({ newSession: {} }) },
     { key: 'a-halt', label: 'Interrupt all agents', icon: 'pause', hint: haltKeys.join(mac() ? '' : '+'), run: () => void haltAll() },
     { key: 'a-resume', label: 'Resume all agents', icon: 'play', hint: resumeKeys.join(mac() ? '' : '+'), run: () => void resumeAll() },
-    { key: 'a-free', label: 'New free agent (no repository)', icon: 'robot', run: () => setUI({ newSession: { repoId: '@free' } }) },
+    ...(app.settings.freeAgents ? [{ key: 'a-free', label: 'New free agent (no repository)', icon: 'robot', run: () => setUI({ newSession: { repoId: '@free' } }) }] : []),
     { key: 'a-add', label: 'Add repository', icon: 'book-bookmark', run: () => setUI({ adding: true }) },
     { key: 'a-theme', label: 'Toggle theme', icon: 'sun', run: toggleTheme },
     ...app.sessions.map((s) => ({ key: 's-' + s.id, label: s.id, hint: s.task, icon: 'robot', run: () => go({ screen: 'session', id: s.id, tab: s.status === 'ready' ? 'changes' : 'conversation' }) })),

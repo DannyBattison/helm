@@ -143,7 +143,7 @@ function FirstRun() {
         <p style={{ margin: 0, font: '400 13px/1.55 var(--font-sans)', color: 'var(--text-2)' }}>
           {none ? 'helm works with GitHub repositories. Clone one from your account, from a URL, or register a clone you already have.' : 'Describe a task and helm gives the agent its own worktree and branch. Your checkout is never touched.'}
         </p>
-        {none ? <div style={{ display: 'flex', gap: 8 }}><Button variant="primary" icon="book-bookmark" onClick={() => setUI({ adding: true })}>Add repository</Button><Button variant="secondary" icon="robot" onClick={() => setUI({ newSession: { repoId: '@free' } })}>Start a free agent</Button></div> : <Button variant="primary" icon="plus" onClick={() => setUI({ newSession: {} })}>New session</Button>}
+        {none ? <div style={{ display: 'flex', gap: 8 }}><Button variant="primary" icon="book-bookmark" onClick={() => setUI({ adding: true })}>Add repository</Button>{app.settings.freeAgents ? <Button variant="secondary" icon="robot" onClick={() => setUI({ newSession: { repoId: '@free' } })}>Start a free agent</Button> : null}</div> : <Button variant="primary" icon="plus" onClick={() => setUI({ newSession: {} })}>New session</Button>}
       </div>
     </div>
   );
@@ -261,7 +261,7 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
                   </>}
                   <span style={{ flex: 1 }} />
                   {isFreeGroup(r) ? null : <Button size="sm" variant="ghost" icon="git-commit" onClick={() => go({ screen: 'repo', id: r.id })}>History</Button>}
-                  <Button size="sm" variant="ghost" icon="plus" onClick={() => setUI({ newSession: { repoId: r.id } })}>{isFreeGroup(r) ? 'New free agent' : 'New session'}</Button>
+                  {isFreeGroup(r) && !app.settings.freeAgents ? null : <Button size="sm" variant="ghost" icon="plus" onClick={() => setUI({ newSession: { repoId: r.id } })}>{isFreeGroup(r) ? 'New free agent' : 'New session'}</Button>}
                 </div>
                 {sessions.filter(visible).map((s) => <SessionRow key={s.id} s={s} now={now} tpl={col.template} sub={sub} narrow={narrow} />)}
                 {extShown(r.id).map((x) => <ExternalRow key={x.id} x={x} repoId={r.id} tpl={col.template} sub={sub} narrow={narrow} />)}
