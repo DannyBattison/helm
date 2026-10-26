@@ -255,6 +255,7 @@ function ChangesView({ s }: { s: Session }) {
   const createPr = () => run('pr', async () => {
     const r = await api.createPr({ sessionId: s.id, base, title, body, draft, removeAfterMerge: rm, deleteBranchAfterMerge: delBranch, files: filesToStage, message: title });
     toast({ tone: 'ready', title: 'Pull request opened', description: r.url || undefined });
+    if (r.url && app.settings.openPrAfterCreate) void api.openExternal(r.url);
   });
   const merge = () => run('merge', async () => {
     const r = await api.mergeDirect({ sessionId: s.id, base, message: title || s.task, files: filesToStage, removeAfterMerge: rm || delBranch, deleteBranchAfterMerge: delBranch });

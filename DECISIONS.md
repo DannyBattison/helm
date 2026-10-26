@@ -528,3 +528,7 @@ Why: user request.
 ## D-127 · 2026-10-26 · Creating a pull request no longer opens it in the browser
 The toast still shows the URL, and "View on GitHub" in the Changes panel opens it. The panel now turns into the merge button straight away, so the page is no longer needed to carry on.
 Why: user request.
+
+## D-128 · 2026-10-26 · Opening a new pull request in the browser is a setting, off by default
+Settings → Git gains "Open new pull requests in the browser" (`openPrAfterCreate`). Off keeps D-127; on opens the pull request on GitHub as soon as helm creates it.
+Why: user request.

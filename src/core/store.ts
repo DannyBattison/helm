@@ -24,6 +24,7 @@ export const defaultSettings = (): Settings => ({
   removeAfterMerge: true,
   deleteBranchAfterMerge: true,
   deliver: 'pr',
+  openPrAfterCreate: false,
   mergeMethod: 'merge',
   afterMerge: 'archive',
   copyFiles: '.env\n.env.local',

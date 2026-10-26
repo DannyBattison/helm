@@ -220,6 +220,7 @@ export function Settings({ section }: { section?: string }) {
             <SettingRow title="When a session is ready" desc="Open a pull request for review, or skip it and push the branch straight onto the default branch. You can still choose per session on its Changes tab. A protected branch refuses direct pushes.">
               <SegmentedControl value={st.deliver} onChange={(v: string) => set({ deliver: v as any })} options={[{ value: 'pr', label: 'Pull request' }, { value: 'merge', label: 'Merge directly' }]} />
             </SettingRow>
+            <SettingRow title="Open new pull requests in the browser" desc="Opens the pull request on GitHub as soon as helm creates it."><Switch checked={st.openPrAfterCreate} onChange={(v: boolean) => set({ openPrAfterCreate: v })} /></SettingRow>
             <SettingRow title="When its work is merged" desc="What happens to the session once its pull request is merged or it is merged directly. Archiving keeps the conversation and numbers in the Archive; the worktree is removed separately, below.">
               <Select value={st.afterMerge} onChange={(e: any) => set({ afterMerge: e.target.value })} options={[{ value: 'archive', label: 'Archive it' }, { value: 'delete', label: 'Delete it' }, { value: 'keep', label: 'Leave it' }]} />
             </SettingRow>
