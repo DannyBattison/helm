@@ -8,7 +8,7 @@ import { queueBlock, queueOrder } from '../shared/queue';
 import { stuckReason } from '../shared/stuck';
 import { REVIEW_SCHEMA, parseReview, reviewPrompt } from '../shared/selfreview';
 import { commandSummary } from '../shared/commandSummary';
-import { FREE_ID, freeRepo, sessionTitle, type ActivityEvent, type Checkpoint, type Effort, type MessageImage, type ModelAlias, type NewSessionInput, type PendingAsk, type PermMode, type Session, type Status, type Subagent, type TranscriptEvent } from '../shared/types';
+import { FREE_ID, freeRepo, sessionTitle, MAX_UPLOAD_BYTES, MAX_UPLOAD_FILES, MAX_UPLOAD_TOTAL, type ActivityEvent, type Checkpoint, type Effort, type MessageImage, type ModelAlias, type NewSessionInput, type PendingAsk, type PermMode, type Session, type Status, type Subagent, type TranscriptEvent } from '../shared/types';
 import { artifactDir, dropArtifacts, ensureArtifactDir } from './artifacts';
 import * as G from './git';
 import { supplyRepoArtifacts } from './repoartifacts';
@@ -213,6 +213,8 @@ export class SessionManager {
     // Free agents are not grouped under a repository, so their names must be unique among all sessions.
     const taken = (n: string) => this.sessions.some((s) => s.id === n && (free || s.repoId === repo!.id));
     for (let n = 2; taken(id); n++) id = slug(input.task) + '-' + n;
+    // First, so a file that is refused stops the session before any worktree is made.
+    const uploads = await this.saveUploads(id, input.files);
     let branch = '', wt = '', remoteBase = '';
     let claudeSessionId: string | undefined;
     if (free) {
@@ -245,7 +247,7 @@ export class SessionManager {
       id, repoId: free ? FREE_ID : repo!.id, free: free ? { managed: !input.folder } : undefined, status: 'working', task: input.task, step: 'Starting', branch, base: remoteBase, worktree: wt,
       model: input.model, permMode: input.permMode, startedAt: now, tokens: { input: 0, output: 0, cacheRead: 0 }, cost: 0, budget: input.budget,
       lastAccess: now, ctx: 0, add: 0, del: 0, files: 0, filesTouched: {}, timeline: [{ t: now, status: 'working' }], commits: [], removeAfterMerge: st.removeAfterMerge, deleteBranchAfterMerge: st.deleteBranchAfterMerge, subagents: [],
-      claudeSessionId, effort: extra.effort, parentId: extra.parentId, group: extra.group, source: extra.source
+      uploads, claudeSessionId, effort: extra.effort, parentId: extra.parentId, group: extra.group, source: extra.source
     };
     s.source ??= input.source;
     s.automation = input.automation;
@@ -524,7 +526,38 @@ export class SessionManager {
   }
 
   // ---------------------------------------------------------------- run
+  /** Writes the files uploaded for one session to a folder of its own, outside the worktree so they are never committed. */
+  private async saveUploads(id: string, files: NewSessionInput['files']): Promise<Session['uploads']> {
+    if (!files?.length) return undefined;
+    if (files.length > MAX_UPLOAD_FILES) throw new Error(`At most ${MAX_UPLOAD_FILES} files can be uploaded.`);
+    const dir = join(this.store.root, 'uploads', id);
+    const saved: { name: string; size: number }[] = [];
+    let total = 0;
+    try {
+      await mkdir(dir, { recursive: true });
+      for (const f of files) {
+        const buf = Buffer.from(f.data, 'base64');
+        total += buf.length;
+        if (buf.length > MAX_UPLOAD_BYTES) throw new Error(`${f.name} is over ${MAX_UPLOAD_BYTES / 1048576} MB.`);
+        if (total > MAX_UPLOAD_TOTAL) throw new Error(`The files add up to more than ${MAX_UPLOAD_TOTAL / 1048576} MB.`);
+        // A bare file name, never a path, and never one that replaces an earlier file.
+        const base = (f.name.split(/[\\/]/).pop() || '').replace(/[\u0000-\u001f]/g, '').trim().replace(/^\.+$/, '') || 'file';
+        const dot = base.lastIndexOf('.') > 0 ? base.lastIndexOf('.') : base.length;
+        let name = base;
+        for (let n = 2; saved.some((x) => x.name === name); n++) name = `${base.slice(0, dot)}-${n}${base.slice(dot)}`;
+        await writeFile(join(dir, name), buf);
+        saved.push({ name, size: buf.length });
+      }
+    } catch (e) { await rm(dir, { recursive: true, force: true }).catch(() => undefined); throw e; }
+    return { dir, files: saved };
+  }
+
   private systemAppend(s: Session, artifacts: string): string {
+    const uploaded = s.uploads ? `The user uploaded ${s.uploads.files.length === 1 ? 'a file' : 'files'} for this task alone, in ${s.uploads.dir}: ${s.uploads.files.map((f) => f.name).join(', ')}. Read them from there; they are outside your working directory on purpose, so do not copy them into it unless the task needs that.` : '';
+    return [this.baseAppend(s, artifacts), uploaded].filter(Boolean).join('\n');
+  }
+
+  private baseAppend(s: Session, artifacts: string): string {
     const st = this.store.data.settings;
     const art = `To hand the user a file (a generated image, chart, report, export), write it to ${artifacts} (not into the worktree), then link it in your reply as [label](artifact:file.ext), using a plain file name without spaces. For an image use ![description](artifact:file.png) and helm shows it in the chat; any other file becomes a download button. These files are temporary and are deleted with the session.`;
     if (s.free) {
@@ -571,6 +604,7 @@ export class SessionManager {
       allowDangerouslySkipPermissions: true,
       abortController: abort,
       settingSources: ['user', 'project', 'local'],
+      ...(s.uploads ? { additionalDirectories: [s.uploads.dir] } : {}),
       systemPrompt: { type: 'preset', preset: 'claude_code', append: this.systemAppend(s, artifacts) },
       canUseTool: (tool: string, input: Record<string, unknown>, o: any) => this.canUse(s, rt, tool, input, o),
       hooks: { PreToolUse: [{ matcher: 'Agent|Task', hooks: [async (input: any) => this.checkSubagentLimit(s, rt, input)] }] },
@@ -1575,6 +1609,7 @@ export class SessionManager {
     }
     this.store.data.sessions = this.store.data.sessions.filter((x) => x.id !== id);
     await this.store.deleteTranscripts(id);
+    if (s.uploads) await rm(s.uploads.dir, { recursive: true, force: true }).catch(() => undefined);
     await dropArtifacts(id);
     this.touch();
   }
