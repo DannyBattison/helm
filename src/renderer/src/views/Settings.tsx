@@ -67,6 +67,47 @@ function RepoArtifactsSection({ repos }: { repos: { id: string }[] }) {
 }
 
 /** The companion website: turn it on, link this computer, see who is connected. */
+/** Outbound email: where helm sends notifications that leave the app. The password is held by the host, encrypted, and never shown again. */
+function EmailSection({ st, set, passwordSet }: { st: any; set(p: any): void; passwordSet: boolean }) {
+  const e = st.outbound.email;
+  const put = (patch: any) => set({ outbound: { ...st.outbound, email: { ...e, ...patch } } });
+  const [testing, setTesting] = React.useState(false);
+  const [pw, setPw] = React.useState('');
+  const kinds: ['attention' | 'ready' | 'failed', string][] = [['attention', 'An agent needs approval or an answer'], ['ready', 'A session is ready for review'], ['failed', 'A session failed or hit its budget']];
+  const test = async () => {
+    setTesting(true);
+    try {
+      const problem = await api.testOutbound('email');
+      toast(problem ? { tone: 'error', title: 'Test email failed', description: problem } : { tone: 'ready', title: 'Test email sent', description: `Check ${e.to}` });
+    } catch (err) { toast({ tone: 'error', title: 'Test email failed', description: errText(err) }); }
+    setTesting(false);
+  };
+  return <>
+    <H sub="Send notifications by email, so you hear about them away from this computer. Quiet hours and the per repository settings apply here too.">Email</H>
+    <SettingRow title="Send email notifications"><Switch checked={e.enabled} onChange={(v: boolean) => put({ enabled: v })} /></SettingRow>
+    {kinds.map(([k, label]) => (
+      <SettingRow key={k} title={label}><Switch checked={e.kinds[k]} onChange={(v: boolean) => put({ kinds: { ...e.kinds, [k]: v } })} /></SettingRow>
+    ))}
+    <SettingRow title="Send to" desc="One or more addresses, separated by commas."><Field value={e.to} onCommit={(v: string) => put({ to: v })} placeholder="you@example.com" style={{ width: 280 }} /></SettingRow>
+    <SettingRow title="Sender address" desc="Usually the account you sign in to the mail server with."><Field value={e.from} onCommit={(v: string) => put({ from: v.trim() })} placeholder="helm@example.com" style={{ width: 280 }} /></SettingRow>
+    <SettingRow title="Sender name"><Field value={e.fromName} onCommit={(v: string) => put({ fromName: v })} style={{ width: 280 }} /></SettingRow>
+    <SettingRow title="SMTP server" desc="For Gmail use smtp.gmail.com with an app password.">
+      <Field value={e.host} onCommit={(v: string) => put({ host: v.trim() })} placeholder="smtp.example.com" style={{ width: 200 }} />
+      <Field value={e.port} onCommit={(v: number) => put({ port: v })} parse={(x: string) => (/^\d+$/.test(x.trim()) ? Number(x) : undefined)} style={{ width: 80 }} />
+    </SettingRow>
+    <SettingRow title="Security" desc="TLS is encrypted from the start, usually port 465. STARTTLS upgrades after connecting, usually port 587.">
+      <Select size="sm" value={e.security} onChange={(ev: any) => put({ security: ev.target.value, port: ev.target.value === 'tls' ? 465 : ev.target.value === 'starttls' ? 587 : 25 })} options={[{ value: 'starttls', label: 'STARTTLS' }, { value: 'tls', label: 'TLS' }, { value: 'none', label: 'None (local relay only)' }]} />
+    </SettingRow>
+    <SettingRow title="Username" desc="Leave empty if the server needs no sign-in."><Field value={e.user} onCommit={(v: string) => put({ user: v.trim() })} style={{ width: 280 }} /></SettingRow>
+    <SettingRow title="Password" desc={passwordSet ? 'A password is saved, encrypted on this computer. Enter a new one to replace it.' : 'Stored encrypted on this computer, not in the settings file.'}>
+      <Input type="password" value={pw} placeholder={passwordSet ? '••••••••' : ''} onChange={(ev: any) => setPw(ev.target.value)} style={{ width: 200 }} />
+      <Button size="sm" disabled={!pw} onClick={() => { void api.setEmailPassword(pw); setPw(''); }}>Save</Button>
+      {passwordSet ? <Button size="sm" variant="ghost" onClick={() => void api.setEmailPassword('')}>Clear</Button> : null}
+    </SettingRow>
+    <SettingRow title="Test" desc="Sends a test message with these settings, whether or not email is turned on."><Button size="sm" icon="paper-plane-tilt" disabled={testing} onClick={test}>{testing ? 'Sending…' : 'Send test email'}</Button></SettingRow>
+  </>;
+}
+
 function CompanionSection({ st, set, state }: { st: any; set(p: any): void; state: any }) {
   const label = ({ off: 'Off', linking: 'Waiting for you to sign in to GitHub', connecting: 'Connecting…', connected: 'Connected', error: 'Not connected' } as any)[state.state] || state.state;
   const tone = state.state === 'connected' ? 'var(--status-ready-text, var(--status-ready))' : state.state === 'error' ? 'var(--status-error-text)' : 'var(--text-3)';
@@ -443,6 +484,7 @@ export function Settings({ section }: { section?: string }) {
             <SettingRow title="Still tell me when an agent is blocked" desc="During quiet hours, an approval or question still notifies you.">
               <Switch checked={st.quiet.allowAttention} onChange={(v: boolean) => set({ quiet: { ...st.quiet, allowAttention: v } })} />
             </SettingRow>
+            <EmailSection st={st} set={set} passwordSet={app.outboundSecrets.emailPassword} />
             {app.repos.length ? <>
               <H sub="Per repository. Only things that need you leaves out finished work and failed checks.">Repositories</H>
               {app.repos.map((r) => (
