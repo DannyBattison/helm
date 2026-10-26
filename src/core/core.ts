@@ -11,10 +11,12 @@ import { Companion } from './companion';
 import { installLogging, logFile, logLine, recentLog } from './log';
 import { cleanHeavy, dirSize, reclaimableBytes } from './disk';
 import { readArtifact } from './artifacts';
+import { addRepoArtifact, listRepoArtifacts, removeRepoArtifact, setRepoArtifactDir } from './repoartifacts';
 import { diagnostics } from '../shared/diagnostics';
 import { memoryHealth, memoryReads, STALE_DAYS, type MemoryFile, type MemoryUsage } from '../shared/memoryhealth';
 import type { Host } from './host';
 import { appendInstruction, deleteMemory, projectMemory, readMemory, writeMemory } from './memory';
+import { Automations } from './automations';
 import { RepoService } from './repos';
 import { forecastRepo, revertHunk } from './review';
 import { SessionManager } from './sessions';
@@ -53,6 +55,7 @@ function buildState(): AppState {
     activitySeq: store.logSeq,
     companion: companion.state,
     settings: store.data.settings,
+    automations: store.data.automations,
     weekSpend: store.weekSpend(),
     lifetime: store.data.totals,
     tokensToday: store.tokensToday(),
@@ -147,6 +150,17 @@ Object.assign(companionOps, {
   externalTranscript: async (repoId: string, sessionId: string, limit: number) => { const r = await externalTranscript(repoId, sessionId, { tail: limit }); return { ready: r.ready, total: r.total, start: r.start, events: r.events }; },
   archiveExternal: (sessionId: string, archived: boolean) => api.archiveExternal(sessionId, archived),
   activity: (before: number | undefined, limit: number) => store.readLog(before, limit)
+});
+const automations = new Automations(store, {
+  listPulls: (id) => GH.listPulls(id),
+  listIssues: (id) => GH.listIssues(id),
+  start: async (repoId, base, task, a) => {
+    await sessions.create({ repoId, base, task, model: a.model, budget: a.budget, permMode: a.permMode, automation: { id: a.id, name: a.name } });
+  },
+  automatedBranches: (repoId) => new Set(store.data.sessions.filter((s) => s.repoId === repoId && s.automation).map((s) => s.branch)),
+  repoName: (id) => repoName(id),
+  defaultBranch: (id) => repos.must(id).defaultBranch,
+  changed: () => { store.save(); emitState(); }
 });
 const terms = new Terminals((id, data) => send('termData', { id, data }), (id) => send('termExit', { id }));
 
@@ -385,6 +399,12 @@ export const api: HelmApi = {
   getTranscript: (id) => store.transcript(id),
   getArtifact: (id, name) => readArtifact(id, name),
   dismissArtifact: (id, name) => sessions.dismissArtifact(id, name),
+  listRepoArtifacts: (id) => listRepoArtifacts(repos.must(id).id),
+  addRepoArtifact: (id, name, data) => addRepoArtifact(repos.must(id).id, name, data),
+  removeRepoArtifact: (id, name) => removeRepoArtifact(repos.must(id).id, name),
+  async saveAutomation(a) { return automations.save(a); },
+  async deleteAutomation(id) { automations.remove(id); },
+  runAutomation: (id) => automations.runNow(id),
 
   async workspaceInfo(id) {
     const w = ws(id);
@@ -977,12 +997,15 @@ export async function start(h: Host) {
   host.setTheme?.(store.data.settings.theme);
   if (host.requireClaudeLogin) { void refreshClaudeLogin(); setInterval(() => void refreshClaudeLogin(), 5 * 60_000); }
   setInterval(pollMerges, 120_000);
+  setInterval(() => void automations.tick(), 60_000);
+  setTimeout(() => void automations.tick(), 30_000);
   setInterval(() => void refreshForecast(), 20_000);
   setTimeout(() => void refreshForecast(), 4000);
   void detectCurrency().then(refreshRates);
   sessions.autoArchive();
   setInterval(() => sessions.autoArchive(), 3600_000);
   repos.setCacheDir(join(host.dataDir, 'history-cache'));
+  setRepoArtifactDir(join(host.dataDir, 'repo-artifacts'));
   void refreshPlan(true);
   setInterval(() => void refreshPlan(), 5 * 60_000);
   setInterval(refreshRates, 6 * 3600_000);

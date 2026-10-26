@@ -4,6 +4,7 @@ import { api, platform } from '../api';
 import { livePlan, untilReset } from '../lib';
 import { CURRENCIES, rateFor } from '@shared/money';
 import { BUNDLED_FONTS, fontStack, SYSTEM_DEFAULT, systemFonts, systemUiFonts, uiStack, UI_BUNDLED_FONTS, dataStack } from '../fonts';
+import { AutomationsSection } from './Automations';
 import { toast, useApp, useMoney } from '../store';
 import { comboFromEvent, comboKeys, comboProblem, normalizeCombo, SHORTCUT_ACTIONS, shortcutConflict, shortcutOf } from '@shared/shortcuts';
 import { Avatar, Badge, Button, Input, Kbd, Meter, SegmentedControl, Select, Switch, TreeItem, useColumns, useNarrow } from '../ui';
@@ -23,6 +24,43 @@ function TerminalShellRow({ st, set }: { st: any; set(p: any): void }) {
     <SettingRow title="Terminal shell" desc={<>Automatic prefers zsh when it is installed, then Git Bash, WSL, PowerShell. WSL distributions appear here too; to get zsh on Windows, install it in WSL and choose that. Applies to terminals opened after the change.</>}>
       <Select value={st.terminalShell} onChange={(e: any) => set({ terminalShell: e.target.value })} options={options} />
       {st.terminalShell === 'custom' ? <Field value={st.terminalShellCustom} onCommit={(v: string) => set({ terminalShellCustom: v })} placeholder="wsl.exe -d Ubuntu -e zsh" style={{ width: 240 }} /> : null}
+    </SettingRow>
+  );
+}
+
+/** Files uploaded to a repository: copied into every session's worktree and kept out of git (secrets, data, notes that are not committed). */
+function RepoArtifactsSection({ repos }: { repos: { id: string }[] }) {
+  const [repoId, setRepoId] = React.useState(repos[0]?.id || '');
+  const [files, setFiles] = React.useState<{ name: string; size: number }[]>([]);
+  const pick = React.useRef<HTMLInputElement>(null);
+  const id = repos.some((r) => r.id === repoId) ? repoId : repos[0]?.id || '';
+  const load = React.useCallback(() => { if (id) api.listRepoArtifacts(id).then(setFiles).catch(() => setFiles([])); }, [id]);
+  React.useEffect(load, [load]);
+  const upload = async (list: FileList | null) => {
+    for (const f of Array.from(list || [])) {
+      try {
+        const bytes = new Uint8Array(await f.arrayBuffer());
+        let bin = '';
+        for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+        await api.addRepoArtifact(id, f.name, btoa(bin));
+      } catch (e) { toast({ tone: 'error', title: 'Could not upload artifact ' + f.name, description: errText(e) }); }
+    }
+    if (pick.current) pick.current.value = '';
+    load();
+  };
+  return (
+    <SettingRow title="Artifacts" desc="Files copied into every session of a repository, at the top of its worktree, and kept out of commits. Sessions already open get them when the agent next starts. Up to 25 MB each.">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
+        <Select size="sm" value={id} onChange={(e: any) => setRepoId(e.target.value)} options={repos.map((r) => ({ value: r.id, label: r.id }))} />
+        {files.map((f) => (
+          <div key={f.name} style={{ display: 'flex', gap: 8, alignItems: 'center', font: '400 12.5px/1 var(--font-mono)' }}>
+            <span>{f.name}</span><span style={{ color: 'var(--text-3)' }}>{f.size < 1024 ? f.size + ' B' : f.size < 1048576 ? Math.round(f.size / 1024) + ' KB' : (f.size / 1048576).toFixed(1) + ' MB'}</span>
+            <Button size="sm" onClick={() => void api.removeRepoArtifact(id, f.name).then(load)}>Remove</Button>
+          </div>
+        ))}
+        <input ref={pick} type="file" multiple style={{ display: 'none' }} onChange={(e) => void upload(e.target.files)} />
+        <Button size="sm" icon="upload-simple" onClick={() => pick.current?.click()}>Upload artifacts…</Button>
+      </div>
     </SettingRow>
   );
 }
@@ -175,7 +213,7 @@ export function Settings({ section }: { section?: string }) {
   const subCols = useColumns('subagent-repos', [{ w: 1, min: 160, flex: true }, { w: 170, min: 110, fixed: true }]);
   const pctOptions = [{ value: '0', label: 'Off' }, { value: '50', label: '50%' }, { value: '70', label: '70%' }, { value: '80', label: '80%' }, { value: '90', label: '90%' }];
   const subLimits = (extra: number[]) => [...new Set([0, 1, 2, 3, 4, 6, 8, 12, ...extra])].sort((a, b) => a - b).map((n) => ({ value: String(n), label: n === 0 ? 'Off' : String(n) }));
-  const nav = [['account', 'Account', 'github-logo'], ['agents', 'Claude Code', 'robot'], ['worktrees', 'Worktrees', 'tree-structure'], ['budgets', 'Usage', 'coins'], ...(hosted ? [] : [['companion', 'Companion', 'broadcast']]), ['notifications', 'Notifications', 'bell'], ['appearance', 'Appearance', 'paint-brush'], ['shortcuts', 'Keyboard shortcuts', 'keyboard'], ['about', 'About and support', 'info']];
+  const nav = [['account', 'Account', 'github-logo'], ['agents', 'Claude Code', 'robot'], ['automations', 'Automated agents', 'clock-clockwise'], ['worktrees', 'Worktrees', 'tree-structure'], ['budgets', 'Usage', 'coins'], ...(hosted ? [] : [['companion', 'Companion', 'broadcast']]), ['notifications', 'Notifications', 'bell'], ['appearance', 'Appearance', 'paint-brush'], ['shortcuts', 'Keyboard shortcuts', 'keyboard'], ['about', 'About and support', 'info']];
   const notif = (key: 'notifyAttention' | 'notifyReady' | 'notifyFailed' | 'notifyChecks', title: string) => (
     <SettingRow title={title}>
       <Switch checked={st[key].desktop} onChange={(v: boolean) => set({ [key]: { ...st[key], desktop: v } })} label="Desktop" />
@@ -244,6 +282,7 @@ export function Settings({ section }: { section?: string }) {
                 ))}
               </div>
             ) : null}
+            {app.repos.length ? <RepoArtifactsSection repos={app.repos} /> : null}
             <SettingRow title="Remote Control for new and resumed sessions" desc="Starts Remote Control (/rc) in every agent, so you can follow and drive it from claude.ai/code or the Claude app. Takes effect when a session next starts. Needs a Claude subscription sign-in, and can be blocked by your organisation."><Switch checked={st.remoteControl} onChange={(v: boolean) => set({ remoteControl: v })} /></SettingRow>
             <SettingRow title="Auto push" desc="Pushes the branch to GitHub right after every commit, whether the agent or you made it from the Changes panel, so nothing exists only on this machine. Free agents have no remote and are not pushed. A failed push shows in the activity log and is tried again at the next commit."><Switch checked={st.autoPush} onChange={(v: boolean) => set({ autoPush: v })} /></SettingRow>
             <SettingRow title="Resume agents on launch" desc="When helm opens, agents that were working when it closed pick up where they left off, one after another. Agents waiting on your answer still wait for you, and archived or merged sessions stay as they are."><Switch checked={st.resumeOnLaunch} onChange={(v: boolean) => set({ resumeOnLaunch: v })} /></SettingRow>
@@ -330,6 +369,7 @@ export function Settings({ section }: { section?: string }) {
               </div>
             </>}
           </> : null}
+          {sec === 'automations' ? <AutomationsSection /> : null}
           {sec === 'companion' ? <CompanionSection st={st} set={set} state={app.companion} /> : null}
           {sec === 'notifications' ? <>
             <H sub="Desktop notifications are shown when helm is not the focused window. The taskbar or dock badge counts sessions that need you.">Notifications</H>
