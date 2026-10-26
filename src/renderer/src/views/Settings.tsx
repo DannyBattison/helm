@@ -4,6 +4,7 @@ import { api, platform } from '../api';
 import { livePlan, untilReset } from '../lib';
 import { CURRENCIES, rateFor } from '@shared/money';
 import { BUNDLED_FONTS, fontStack, SYSTEM_DEFAULT, systemFonts, systemUiFonts, uiStack, UI_BUNDLED_FONTS, dataStack } from '../fonts';
+import { AutomationsSection } from './Automations';
 import { toast, useApp, useMoney } from '../store';
 import { Avatar, Badge, Button, Input, Meter, SegmentedControl, Select, Switch, TreeItem, useColumns, useNarrow } from '../ui';
 
@@ -159,7 +160,7 @@ export function Settings({ section }: { section?: string }) {
   const subCols = useColumns('subagent-repos', [{ w: 1, min: 160, flex: true }, { w: 170, min: 110, fixed: true }]);
   const pctOptions = [{ value: '0', label: 'Off' }, { value: '50', label: '50%' }, { value: '70', label: '70%' }, { value: '80', label: '80%' }, { value: '90', label: '90%' }];
   const subLimits = (extra: number[]) => [...new Set([0, 1, 2, 3, 4, 6, 8, 12, ...extra])].sort((a, b) => a - b).map((n) => ({ value: String(n), label: n === 0 ? 'Off' : String(n) }));
-  const nav = [['account', 'Account', 'github-logo'], ['agents', 'Claude Code', 'robot'], ['worktrees', 'Worktrees', 'tree-structure'], ['budgets', 'Usage', 'coins'], ...(hosted ? [] : [['companion', 'Companion', 'broadcast']]), ['notifications', 'Notifications', 'bell'], ['appearance', 'Appearance', 'paint-brush'], ['about', 'About and support', 'info']];
+  const nav = [['account', 'Account', 'github-logo'], ['agents', 'Claude Code', 'robot'], ['automations', 'Automated agents', 'clock-clockwise'], ['worktrees', 'Worktrees', 'tree-structure'], ['budgets', 'Usage', 'coins'], ...(hosted ? [] : [['companion', 'Companion', 'broadcast']]), ['notifications', 'Notifications', 'bell'], ['appearance', 'Appearance', 'paint-brush'], ['about', 'About and support', 'info']];
   const notif = (key: 'notifyAttention' | 'notifyReady' | 'notifyFailed' | 'notifyChecks', title: string) => (
     <SettingRow title={title}>
       <Switch checked={st[key].desktop} onChange={(v: boolean) => set({ [key]: { ...st[key], desktop: v } })} label="Desktop" />
@@ -314,6 +315,7 @@ export function Settings({ section }: { section?: string }) {
               </div>
             </>}
           </> : null}
+          {sec === 'automations' ? <AutomationsSection /> : null}
           {sec === 'companion' ? <CompanionSection st={st} set={set} state={app.companion} /> : null}
           {sec === 'notifications' ? <>
             <H sub="Desktop notifications are shown when helm is not the focused window. The taskbar or dock badge counts sessions that need you.">Notifications</H>
