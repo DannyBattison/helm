@@ -1,4 +1,4 @@
-import { forkSession, getSessionInfo, getSessionMessages, getSubagentMessages, query, renameSession, type Query, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import { forkSession, getSessionInfo, getSessionMessages, getSubagentMessages, renameSession } from '@anthropic-ai/claude-agent-sdk';
 import { copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, posix, relative, resolve, win32 } from 'node:path';
@@ -8,6 +8,7 @@ import { queueBlock, queueOrder } from '../shared/queue';
 import { stuckReason } from '../shared/stuck';
 import { REVIEW_SCHEMA, parseReview, reviewPrompt } from '../shared/selfreview';
 import { FREE_ID, freeRepo, sessionTitle, type ActivityEvent, type Checkpoint, type Effort, type MessageImage, type ModelAlias, type NewSessionInput, type PendingAsk, type PermMode, type Session, type Status, type Subagent, type TranscriptEvent } from '../shared/types';
+import { ClaudeBackend, MODEL_ALIAS, type AgentBackend, type AgentBlock, type AgentEvent, type AgentHandle, type AgentToolResult, type ToolDecision } from './backend';
 import { artifactDir, dropArtifacts, ensureArtifactDir } from './artifacts';
 import * as G from './git';
 import { checkpointParent, dropCheckpoints, listCheckpoints, restoreCheckpoint, seedFromCheckpoint, takeCheckpoint } from './review';
@@ -25,38 +26,6 @@ export interface Hooks {
 /** Added to the system prompt: a subagent reports to the agent that started it, which keeps going. */
 const HAND_BACK = 'A subagent hands its result back to you when it finishes: end its task with a clear final report, and when you receive a subagent\'s result, carry on from it (use it, start the next step or summarise it for the user) rather than stopping.';
 
-/** Input stream for a streaming-mode query. */
-const sdkMode = (m: PermMode) => (m === 'plan' ? 'plan' : m === 'edits' ? 'acceptEdits' : m === 'all' ? 'bypassPermissions' : 'default') as 'plan' | 'acceptEdits' | 'bypassPermissions' | 'default';
-
-class InputQueue implements AsyncIterable<SDKUserMessage> {
-  private items: SDKUserMessage[] = [];
-  private waiters: ((r: IteratorResult<SDKUserMessage>) => void)[] = [];
-  private closed = false;
-  push(text: string, images: MessageImage[] = []) {
-    const content: any = images.length
-      ? [...images.map((i) => ({ type: 'image', source: { type: 'base64', media_type: i.mediaType, data: i.data } })), { type: 'text', text: text || 'See the attached image.' }]
-      : text;
-    const m: SDKUserMessage = { type: 'user', message: { role: 'user', content }, parent_tool_use_id: null };
-    const w = this.waiters.shift();
-    if (w) w({ value: m, done: false });
-    else this.items.push(m);
-  }
-  close() {
-    this.closed = true;
-    for (const w of this.waiters.splice(0)) w({ value: undefined as any, done: true });
-  }
-  [Symbol.asyncIterator](): AsyncIterator<SDKUserMessage> {
-    return {
-      next: () => {
-        const v = this.items.shift();
-        if (v) return Promise.resolve({ value: v, done: false });
-        if (this.closed) return Promise.resolve({ value: undefined as any, done: true });
-        return new Promise((r) => this.waiters.push(r));
-      }
-    };
-  }
-}
-
 interface AskWaiter {
   ask: PendingAsk;
   scope: 'session' | 'repo' | 'plan' | 'tool';
@@ -67,9 +36,7 @@ interface AskWaiter {
 }
 
 interface Runtime {
-  q: Query;
-  queue: InputQueue;
-  abort: AbortController;
+  agent: AgentHandle;
   asks: Map<string, AskWaiter>;
   turnCost: number;
   baseCost: number;
@@ -124,7 +91,7 @@ export interface CreateExtra {
   effort?: Effort;
 }
 
-export const MODEL_ALIAS: Record<ModelAlias, string> = { sonnet: 'sonnet', opus: 'opus', haiku: 'haiku' };
+export { MODEL_ALIAS };
 
 export class SessionManager {
   private rt = new Map<string, Runtime>();
@@ -132,7 +99,10 @@ export class SessionManager {
   private quitting = false;
   /** Plan windows the user chose to continue past, keyed to the window's reset time so it lapses on reset. */
   private planOverride: Partial<Record<'fiveHour' | 'weekly', number>> = {};
-  constructor(private store: Store, private hooks: Hooks) {}
+  private backend: AgentBackend;
+  constructor(private store: Store, private hooks: Hooks, backend?: AgentBackend) {
+    this.backend = backend ?? new ClaudeBackend(() => this.store.data.settings.claudePath || this.hooks.claudePath());
+  }
 
   get sessions() { return this.store.data.sessions; }
   private usd = (v: number, whole = false) => fmtMoney(v, this.store.data.settings.currency, this.store.data.fx.rates, { whole });
@@ -467,29 +437,7 @@ export class SessionManager {
   }
 
   private async runReview(s: Session, head: string) {
-    const settings = this.store.data.settings;
-    let structured: unknown, text = '', cost = 0, failure = '';
-    let q: Query | undefined;
-    try {
-      const options: any = {
-        cwd: s.worktree, model: MODEL_ALIAS[s.model], maxTurns: 30, permissionMode: 'dontAsk', settingSources: ['user', 'project', 'local'],
-        allowedTools: ['Read', 'Grep', 'Glob', 'Bash(git diff:*)', 'Bash(git log:*)', 'Bash(git show:*)', 'Bash(git merge-base:*)', 'Bash(git status:*)', 'Bash(git blame:*)', 'Bash(ls:*)', 'Bash(cat:*)', 'Bash(rg:*)', 'Bash(grep:*)'],
-        disallowedTools: ['Edit', 'MultiEdit', 'Write', 'NotebookEdit', 'Agent', 'Task'],
-        outputFormat: { type: 'json_schema', schema: REVIEW_SCHEMA },
-        env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'helm' }
-      };
-      const exe = settings.claudePath || this.hooks.claudePath();
-      if (exe) options.pathToClaudeCodeExecutable = exe;
-      q = query({ prompt: reviewPrompt(s.task, s.base), options });
-      for await (const m of q as AsyncIterable<any>) {
-        if (m.type !== 'result') continue;
-        structured = m.structured_output;
-        text = String(m.result || '');
-        cost = Number(m.total_cost_usd) || 0;
-        if (m.is_error) failure = text || String(m.subtype || 'The reviewer stopped early');
-      }
-    } catch (e: any) { failure = String(e?.message || e); }
-    finally { try { q?.close(); } catch { /* already closed */ } }
+    const { structured, text, cost, failure } = await this.backend.review({ cwd: s.worktree, model: s.model, prompt: reviewPrompt(s.task, s.base), schema: REVIEW_SCHEMA });
     if (cost) { this.store.addUsage(s.repoId, cost, 0); this.store.addDaily(s.repoId, s.model, { cost }); }
     const parsed = failure ? null : parseReview(structured, text);
     s.review = parsed
@@ -540,44 +488,28 @@ export class SessionManager {
   }
 
   private async start(s: Session, first?: string, firstImages: MessageImage[] = []) {
-    const abort = new AbortController();
-    const queue = new InputQueue();
     const settings = this.store.data.settings;
     const artifacts = await ensureArtifactDir(s.id);
-    const rt: Runtime = { q: null as any, queue, abort, asks: new Map(), turnCost: 0, baseCost: s.cost, interrupted: false, budgetPaused: false, toolStart: new Map(), fails: new Map(), lastTools: new Map(), subEvent: new Map(), admitted: new Set() };
-    const options: any = {
-      cwd: s.worktree,
-      model: MODEL_ALIAS[s.model],
-      ...(s.effort ? { effort: s.effort } : {}),
-      permissionMode: sdkMode(s.permMode),
-      // Only permission to switch to Allow everything later in the conversation; the mode itself is what is chosen above.
-      allowDangerouslySkipPermissions: true,
-      abortController: abort,
-      settingSources: ['user', 'project', 'local'],
-      systemPrompt: { type: 'preset', preset: 'claude_code', append: this.systemAppend(s, artifacts) },
-      canUseTool: (tool: string, input: Record<string, unknown>, o: any) => this.canUse(s, rt, tool, input, o),
-      hooks: { PreToolUse: [{ matcher: 'Agent|Task', hooks: [async (input: any) => this.checkSubagentLimit(s, rt, input)] }] },
-      env: {
-        ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'helm',
-        ...(settings.commitAuthor === 'sole' ? { GIT_AUTHOR_NAME: 'Claude', GIT_AUTHOR_EMAIL: 'noreply@anthropic.com' } : {})
-      }
-    };
-    // Only set when on, so a user's own Claude Code setting is never switched off by helm.
-    if (settings.remoteControl) options.settings = { remoteControlAtStartup: true };
-    const exe = settings.claudePath || this.hooks.claudePath();
-    if (exe) options.pathToClaudeCodeExecutable = exe;
-    if (s.claudeSessionId) options.resume = s.claudeSessionId;
-    rt.q = query({ prompt: queue, options });
+    const rt: Runtime = { agent: null as any, asks: new Map(), turnCost: 0, baseCost: s.cost, interrupted: false, budgetPaused: false, toolStart: new Map(), fails: new Map(), lastTools: new Map(), subEvent: new Map(), admitted: new Set() };
+    rt.agent = this.backend.start({
+      cwd: s.worktree, model: s.model, effort: s.effort, permMode: s.permMode,
+      systemAppend: this.systemAppend(s, artifacts),
+      resume: s.claudeSessionId,
+      env: settings.commitAuthor === 'sole' ? { GIT_AUTHOR_NAME: 'Claude', GIT_AUTHOR_EMAIL: 'noreply@anthropic.com' } : {},
+      remoteControl: settings.remoteControl,
+      canUseTool: (tool, input, o) => this.canUse(s, rt, tool, input, o),
+      admitSubagent: (id) => this.checkSubagentLimit(s, rt, id)
+    });
     this.rt.set(s.id, rt);
-    if (first) queue.push(first, firstImages);
+    if (first) rt.agent.send(first, firstImages);
     void this.consume(s, rt);
   }
 
   private async consume(s: Session, rt: Runtime) {
     try {
-      for await (const m of rt.q) await this.onMessage(s, rt, m as any);
+      for await (const ev of rt.agent.events) await this.onEvent(s, rt, ev);
     } catch (e: any) {
-      if (!rt.abort.signal.aborted) {
+      if (!rt.agent.closed) {
         s.error = String(e?.message || e);
         await this.push(s.id, { k: 'note', tone: 'error', text: s.error! });
         this.setStatus(s, 'error', trunc(s.error!, 120));
@@ -595,57 +527,57 @@ export class SessionManager {
     }
   }
 
-  private async onMessage(s: Session, rt: Runtime, m: any) {
-    if (m.type === 'system' && m.subtype === 'init') {
-      s.claudeSessionId = m.session_id;
-      s.modelName = m.model;
-      const st = this.store.data.settings;
-      if (!st.billingDetected) {
-        // A Claude login reports no API key; an API key means tokens are paid for.
-        st.billing = m.apiKeySource === 'none' ? 'subscription' : 'api';
-        st.billingDetected = true;
+  private async onEvent(s: Session, rt: Runtime, ev: AgentEvent) {
+    switch (ev.t) {
+      case 'init':
+        s.claudeSessionId = ev.sessionId;
+        s.modelName = ev.model;
+        {
+          const st = this.store.data.settings;
+          // A Claude login reports no API key; an API key means tokens are paid for.
+          if (!st.billingDetected && ev.billing) { st.billing = ev.billing; st.billingDetected = true; }
+        }
+        this.touch();
+        return;
+      case 'subagent_started': {
+        const a = s.subagents.find((x) => x.id === ev.id);
+        if (a) { a.agentId = ev.agentId; this.touch(); }
+        return;
       }
-      this.touch();
-      return;
+      case 'subagent_progress': return this.onTaskProgress(s, ev);
+      case 'subagent_done': return this.onTaskDone(s, rt, ev);
+      case 'plan_usage': return this.onPlanUsage(ev);
+      case 'assistant': return this.onAssistant(s, rt, ev);
+      case 'tool_results': return this.onToolResults(s, rt, ev.results);
+      case 'result': return this.onResult(s, rt, ev);
     }
-    if (m.type === 'system' && m.subtype === 'task_started' && m.tool_use_id) {
-      const a = s.subagents.find((x) => x.id === m.tool_use_id);
-      if (a) { a.agentId = m.task_id; this.touch(); }
-      return;
-    }
-    if (m.type === 'system' && m.subtype === 'task_progress' && m.tool_use_id) return this.onTaskProgress(s, rt, m);
-    if (m.type === 'system' && m.subtype === 'task_notification' && m.tool_use_id) return this.onTaskDone(s, rt, m);
-    if (m.type === 'rate_limit_event') return this.onRateLimit(m.rate_limit_info);
-    if (m.type === 'assistant') return this.onAssistant(s, rt, m);
-    if (m.type === 'user') return this.onToolResults(s, rt, m);
-    if (m.type === 'result') return this.onResult(s, rt, m);
   }
 
-  private async onAssistant(s: Session, rt: Runtime, m: any) {
-    const parent: string | null = m.parent_tool_use_id || null;
+  private async onAssistant(s: Session, rt: Runtime, m: Extract<AgentEvent, { t: 'assistant' }>) {
+    const parent: string | null = m.parentId;
     const sub = parent ? s.subagents.find((x) => x.id === parent) : undefined;
     if (parent && !sub) return;
     if (!parent) this.resumeWorking(s);
     const tkey = sub ? `${s.id}~${sub.id}` : s.id;
-    const u = m.message?.usage;
+    const u = m.usage;
     if (u) {
-      const inp = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0);
+      const inp = u.input + u.cacheWrite;
       s.tokens.input += inp;
-      s.tokens.output += u.output_tokens || 0;
-      s.tokens.cacheRead += u.cache_read_input_tokens || 0;
-      this.store.addLifetimeTokens(s.repoId, inp, u.output_tokens || 0, u.cache_read_input_tokens || 0);
-      if (!sub) s.ctx = inp + (u.cache_read_input_tokens || 0);
-      else sub.tokens += inp + (u.output_tokens || 0);
+      s.tokens.output += u.output;
+      s.tokens.cacheRead += u.cacheRead;
+      this.store.addLifetimeTokens(s.repoId, inp, u.output, u.cacheRead);
+      if (!sub) s.ctx = inp + u.cacheRead;
+      else sub.tokens += inp + u.output;
       const [pi, po] = PRICE[s.model] || PRICE.sonnet;
-      const est = ((u.input_tokens || 0) * pi + (u.cache_creation_input_tokens || 0) * pi * 1.25 + (u.cache_read_input_tokens || 0) * pi * 0.1 + (u.output_tokens || 0) * po) / 1e6;
+      const est = (u.input * pi + u.cacheWrite * pi * 1.25 + u.cacheRead * pi * 0.1 + u.output * po) / 1e6;
       rt.turnCost += est;
-      this.store.addUsage(s.repoId, est, inp + (u.output_tokens || 0));
-      this.store.addDaily(s.repoId, s.model, { cost: est, input: inp, output: u.output_tokens || 0, cacheRead: u.cache_read_input_tokens || 0 });
+      this.store.addUsage(s.repoId, est, inp + u.output);
+      this.store.addDaily(s.repoId, s.model, { cost: est, input: inp, output: u.output, cacheRead: u.cacheRead });
       s.cost = rt.baseCost + rt.turnCost;
     }
-    for (const b of m.message?.content || []) {
-      if (b.type === 'text' && b.text?.trim()) {
-        await this.push(tkey, { k: 'agent', text: b.text.trim() });
+    for (const b of m.blocks) {
+      if (b.type === 'text') {
+        await this.push(tkey, { k: 'agent', text: b.text });
       } else if (b.type === 'tool_use') {
         await this.onToolUse(s, rt, b, tkey, sub);
       }
@@ -654,7 +586,7 @@ export class SessionManager {
     await this.checkBudget(s, rt);
   }
 
-  private async startSubagent(s: Session, rt: Runtime, b: any, tkey: string, parentSub?: Subagent) {
+  private async startSubagent(s: Session, rt: Runtime, b: Extract<AgentBlock, { type: 'tool_use' }>, tkey: string, parentSub?: Subagent) {
     const input = b.input || {};
     const now = Date.now();
     const a: Subagent = {
@@ -695,11 +627,12 @@ export class SessionManager {
 
   private subSyncAt = new Map<string, number>();
 
-  private async onTaskProgress(s: Session, rt: Runtime, m: any) {
-    const a = s.subagents.find((x) => x.id === m.tool_use_id);
+  private async onTaskProgress(s: Session, m: Extract<AgentEvent, { t: 'subagent_progress' }>) {
+    const a = s.subagents.find((x) => x.id === m.id);
     if (!a) return;
-    if (m.usage) { a.tools = m.usage.tool_uses ?? a.tools; a.tokens = m.usage.total_tokens ?? a.tokens; }
-    if (m.last_tool_name && a.status === 'working') s.step = `${a.description}: ${m.last_tool_name}`;
+    a.tools = m.tools ?? a.tools;
+    a.tokens = m.tokens ?? a.tokens;
+    if (m.lastTool && a.status === 'working') s.step = `${a.description}: ${m.lastTool}`;
     this.touch();
     // Claude Code does not stream a subagent's own messages, so read them from its transcript now and then.
     const last = this.subSyncAt.get(a.id) ?? 0;
@@ -807,11 +740,11 @@ export class SessionManager {
     return ev;
   }
 
-  private async onTaskDone(s: Session, rt: Runtime, m: any) {
-    const a = s.subagents.find((x) => x.id === m.tool_use_id);
+  private async onTaskDone(s: Session, rt: Runtime, m: Extract<AgentEvent, { t: 'subagent_done' }>) {
+    const a = s.subagents.find((x) => x.id === m.id);
     if (!a || a.status !== 'working') return;
     if (m.summary) a.summary = trunc(String(m.summary).trim(), 600);
-    await this.finishSubagent(s, rt, a, m.status === 'completed' ? 'done' : m.status === 'stopped' ? 'stopped' : 'failed');
+    await this.finishSubagent(s, rt, a, m.status === 'completed' ? 'done' : m.status);
     // The result goes back to the parent, which continues in a new turn even if its last one had ended.
     if (m.status === 'completed' || m.status === 'failed') this.resumeWorking(s, `Continuing with the result of ${a.description}`);
   }
@@ -822,7 +755,7 @@ export class SessionManager {
     this.setStatus(s, 'working', step ?? 'Continuing');
   }
 
-  private async onToolUse(s: Session, rt: Runtime, b: any, tkey: string, sub?: Subagent) {
+  private async onToolUse(s: Session, rt: Runtime, b: Extract<AgentBlock, { type: 'tool_use' }>, tkey: string, sub?: Subagent) {
     const input = b.input || {};
     const wt = s.worktree;
     const name: string = b.name;
@@ -884,15 +817,13 @@ export class SessionManager {
     s.step = (sub ? `${sub.description}: ` : '') + (verb ? verb + item[1] : 'Using ' + name);
   }
 
-  private async onToolResults(s: Session, rt: Runtime, m: any) {
-    const content = m.message?.content;
-    if (!Array.isArray(content)) return;
-    for (const b of content) {
-      if (b.type !== 'tool_result') continue;
-      const start = rt.toolStart.get(b.tool_use_id);
+  private async onToolResults(s: Session, rt: Runtime, results: AgentToolResult[]) {
+    for (const r of results) {
+      const start = rt.toolStart.get(r.id);
       if (!start) continue;
-      rt.toolStart.delete(b.tool_use_id);
-      const text = typeof b.content === 'string' ? b.content : (b.content || []).map((c: any) => c.text || '').join('\n');
+      rt.toolStart.delete(r.id);
+      const text = r.text;
+      const b = { tool_use_id: r.id, is_error: r.isError };
       const secs = (Date.now() - start.t) / 1000;
       if (b.is_error && start.name) this.countTool(s, start.name, true);
       const meta = secs < 1 ? Math.round(secs * 1000) + 'ms' : secs < 60 ? secs.toFixed(1) + 's' : Math.floor(secs / 60) + 'm ' + Math.round(secs % 60) + 's';
@@ -1005,12 +936,12 @@ export class SessionManager {
     } catch { /* worktree removed */ }
   }
 
-  private async onResult(s: Session, rt: Runtime, m: any) {
-    if (typeof m.total_cost_usd === 'number') {
+  private async onResult(s: Session, rt: Runtime, m: Extract<AgentEvent, { t: 'result' }>) {
+    if (m.costUsd != null) {
       // The SDK total is authoritative: correct the running estimate in either direction.
-      const delta = m.total_cost_usd - rt.baseCost - rt.turnCost;
+      const delta = m.costUsd - rt.baseCost - rt.turnCost;
       if (Math.abs(delta) > 1e-6) { this.store.addUsage(s.repoId, delta, 0); this.store.addDaily(s.repoId, s.model, { cost: delta }); }
-      rt.baseCost = Math.max(rt.baseCost, m.total_cost_usd);
+      rt.baseCost = Math.max(rt.baseCost, m.costUsd);
       rt.turnCost = 0;
       s.cost = rt.baseCost;
     }
@@ -1029,8 +960,8 @@ export class SessionManager {
       this.setStatus(s, 'idle', 'Paused. Reply to continue');
       return;
     }
-    if (m.is_error) {
-      const msg = String(m.result || m.subtype || 'The run failed');
+    if (m.isError) {
+      const msg = m.text;
       s.error = msg;
       await this.push(s.id, { k: 'note', tone: 'error', text: msg });
       this.setStatus(s, 'error', trunc(msg, 120));
@@ -1059,15 +990,10 @@ export class SessionManager {
   }
 
   // ---------------------------------------------------------------- budget
-  private onRateLimit(info: any) {
-    if (!info) return;
-    const w = info.unifiedWindows || {};
+  private onPlanUsage(m: Extract<AgentEvent, { t: 'plan_usage' }>) {
     const plan = this.store.data.plan;
-    const pick = (key: string, type: string) => w[key] ?? (info.rateLimitType === type ? info : undefined);
-    const five = pick('five_hour', 'five_hour');
-    const week = pick('seven_day', 'seven_day');
-    if (five?.utilization != null && five.resetsAt) plan.fiveHour = { util: five.utilization, resetsAt: five.resetsAt };
-    if (week?.utilization != null && week.resetsAt) plan.weekly = { util: week.utilization, resetsAt: week.resetsAt };
+    if (m.fiveHour) plan.fiveHour = m.fiveHour;
+    if (m.weekly) plan.weekly = m.weekly;
     plan.at = Date.now();
     this.touch();
     void this.enforcePlan();
@@ -1095,7 +1021,7 @@ export class SessionManager {
         this.setStatus(s, 'attention', ask.head);
         this.hooks.notify('attention', `${s.id} is paused`, ask.head, s.id);
         rt.interrupted = true;
-        await rt.q.interrupt().catch(() => undefined);
+        await rt.agent.interrupt();
       }
       return;
     }
@@ -1124,11 +1050,11 @@ export class SessionManager {
     this.hooks.notify('attention', `${s.id} is paused`, ask.head, s.id);
     rt.interrupted = true;
     this.activity(s, 'session', 'paused the agent', { who: this.me(), human: true });
-    await rt.q.interrupt().catch(() => undefined);
+    await rt.agent.interrupt();
   }
 
   // ---------------------------------------------------------------- permissions
-  private async canUse(s: Session, rt: Runtime, tool: string, input: Record<string, unknown>, o: any): Promise<any> {
+  private async canUse(s: Session, rt: Runtime, tool: string, input: Record<string, unknown>, o: { decisionReason?: string; description?: string }): Promise<ToolDecision> {
     const st = this.store.data.settings;
     // A request the user approved while helm was closed: the agent has re-issued it, so let it through once.
     const key = COMMAND_TOOLS.has(tool) ? String(input.command || '') : EDIT_TOOLS.has(tool) ? `${tool}:${String(input.file_path || input.notebook_path || '')}` : '';
@@ -1168,7 +1094,7 @@ export class SessionManager {
       const r = await this.waitAsk(s, rt, ask, 'tool', input, tool);
       if (r.behavior === 'allow') {
         s.permMode = 'edits';
-        await rt.q.setPermissionMode('acceptEdits').catch(() => undefined);
+        await rt.agent.setPermMode('edits');
       }
       return r;
     }
@@ -1210,14 +1136,14 @@ export class SessionManager {
         this.planOverride[w.planKey] = win?.resetsAt ?? Math.floor(Date.now() / 1000) + 3600;
         rt.budgetPaused = false;
         this.setStatus(s, 'working', 'Resuming');
-        rt.queue.push('You were paused at a plan usage limit the user set, and they chose to continue. Continue where you left off.');
+        rt.agent.send('You were paused at a plan usage limit the user set, and they chose to continue. Continue where you left off.');
         return;
       }
       const add = Number(answer.addBudget) || 5; // USD
       if (w.scope === 'repo') { const r = this.repoOf(s); r.cap += add; } else s.budget += add;
       rt.budgetPaused = false;
       this.setStatus(s, 'working', 'Resuming');
-      rt.queue.push('You hit a spending limit and it has been raised. Continue where you left off.');
+      rt.agent.send('You hit a spending limit and it has been raised. Continue where you left off.');
       return;
     }
 
@@ -1342,7 +1268,7 @@ export class SessionManager {
       return;
     }
     this.setStatus(s, 'working', 'Reading your message');
-    rt.queue.push(outgoing, images);
+    rt.agent.send(outgoing, images);
   }
 
   async interrupt(id: string) {
@@ -1350,7 +1276,7 @@ export class SessionManager {
     const s = this.get(id);
     if (!rt || !s) return;
     rt.interrupted = true;
-    await rt.q.interrupt().catch(() => undefined);
+    await rt.agent.interrupt();
   }
 
   async stop(id: string) {
@@ -1361,8 +1287,7 @@ export class SessionManager {
       this.activity(s, 'session', 'stopped the session', { who: this.me(), human: true });
       for (const w of rt.asks.values()) w.resolve({ behavior: 'deny', message: 'Session stopped', interrupt: true });
       rt.asks.clear();
-      rt.queue.close();
-      rt.abort.abort();
+      rt.agent.close();
       this.rt.delete(id);
     }
     s.ask = undefined;
@@ -1373,7 +1298,7 @@ export class SessionManager {
     const s = this.get(id);
     if (!s) return;
     s.model = model;
-    await this.rt.get(id)?.q.setModel(MODEL_ALIAS[model]).catch(() => undefined);
+    await this.rt.get(id)?.agent.setModel(model);
     this.touch();
   }
 
@@ -1382,7 +1307,7 @@ export class SessionManager {
     if (!s) return;
     s.effort = effort ?? undefined;
     // Applies to the running conversation when Claude Code accepts it, and to every later start either way.
-    await this.rt.get(id)?.q.applyFlagSettings({ effortLevel: effort ?? undefined } as any).catch(() => undefined);
+    await this.rt.get(id)?.agent.setEffort(effort);
     this.touch();
   }
 
@@ -1390,7 +1315,7 @@ export class SessionManager {
     const s = this.get(id);
     if (!s) return;
     s.permMode = mode;
-    await this.rt.get(id)?.q.setPermissionMode(sdkMode(mode)).catch(() => undefined);
+    await this.rt.get(id)?.agent.setPermMode(mode);
     this.touch();
   }
 
@@ -1550,8 +1475,7 @@ export class SessionManager {
   }
 
   /** PreToolUse hook for the Agent tool: enforces the per-session and per-repository limits on subagents running at once. */
-  private async checkSubagentLimit(s: Session, rt: Runtime, input: any): Promise<any> {
-    const id = String(input?.tool_use_id || '');
+  private async checkSubagentLimit(s: Session, rt: Runtime, id: string): Promise<string | undefined> {
     const sl = this.sessionLimit(s), rl = this.repoLimit(s);
     const mine = this.runningSubagents(s);
     const inRepo = this.sessions.filter((x) => x.repoId === s.repoId).reduce((n, x) => n + this.runningSubagents(x), 0);
@@ -1560,10 +1484,10 @@ export class SessionManager {
     else if (inRepo >= rl) reason = `${this.repoOf(s)?.id} already has ${inRepo} subagents running across its sessions, which is the repository limit.`;
     if (!reason) {
       rt.admitted.add(id);
-      return {};
+      return undefined;
     }
     await this.push(s.id, { k: 'note', tone: 'neutral', text: 'Subagent blocked. ' + reason });
-    return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason + ' Wait for one to finish, or do this work yourself.' } };
+    return reason;
   }
 
   private stopSubagents(s: Session) {
@@ -1578,13 +1502,13 @@ export class SessionManager {
     const rt = this.rt.get(id);
     if (!s || !rt || s.status !== 'working') return;
     await this.push(id, { k: 'note', tone: 'neutral', text: `You edited ${file}. The agent was told.` });
-    rt.queue.push(`Note from the user: they edited ${file} directly in the worktree. Re-read it before changing it again.`);
+    rt.agent.send(`Note from the user: they edited ${file} directly in the worktree. Re-read it before changing it again.`);
   }
 
   /** helm is quitting: end the agent processes but leave each session as it was, so a pending approval survives to the next launch. */
   shutdown() {
     this.quitting = true;
-    for (const rt of this.rt.values()) { rt.queue.close(); rt.abort.abort(); }
+    for (const rt of this.rt.values()) rt.agent.close();
     this.rt.clear();
   }
 

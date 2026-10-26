@@ -536,3 +536,7 @@ Why: user request.
 ## D-129 · 2026-10-26 · Opening a new pull request in the browser is a setting, off by default
 Settings → Git gains "Open new pull requests in the browser" (`openPrAfterCreate`). Off keeps D-127; on opens the pull request on GitHub as soon as helm creates it.
 Why: user request.
+
+## D-130 · 2026-10-26 · Agents sit behind an `AgentBackend` interface; Claude is the only one so far
+`src/core/backend.ts` defines what helm needs from an agent (start, send, interrupt, set model/effort/permission mode, close, a stream of normalized `AgentEvent`s, and a one-shot `review`) plus a capabilities object. `ClaudeBackend` is the only implementation and holds everything specific to the Claude Agent SDK: message shapes, option names, the subagent-limit hook, the input queue. `SessionManager` now consumes only normalized events and takes an optional backend. Behaviour is unchanged. Tool names still follow Claude Code's vocabulary (Bash, Edit, Agent …), and model aliases, prices and `claudeSessionId` are still Claude's; a second backend will need those made data-driven.
+Why: user request, as step 1 of supporting other agents (e.g. OpenAI's Codex).
