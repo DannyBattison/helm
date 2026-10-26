@@ -27,12 +27,12 @@ function TerminalShellRow({ st, set }: { st: any; set(p: any): void }) {
 }
 
 /** Files uploaded to a repository: copied into every session's worktree and kept out of git (secrets, data, notes that are not committed). */
-function RepoFilesSection({ repos }: { repos: { id: string }[] }) {
+function RepoArtifactsSection({ repos }: { repos: { id: string }[] }) {
   const [repoId, setRepoId] = React.useState(repos[0]?.id || '');
   const [files, setFiles] = React.useState<{ name: string; size: number }[]>([]);
   const pick = React.useRef<HTMLInputElement>(null);
   const id = repos.some((r) => r.id === repoId) ? repoId : repos[0]?.id || '';
-  const load = React.useCallback(() => { if (id) api.listRepoFiles(id).then(setFiles).catch(() => setFiles([])); }, [id]);
+  const load = React.useCallback(() => { if (id) api.listRepoArtifacts(id).then(setFiles).catch(() => setFiles([])); }, [id]);
   React.useEffect(load, [load]);
   const upload = async (list: FileList | null) => {
     for (const f of Array.from(list || [])) {
@@ -40,24 +40,24 @@ function RepoFilesSection({ repos }: { repos: { id: string }[] }) {
         const bytes = new Uint8Array(await f.arrayBuffer());
         let bin = '';
         for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-        await api.addRepoFile(id, f.name, btoa(bin));
-      } catch (e) { toast({ tone: 'error', title: 'Could not upload ' + f.name, description: errText(e) }); }
+        await api.addRepoArtifact(id, f.name, btoa(bin));
+      } catch (e) { toast({ tone: 'error', title: 'Could not upload artifact ' + f.name, description: errText(e) }); }
     }
     if (pick.current) pick.current.value = '';
     load();
   };
   return (
-    <SettingRow title="Shared files" desc="Files copied into every session of a repository, at the top of its worktree, and kept out of commits. Sessions already open get them when the agent next starts. Up to 25 MB each.">
+    <SettingRow title="Artifacts" desc="Files copied into every session of a repository, at the top of its worktree, and kept out of commits. Sessions already open get them when the agent next starts. Up to 25 MB each.">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
         <Select size="sm" value={id} onChange={(e: any) => setRepoId(e.target.value)} options={repos.map((r) => ({ value: r.id, label: r.id }))} />
         {files.map((f) => (
           <div key={f.name} style={{ display: 'flex', gap: 8, alignItems: 'center', font: '400 12.5px/1 var(--font-mono)' }}>
             <span>{f.name}</span><span style={{ color: 'var(--text-3)' }}>{f.size < 1024 ? f.size + ' B' : f.size < 1048576 ? Math.round(f.size / 1024) + ' KB' : (f.size / 1048576).toFixed(1) + ' MB'}</span>
-            <Button size="sm" onClick={() => void api.removeRepoFile(id, f.name).then(load)}>Remove</Button>
+            <Button size="sm" onClick={() => void api.removeRepoArtifact(id, f.name).then(load)}>Remove</Button>
           </div>
         ))}
         <input ref={pick} type="file" multiple style={{ display: 'none' }} onChange={(e) => void upload(e.target.files)} />
-        <Button size="sm" icon="upload-simple" onClick={() => pick.current?.click()}>Upload files…</Button>
+        <Button size="sm" icon="upload-simple" onClick={() => pick.current?.click()}>Upload artifacts…</Button>
       </div>
     </SettingRow>
   );
@@ -228,7 +228,7 @@ export function Settings({ section }: { section?: string }) {
                 ))}
               </div>
             ) : null}
-            {app.repos.length ? <RepoFilesSection repos={app.repos} /> : null}
+            {app.repos.length ? <RepoArtifactsSection repos={app.repos} /> : null}
             <SettingRow title="Remote Control for new and resumed sessions" desc="Starts Remote Control (/rc) in every agent, so you can follow and drive it from claude.ai/code or the Claude app. Takes effect when a session next starts. Needs a Claude subscription sign-in, and can be blocked by your organisation."><Switch checked={st.remoteControl} onChange={(v: boolean) => set({ remoteControl: v })} /></SettingRow>
             <SettingRow title="Push after every commit" desc="Tells the agent to push its branch to GitHub right after each commit, so nothing exists only on this machine. Agents always commit as they go. Takes effect when a session next starts."><Switch checked={st.pushOnCommit} onChange={(v: boolean) => set({ pushOnCommit: v })} /></SettingRow>
             <SettingRow title="Commit author" desc="Co-author: commits are authored by you, with a Co-authored-by trailer for the session. Claude only: commits are authored by Claude, with no co-author. Takes effect when a session next starts.">

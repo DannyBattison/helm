@@ -3,12 +3,12 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { addRepoFile, listRepoFiles, removeRepoFile, setRepoFilesDir, supplyRepoFiles, validName } from '../src/core/repofiles';
+import { addRepoArtifact, listRepoArtifacts, removeRepoArtifact, setRepoArtifactDir, supplyRepoArtifacts, validName } from '../src/core/repoartifacts';
 
 const sh = (cwd: string, ...a: string[]) => execFileSync('git', a, { cwd, encoding: 'utf8' });
 
 describe('repo files', () => {
-  setRepoFilesDir(mkdtempSync(join(tmpdir(), 'helm-rf-')));
+  setRepoArtifactDir(mkdtempSync(join(tmpdir(), 'helm-rf-')));
   const repo = 'o/r';
 
   it('refuses names that could leave the folder', () => {
@@ -17,11 +17,11 @@ describe('repo files', () => {
   });
 
   it('stores, lists and removes files', async () => {
-    await addRepoFile(repo, 'a.txt', Buffer.from('hi').toString('base64'));
-    expect((await listRepoFiles(repo)).map((f) => [f.name, f.size])).toEqual([['a.txt', 2]]);
-    await expect(addRepoFile(repo, '../x', '')).rejects.toThrow();
-    await removeRepoFile(repo, 'a.txt');
-    expect(await listRepoFiles(repo)).toEqual([]);
+    await addRepoArtifact(repo, 'a.txt', Buffer.from('hi').toString('base64'));
+    expect((await listRepoArtifacts(repo)).map((f) => [f.name, f.size])).toEqual([['a.txt', 2]]);
+    await expect(addRepoArtifact(repo, '../x', '')).rejects.toThrow();
+    await removeRepoArtifact(repo, 'a.txt');
+    expect(await listRepoArtifacts(repo)).toEqual([]);
   });
 
   it('copies into a worktree and keeps them out of git', async () => {
@@ -29,14 +29,14 @@ describe('repo files', () => {
     sh(wt, 'init', '-q');
     writeFileSync(join(wt, 'tracked.txt'), 'mine');
     sh(wt, 'add', 'tracked.txt');
-    await addRepoFile(repo, 'notes.md', Buffer.from('n').toString('base64'));
-    await addRepoFile(repo, 'tracked.txt', Buffer.from('theirs').toString('base64'));
-    expect((await supplyRepoFiles(repo, wt, true)).sort()).toEqual(['notes.md']);
+    await addRepoArtifact(repo, 'notes.md', Buffer.from('n').toString('base64'));
+    await addRepoArtifact(repo, 'tracked.txt', Buffer.from('theirs').toString('base64'));
+    expect((await supplyRepoArtifacts(repo, wt, true)).sort()).toEqual(['notes.md']);
     expect(readFileSync(join(wt, 'tracked.txt'), 'utf8')).toBe('mine');
     expect(existsSync(join(wt, 'notes.md'))).toBe(true);
     expect(sh(wt, 'status', '--porcelain')).not.toContain('notes.md');
     writeFileSync(join(wt, 'notes.md'), 'edited');
-    expect(await supplyRepoFiles(repo, wt, false)).toEqual([]);
+    expect(await supplyRepoArtifacts(repo, wt, false)).toEqual([]);
     expect(readFileSync(join(wt, 'notes.md'), 'utf8')).toBe('edited');
   });
 });

@@ -10,7 +10,7 @@ import { REVIEW_SCHEMA, parseReview, reviewPrompt } from '../shared/selfreview';
 import { FREE_ID, freeRepo, sessionTitle, type ActivityEvent, type Checkpoint, type Effort, type MessageImage, type ModelAlias, type NewSessionInput, type PendingAsk, type PermMode, type Session, type Status, type Subagent, type TranscriptEvent } from '../shared/types';
 import { artifactDir, dropArtifacts, ensureArtifactDir } from './artifacts';
 import * as G from './git';
-import { supplyRepoFiles } from './repofiles';
+import { supplyRepoArtifacts } from './repoartifacts';
 import { checkpointParent, dropCheckpoints, listCheckpoints, restoreCheckpoint, seedFromCheckpoint, takeCheckpoint } from './review';
 import type { Store } from './store';
 import { commandPattern, expandHome, findBash, globMatch, hasShellControl, uid } from './util';
@@ -230,7 +230,7 @@ export class SessionManager {
       await G.addWorktree(repo!.localPath, wt, branch, extra.seed ? await checkpointParent(repo!.localPath, extra.seed) : remoteBase);
       if (extra.seed) await seedFromCheckpoint(wt, extra.seed);
       await this.copyUntracked(repo!.localPath, wt, st.copyFiles);
-      await supplyRepoFiles(repo!.id, wt, true);
+      await supplyRepoArtifacts(repo!.id, wt, true);
       try { claudeSessionId = await extra.claude?.(wt); }
       catch (e) { await G.removeWorktree(repo!.localPath, wt, branch); throw e; }
     }
@@ -547,7 +547,7 @@ export class SessionManager {
     const settings = this.store.data.settings;
     const artifacts = await ensureArtifactDir(s.id);
     // A worktree made before a file was uploaded gets it when the agent next starts. Files already there are left as the agent has them.
-    if (!s.free) await supplyRepoFiles(s.repoId, s.worktree, false);
+    if (!s.free) await supplyRepoArtifacts(s.repoId, s.worktree, false);
     const rt: Runtime = { q: null as any, queue, abort, asks: new Map(), turnCost: 0, baseCost: s.cost, interrupted: false, budgetPaused: false, toolStart: new Map(), fails: new Map(), lastTools: new Map(), subEvent: new Map(), admitted: new Set() };
     const options: any = {
       cwd: s.worktree,
