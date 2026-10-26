@@ -537,11 +537,9 @@ Why: user request.
 Settings → Git gains "Open new pull requests in the browser" (`openPrAfterCreate`). Off keeps D-127; on opens the pull request on GitHub as soon as helm creates it.
 Why: user request.
 
-<<<<<<< HEAD
-## D-130 · 2026-10-26 · The root README is short; coverage comes from a CI workflow and Codecov
-The README is now badges, a link to takethehelm.dev, the feature list, the `docker run` for the hosted image, a short develop section and a Buy Me a Coffee link. The details it dropped (GitHub sign-in, releases and signing, the architecture notes) are in `hosted/README.md`, the code and this file. The coverage badge needs `.github/workflows/ci.yml` (tests with `@vitest/coverage-v8`, uploaded to Codecov) and a `CODECOV_TOKEN` repository secret; it shows "unknown" until the first run. The `docker run` uses `ghcr.io/dannybattison/helm-hosted:latest` from hosted-image.yml.
-=======
 ## D-130 · 2026-10-26 · Line heights in the type tokens go up a little
 Descenders (p, y, g) were clipped by 1–2px in single-line UI text. `--type-label` and `--type-data` go from 1.35 to 1.5, `--type-title` to 1.45, `--type-heading` and `--leading-tight` to 1.3, `--leading-snug` to 1.5, body and `--leading-normal` to 1.55. Not run in the app.
->>>>>>> origin/main
+
+## D-131 · 2026-10-26 · The root README is short; coverage comes from a CI workflow and Codecov
+The README is now badges, a link to takethehelm.dev, the feature list, the `docker run` for the hosted image, a short develop section and a Buy Me a Coffee link. The details it dropped (GitHub sign-in, releases and signing, the architecture notes) are in `hosted/README.md`, the code and this file. The coverage badge needs `.github/workflows/ci.yml` (tests with `@vitest/coverage-v8`, uploaded to Codecov) and a `CODECOV_TOKEN` repository secret; it shows "unknown" until the first run. The `docker run` uses `ghcr.io/dannybattison/helm-hosted:latest` from hosted-image.yml.
 Why: user request.
