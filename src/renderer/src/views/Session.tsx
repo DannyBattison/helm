@@ -5,7 +5,7 @@ import { Cmd, Hl } from '../Hl';
 import { highlightBlock, langFromPath, langFromTag } from '../highlight';
 import { clock, elapsed, fmtTokens, prettyModel, runningSubagents, STATUS_LABEL, subagentTree, tilde } from '../lib';
 import { go, loadTranscript, setUI, toast, useApp, useMoney, useTranscript } from '../store';
-import { Avatar, Badge, BranchTag, Button, CopyBox, DiffStat, Grip, IconButton, Meter, Select, StatusDot, Tabs, Tooltip, usePaneWidth } from '../ui';
+import { Avatar, Badge, BranchTag, Button, CopyBox, DiffStat, Grip, IconButton, Lightbox, Meter, Select, StatusDot, Tabs, Tooltip, usePaneWidth } from '../ui';
 import { Changes } from './Changes';
 import { TranscriptList } from './TranscriptList';
 import { usePush } from './push';
@@ -125,6 +125,7 @@ const fmtSize = (n: number) => (n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).t
 /** A file the agent left for the user: shown in the chat if it is an image, otherwise a download. It lives in the temp folder, so it may be gone by the time an old or archived chat is opened. */
 function ArtifactView({ sessionId, name, label, embed }: { sessionId: string; name: string; label: string; embed: boolean }) {
   const [art, setArt] = React.useState<Artifact | null | undefined>(undefined);
+  const [zoom, setZoom] = React.useState(false);
   React.useEffect(() => {
     let live = true;
     api.getArtifact(sessionId, name).then((a) => { if (live) setArt(a); }, () => { if (live) setArt(null); });
@@ -142,14 +143,17 @@ function ArtifactView({ sessionId, name, label, embed }: { sessionId: string; na
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
   };
+  const previewable = art.data != null && EMBEDDABLE.test(art.mediaType);
+  const lightbox = zoom && previewable ? <Lightbox src={`data:${art.mediaType};base64,${art.data}`} name={art.name} size={fmtSize(art.size)} alt={label || art.name} onDownload={download} onClose={() => setZoom(false)} /> : null;
   const button = <Button size="sm" variant="secondary" icon="download-simple" disabled={art.data == null} title={art.data == null ? 'Too large to download here' : undefined} onClick={download}>Download</Button>;
   if (embed && art.data != null && EMBEDDABLE.test(art.mediaType)) return (
     <span style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start', maxWidth: '100%' }}>
-      <img src={`data:${art.mediaType};base64,${art.data}`} alt={label || art.name} style={{ maxWidth: '100%', maxHeight: 420, borderRadius: 'var(--radius-md)', boxShadow: 'inset 0 0 0 1px var(--border)', objectFit: 'contain', background: 'var(--bg-editor)' }} />
+      {lightbox}
+      <img onClick={() => setZoom(true)} title="Click to enlarge" src={`data:${art.mediaType};base64,${art.data}`} alt={label || art.name} style={{ cursor: 'zoom-in', maxWidth: '100%', maxHeight: 420, borderRadius: 'var(--radius-md)', boxShadow: 'inset 0 0 0 1px var(--border)', objectFit: 'contain', background: 'var(--bg-editor)' }} />
       <span style={{ display: 'flex', alignItems: 'center', gap: 8, font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{art.name} · {fmtSize(art.size)}{button}</span>
     </span>
   );
-  return <span style={box}><i className="ph ph-file" style={{ color: 'var(--text-3)' }} /><span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label || art.name}</span><span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{fmtSize(art.size)}</span>{button}</span>;
+  return <span style={box}>{lightbox}<i className={'ph ' + (previewable ? 'ph-image' : 'ph-file')} style={{ color: 'var(--text-3)' }} /><span onClick={previewable ? () => setZoom(true) : undefined} title={previewable ? 'Click to preview' : undefined} style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: previewable ? 'zoom-in' : undefined }}>{label || art.name}</span><span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{fmtSize(art.size)}</span>{button}</span>;
 }
 
 /** Paragraphs, bullet and numbered lists, and `inline code`. Enough for agent prose. */
