@@ -10,9 +10,9 @@ export type Route =
   | { screen: 'archive' }
   | { screen: 'reports'; tab?: string }
   | { screen: 'compare'; group: string }
-  | { screen: 'repo'; id: string; tab?: string }
+  | { screen: 'repo'; id: string; tab?: string; hash?: string; file?: string; line?: number }
   | { screen: 'external'; repoId: string; id: string }
-  | { screen: 'session'; id: string; tab?: string; sub?: string; file?: string; line?: number }
+  | { screen: 'session'; id: string; tab?: string; sub?: string; file?: string; line?: number; msg?: number }
   | { screen: 'settings'; section?: string };
 
 export interface ToastItem {

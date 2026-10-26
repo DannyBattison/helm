@@ -633,9 +633,9 @@ export function Palette({ onClose, toggleTheme }: { onClose(): void; toggleTheme
   ];
   const KIND_HINT = { you: 'you', claude: 'Claude', command: 'command', edit: 'edit', note: 'note' } as const;
   const deepItems: Item[] = deep ? [
-    ...deep.transcripts.map((h, n) => ({ key: `t-${h.sessionId}-${h.index}-${n}`, section: 'In conversations', label: h.snippet, hint: `${h.title} · ${KIND_HINT[h.kind]}`, icon: 'chats-circle', run: () => go({ screen: 'session', id: h.sessionId, tab: 'conversation' }) })),
-    ...deep.commits.map((c) => ({ key: `c-${c.repoId}-${c.hash}`, section: 'Commits', label: c.msg, hint: `${c.hash} · ${c.who} · ${c.repoId}`, icon: 'git-commit', run: () => go({ screen: 'repo', id: c.repoId, tab: 'history' }) })),
-    ...deep.code.map((h, n) => ({ key: `f-${h.path}-${h.line}-${n}`, section: 'In code', label: h.text.trim() || h.path, hint: `${h.path}:${h.line}`, icon: 'code', run: () => (h.ws.startsWith('repo:') ? go({ screen: 'repo', id: h.ws.slice(5), tab: 'code' }) : go({ screen: 'session', id: h.ws, tab: 'code', file: h.path, line: h.line })) }))
+    ...deep.transcripts.map((h, n) => ({ key: `t-${h.sessionId}-${h.index}-${n}`, section: 'In conversations', label: h.snippet, hint: `${h.title} · ${KIND_HINT[h.kind]}`, icon: 'chats-circle', run: () => go({ screen: 'session', id: h.sessionId, tab: 'conversation', msg: h.index }) })),
+    ...deep.commits.map((c) => ({ key: `c-${c.repoId}-${c.hash}`, section: 'Commits', label: c.msg, hint: `${c.hash} · ${c.who} · ${c.repoId}`, icon: 'git-commit', run: () => go({ screen: 'repo', id: c.repoId, tab: 'history', hash: c.hash }) })),
+    ...deep.code.map((h, n) => ({ key: `f-${h.path}-${h.line}-${n}`, section: 'In code', label: h.text.trim() || h.path, hint: `${h.path}:${h.line}`, icon: 'code', run: () => (h.ws.startsWith('repo:') ? go({ screen: 'repo', id: h.ws.slice(5), tab: 'code', file: h.path, line: h.line }) : go({ screen: 'session', id: h.ws, tab: 'code', file: h.path, line: h.line })) }))
   ] : [];
   const f = [...items.filter((x) => (x.label + ' ' + (x.hint || '')).toLowerCase().includes(q.toLowerCase())).slice(0, 8), ...deepItems];
   const go_ = (it?: Item) => { if (!it) return; onClose(); it.run(); };
