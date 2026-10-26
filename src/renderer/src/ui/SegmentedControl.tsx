@@ -13,10 +13,10 @@ export function SegmentedControl({ options = [], value, defaultValue, size = 'md
           <button key={o.value} type="button" role="tab" className="helm-tap-seg" aria-selected={on} onClick={() => { setInner(o.value); onChange && onChange(o.value); }}
             style={{ height: h - 4 + 'px', flex: 'none', padding: '0 10px', display: 'inline-flex', alignItems: 'center', gap: 5, border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'pointer',
               background: on ? 'var(--bg-active)' : 'transparent', boxShadow: on ? 'inset 0 0 0 1px var(--border-strong)' : 'none',
-              color: on ? 'var(--text-1)' : 'var(--text-3)', font: '500 12px/1 var(--font-sans)', whiteSpace: 'nowrap' }}>
+              color: on ? 'var(--text-1)' : 'var(--text-3)', font: '500 12px/1.5 var(--font-sans)', whiteSpace: 'nowrap' }}>
             {o.icon ? <i className={'ph ph-' + o.icon} style={{ fontSize: 13 }} /> : null}
             {o.label}
-            {o.count != null ? <span style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)' }}>{o.count}</span> : null}
+            {o.count != null ? <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{o.count}</span> : null}
           </button>
         );
       })}

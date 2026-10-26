@@ -12,8 +12,8 @@ export function Checkbox({ checked, defaultChecked = false, label, description, 
       </span>
       {label || description ? (
         <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {label ? <span style={{ font: '400 13px/1.35 var(--font-sans)', color: 'var(--text-1)' }}>{label}</span> : null}
-          {description ? <span style={{ font: '400 12px/1.4 var(--font-sans)', color: 'var(--text-3)' }}>{description}</span> : null}
+          {label ? <span style={{ font: '400 13px/1.5 var(--font-sans)', color: 'var(--text-1)' }}>{label}</span> : null}
+          {description ? <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{description}</span> : null}
         </span>
       ) : null}
     </label>

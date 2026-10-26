@@ -71,7 +71,7 @@ export function App() {
   }, []);
 
   if (fatal) return <div style={{ padding: 24, font: '400 13px/1.5 var(--font-sans)', color: 'var(--status-error-text)' }}>helm could not start: {fatal}</div>;
-  if (!app) return <div style={{ height: '100%', display: 'grid', placeItems: 'center', font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>Loading…</div>;
+  if (!app) return <div style={{ height: '100%', display: 'grid', placeItems: 'center', font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Loading…</div>;
   if (!app.user) return <SignIn />;
 
   let body: React.ReactNode;

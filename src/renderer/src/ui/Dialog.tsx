@@ -10,7 +10,7 @@ export function Dialog({ open = true, title, description, children, footer, widt
     <div role="dialog" aria-modal="true" style={{ width, maxWidth: '100%', minWidth: 0, maxHeight: inline ? undefined : narrow ? 'calc(100dvh - 24px)' : 'calc(100vh - 48px)', display: 'flex', flexDirection: 'column', borderRadius: 'var(--radius-xl)', background: 'var(--bg-overlay)', boxShadow: 'var(--shadow-dialog)', animation: 'helm-in var(--dur-slow) var(--ease-out)', ...style }}>
       <header style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: narrow ? '14px 10px 0 16px' : '16px 16px 0 20px' }}>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <div style={{ font: '600 16px/1.3 var(--font-sans)', color: 'var(--text-1)' }}>{title}</div>
+          <div style={{ font: '600 16px/1.5 var(--font-sans)', color: 'var(--text-1)' }}>{title}</div>
           {description ? <div style={{ font: '400 13px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>{description}</div> : null}
         </div>
         {onClose ? <button type="button" className="helm-tap-icon" aria-label="Close" onClick={onClose} style={{ width: 26, height: 26, border: 'none', borderRadius: 'var(--radius-md)', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer' }}><i className="ph ph-x" style={{ fontSize: 15 }} /></button> : null}

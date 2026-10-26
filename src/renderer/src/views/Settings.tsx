@@ -40,16 +40,16 @@ function CompanionSection({ st, set, state }: { st: any; set(p: any): void; stat
       <Field value={st.companionUrl} onCommit={(v: string) => set({ companionUrl: v.trim() })} placeholder="https://companion.example.com" style={{ width: 280 }} />
     </SettingRow>
     <SettingRow title="Status" desc={state.state === 'connected' ? `Linked as ${state.login}. ${state.viewers ? `${state.viewers} ${state.viewers === 1 ? 'page is' : 'pages are'} open on the website.` : 'No page is open on the website.'}` : state.error || (state.state === 'off' ? 'Turn the companion on to link this computer.' : undefined)}>
-      <span style={{ font: '500 12.5px/1 var(--font-sans)', color: tone, display: 'inline-flex', alignItems: 'center', gap: 6 }}><i className={'ph-fill ph-circle'} style={{ fontSize: 8 }} />{label}</span>
+      <span style={{ font: '500 12.5px/1.5 var(--font-sans)', color: tone, display: 'inline-flex', alignItems: 'center', gap: 6 }}><i className={'ph-fill ph-circle'} style={{ fontSize: 8 }} />{label}</span>
       {st.companionUrl && state.state === 'connected' ? <Button size="sm" variant="ghost" iconRight="arrow-square-out" onClick={() => api.openExternal(st.companionUrl)}>Open website</Button> : null}
     </SettingRow>
     {state.state === 'linking' ? (
       <div style={{ margin: '4px 0 12px', padding: 14, borderRadius: 'var(--radius-md)', background: 'var(--bg-panel)', boxShadow: 'inset 0 0 0 1px var(--border)', display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <span style={{ font: '500 13px/1.4 var(--font-sans)' }}>Link this computer</span>
+        <span style={{ font: '500 13px/1.5 var(--font-sans)' }}>Link this computer</span>
         {state.linkCode ? <>
           <span style={{ font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>Open GitHub and enter this code, signed in as the account you use in helm. It asks for no permissions: it only tells the companion which username this is.</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span className="selectable" style={{ font: '700 22px/1 var(--font-mono)', letterSpacing: '.12em' }}>{state.linkCode.userCode}</span>
+            <span className="selectable" style={{ font: '700 22px/1.5 var(--font-mono)', letterSpacing: '.12em' }}>{state.linkCode.userCode}</span>
             <Button size="sm" icon="copy" onClick={() => api.copyText(state.linkCode.userCode)}>Copy</Button>
             <Button size="sm" variant="primary" iconRight="arrow-square-out" onClick={() => api.openExternal(state.linkCode.verificationUri)}>Open GitHub</Button>
           </div>
@@ -105,7 +105,7 @@ function ShortcutsSection({ st, set }: { st: SettingsT; set(p: Partial<SettingsT
       return (
         <SettingRow key={a.id} title={a.label} desc={msg?.id === a.id ? <span style={{ color: 'var(--status-attention-text)' }}>{msg.text}</span> : a.desc}>
           <button type="button" onClick={() => { setEditing(isEditing ? null : a.id); setMsg(null); }} aria-label={`Change the shortcut for ${a.label}`}
-            style={{ minWidth: 120, height: 28, padding: '0 10px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4, border: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', cursor: 'pointer', color: 'var(--text-2)', font: '400 12px/1 var(--font-sans)', boxShadow: isEditing ? 'var(--ring-focus), inset 0 0 0 1px var(--accent)' : 'inset 0 0 0 1px var(--border-strong)' }}>
+            style={{ minWidth: 120, height: 28, padding: '0 10px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4, border: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', cursor: 'pointer', color: 'var(--text-2)', font: '400 12px/1.5 var(--font-sans)', boxShadow: isEditing ? 'var(--ring-focus), inset 0 0 0 1px var(--accent)' : 'inset 0 0 0 1px var(--border-strong)' }}>
             {isEditing ? 'Press the keys…' : combo ? <Kbd keys={comboKeys(combo, mac)} /> : 'Not set'}
           </button>
           <Button size="sm" variant="ghost" icon="arrow-counter-clockwise" disabled={!(a.id in mine)} onClick={() => { const next = { ...mine }; delete next[a.id]; set({ shortcuts: next }); }}>Reset</Button>
@@ -122,7 +122,7 @@ function SettingRow({ title, desc, children }: { title: React.ReactNode; desc?: 
   return (
     <div className="helm-setting" style={{ display: 'flex', alignItems: 'center', gap: 24, padding: '14px 0', borderTop: '1px solid var(--border-subtle)' }}>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
-        <span style={{ font: '500 13px/1.3 var(--font-sans)' }}>{title}</span>
+        <span style={{ font: '500 13px/1.5 var(--font-sans)' }}>{title}</span>
         {desc ? <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>{desc}</span> : null}
       </div>
       <div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 8 }}>{children}</div>
@@ -139,7 +139,7 @@ function Field({ value, onCommit, parse = (s: string) => s, format = (v: any) =>
 
 const H = ({ children, sub }: { children: React.ReactNode; sub?: string }) => (
   <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6 }}>
-    <h2 style={{ margin: 0, font: '600 16px/1.3 var(--font-sans)' }}>{children}</h2>
+    <h2 style={{ margin: 0, font: '600 16px/1.5 var(--font-sans)' }}>{children}</h2>
     {sub ? <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>{sub}</span> : null}
   </div>
 );
@@ -201,7 +201,7 @@ export function Settings({ section }: { section?: string }) {
               <Button variant="ghost" onClick={() => { if (confirm('Sign out of GitHub? Your sessions and worktrees stay on this machine.')) void api.signOut(); }}>Sign out</Button>
             </SettingRow>
             <SettingRow title="Organisations" desc="Repositories from these organisations appear in Add repository.">
-              <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>{(app.user?.orgs || []).length ? app.user!.orgs.map((o) => <Badge key={o}>{o}</Badge>) : <span style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>None</span>}</span>
+              <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>{(app.user?.orgs || []).length ? app.user!.orgs.map((o) => <Badge key={o}>{o}</Badge>) : <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>None</span>}</span>
               <Button size="sm" iconRight="arrow-square-out" onClick={() => api.openExternal('https://github.com/settings/applications')}>Manage on GitHub</Button>
             </SettingRow>
             <SettingRow title="Commit identity" desc="Your git user.name and user.email are used for commits and pushes. Who agent commits are credited to is set under Claude Code." />
@@ -232,12 +232,12 @@ export function Settings({ section }: { section?: string }) {
             <SettingRow title="Subagents per repository" desc="Most subagents that may run at once across every session of a repository."><Select value={String(st.maxSubagentsRepo)} onChange={(e: any) => set({ maxSubagentsRepo: +e.target.value })} options={subLimits([st.maxSubagentsRepo, 16, 24])} /></SettingRow>
             {app.repos.length ? (
               <div style={{ display: 'flex', flexDirection: 'column', marginBottom: 6 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: subCols.template, gap: 12, padding: '8px 0', font: '500 10.5px/1 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: subCols.template, gap: 12, padding: '8px 0', font: '500 10.5px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>
                   {subCols.cell(0, 'Repository')}<span>Subagent limit</span>
                 </div>
                 {app.repos.map((r) => (
                   <div key={r.id} style={{ display: 'grid', gridTemplateColumns: subCols.template, gap: 12, alignItems: 'center', minHeight: 38, borderTop: '1px solid var(--border-subtle)' }}>
-                    <span style={{ font: '400 12.5px/1 var(--font-mono)' }}>{r.id}</span>
+                    <span style={{ font: '400 12.5px/1.5 var(--font-mono)' }}>{r.id}</span>
                     <Select size="sm" value={r.maxSubagents == null ? 'default' : String(r.maxSubagents)} onChange={(e: any) => void api.setRepoMaxSubagents(r.id, e.target.value === 'default' ? null : +e.target.value)}
                       options={[{ value: 'default', label: 'Default (' + st.maxSubagentsRepo + ')' }, ...subLimits([]).map((o) => ({ value: o.value, label: o.value === '0' ? 'Off' : 'Up to ' + o.value }))]} />
                   </div>
@@ -314,14 +314,14 @@ export function Settings({ section }: { section?: string }) {
               <SettingRow title="Default per-session limit"><Field value={to(st.sessionBudget)} onCommit={(v: number) => set({ sessionBudget: from(v) })} {...money0} style={{ width: 100 }} /></SettingRow>
               <SettingRow title="Warn at"><SegmentedControl size="sm" value={String(st.warnAt)} onChange={(v: string) => set({ warnAt: +v })} options={[{ value: '50', label: '50%' }, { value: '80', label: '80%' }, { value: '90', label: '90%' }]} /></SettingRow>
               <div style={{ display: 'flex', flexDirection: 'column', marginTop: 12 }}>
-                {app.repos.length === 0 ? <span style={{ font: '400 12px/1.4 var(--font-sans)', color: 'var(--text-3)' }}>Add a repository to set its weekly cap.</span> : (
-                  <div style={{ display: 'grid', gridTemplateColumns: repoCols.template, gap: 16, padding: '8px 0', font: '500 10.5px/1 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>
+                {app.repos.length === 0 ? <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Add a repository to set its weekly cap.</span> : (
+                  <div style={{ display: 'grid', gridTemplateColumns: repoCols.template, gap: 16, padding: '8px 0', font: '500 10.5px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>
                     {repoCols.cell(0, 'Repository')}{repoCols.cell(1, 'This week')}<span>Weekly cap</span>
                   </div>
                 )}
                 {app.repos.map((r) => (
                   <div key={r.id} style={{ display: 'grid', gridTemplateColumns: repoCols.template, gap: 16, alignItems: 'center', minHeight: 40, borderTop: '1px solid var(--border-subtle)' }}>
-                    <span style={{ font: '400 12.5px/1 var(--font-mono)' }}>{r.id}</span>
+                    <span style={{ font: '400 12.5px/1.5 var(--font-mono)' }}>{r.id}</span>
                     <Meter value={app.weekSpend[r.id] || 0} max={r.cap} warnAt={st.warnAt / 100} detail={fmt(app.weekSpend[r.id] || 0)} />
                     <Field size="sm" value={to(r.cap)} onCommit={(v: number) => void api.setRepoCap(r.id, from(v))} {...money0} />
                   </div>
@@ -348,7 +348,7 @@ export function Settings({ section }: { section?: string }) {
             {app.repos.length ? <>
               <H sub="Per repository. Only things that need you leaves out finished work and failed checks.">Repositories</H>
               {app.repos.map((r) => (
-                <SettingRow key={r.id} title={<span style={{ font: '400 13px/1 var(--font-mono)' }}>{r.id}</span>}>
+                <SettingRow key={r.id} title={<span style={{ font: '400 13px/1.5 var(--font-mono)' }}>{r.id}</span>}>
                   <Select size="sm" value={st.notifyRepo[r.id] || 'all'} onChange={(e: any) => set({ notifyRepo: { ...st.notifyRepo, [r.id]: e.target.value } })} options={[{ value: 'all', label: 'Everything' }, { value: 'attention', label: 'Only things that need you' }, { value: 'off', label: 'Nothing' }]} />
                 </SettingRow>
               ))}

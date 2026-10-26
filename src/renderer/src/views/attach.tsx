@@ -37,8 +37,8 @@ export function AttachmentChips({ images, onRemove }: { images: Draft[]; onRemov
       {images.map((im) => (
         <div key={im.id} title={im.name} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 6, height: 28, padding: '0 22px 0 4px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-raised)', boxShadow: 'inset 0 0 0 1px var(--border)' }}>
           <img src={im.url} alt="" style={{ width: 20, height: 20, objectFit: 'cover', borderRadius: 3 }} />
-          <span style={{ font: '500 11.5px/1 var(--font-sans)', color: 'var(--text-1)', maxWidth: 150, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{im.name}</span>
-          <span style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)' }}>{im.bytes > 1e6 ? (im.bytes / 1e6).toFixed(1) + ' MB' : Math.max(1, Math.round(im.bytes / 1e3)) + ' kB'}</span>
+          <span style={{ font: '500 11.5px/1.5 var(--font-sans)', color: 'var(--text-1)', maxWidth: 150, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{im.name}</span>
+          <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{im.bytes > 1e6 ? (im.bytes / 1e6).toFixed(1) + ' MB' : Math.max(1, Math.round(im.bytes / 1e3)) + ' kB'}</span>
           <span role="button" aria-label="Remove image" onClick={() => onRemove(im.id)} style={{ position: 'absolute', right: 5, top: 0, bottom: 0, display: 'flex', alignItems: 'center', cursor: 'pointer', color: 'var(--text-3)' }}><i className="ph ph-x" style={{ fontSize: 11 }} /></span>
         </div>
       ))}

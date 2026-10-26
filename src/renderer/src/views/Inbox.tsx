@@ -19,7 +19,7 @@ const KIND: Record<InboxKind, { label: string; icon: string; tone: string }> = {
 };
 
 function Hint({ k, children }: { k: string; children: React.ReactNode }) {
-  return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, font: '400 11.5px/1 var(--font-sans)', color: 'var(--text-3)' }}><Kbd keys={k} />{children}</span>;
+  return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}><Kbd keys={k} />{children}</span>;
 }
 
 export function Inbox() {
@@ -76,8 +76,8 @@ export function Inbox() {
     <div className="helm-split" style={{ flex: 1, minHeight: 0, display: 'flex' }}>
       <div className="helm-list" style={{ width: 340, flex: 'none', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', background: 'var(--bg-sidebar)' }}>
         <div style={{ padding: '16px 16px 10px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <h1 style={{ margin: 0, font: '600 18px/1.2 var(--font-sans)', letterSpacing: 'var(--tracking-tight)' }}>Inbox</h1>
-          <span style={{ font: '400 12px/1.4 var(--font-sans)', color: 'var(--text-3)' }}>{items.length === 0 ? 'Nothing is waiting on you.' : `${blocked} ${blocked === 1 ? 'agent is' : 'agents are'} blocked on you · ${items.length} in all`}</span>
+          <h1 style={{ margin: 0, font: '600 18px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-tight)' }}>Inbox</h1>
+          <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{items.length === 0 ? 'Nothing is waiting on you.' : `${blocked} ${blocked === 1 ? 'agent is' : 'agents are'} blocked on you · ${items.length} in all`}</span>
         </div>
         <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '0 6px 8px' }}>
           {items.map((it) => {
@@ -87,8 +87,8 @@ export function Inbox() {
               <div key={it.session.id} onClick={() => setSelId(it.session.id)} className="helm-row-hover" style={{ display: 'flex', gap: 10, padding: '9px 10px', borderRadius: 'var(--radius-md)', cursor: 'pointer', background: on ? 'var(--bg-selected)' : undefined, boxShadow: on ? 'inset 2px 0 0 var(--accent)' : undefined }}>
                 <i className={'ph ph-' + k.icon} style={{ fontSize: 15, marginTop: 1, color: `var(--status-${k.tone === 'idle' ? 'idle' : k.tone}-text)` }} />
                 <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                  <span style={{ font: '500 12.5px/1.25 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sessionTitle(it.session)}</span>
-                  <span style={{ font: '400 11.5px/1.3 var(--font-sans)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{k.label} · {it.session.free ? 'free agent' : it.session.repoId.split('/')[1]} · {ago(it.since)}</span>
+                  <span style={{ font: '500 12.5px/1.5 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sessionTitle(it.session)}</span>
+                  <span style={{ font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{k.label} · {it.session.free ? 'free agent' : it.session.repoId.split('/')[1]} · {ago(it.since)}</span>
                 </div>
               </div>
             );
@@ -104,7 +104,7 @@ export function Inbox() {
           <div style={{ height: '100%', display: 'grid', placeItems: 'center' }}>
             <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
               <i className="ph ph-check-circle" style={{ fontSize: 30, color: 'var(--status-ready)' }} />
-              <span style={{ font: '500 14px/1.3 var(--font-sans)' }}>Inbox zero</span>
+              <span style={{ font: '500 14px/1.5 var(--font-sans)' }}>Inbox zero</span>
               <span style={{ font: '400 12.5px/1.45 var(--font-sans)', color: 'var(--text-3)', maxWidth: 320 }}>Approvals, questions, failures and finished work show up here, oldest first, so you can clear them from the keyboard.</span>
             </div>
           </div>
@@ -112,13 +112,13 @@ export function Inbox() {
           <div style={{ maxWidth: 760, padding: '22px 28px 32px', display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <StatusDot status={s.status} />
-              <span style={{ font: '600 16px/1.2 var(--font-sans)', flex: 1, minWidth: 0 }}>{sessionTitle(s)}</span>
+              <span style={{ font: '600 16px/1.5 var(--font-sans)', flex: 1, minWidth: 0 }}>{sessionTitle(s)}</span>
               <Badge tone={KIND[cur.kind].tone as any} icon={KIND[cur.kind].icon}>{KIND[cur.kind].label}</Badge>
             </div>
-            <span style={{ font: '400 11.5px/1 var(--font-mono)', color: 'var(--text-3)' }}>{s.free ? 'Free agent' : s.repoId} · {s.free ? s.worktree : s.branch} · waiting {ago(cur.since)}</span>
+            <span style={{ font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{s.free ? 'Free agent' : s.repoId} · {s.free ? s.worktree : s.branch} · waiting {ago(cur.since)}</span>
 
             {cur.kind === 'approve' && a ? <>
-              <div style={{ font: '600 14px/1.4 var(--font-sans)' }}>{a.head}</div>
+              <div style={{ font: '600 14px/1.5 var(--font-sans)' }}>{a.head}</div>
               {a.command ? <pre className="selectable" style={{ margin: 0, padding: '10px 12px', borderRadius: 'var(--radius-md)', background: 'var(--bg-editor)', boxShadow: 'inset 0 0 0 1px var(--border)', font: '400 12.5px/1.55 var(--font-mono)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{a.command}</pre> : null}
               {a.note ? <div style={{ font: '400 12.5px/1.55 var(--font-sans)', color: 'var(--text-2)', whiteSpace: 'pre-wrap' }}>{a.note}</div> : null}
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -129,30 +129,30 @@ export function Inbox() {
               <div style={{ display: 'flex', gap: 8 }}>
                 <input ref={noteRef} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Deny and tell the agent what to do instead (press n)"
                   onKeyDown={(e) => { if (e.key === 'Enter' && note.trim()) { void act(cur, { do: 'deny' }, note.trim()); setNote(''); } if (e.key === 'Escape') (e.target as HTMLInputElement).blur(); }}
-                  style={{ flex: 1, height: 30, border: 'none', outline: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border)', color: 'var(--text-1)', font: '400 12.5px/1 var(--font-sans)', padding: '0 10px' }} />
+                  style={{ flex: 1, height: 30, border: 'none', outline: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border)', color: 'var(--text-1)', font: '400 12.5px/1.5 var(--font-sans)', padding: '0 10px' }} />
               </div>
             </> : null}
 
             {cur.kind === 'question' && a ? <>
               {a.questions?.map((qq, qi) => (
                 <div key={qi} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {qq.header ? <span style={{ font: '500 10.5px/1 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>{qq.header}</span> : null}
-                  <div style={{ font: '600 14px/1.4 var(--font-sans)' }}>{qq.question}</div>
+                  {qq.header ? <span style={{ font: '500 10.5px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>{qq.header}</span> : null}
+                  <div style={{ font: '600 14px/1.5 var(--font-sans)' }}>{qq.question}</div>
                   {qq.options.map((o, oi) => (
                     <button key={o.label} type="button" disabled={(a.questions?.length ?? 0) !== 1} onClick={() => void act(cur, { do: 'answer', option: oi })} className="helm-row-hover helm-tap-row"
                       style={{ textAlign: 'left', display: 'flex', gap: 10, alignItems: 'flex-start', padding: '9px 12px', borderRadius: 'var(--radius-md)', border: 'none', cursor: (a.questions?.length ?? 0) === 1 ? 'pointer' : 'default', background: 'var(--bg-panel)', boxShadow: 'inset 0 0 0 1px var(--border)', color: 'var(--text-1)' }}>
                       <Kbd keys={String(oi + 1)} />
-                      <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}><span style={{ font: '500 13px/1.3 var(--font-sans)' }}>{o.label}</span>{o.description ? <span style={{ font: '400 12px/1.4 var(--font-sans)', color: 'var(--text-3)' }}>{o.description}</span> : null}</span>
+                      <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}><span style={{ font: '500 13px/1.5 var(--font-sans)' }}>{o.label}</span>{o.description ? <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{o.description}</span> : null}</span>
                     </button>
                   ))}
                 </div>
               ))}
-              {(a.questions?.length ?? 0) > 1 ? <span style={{ font: '400 12px/1.4 var(--font-sans)', color: 'var(--text-3)' }}>There are several questions: open the session to answer them together.</span> : null}
+              {(a.questions?.length ?? 0) > 1 ? <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>There are several questions: open the session to answer them together.</span> : null}
               {q && (a.questions?.length ?? 0) === 1 ? null : null}
             </> : null}
 
             {cur.kind === 'budget' && a ? <>
-              <div style={{ font: '600 14px/1.4 var(--font-sans)' }}>{a.head}</div>
+              <div style={{ font: '600 14px/1.5 var(--font-sans)' }}>{a.head}</div>
               {a.scope === 'plan' ? <PlanMeters /> : <Meter value={s.cost} max={s.budget} label="Session budget" detail={fmt(s.cost) + ' / ' + fmt(s.budget)} />}
               {a.note ? <div style={{ font: '400 12.5px/1.55 var(--font-sans)', color: 'var(--text-2)' }}>{a.note}</div> : null}
               <div><Button variant="primary" kbd="a" onClick={() => void act(cur, { do: 'continue' })}>{a.scope === 'plan' ? 'Continue anyway' : `Add ${sym}5 and resume`}</Button></div>

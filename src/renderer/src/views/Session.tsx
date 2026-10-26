@@ -17,7 +17,7 @@ const guard = (p: Promise<any>) => p.catch((e: any) => toast({ tone: 'error', ti
 const mod = (e: { metaKey: boolean; ctrlKey: boolean }) => (platform() === 'darwin' ? e.metaKey : e.ctrlKey);
 const MOD = () => (platform() === 'darwin' ? '⌘' : 'Ctrl+');
 
-const label: React.CSSProperties = { font: '500 10.5px/1 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' };
+const label: React.CSSProperties = { font: '500 10.5px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' };
 const box: React.CSSProperties = { borderRadius: 'var(--radius-md)', background: 'var(--bg-panel)', boxShadow: 'inset 0 0 0 1px var(--border)', overflow: 'hidden' };
 
 function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string): void }) {
@@ -32,7 +32,7 @@ function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string
         <Avatar agent name={s.id} size={26} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0, flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-            <span style={{ font: '600 16px/1.2 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={s.task} onDoubleClick={() => setUI({ renaming: s.id })}>{s.customTitle || s.title || s.task}</span>
+            <span style={{ font: '600 16px/1.5 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={s.task} onDoubleClick={() => setUI({ renaming: s.id })}>{s.customTitle || s.title || s.task}</span>
             <Badge tone={s.status} dot>{STATUS_LABEL[s.status]}</Badge>
             {s.archivedAt ? <Badge>Archived</Badge> : null}
             <SessionConflicts s={s} />
@@ -74,15 +74,15 @@ function SubagentTree({ s, selected }: { s: S; selected?: string }) {
   const [all, setAll] = React.useState(false);
   const hidden = (s.subagents || []).filter((a) => a.archived).length;
   const rows = subagentTree(s, all || !!s.subagents.find((a) => a.id === selected && a.archived));
-  if (!rows.length && !hidden) return <span style={{ font: '400 12px/1.4 var(--font-sans)', color: 'var(--text-3)' }}>No subagents in this session.</span>;
+  if (!rows.length && !hidden) return <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>No subagents in this session.</span>;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
       {rows.map(({ a, depth }) => (
         <div key={a.id} onClick={() => go({ screen: 'session', id: s.id, tab: 'conversation', sub: a.id })} className="helm-row-hover"
           style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 28, padding: '0 6px 0 ' + (6 + depth * 14) + 'px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', background: selected === a.id ? 'var(--bg-selected)' : undefined }}>
           <StatusDot status={subTone(a.status)} size={7} />
-          <span style={{ flex: 1, minWidth: 0, font: '400 12px/1.2 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={a.description}>{a.description}</span>
-          <span style={{ font: '400 10.5px/1 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap' }}>{a.tools} tools · {a.status === 'working' ? elapsed(a.startedAt) : elapsed(a.startedAt, a.endedAt)}</span>
+          <span style={{ flex: 1, minWidth: 0, font: '400 12px/1.5 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={a.description}>{a.description}</span>
+          <span style={{ font: '400 10.5px/1.5 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap' }}>{a.tools} tools · {a.status === 'working' ? elapsed(a.startedAt) : elapsed(a.startedAt, a.endedAt)}</span>
         </div>
       ))}
       {hidden ? <Button size="sm" variant="ghost" icon={all ? 'eye-slash' : 'archive'} onClick={() => setAll(!all)}>{all ? 'Hide archived' : `Show ${hidden} archived`}</Button> : null}
@@ -109,11 +109,11 @@ function ToolRow({ tool, target, meta, session }: { tool: string; target: string
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '16px 56px minmax(0,1fr) auto', gap: 8, alignItems: 'center', height: 26, padding: '0 10px' }}>
       <i className={'ph ph-' + icon} style={{ fontSize: 13, color: 'var(--text-3)' }} />
-      <span style={{ font: '500 12px/1 var(--font-sans)', color: 'var(--text-2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tool}</span>
+      <span style={{ font: '500 12px/1.5 var(--font-sans)', color: 'var(--text-2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tool}</span>
       {FILE_TOOLS.has(tool)
-        ? <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><FileLink session={session} path={target} style={{ font: '400 12px/1 var(--font-mono)', color: 'var(--text-1)' }} /></span>
-        : <span style={{ font: '400 12px/1 var(--font-mono)', color: 'var(--text-1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{target}</span>}
-      <span style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)' }}>{meta}</span>
+        ? <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><FileLink session={session} path={target} style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-1)' }} /></span>
+        : <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{target}</span>}
+      <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{meta}</span>
     </div>
   );
 }
@@ -146,10 +146,10 @@ function ArtifactView({ sessionId, name, label, embed }: { sessionId: string; na
   if (embed && art.data != null && EMBEDDABLE.test(art.mediaType)) return (
     <span style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start', maxWidth: '100%' }}>
       <img src={`data:${art.mediaType};base64,${art.data}`} alt={label || art.name} style={{ maxWidth: '100%', maxHeight: 420, borderRadius: 'var(--radius-md)', boxShadow: 'inset 0 0 0 1px var(--border)', objectFit: 'contain', background: 'var(--bg-editor)' }} />
-      <span style={{ display: 'flex', alignItems: 'center', gap: 8, font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)' }}>{art.name} · {fmtSize(art.size)}{button}</span>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 8, font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{art.name} · {fmtSize(art.size)}{button}</span>
     </span>
   );
-  return <span style={box}><i className="ph ph-file" style={{ color: 'var(--text-3)' }} /><span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label || art.name}</span><span style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)' }}>{fmtSize(art.size)}</span>{button}</span>;
+  return <span style={box}><i className="ph ph-file" style={{ color: 'var(--text-3)' }} /><span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label || art.name}</span><span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{fmtSize(art.size)}</span>{button}</span>;
 }
 
 /** Paragraphs, bullet and numbered lists, and `inline code`. Enough for agent prose. */
@@ -193,9 +193,9 @@ function TranscriptItemView({ m, s, index, onDeny }: { m: TranscriptEvent; s: S;
     <div style={{ marginLeft: 44, marginRight: 12, ...box }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 34, padding: '4px 10px' }}>
         <i className="ph ph-tree-structure" style={{ fontSize: 14, color: 'var(--accent-text)' }} />
-        <span style={{ font: '500 12px/1 var(--font-sans)', color: 'var(--text-2)' }}>Subagent</span>
+        <span style={{ font: '500 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>Subagent</span>
         <Badge mono>{m.agentType}</Badge>
-        <span style={{ font: '500 12.5px/1.2 var(--font-sans)', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.description}</span>
+        <span style={{ font: '500 12.5px/1.5 var(--font-sans)', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.description}</span>
         {m.status === 'working' ? <i className="ph ph-circle-notch" style={{ fontSize: 13, color: 'var(--status-working-text)', animation: 'helm-spin .9s linear infinite' }} /> : null}
         <Badge tone={subTone(m.status) as any} dot>{subLabel(m.status)}</Badge>
         <Button size="sm" variant="ghost" iconRight="arrow-right" onClick={() => go({ screen: 'session', id: s.id, tab: 'conversation', sub: m.id })}>Transcript</Button>
@@ -207,7 +207,7 @@ function TranscriptItemView({ m, s, index, onDeny }: { m: TranscriptEvent; s: S;
     <div onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} style={{ position: 'relative', display: 'flex', gap: 10, ...(!m.from ? { background: 'var(--bg-selected)', borderRadius: 'var(--radius-md)', padding: '10px 12px', boxShadow: 'inset 0 0 0 1px var(--border)' } : null) }}>
       <Avatar agent={!!m.from} name={m.from || app.user?.login || 'you'} src={m.from ? undefined : app.user?.avatar || undefined} size={22} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <span style={{ font: m.from ? '500 12px/1 var(--font-mono)' : '500 12px/1 var(--font-sans)' }}>{m.from ? m.from + ' → subagent' : app.user?.login || 'you'} {m.t ? <span style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)', marginLeft: 6 }}>{clock(m.t)}</span> : null}</span>
+        <span style={{ font: m.from ? '500 12px/1.5 var(--font-mono)' : '500 12px/1.5 var(--font-sans)' }}>{m.from ? m.from + ' → subagent' : app.user?.login || 'you'} {m.t ? <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)', marginLeft: 6 }}>{clock(m.t)}</span> : null}</span>
         <div className="selectable" style={{ font: '400 13px/1.55 var(--font-sans)', color: 'var(--text-1)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.text}</div>
         {hover && s && !m.from && !s.worktreeGone && index != null ? (
           <div style={{ position: 'absolute', top: 6, right: 8, display: 'flex', gap: 2, background: 'var(--bg-overlay)', borderRadius: 'var(--radius-sm)', boxShadow: 'var(--shadow-popover)', padding: 2 }}>
@@ -225,7 +225,7 @@ function TranscriptItemView({ m, s, index, onDeny }: { m: TranscriptEvent; s: S;
     <div style={{ display: 'flex', gap: 10, padding: '10px 12px' }}>
       <Avatar agent name="Claude" size={22} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <span style={{ font: '500 12px/1 var(--font-sans)' }}>Claude</span>
+        <span style={{ font: '500 12px/1.5 var(--font-sans)' }}>Claude</span>
         <div className="selectable" style={{ font: '400 13px/1.6 var(--font-sans)', color: 'var(--text-1)', display: 'flex', flexDirection: 'column', gap: 6, wordBreak: 'break-word' }}><Rich text={m.text} sessionId={s?.id} /></div>
       </div>
     </div>
@@ -235,8 +235,8 @@ function TranscriptItemView({ m, s, index, onDeny }: { m: TranscriptEvent; s: S;
     <div style={{ marginLeft: 44, marginRight: 12, ...box }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 30, padding: '0 10px', borderBottom: '1px solid var(--border-subtle)' }}>
         <i className="ph ph-pencil-simple" style={{ fontSize: 13, color: 'var(--text-3)' }} />
-        <span style={{ font: '500 12px/1 var(--font-sans)', color: 'var(--text-2)' }}>Edit</span>
-        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><FileLink session={s} path={m.file} style={{ font: '400 12px/1 var(--font-mono)' }} /></span>
+        <span style={{ font: '500 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>Edit</span>
+        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><FileLink session={s} path={m.file} style={{ font: '400 12px/1.5 var(--font-mono)' }} /></span>
         <DiffStat additions={m.add} deletions={m.del} />
       </div>
       <pre className="selectable" style={{ margin: 0, padding: '4px 0', background: 'var(--bg-editor)', font: '400 12px/1.65 var(--font-mono)', overflow: 'auto', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
@@ -252,18 +252,18 @@ function TranscriptItemView({ m, s, index, onDeny }: { m: TranscriptEvent; s: S;
     <div style={{ marginLeft: 44, marginRight: 12, ...box }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 30, padding: '0 10px', background: 'var(--bg-editor)' }}>
         <i className="ph ph-terminal" style={{ fontSize: 13, color: 'var(--text-3)' }} />
-        <span className="selectable" style={{ font: '400 12px/1 var(--font-mono)', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><span style={{ color: 'var(--text-3)' }}>$ </span><Hl text={m.cmd} lang="bash" /></span>
-        {m.done ? <span style={{ font: '400 12px/1 var(--font-mono)', color: m.ok ? 'var(--diff-add-fg)' : 'var(--diff-del-fg)', maxWidth: 260, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.ok && m.out === '✓' ? '✓ done' : m.out}</span>
+        <span className="selectable" style={{ font: '400 12px/1.5 var(--font-mono)', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><span style={{ color: 'var(--text-3)' }}>$ </span><Hl text={m.cmd} lang="bash" /></span>
+        {m.done ? <span style={{ font: '400 12px/1.5 var(--font-mono)', color: m.ok ? 'var(--diff-add-fg)' : 'var(--diff-del-fg)', maxWidth: 260, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.ok && m.out === '✓' ? '✓ done' : m.out}</span>
           : <i className="ph ph-circle-notch" style={{ fontSize: 13, color: 'var(--status-working-text)', animation: 'helm-spin .9s linear infinite' }} />}
-        <span style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)' }}>{m.meta}</span>
+        <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{m.meta}</span>
       </div>
     </div>
   );
   if (m.k === 'commit') return (
-    <div style={{ marginLeft: 44, marginRight: 12, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1 var(--font-sans)', color: 'var(--text-2)' }}>
+    <div style={{ marginLeft: 44, marginRight: 12, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>
       <i className="ph ph-git-commit" style={{ fontSize: 15, color: 'var(--text-1)' }} />
       Committed <BranchTag kind="commit" name={m.hash} /> <span style={{ color: 'var(--text-1)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.msg}</span>
-      <span style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)', marginLeft: 'auto' }}>{clock(m.t)}</span>
+      <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)', marginLeft: 'auto' }}>{clock(m.t)}</span>
     </div>
   );
   if (m.k === 'note') return (
@@ -274,14 +274,14 @@ function TranscriptItemView({ m, s, index, onDeny }: { m: TranscriptEvent; s: S;
   const live = !!s && s.ask?.id === (m as any).askId;
   const restarted = live && !!s?.ask?.orphaned;
   const expired = (what: string) => (
-    <div style={{ marginLeft: 44, marginRight: 12, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1.3 var(--font-sans)', color: 'var(--text-3)', minWidth: 0 }}>
+    <div style={{ marginLeft: 44, marginRight: 12, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)', minWidth: 0 }}>
       <i className="ph ph-clock-countdown" style={{ fontSize: 14 }} />No longer waiting: {what}
     </div>
   );
   if (m.k === 'permission') {
     if (!m.resolved && !live) return expired(m.cmd.length > 70 ? m.cmd.slice(0, 70) + '…' : m.cmd);
     if (m.resolved) return (
-      <div style={{ marginLeft: 44, marginRight: 12, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1.3 var(--font-sans)', color: 'var(--text-3)', minWidth: 0 }}>
+      <div style={{ marginLeft: 44, marginRight: 12, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)', minWidth: 0 }}>
         <i className={'ph-fill ph-' + (m.resolved === 'denied' ? 'x-circle' : 'check-circle')} style={{ fontSize: 14, color: m.resolved === 'denied' ? 'var(--status-error)' : 'var(--status-ready)' }} />
         {m.resolved === 'denied' ? 'Denied' : m.resolved === 'always' ? 'Always allowed' : 'Approved'}
         <code style={{ font: 'var(--type-data)', color: 'var(--text-2)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.cmd}</code>
@@ -290,7 +290,7 @@ function TranscriptItemView({ m, s, index, onDeny }: { m: TranscriptEvent; s: S;
     const isCmd = m.tool === 'Bash' || m.tool === 'PowerShell';
     return (
       <div style={{ marginLeft: 44, marginRight: 12, borderRadius: 'var(--radius-md)', background: 'var(--status-attention-bg)', boxShadow: 'inset 0 0 0 1px var(--status-attention)', padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, font: '600 13px/1 var(--font-sans)', color: 'var(--status-attention-text)' }}><i className="ph-fill ph-shield-warning" style={{ fontSize: 15 }} />{isCmd ? 'Permission needed to run a command' : m.tool === 'ExitPlanMode' ? 'Plan ready for approval' : 'Permission needed'}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, font: '600 13px/1.5 var(--font-sans)', color: 'var(--status-attention-text)' }}><i className="ph-fill ph-shield-warning" style={{ fontSize: 15 }} />{isCmd ? 'Permission needed to run a command' : m.tool === 'ExitPlanMode' ? 'Plan ready for approval' : 'Permission needed'}</div>
         <CopyBox text={m.cmd}>        <code className="selectable" style={{ font: 'var(--type-code)', padding: '6px 10px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-editor)', color: 'var(--text-1)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{isCmd ? <><span style={{ color: 'var(--text-3)' }}>$ </span><Cmd text={m.cmd} /></> : m.cmd}</code></CopyBox>
         <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>{m.why}</div>
         {restarted ? <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>helm was restarted while this waited. Approving starts the session again and has the agent run it.</div> : null}
@@ -307,19 +307,19 @@ function TranscriptItemView({ m, s, index, onDeny }: { m: TranscriptEvent; s: S;
     if (!m.answered && !live) return expired(q?.question || 'question');
     return (
       <div style={{ marginLeft: 44, marginRight: 12, borderRadius: 'var(--radius-md)', background: 'var(--status-attention-bg)', boxShadow: 'inset 0 0 0 1px var(--status-attention)', padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, font: '600 13px/1 var(--font-sans)', color: 'var(--status-attention-text)' }}><i className="ph-fill ph-question" style={{ fontSize: 15 }} />{q?.header || 'Question from the agent'}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, font: '600 13px/1.5 var(--font-sans)', color: 'var(--status-attention-text)' }}><i className="ph-fill ph-question" style={{ fontSize: 15 }} />{q?.header || 'Question from the agent'}</div>
         <div className="selectable" style={{ font: '500 13px/1.45 var(--font-sans)' }}>{q?.question}</div>
-        {m.answered ? <div style={{ font: '400 12px/1.4 var(--font-sans)', color: 'var(--text-2)' }}>Answered: <b style={{ fontWeight: 500, color: 'var(--text-1)' }}>{m.answered}</b></div> : <>
+        {m.answered ? <div style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>Answered: <b style={{ fontWeight: 500, color: 'var(--text-1)' }}>{m.answered}</b></div> : <>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {(q?.options || []).map((o) => (
               <button key={o.label} type="button" className="helm-tap-row" onClick={() => guard(api.resolveAsk(s.id, m.askId, { answers: { [q.question]: o.label } }))}
                 style={{ textAlign: 'left', padding: '7px 10px', border: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-raised)', boxShadow: 'inset 0 0 0 1px var(--border-strong)', color: 'var(--text-1)', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <span style={{ font: '500 13px/1.2 var(--font-sans)' }}>{o.label}</span>
-                {o.description ? <span style={{ font: '400 12px/1.4 var(--font-sans)', color: 'var(--text-3)' }}>{o.description}</span> : null}
+                <span style={{ font: '500 13px/1.5 var(--font-sans)' }}>{o.label}</span>
+                {o.description ? <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{o.description}</span> : null}
               </button>
             ))}
           </div>
-          <div style={{ font: '400 12px/1.4 var(--font-sans)', color: 'var(--text-3)' }}>Or type your own answer below.</div>
+          <div style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Or type your own answer below.</div>
         </>}
       </div>
     );
@@ -461,8 +461,8 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
                 <div key={f} role="option" aria-selected={i === hi} onMouseDown={(e) => { e.preventDefault(); pick(f); }} onMouseEnter={() => setHi(i)}
                   style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '6px 8px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', background: i === hi ? 'var(--bg-selected, var(--bg-hover))' : undefined, minWidth: 0 }}>
                   <i className="ph ph-file" style={{ fontSize: 13, color: 'var(--text-3)', alignSelf: 'center' }} />
-                  <span style={{ font: '500 12.5px/1.2 var(--font-mono)', color: 'var(--text-1)', whiteSpace: 'nowrap' }}>{f.slice(cut + 1)}</span>
-                  {cut >= 0 ? <span style={{ font: '400 11.5px/1.2 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', direction: 'rtl', textAlign: 'left', minWidth: 0 }}>{f.slice(0, cut)}</span> : null}
+                  <span style={{ font: '500 12.5px/1.5 var(--font-mono)', color: 'var(--text-1)', whiteSpace: 'nowrap' }}>{f.slice(cut + 1)}</span>
+                  {cut >= 0 ? <span style={{ font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', direction: 'rtl', textAlign: 'left', minWidth: 0 }}>{f.slice(0, cut)}</span> : null}
                 </div>
               );
             })}
@@ -484,7 +484,7 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
           <Select size="sm" value={s.effort || 'default'} onChange={(e: any) => guard(api.setSessionEffort(s.id, e.target.value === 'default' ? null : (e.target.value as Effort)))} options={EFFORTS} />
           <Select size="sm" value={s.permMode} onChange={(e: any) => guard(api.setSessionPermMode(s.id, e.target.value as PermMode))} options={[{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits' }, { value: 'plan', label: 'Plan only' }, { value: 'all', label: 'Allow everything' }]} />
           <span style={{ flex: 1 }} />
-          {s.ctx ? <span title={`Context window: ${fmtTokens(s.ctx)} of 200k tokens in use`} style={{ font: '400 11.5px/1 var(--font-mono)', color: ctxPct >= 75 ? 'var(--status-attention-text)' : 'var(--text-3)', whiteSpace: 'nowrap' }}>{ctxPct}% context</span> : null}
+          {s.ctx ? <span title={`Context window: ${fmtTokens(s.ctx)} of 200k tokens in use`} style={{ font: '400 11.5px/1.5 var(--font-mono)', color: ctxPct >= 75 ? 'var(--status-attention-text)' : 'var(--text-3)', whiteSpace: 'nowrap' }}>{ctxPct}% context</span> : null}
           {working ? <Button size="sm" variant="ghost" kbd={interruptKey === 'esc' ? 'Esc' : interruptKey === 'double-esc' ? 'Esc Esc' : undefined} onClick={() => guard(api.interrupt(s.id))}>Interrupt</Button> : null}
           <Button size="sm" variant="primary" icon="paper-plane-right" kbd={enterSends ? 'Enter' : MOD() + '↵'} disabled={!text.trim() && !images.length} onClick={send}>Send</Button>
         </div>
@@ -500,7 +500,7 @@ function UsagePanel({ s }: { s: S }) {
   const [width, grip, resetWidth] = usePaneWidth('usage-panel', 300, 240, 560, -1);
   const limit = s.maxSubagents ?? app.settings.maxSubagentsSession;
   const running = runningSubagents(s);
-  const n = (v: string, l: string) => <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}><span style={{ font: '500 15px/1 var(--font-mono)' }}>{v}</span><span style={{ font: '400 11.5px/1 var(--font-sans)', color: 'var(--text-3)' }}>{l}</span></div>;
+  const n = (v: string, l: string) => <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}><span style={{ font: '500 15px/1.5 var(--font-mono)' }}>{v}</span><span style={{ font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{l}</span></div>;
   const files = Object.entries(s.filesTouched);
   return (
     <aside className="helm-hide-phone" style={{ position: 'relative', width, flex: 'none', borderLeft: '1px solid var(--border)', overflow: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 20, background: 'var(--bg-panel)' }}>
@@ -523,10 +523,10 @@ function UsagePanel({ s }: { s: S }) {
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <span style={label}>Files touched · {files.length}</span>
-        {files.length === 0 ? <span style={{ font: '400 12px/1.4 var(--font-sans)', color: 'var(--text-3)' }}>No changes yet.</span> : null}
+        {files.length === 0 ? <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>No changes yet.</span> : null}
         {files.slice(0, 40).map(([p, v]) => (
           <div key={p} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} onClick={() => go({ screen: 'session', id: s.id, tab: 'changes' })}>
-            <span style={{ flex: 1, minWidth: 0, font: '400 11.5px/1.2 var(--font-mono)', color: 'var(--text-2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', direction: 'rtl', textAlign: 'left' }}>{p}</span>
+            <span style={{ flex: 1, minWidth: 0, font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', direction: 'rtl', textAlign: 'left' }}>{p}</span>
             <DiffStat additions={v.add} deletions={v.del} blocks={false} />
           </div>
         ))}
@@ -569,20 +569,20 @@ function SubagentView({ s, subId }: { s: S; subId: string }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
           <Button size="sm" variant="ghost" icon="arrow-left" onClick={() => (parent ? go({ screen: 'session', id: s.id, tab: 'conversation', sub: parent.id }) : go({ screen: 'session', id: s.id, tab: 'conversation' }))}>{parent ? parent.description : s.id}</Button>
           <i className="ph ph-tree-structure" style={{ fontSize: 18, color: 'var(--accent-text)' }} />
-          <span style={{ font: '600 16px/1.2 var(--font-sans)', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.description}</span>
+          <span style={{ font: '600 16px/1.5 var(--font-sans)', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.description}</span>
           <Badge mono>{a.agentType}</Badge>
           <Badge tone={subTone(a.status) as any} dot>{subLabel(a.status)}</Badge>
         </div>
-        <div style={{ display: 'flex', gap: 10, font: '400 11.5px/1 var(--font-mono)', color: 'var(--text-3)' }}>
+        <div style={{ display: 'flex', gap: 10, font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>
           <span>started {clock(a.startedAt)}</span><span>·</span><span>{a.status === 'working' ? elapsed(a.startedAt) : elapsed(a.startedAt, a.endedAt)}</span><span>·</span><span>{a.tools} tool calls</span><span>·</span><span>{fmtTokens(a.tokens)} tokens</span>
         </div>
       </div>
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <TranscriptList items={items || []} renderItem={(m) => <TranscriptItem m={m} s={s} onDeny={() => undefined} />}
-            header={!items ? <span style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>Loading transcript…</span> : null}
+            header={!items ? <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Loading transcript…</span> : null}
             footer={<>
-              {a.status === 'working' ? <div style={{ marginLeft: 44, marginRight: 12, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1 var(--font-sans)', color: 'var(--status-working-text)' }}><i className="ph ph-circle-notch" style={{ fontSize: 14, animation: 'helm-spin .9s linear infinite' }} />Working</div> : null}
+              {a.status === 'working' ? <div style={{ marginLeft: 44, marginRight: 12, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1.5 var(--font-sans)', color: 'var(--status-working-text)' }}><i className="ph ph-circle-notch" style={{ fontSize: 14, animation: 'helm-spin .9s linear infinite' }} />Working</div> : null}
               <div style={{ marginLeft: 44, marginRight: 12, font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>This transcript is read-only. Message the parent agent from the session's conversation.</div>
             </>} />
         </div>
@@ -638,14 +638,14 @@ export function Session({ id, tab, setTab, themeKey, sub, file, line }: { id: st
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <div style={{ flex: 1, minHeight: 0 }}>
           <TranscriptList items={items || []} renderItem={(m, i) => <TranscriptItem m={m} s={s} index={i} onDeny={() => input.current?.focus()} />}
-            header={!items ? <span style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>Loading conversation…</span> : null}
+            header={!items ? <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Loading conversation…</span> : null}
             footer={<>
               {s.status === 'working' ? (
-                <div style={{ marginLeft: 44, marginRight: 12, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1 var(--font-sans)', color: 'var(--status-working-text)' }}>
+                <div style={{ marginLeft: 44, marginRight: 12, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1.5 var(--font-sans)', color: 'var(--status-working-text)' }}>
                   <i className="ph ph-circle-notch" style={{ fontSize: 14, animation: 'helm-spin .9s linear infinite' }} />{s.step}
                 </div>
               ) : null}
-              {s.status === 'idle' && s.step ? <div style={{ marginLeft: 44, marginRight: 12, font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>{s.step}</div> : null}
+              {s.status === 'idle' && s.step ? <div style={{ marginLeft: 44, marginRight: 12, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{s.step}</div> : null}
             </>} />
         </div>
         {s.worktreeGone ? <div style={{ ...gone, padding: '0 20px 16px' }}>Merged{s.mergedInto ? ` into ${s.mergedInto}` : ''} and archived. The worktree was removed, so this session cannot be continued.</div> : <Composer s={s} inputRef={input} />}

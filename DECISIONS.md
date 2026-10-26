@@ -575,3 +575,7 @@ Why: user request.
 ## D-139 · 2026-10-26 · Sidebar rows set their own 1.5 line height
 The tree rows that make up the sidebar (`TreeItem`) now put 1.5 in the label and count fonts themselves instead of relying on the global ellipsis rule from D-138, since a row's label is clipped by its `overflow: hidden`. Not looked at in the app.
 Why: user request.
+
+## D-140 · 2026-10-26 · Every inline line height under 1.5 in the renderer becomes 1.5
+The sidebar rows and the usage panel's "Input / Output / Cache read" labels clipped descenders for the same reason: both set a tight inline `font` shorthand (`13px/1`, `11.5px/1`), which leaves a line box shorter than Mona Sans's descenders, and the page has nothing else (no font-metric overrides) that explains it. Instead of fixing places one at a time (D-138, D-139), all 337 inline `font: …px/N var(--font-sans|mono)` with N from 1 to 1.4 now use 1.5, the same as `--type-label`. Rows and buttons with a set height centre their text, so they do not move; stacks of text gain a few pixels. Still 1.5 only where the font is a theme font: icon sizes, and text using the tokens, are untouched. Not looked at in the app, so some spacing may need nudging.
+Why: user request.

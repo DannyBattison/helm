@@ -55,7 +55,7 @@ export function Select({ value, defaultValue, options = [], icon, mono = false, 
     else if (e.key === 'Tab') setOpen(false);
   };
 
-  const font = mono ? '400 12px/1 var(--font-mono)' : '500 13px/1 var(--font-sans)';
+  const font = mono ? '400 12px/1.5 var(--font-mono)' : '500 13px/1.5 var(--font-sans)';
   return (
     <>
       <button ref={btn} type="button" className="helm-tap-field" disabled={disabled} onClick={() => (open ? setOpen(false) : show())} onKeyDown={key} aria-haspopup="listbox" aria-expanded={open}
@@ -72,7 +72,7 @@ export function Select({ value, defaultValue, options = [], icon, mono = false, 
             return (
               <div key={o.value} role="option" className="helm-tap-row" aria-selected={on} data-hi={i === hi} onMouseEnter={() => setHi(i)} onClick={() => pick(o.value)}
                 style={{ display: 'flex', alignItems: 'center', gap: 8, height: 28, padding: '0 8px 0 10px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', whiteSpace: 'nowrap',
-                  background: i === hi ? 'var(--bg-hover)' : 'transparent', color: on ? 'var(--text-1)' : 'var(--text-2)', font: mono ? '400 12px/1 var(--font-mono)' : '400 13px/1 var(--font-sans)' }}>
+                  background: i === hi ? 'var(--bg-hover)' : 'transparent', color: on ? 'var(--text-1)' : 'var(--text-2)', font: mono ? '400 12px/1.5 var(--font-mono)' : '400 13px/1.5 var(--font-sans)' }}>
                 <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{o.label}</span>
                 {on ? <i className="ph ph-check" style={{ fontSize: 13, color: 'var(--accent-text)' }} /> : null}
               </div>
