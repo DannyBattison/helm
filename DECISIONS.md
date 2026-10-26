@@ -547,3 +547,7 @@ Why: user request.
 ## D-132 · 2026-10-26 · The hosted README is shorter and covers hosting setup and auto-update
 `hosted/README.md` is reorganised: quick start, configuring (env file, reverse proxy with TLS, Claude and GitHub sign-in), updating, then the architecture notes and the "not safe yet" list. Updating includes a short bash script that pulls the image, compares it with the running container's and recreates the container only if newer, with a nightly cron line. The reverse-proxy and script examples were not run.
 Why: user request.
+
+## D-133 · 2026-10-26 · Files can be uploaded to a repository and are copied into every session's worktree, uncommitted
+Settings → "Shared files" lets you upload files (up to 25 MB each) per repository. They are kept in helm's data folder (`repo-files/<repo>`), copied to the top of each worktree when a session is created, and copied again (only where missing, so the agent's edits are kept) when an agent starts, so older worktrees get later uploads. Each name is added to the worktree's own `info/exclude`, so they never show in changes or get committed; a file the repository already tracks is never overwritten. Names are single path segments only. It complements the "copy ignored files" setting, which only copies what already exists in your checkout. Free agents are not covered. Typechecked and unit-tested, not run in the app.
+Why: user request, for secrets, data and notes that should not be committed but every agent needs.
