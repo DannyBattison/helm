@@ -547,3 +547,7 @@ Why: user request.
 ## D-132 · 2026-10-26 · UI tweaks: Alt+N, dialog drag-out, bigger phone header, floating new-session button
 Browsers reserve Cmd/Ctrl+N for a new window and often never deliver it to the page, so Alt+N also opens the new-session dialog (Cmd/Ctrl+N is kept for the desktop app and browsers that pass it on). A dialog's scrim now closes it only when the press began on the scrim as well as the release, so dragging a text selection out of the textarea no longer dismisses it. On phones the header is 56px (was 48 on touch only), its icons are 44px hit areas with larger glyphs, and the breadcrumb is 16px. A floating "+" button at bottom right opens the new-session dialog. Not run in a browser; `tsc` is not installed in the worktree.
 Why: user request.
+
+## D-133 · 2026-10-26 · The new-session prompt is the conversation's input, with image attachments
+The prompt in the New session dialog now looks and behaves like the box in a conversation: one rounded field with a focus ring that grows with the text, a toolbar with an attach button, image chips, and paste and drop of images. "Files" means images (PNG, JPEG, GIF, WebP; 6 at most, 5 MB each), the only attachment kind a conversation takes. The shared limits, reader and chips moved to `views/attach.ts`. `NewSessionInput` gains `images`, sent with the first message; a queued session keeps them in memory until it starts, so they are lost if helm restarts first. Not run in the app; `tsc` is not installed in the worktree.
+Why: user request.

@@ -11,6 +11,7 @@ import { TranscriptList } from './TranscriptList';
 import { usePush } from './push';
 import { SessionConflicts } from './Review';
 import { CodeView } from './CodeView';
+import { AttachmentChips, IMAGE_TYPES, readAttachments, type Draft } from './attach';
 
 const guard = (p: Promise<any>) => p.catch((e: any) => toast({ tone: 'error', title: 'That did not work', description: String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '') }));
 const mod = (e: { metaKey: boolean; ctrlKey: boolean }) => (platform() === 'darwin' ? e.metaKey : e.ctrlKey);
@@ -335,21 +336,6 @@ const gone: React.CSSProperties = { font: '400 13px/1.5 var(--font-sans)', color
 // and the up arrow can bring back the last thing you said.
 const drafts = new Map<string, string>();
 const sent = new Map<string, string[]>();
-const MAX_IMAGES = 6;
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
-type Draft = MessageImage & { id: number; url: string; bytes: number };
-let imageSeq = 0;
-
-const readImage = (f: File): Promise<Draft> => new Promise((resolve, reject) => {
-  const r = new FileReader();
-  r.onerror = () => reject(new Error('Could not read ' + (f.name || 'the image')));
-  r.onload = () => {
-    const url = String(r.result);
-    resolve({ id: ++imageSeq, mediaType: f.type as any, data: url.slice(url.indexOf(',') + 1), name: f.name && f.name !== 'image.png' ? f.name : `image-${imageSeq}.${f.type.split('/')[1]}`, url, bytes: f.size });
-  };
-  r.readAsDataURL(f);
-});
 
 const EFFORTS: { value: string; label: string }[] = [
   { value: 'default', label: 'Default effort' }, { value: 'low', label: 'Effort: Low' }, { value: 'medium', label: 'Effort: Medium' },
@@ -412,16 +398,7 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
     void guard(api.sendMessage(s.id, t, pics.length ? pics : undefined));
   };
 
-  const addImages = async (list: File[]) => {
-    const ok = list.filter((f) => IMAGE_TYPES.includes(f.type));
-    if (list.length && !ok.length) { toast({ tone: 'neutral', title: 'Only PNG, JPEG, GIF and WebP images can be attached' }); return; }
-    const room = MAX_IMAGES - images.length;
-    if (ok.length > room) toast({ tone: 'neutral', title: `At most ${MAX_IMAGES} images per message` });
-    const big = ok.filter((f) => f.size > MAX_IMAGE_BYTES);
-    if (big.length) toast({ tone: 'neutral', title: 'Image too large', description: `${big[0].name || 'It'} is over 5 MB.` });
-    const take = ok.filter((f) => f.size <= MAX_IMAGE_BYTES).slice(0, Math.max(0, room));
-    try { const drafts2 = await Promise.all(take.map(readImage)); setImages((cur) => [...cur, ...drafts2]); } catch (e: any) { toast({ tone: 'error', title: 'Could not attach', description: String(e?.message || e) }); }
-  };
+  const addImages = async (list: File[]) => { const d = await readAttachments(list, images.length); if (d.length) setImages((cur) => [...cur, ...d]); };
 
   // The @word under the caret, if any: it opens the file list.
   const track = (value: string, caret: number) => {
@@ -491,18 +468,7 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
             })}
           </div>
         ) : null}
-        {images.length ? (
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', padding: '8px 8px 0' }}>
-            {images.map((im) => (
-              <div key={im.id} title={im.name} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 6, height: 28, padding: '0 22px 0 4px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-raised)', boxShadow: 'inset 0 0 0 1px var(--border)' }}>
-                <img src={im.url} alt="" style={{ width: 20, height: 20, objectFit: 'cover', borderRadius: 3 }} />
-                <span style={{ font: '500 11.5px/1 var(--font-sans)', color: 'var(--text-1)', maxWidth: 150, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{im.name}</span>
-                <span style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)' }}>{im.bytes > 1e6 ? (im.bytes / 1e6).toFixed(1) + ' MB' : Math.max(1, Math.round(im.bytes / 1e3)) + ' kB'}</span>
-                <span role="button" aria-label="Remove image" onClick={() => setImages((c) => c.filter((x) => x.id !== im.id))} style={{ position: 'absolute', right: 5, top: 0, bottom: 0, display: 'flex', alignItems: 'center', cursor: 'pointer', color: 'var(--text-3)' }}><i className="ph ph-x" style={{ fontSize: 11 }} /></span>
-              </div>
-            ))}
-          </div>
-        ) : null}
+        <AttachmentChips images={images} onRemove={(id) => setImages((c) => c.filter((x) => x.id !== id))} />
         <textarea ref={inputRef} value={text} placeholder={placeholder} rows={2}
           onChange={(e) => { setText(e.target.value); histPos.current = -1; track(e.target.value, e.target.selectionStart); }}
           onKeyUp={(e) => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') track(e.currentTarget.value, e.currentTarget.selectionStart); }}

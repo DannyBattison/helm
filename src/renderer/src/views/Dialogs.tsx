@@ -4,8 +4,9 @@ import { api, platform } from '../api';
 import glyph from '../assets/helm-glyph-violet.svg';
 import { tilde } from '../lib';
 import { getUI, go, setUI, toast, useApp, useMoney } from '../store';
-import { Badge, Button, Checkbox, Dialog, Input, Kbd, Select, Tabs, useNarrow } from '../ui';
+import { Badge, Button, Checkbox, Dialog, IconButton, Input, Kbd, Select, Tabs, useNarrow } from '../ui';
 import { MODEL_OPTIONS, PERM_OPTIONS } from './Settings';
+import { AttachmentChips, IMAGE_TYPES, readAttachments, type Draft } from './attach';
 import { VariantEditor, type Variant } from './Review';
 
 const errText = (e: any) => String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '');
@@ -276,6 +277,19 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
   const [dirty, setDirty] = React.useState(0);
   const [base, setBase] = React.useState(r?.defaultBranch || 'main');
   const [task, setTask] = React.useState(initial?.task || '');
+  const [images, setImages] = React.useState<Draft[]>([]);
+  const [focused, setFocused] = React.useState(false);
+  const [over, setOver] = React.useState(false);
+  const picker = React.useRef<HTMLInputElement>(null);
+  const taRef = React.useRef<HTMLTextAreaElement>(null);
+  const addImages = async (list: File[]) => { const d = await readAttachments(list, images.length); if (d.length) setImages((cur) => [...cur, ...d]); };
+  // Grows with the text, like the box in a conversation.
+  React.useLayoutEffect(() => {
+    const el = taRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 280) + 'px';
+  }, [task]);
   const [after, setAfter] = React.useState('');
   const [model, setModel] = React.useState<ModelAlias>(app.settings.defaultModel);
   const [perm, setPerm] = React.useState<PermMode>(app.settings.permMode);
@@ -296,7 +310,7 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
   const start = async () => {
     setBusy(true); setErr('');
     try {
-      const input = { repoId: repo, base: free ? '' : base, folder: free && folder ? folder : undefined, task: task.trim(), model, budget: sub ? 0 : from(parseFloat(budget)) || app.settings.sessionBudget, permMode: perm, after: after || undefined, source: initial?.source };
+      const input = { repoId: repo, base: free ? '' : base, folder: free && folder ? folder : undefined, task: task.trim(), images: images.length ? images.map(({ mediaType, data, name }) => ({ mediaType, data, name })) : undefined, model, budget: sub ? 0 : from(parseFloat(budget)) || app.settings.sessionBudget, permMode: perm, after: after || undefined, source: initial?.source };
       if (compare && !free) {
         const ids = await api.createGroup(input, variants.map((v) => ({ model: v.model, effort: v.effort === 'default' ? undefined : v.effort })));
         const group = getUI().app?.sessions.find((x) => x.id === ids[0])?.group;
@@ -323,9 +337,23 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
           {free ? <Button variant="secondary" icon="folder-open" onClick={() => void api.chooseFolder().then((f) => f && setFolder(f))}>{folder ? 'Change folder…' : 'Use my own folder…'}</Button>
             : <Select value={base} onChange={(e: any) => setBase(e.target.value)} options={bases.length ? bases.map((b) => ({ value: b.ref, label: b.label })) : [base]} mono icon="git-branch" />}
         </div>
-        <textarea autoFocus={!narrow} rows={narrow ? 4 : 5} value={task} onChange={(e) => setTask(e.target.value)} placeholder="What should the agent do? Be specific about the outcome, and mention files or checks that matter."
-          onKeyDown={(e) => { if (e.key === 'Enter' && (mac() ? e.metaKey : e.ctrlKey) && task.trim()) void start(); }}
-          style={{ resize: 'vertical', border: 'none', outline: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border-strong)', color: 'var(--text-1)', font: '400 13px/1.55 var(--font-sans)', padding: '10px 12px' }} />
+        <div
+          onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
+          onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setOver(true); } }}
+          onDragLeave={() => setOver(false)}
+          onDrop={(e) => { if (e.dataTransfer.files.length) { e.preventDefault(); void addImages([...e.dataTransfer.files]); } setOver(false); }}
+          style={{ borderRadius: 'var(--radius-lg)', background: 'var(--bg-input)', transition: 'box-shadow .12s', boxShadow: over || focused ? 'var(--ring-focus), inset 0 0 0 1px var(--accent)' : 'inset 0 0 0 1px var(--border-strong)' }}>
+          <AttachmentChips images={images} onRemove={(id) => setImages((c) => c.filter((x) => x.id !== id))} />
+          <textarea ref={taRef} autoFocus={!narrow} rows={narrow ? 3 : 4} value={task} onChange={(e) => setTask(e.target.value)} placeholder="What should the agent do? Be specific about the outcome, and mention files or checks that matter. You can paste or drop images."
+            onPaste={(e) => { const f = [...e.clipboardData.files].filter((x) => x.type.startsWith('image/')); if (f.length) { e.preventDefault(); void addImages(f); } }}
+            onKeyDown={(e) => { if (e.key === 'Enter' && (mac() ? e.metaKey : e.ctrlKey) && task.trim()) void start(); }}
+            style={{ display: 'block', width: '100%', boxSizing: 'border-box', resize: 'none', border: 'none', outline: 'none', boxShadow: 'none', background: 'transparent', color: 'var(--text-1)', font: '400 13px/1.5 var(--font-sans)', padding: '10px 12px 4px', maxHeight: 280 }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px 6px 8px' }}>
+            <input ref={picker} type="file" accept={IMAGE_TYPES.join(',')} multiple hidden onChange={(e) => { void addImages([...(e.target.files || [])]); e.target.value = ''; }} />
+            <IconButton icon="paperclip" label="Attach an image" size="sm" onClick={() => picker.current?.click()} />
+            <span style={{ font: '400 11.5px/1 var(--font-sans)', color: 'var(--text-3)' }}>{images.length ? `${images.length} attached` : 'PNG, JPEG, GIF or WebP'}</span>
+          </div>
+        </div>
         <div style={{ display: 'grid', gridTemplateColumns: narrow ? 'minmax(0,1fr)' : sub ? '1fr 1fr' : '1fr 1fr 110px', gap: 8, ...(compare ? { opacity: 0.5 } : null) }}>
           <Select disabled={compare} value={model} onChange={(e: any) => setModel(e.target.value)} options={MODEL_OPTIONS} />
           <Select value={perm} onChange={(e: any) => setPerm(e.target.value)} options={PERM_OPTIONS} />

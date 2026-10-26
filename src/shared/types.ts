@@ -657,6 +657,8 @@ export interface NewSessionInput {
   after?: string;
   /** What the task came from, such as a GitHub issue. */
   source?: Session['source'];
+  /** Images attached to the task. */
+  images?: MessageImage[];
   /** Start from this effort level instead of the default. */
   effort?: Effort;
 }

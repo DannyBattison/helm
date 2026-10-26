@@ -250,10 +250,12 @@ export class SessionManager {
     if (blocked) { s.status = 'idle'; s.step = 'Queued. ' + blocked; s.timeline = [{ t: now, status: 'idle' }]; }
     this.sessions.push(s);
     this.activity(s, 'start', blocked ? `queued: ${blocked.toLowerCase()}` : free ? `started in ${wt}` : `started on ${branch}`);
-    await this.push(id, { k: 'user', t: now, text: input.task, cp: await this.checkpoint(s, 'Start: ' + input.task) });
+    const pics = input.images?.length ? input.images : undefined;
+    await this.push(id, { k: 'user', t: now, text: input.task, images: pics, cp: await this.checkpoint(s, 'Start: ' + input.task) });
+    if (blocked && pics) this.queuedImages.set(id, pics);
     if (blocked) { this.touch(); return id; }
     this.touch();
-    await this.start(s, input.task);
+    await this.start(s, input.task, pics);
     return id;
   }
 
@@ -261,6 +263,8 @@ export class SessionManager {
   /** Sessions with an agent at work. A session waiting on you does not use a slot. */
   private runningCount() { return this.sessions.filter((s) => s.status === 'working' && this.rt.has(s.id)).length; }
   private pumping = false;
+  /** Images attached to a task that is still waiting in the queue. Kept in memory only. */
+  private queuedImages = new Map<string, MessageImage[]>();
 
   /** Starts queued sessions whose wait is over, oldest first. Runs whenever anything changes. */
   async pumpQueue() {
@@ -289,7 +293,9 @@ export class SessionManager {
     this.activity(s, 'start', 'left the queue');
     this.store.save();
     this.hooks.emitState();
-    await this.start(s, s.task);
+    const pics = this.queuedImages.get(s.id);
+    this.queuedImages.delete(s.id);
+    await this.start(s, s.task, pics);
   }
 
   /** Starts a queued session now, whatever it is waiting for. */
