@@ -1,0 +1,3 @@
+## D-86 · 2026-10-23 · ⌘K searches conversations, commits and code
+Typing in the palette (two or more characters, after a short pause) also searches what you and Claude said and the commands and files in the 80 most recently used sessions, commit messages in every repository (plus a commit hash), and, from inside a session or repository, its code with `git grep` (three or more characters). Conversations are read from disk and not kept in memory, so searching does not grow helm's memory. Results are grouped under the sessions, repositories and actions that already matched; a conversation result opens that session (not the exact message), a commit opens the repository's history, and a code result opens the file at its line in a session.
+Why: user request.

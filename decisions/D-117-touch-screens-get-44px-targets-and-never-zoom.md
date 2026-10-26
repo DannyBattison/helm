@@ -1,0 +1,3 @@
+## D-117 · 2026-10-25 · Touch screens get 44px targets and never zoom on focus
+The viewport now has `maximum-scale=1`, and the 16px minimum for fields applies on any touch screen (`pointer: coarse`) as well as below 768px, so tapping a textarea or input no longer zooms the page (tablets were missed before). On touch screens buttons, icon buttons, list rows, inputs, tabs and segmented controls are at least 44px tall (40px for segments), buttons use 14px text, and double-tap zoom is off (`touch-action: manipulation`). Desktop sizes are unchanged.
+Why: user request; the app felt small on mobile and focusing a field zoomed the page.

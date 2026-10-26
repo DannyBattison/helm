@@ -1,5 +1,5 @@
 import React from 'react';
-import type { BaseOption, GhRepo, MergeMethod, ModelAlias, PermMode, PullRequest, SessionDeleteInfo } from '@shared/types';
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_FILES, MAX_UPLOAD_TOTAL, type BaseOption, type GhRepo, type MergeMethod, type ModelAlias, type PermMode, type PullRequest, type SessionDeleteInfo } from '@shared/types';
 import { api, platform } from '../api';
 import glyph from '../assets/helm-glyph-violet.svg';
 import { tilde } from '../lib';
@@ -266,6 +266,16 @@ export function AddRepo({ onClose }: { onClose(): void }) {
 }
 
 // ------------------------------------------------------------------ new session
+type Upload = { id: number; name: string; size: number; data: string };
+let uploadSeq = 0;
+const readUpload = (f: File): Promise<Upload> => new Promise((resolve, reject) => {
+  const r = new FileReader();
+  r.onerror = () => reject(new Error('Could not read ' + f.name));
+  r.onload = () => { const url = String(r.result); resolve({ id: ++uploadSeq, name: f.name, size: f.size, data: url.slice(url.indexOf(',') + 1) }); };
+  r.readAsDataURL(f);
+});
+const fmtSize = (n: number) => n < 1024 ? n + ' B' : n < 1048576 ? Math.round(n / 1024) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
+
 export function NewSession({ repoId, initial, onClose }: { repoId?: string; initial?: { task?: string; source?: import('@shared/types').Session['source']; base?: string }; onClose(): void }) {
   const app = useApp();
   const narrow = useNarrow();
@@ -299,6 +309,7 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
   const [err, setErr] = React.useState('');
   const [compare, setCompare] = React.useState(false);
   const [folder, setFolder] = React.useState('');
+  const [uploads, setUploads] = React.useState<Upload[]>([]);
   const [variants, setVariants] = React.useState<Variant[]>([{ model: 'sonnet', effort: 'default' }, { model: 'opus', effort: 'default' }]);
   React.useEffect(() => {
     if (!repo) return;
@@ -308,10 +319,30 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
     api.repoBases(repo).then((b) => { setBases(b); const want = initial?.base && b.find((x) => x.ref === initial.base); if (want) setBase(want.ref); else if (initial?.base) setBase(initial.base); else if (b[0]) setBase(b[0].ref); }).catch(() => setBases([]));
     api.workspaceInfo('repo:' + repo).then((i) => setDirty(i.dirty)).catch(() => setDirty(0));
   }, [repo]);
+  const addUploads = async (list: File[]) => {
+    const room = MAX_UPLOAD_FILES - uploads.length;
+    if (list.length > room) toast({ tone: 'neutral', title: `At most ${MAX_UPLOAD_FILES} files per agent` });
+    const big = list.find((f) => f.size > MAX_UPLOAD_BYTES);
+    if (big) toast({ tone: 'neutral', title: 'File too large', description: `${big.name} is over ${MAX_UPLOAD_BYTES / 1048576} MB.` });
+    const take = list.filter((f) => f.size <= MAX_UPLOAD_BYTES).slice(0, Math.max(0, room));
+    try {
+      const read = await Promise.all(take.map(readUpload));
+      const next = [...uploads, ...read];
+      if (next.reduce((n, u) => n + u.size, 0) > MAX_UPLOAD_TOTAL) { toast({ tone: 'neutral', title: 'Too much to upload', description: `Files can add up to ${MAX_UPLOAD_TOTAL / 1048576} MB.` }); return; }
+      setUploads(next);
+    } catch (e) { toast({ tone: 'error', title: 'Could not attach', description: errText(e) }); }
+  };
+  /** Images go in the first message as usual; any other file is saved for this agent alone. */
+  const addFiles = async (list: File[]) => {
+    const pics = list.filter((f) => IMAGE_TYPES.includes(f.type));
+    if (pics.length) await addImages(pics);
+    const rest = list.filter((f) => !IMAGE_TYPES.includes(f.type));
+    if (rest.length) await addUploads(rest);
+  };
   const start = async () => {
     setBusy(true); setErr('');
     try {
-      const input = { repoId: repo, base: free ? '' : base, folder: free && folder ? folder : undefined, task: task.trim(), images: images.length ? images.map(({ mediaType, data, name }) => ({ mediaType, data, name })) : undefined, model, budget: sub ? 0 : from(parseFloat(budget)) || app.settings.sessionBudget, permMode: perm, after: after || undefined, source: initial?.source };
+      const input = { files: uploads.length ? uploads.map(({ name, data }) => ({ name, data })) : undefined, repoId: repo, base: free ? '' : base, folder: free && folder ? folder : undefined, task: task.trim(), images: images.length ? images.map(({ mediaType, data, name }) => ({ mediaType, data, name })) : undefined, model, budget: sub ? 0 : from(parseFloat(budget)) || app.settings.sessionBudget, permMode: perm, after: after || undefined, source: initial?.source };
       if (compare && !free) {
         const ids = await api.createGroup(input, variants.map((v) => ({ model: v.model, effort: v.effort === 'default' ? undefined : v.effort })));
         const group = getUI().app?.sessions.find((x) => x.id === ids[0])?.group;
@@ -342,17 +373,29 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
           onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
           onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setOver(true); } }}
           onDragLeave={() => setOver(false)}
-          onDrop={(e) => { if (e.dataTransfer.files.length) { e.preventDefault(); void addImages([...e.dataTransfer.files]); } setOver(false); }}
+          onDrop={(e) => { if (e.dataTransfer.files.length) { e.preventDefault(); void addFiles([...e.dataTransfer.files]); } setOver(false); }}
           style={{ borderRadius: 'var(--radius-lg)', background: 'var(--bg-input)', transition: 'box-shadow .12s', boxShadow: over || focused ? 'var(--ring-focus), inset 0 0 0 1px var(--accent)' : 'inset 0 0 0 1px var(--border-strong)' }}>
           <AttachmentChips images={images} onRemove={(id) => setImages((c) => c.filter((x) => x.id !== id))} />
+          {uploads.length ? (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', padding: '8px 8px 0' }}>
+              {uploads.map((u) => (
+                <div key={u.id} title={u.name} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 6, height: 28, padding: '0 22px 0 8px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-raised)', boxShadow: 'inset 0 0 0 1px var(--border)' }}>
+                  <i className="ph ph-file" style={{ fontSize: 13, color: 'var(--text-3)' }} />
+                  <span style={{ font: '500 11.5px/1.5 var(--font-sans)', color: 'var(--text-1)', maxWidth: 150, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.name}</span>
+                  <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{fmtSize(u.size)}</span>
+                  <span role="button" aria-label={'Remove ' + u.name} onClick={() => setUploads((c) => c.filter((x) => x.id !== u.id))} style={{ position: 'absolute', right: 5, top: 0, bottom: 0, display: 'flex', alignItems: 'center', cursor: 'pointer', color: 'var(--text-3)' }}><i className="ph ph-x" style={{ fontSize: 11 }} /></span>
+                </div>
+              ))}
+            </div>
+          ) : null}
           <textarea ref={taRef} autoFocus={!narrow} rows={narrow ? 3 : 4} value={task} onChange={(e) => setTask(e.target.value)} placeholder="What should the agent do? Be specific about the outcome, and mention files or checks that matter. You can paste or drop images."
             onPaste={(e) => { const f = [...e.clipboardData.files].filter((x) => x.type.startsWith('image/')); if (f.length) { e.preventDefault(); void addImages(f); } }}
             onKeyDown={(e) => { if (e.key === 'Enter' && (mac() ? e.metaKey : e.ctrlKey) && task.trim()) void start(); }}
             style={{ display: 'block', width: '100%', boxSizing: 'border-box', resize: 'none', border: 'none', outline: 'none', boxShadow: 'none', background: 'transparent', color: 'var(--text-1)', font: '400 13px/1.5 var(--font-sans)', padding: '10px 12px 4px', maxHeight: 280 }} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px 6px 8px' }}>
-            <input ref={picker} type="file" accept={IMAGE_TYPES.join(',')} multiple hidden onChange={(e) => { void addImages([...(e.target.files || [])]); e.target.value = ''; }} />
-            <IconButton icon="paperclip" label="Attach an image" size="sm" onClick={() => picker.current?.click()} />
-            <span style={{ font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{images.length ? `${images.length} attached` : 'PNG, JPEG, GIF or WebP'}</span>
+            <input ref={picker} type="file" multiple hidden onChange={(e) => { void addFiles([...(e.target.files || [])]); e.target.value = ''; }} />
+            <IconButton icon="paperclip" label="Attach files" size="sm" onClick={() => picker.current?.click()} />
+            <span style={{ font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{images.length || uploads.length ? `${images.length + uploads.length} attached` : 'Any file type. Images go in the message; other files are only for this agent.'}</span>
           </div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: narrow ? 'minmax(0,1fr)' : sub ? '1fr 1fr' : '1fr 1fr 110px', gap: 8, ...(compare ? { opacity: 0.5 } : null) }}>
@@ -579,7 +622,7 @@ export function Palette({ onClose, toggleTheme }: { onClose(): void; toggleTheme
     { key: 'a-act', label: 'Activity', icon: 'pulse', run: () => go({ screen: 'activity' }) },
     { key: 'a-set', label: 'Settings', icon: 'gear-six', run: () => go({ screen: 'settings' }) },
     { key: 'a-new', label: 'New session', icon: 'plus', hint: newKeys.join(mac() ? '' : '+'), run: () => setUI({ newSession: {} }) },
-    { key: 'a-halt', label: 'Interrupt all agents', icon: 'hand-palm', hint: haltKeys.join(mac() ? '' : '+'), run: () => void haltAll() },
+    { key: 'a-halt', label: 'Interrupt all agents', icon: 'pause', hint: haltKeys.join(mac() ? '' : '+'), run: () => void haltAll() },
     { key: 'a-resume', label: 'Resume all agents', icon: 'play', hint: resumeKeys.join(mac() ? '' : '+'), run: () => void resumeAll() },
     { key: 'a-free', label: 'New free agent (no repository)', icon: 'robot', run: () => setUI({ newSession: { repoId: '@free' } }) },
     { key: 'a-add', label: 'Add repository', icon: 'book-bookmark', run: () => setUI({ adding: true }) },

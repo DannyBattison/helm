@@ -2,12 +2,14 @@ import { inbox } from '@shared/inbox';
 import { sessionTitle } from '@shared/types';
 import React from 'react';
 import { FitAddon } from '@xterm/addon-fit';
+import { SearchAddon } from '@xterm/addon-search';
 import { Terminal } from '@xterm/xterm';
+import { WebLinksAddon } from '@xterm/addon-web-links';
 import { api, on, platform, windowControls } from '../api';
 import { fontStack } from '../fonts';
 import glyph from '../assets/helm-glyph-violet.svg';
 import { ago, elapsed, fmtTokens, isFreeGroup, lifetimeTokens, livePlan, reposWithSessions, runningSubagents, subagentTree, totals, untilReset } from '../lib';
-import { getUI, go, haltAll, refreshExternals, setUI, toast, useApp, useMoney, useUI, useTranscript, type Route } from '../store';
+import { getUI, go, haltAll, isResumable, refreshExternals, resumeAll, setUI, toast, useApp, useMoney, useUI, useTranscript, type Route } from '../store';
 import { useShortcutKeys } from '../shortcuts';
 import { Avatar, Badge, Breadcrumbs, ContextMenu, Grip, Hint, IconButton, Kbd, Meter, TreeItem, useNarrow, usePaneWidth, type MenuItem } from '../ui';
 
@@ -46,6 +48,7 @@ export function PlanMeters() {
 export function Sidebar({ drawer = false }: { drawer?: boolean }) {
   const app = useApp();
   const working = app.sessions.filter((s) => s.status === 'working').length;
+  const paused = app.sessions.filter(isResumable).length;
   const route = useUI((u) => u.route);
   const [closed, setClosed] = React.useState<Record<string, boolean>>({});
   const [subsClosed, setSubsClosed] = React.useState<Record<string, boolean>>({});
@@ -152,7 +155,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
         <TreeItem icon="pulse" label="Activity" selected={route.screen === 'activity'} onClick={() => go({ screen: 'activity' })} />
         <TreeItem icon="chart-line-up" label="Reports" selected={route.screen === 'reports'} onClick={() => go({ screen: 'reports' })} />
         <TreeItem icon="archive" label="Archive" selected={route.screen === 'archive'} onClick={() => go({ screen: 'archive' })} trailing={archivedCount ? <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{archivedCount}</span> : null} />
-        <SectionLabel action={<><IconButton icon="hand-palm" label={working ? `Interrupt all agents (${working} working)` : 'Interrupt all agents: none are working'} size="sm" disabled={!working} onClick={() => void haltAll()} style={working ? { color: 'var(--status-error-text)' } : undefined} /><IconButton icon="archive" label={showArchived ? 'Hide archived sessions' : 'Show archived sessions'} size="sm" active={showArchived} onClick={toggleArchived} /><Hint id="add-repo" side="right" title="Add a repository" text="Start here: pick a GitHub repository for agents to work in."><IconButton icon="plus" label="Add repository" size="sm" onClick={() => setUI({ adding: true })} /></Hint></>}>Repositories</SectionLabel>
+        <SectionLabel action={<><IconButton icon="play" label={paused ? `Continue all agents (${paused} interrupted)` : 'Continue all agents: none were interrupted'} size="sm" disabled={!paused} onClick={() => void resumeAll()} /><IconButton icon="pause" label={working ? `Interrupt all agents (${working} working)` : 'Interrupt all agents: none are working'} size="sm" disabled={!working} onClick={() => void haltAll()} style={working ? { color: 'var(--status-error-text)' } : undefined} /><IconButton icon="archive" label={showArchived ? 'Hide archived sessions' : 'Show archived sessions'} size="sm" active={showArchived} onClick={toggleArchived} /><Hint id="add-repo" side="right" title="Add a repository" text="Start here: pick a GitHub repository for agents to work in."><IconButton icon="plus" label="Add repository" size="sm" onClick={() => setUI({ adding: true })} /></Hint></>}>Repositories</SectionLabel>
         {app.repos.length === 0 ? <div style={{ padding: '4px 10px 6px', font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>No repositories yet. Use + to add one from GitHub.</div> : null}
         {reposWithSessions(app, showArchived).map(({ repo: r, sessions }) => {
           const open = !closed[r.id];
@@ -224,6 +227,7 @@ export function TitleBar({ crumbs, theme, setTheme }: { crumbs: any[]; theme: 'd
   const need = app.sessions.filter((s) => s.status === 'attention').length;
   const searchKeys = useShortcutKeys('palette');
   const working = app.sessions.filter((s) => s.status === 'working').length;
+  const paused = app.sessions.filter(isResumable).length;
   const narrow = useNarrow();
   return (
     <div className="drag" style={{ height: 'var(--titlebar-h)', flex: 'none', display: 'flex', alignItems: 'center', gap: narrow ? 6 : 12, padding: '0 ' + (windowControls() === 'right' ? 150 : 10) + 'px 0 ' + (narrow ? 8 : 16) + 'px', borderBottom: '1px solid var(--border)', background: 'var(--bg-app)' }}>
@@ -235,7 +239,8 @@ export function TitleBar({ crumbs, theme, setTheme }: { crumbs: any[]; theme: 'd
         <Kbd keys={searchKeys} />
       </button></Hint>}
       <div style={{ flex: narrow ? 'none' : 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 2 }}>
-        {working > 0 ? <IconButton size={narrow ? 'lg' : 'md'} icon="hand-palm" label={`Interrupt all agents (${working} working)`} onClick={() => void haltAll()} style={{ color: 'var(--status-error-text)' }} /> : null}
+        {paused > 0 ? <IconButton size={narrow ? 'lg' : 'md'} icon="play" label={`Continue all agents (${paused} interrupted)`} onClick={() => void resumeAll()} /> : null}
+        {working > 0 ? <IconButton size={narrow ? 'lg' : 'md'} icon="pause" label={`Interrupt all agents (${working} working)`} onClick={() => void haltAll()} style={{ color: 'var(--status-error-text)' }} /> : null}
         <Hint id="inbox" title="Your inbox" text="Approvals, questions and finished work that need you collect here."><IconButton size={narrow ? 'lg' : 'md'} icon="bell" label="Inbox" badge={need > 0} onClick={() => go({ screen: 'inbox' })} /></Hint>
         {narrow ? null : <>
           <IconButton icon={theme === 'dark' ? 'sun' : 'moon'} label="Toggle theme" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
@@ -283,17 +288,25 @@ export function StatusBar() {
 
 function cssVar(n: string) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
 
-/** A real shell in a pty, rooted in the session's worktree when there is one. */
-export function XTerm({ sessionId, themeKey }: { sessionId: string | null; themeKey: string }) {
+/** A real shell in a pty, rooted in the workspace (a session id, `repo:<id>`, or null for the home folder). */
+function XTerm({ target, themeKey, visible, onTitle, onExit, handle }: { target: string | null; themeKey: string; visible: boolean; onTitle(t: string): void; onExit(): void; handle: React.MutableRefObject<TermHandle | null> }) {
   const font = useApp().settings.editorFont;
   const el = React.useRef<HTMLDivElement>(null);
   const term = React.useRef<Terminal | null>(null);
+  const fitRef = React.useRef<FitAddon | null>(null);
+  const searchRef = React.useRef<SearchAddon | null>(null);
+  const [find, setFind] = React.useState<string | null>(null);
+  const cb = React.useRef({ onTitle, onExit });
+  cb.current = { onTitle, onExit };
   React.useEffect(() => {
-    const t = new Terminal({ fontFamily: fontStack(font), fontSize: 12, lineHeight: 1.4, cursorBlink: true, allowProposedApi: true, theme: {} });
+    const t = new Terminal({ fontFamily: fontStack(font), fontSize: 12, lineHeight: 1.4, cursorBlink: true, allowProposedApi: true, scrollback: 10000, macOptionIsMeta: true, theme: {} });
     const fit = new FitAddon();
+    const search = new SearchAddon();
     t.loadAddon(fit);
+    t.loadAddon(search);
+    t.loadAddon(new WebLinksAddon((_e, uri) => { void api.openExternal(uri); }));
     t.open(el.current!);
-    term.current = t;
+    term.current = t; fitRef.current = fit; searchRef.current = search;
     // xterm sends a literal ^V for Ctrl+V and never pastes, so paste and copy are done here: Ctrl/Cmd+V pastes, Ctrl/Cmd+C copies a
     // selection (with nothing selected it still interrupts), and so do Ctrl+Shift+V and Ctrl+Shift+C.
     const pasteIn = () => api.readClipboard().then((text) => { if (text) t.paste(text); }).catch(() => undefined);
@@ -302,6 +315,8 @@ export function XTerm({ sessionId, themeKey }: { sessionId: string | null; theme
       const k = e.key.toLowerCase();
       if (k === 'v') { e.preventDefault(); void pasteIn(); return false; }
       if (k === 'c' && (e.shiftKey || t.hasSelection())) { e.preventDefault(); if (t.hasSelection()) void api.copyText(t.getSelection()); return false; }
+      if (k === 'f' && (e.shiftKey || e.metaKey)) { e.preventDefault(); setFind(t.getSelection() || ''); return false; }
+      if (k === 'k' && e.metaKey) { e.preventDefault(); t.clear(); return false; }
       return true;
     });
     const onContext = (e: MouseEvent) => {
@@ -311,24 +326,27 @@ export function XTerm({ sessionId, themeKey }: { sessionId: string | null; theme
     el.current!.addEventListener('contextmenu', onContext);
     let id: string | null = null;
     let dead = false;
-    const doFit = () => { try { fit.fit(); if (id) void api.termResize(id, t.cols, t.rows); } catch { /* hidden */ } };
+    const doFit = () => { try { if (!el.current!.offsetHeight) return; fit.fit(); if (id) void api.termResize(id, t.cols, t.rows); } catch { /* hidden */ } };
     doFit();
-    api.termOpen(sessionId, t.cols, t.rows).then((tid) => {
+    api.termOpen(target, t.cols, t.rows).then((tid) => {
       if (dead) { void api.termClose(tid); return; }
       id = tid;
       t.onData((d) => void api.termWrite(tid, d));
       doFit();
-    });
+    }).catch((e) => t.write(`\x1b[31mCould not start a shell: ${String(e?.message || e)}\x1b[0m\r\n`));
+    handle.current = { run: (text) => { if (id) void api.termWrite(id, text); }, focus: () => t.focus(), refit: doFit };
+    const offT = t.onTitleChange((x) => cb.current.onTitle(x));
     const offD = on('termData', (p) => { if (p.id === id) t.write(p.data); });
-    const offE = on('termExit', (p) => { if (p.id === id) t.write('\r\n\x1b[2m[process exited]\x1b[0m\r\n'); });
+    const offE = on('termExit', (p) => { if (p.id === id) { id = null; cb.current.onExit(); } });
     const ro = new ResizeObserver(doFit);
     ro.observe(el.current!);
     const host = el.current!;
-    return () => { dead = true; offD(); offE(); ro.disconnect(); host.removeEventListener('contextmenu', onContext); if (id) void api.termClose(id); t.dispose(); };
-  }, [sessionId]);
+    return () => { dead = true; offD(); offE(); offT.dispose(); ro.disconnect(); host.removeEventListener('contextmenu', onContext); if (id) void api.termClose(id); handle.current = null; t.dispose(); };
+  }, [target]);
   React.useEffect(() => {
-    if (term.current) { term.current.options.fontFamily = fontStack(font); }
+    if (term.current) { term.current.options.fontFamily = fontStack(font); fitRef.current?.fit(); }
   }, [font]);
+  React.useEffect(() => { if (visible) { fitRef.current?.fit(); term.current?.focus(); } }, [visible]);
   React.useEffect(() => {
     // Parent effects set data-theme after this one runs, so read the tokens on the next tick.
     const t = setTimeout(() => {
@@ -336,25 +354,165 @@ export function XTerm({ sessionId, themeKey }: { sessionId: string | null; theme
       term.current.options.theme = { background: cssVar('--bg-editor'), foreground: cssVar('--text-1'), cursor: cssVar('--text-2'), selectionBackground: cssVar('--accent-muted') };
     }, 0);
     return () => clearTimeout(t);
-  }, [themeKey, sessionId]);
-  return <div ref={el} style={{ flex: 1, minHeight: 0, overflow: 'hidden', background: 'var(--bg-editor)' }} />;
+  }, [themeKey, target]);
+  const closeFind = () => { setFind(null); searchRef.current?.clearDecorations(); term.current?.focus(); };
+  return (
+    <div style={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex', background: 'var(--bg-editor)' }}>
+      <div ref={el} style={{ flex: 1, minWidth: 0, overflow: 'hidden', padding: '2px 0 0 8px' }} />
+      {find !== null ? (
+        <div style={{ position: 'absolute', top: 4, right: 14, display: 'flex', gap: 4, padding: 4, background: 'var(--bg-raised, var(--bg-app))', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', boxShadow: 'var(--shadow-dialog)' }}>
+          <input autoFocus value={find} placeholder="Find" onChange={(e) => { setFind(e.target.value); searchRef.current?.findNext(e.target.value, { incremental: true }); }}
+            onKeyDown={(e) => { if (e.key === 'Escape') closeFind(); else if (e.key === 'Enter') (e.shiftKey ? searchRef.current?.findPrevious(find) : searchRef.current?.findNext(find)); }}
+            style={{ width: 160, font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-1)', background: 'transparent', border: 'none', outline: 'none' }} />
+          <IconButton icon="caret-up" label="Previous" size="sm" onClick={() => searchRef.current?.findPrevious(find)} />
+          <IconButton icon="caret-down" label="Next" size="sm" onClick={() => searchRef.current?.findNext(find)} />
+          <IconButton icon="x" label="Close" size="sm" onClick={closeFind} />
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
-export function TerminalDrawer({ height = 210, onClose, sessionId, themeKey }: { height?: number; onClose(): void; sessionId: string | null; themeKey: string }) {
-  const [tab, setTab] = React.useState<'shell' | 'agent'>('shell');
+interface TermHandle { run(text: string): void; focus(): void; refit(): void }
+interface TermTab { key: number; target: string | null; title: string; label: string; exited: boolean }
+
+/** Single-quote a path for the shell the command is typed into. */
+export const cdCommand = (path: string, windows: boolean) => (windows ? `cd "${path}"\r` : `cd '${path.replace(/'/g, `'\\''`)}'\r`);
+
+let tabKey = 0;
+
+export function TerminalDrawer({ height: initial = 260, visible = true, onClose, sessionId, themeKey }: { height?: number; visible?: boolean; onClose(): void; sessionId: string | null; themeKey: string; }) {
+  const app = useApp();
+  const [height, setHeight] = React.useState(initial);
+  const [view, setView] = React.useState<'shell' | 'agent'>('shell');
+  const [tabs, setTabs] = React.useState<TermTab[]>([]);
+  const [activeKey, setActiveKey] = React.useState(-1);
+  const [menu, setMenu] = React.useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
+  const handles = React.useRef(new Map<number, React.MutableRefObject<TermHandle | null>>());
   const tr = useTranscript(sessionId || '') || [];
   const bash = tr.filter((e) => e.k === 'bash') as any[];
-  const tabStyle = (on: boolean): React.CSSProperties => ({ display: 'flex', alignItems: 'center', gap: 6, height: '100%', padding: '0 10px', cursor: 'pointer', font: '400 11.5px/1.5 var(--font-mono)', color: on ? 'var(--text-1)' : 'var(--text-3)', boxShadow: on ? 'inset 0 -1px 0 var(--accent)' : 'none' });
+  const hasAgent = !!sessionId && !sessionId.startsWith('repo:');
+  const windows = platform() === 'win32';
+
+  const labelFor = React.useCallback((target: string | null) => {
+    if (!target) return 'home';
+    if (target.startsWith('repo:')) return target.slice(5).split('/').pop() || target;
+    const s = app.sessions.find((x) => x.id === target);
+    return s ? sessionTitle(s) : target;
+  }, [app.sessions]);
+  const add = React.useCallback((target: string | null) => {
+    const key = ++tabKey;
+    setTabs((t) => [...t, { key, target, title: '', label: labelFor(target), exited: false }]);
+    setActiveKey(key); setView('shell');
+  }, [labelFor]);
+  const close = (key: number) => {
+    const i = tabs.findIndex((x) => x.key === key);
+    const rest = tabs.filter((x) => x.key !== key);
+    handles.current.delete(key);
+    setTabs(rest);
+    if (key === activeKey) setActiveKey(rest[Math.min(i, rest.length - 1)]?.key ?? -1);
+    if (rest.length === 0) onClose();
+  };
+  // Opening the terminal starts a shell in whatever you are looking at, and closing the last tab leaves nothing behind.
+  React.useEffect(() => { if (visible && tabs.length === 0) add(sessionId); }, [visible, tabs.length]);
+  React.useEffect(() => { if (visible) handles.current.get(activeKey)?.current?.refit(); }, [height, activeKey, visible]);
+
+  // Keyboard: Ctrl+Shift+T new tab, Ctrl+Shift+W close it, Ctrl+Tab / Ctrl+Shift+Tab (or Ctrl+PageUp/Down) switch.
+  React.useEffect(() => {
+    if (!visible) return;
+    const h = (e: KeyboardEvent) => {
+      if (!e.ctrlKey || e.altKey) return;
+      const k = e.key.toLowerCase();
+      if (e.shiftKey && k === 't') { e.preventDefault(); add(sessionId); }
+      else if (e.shiftKey && k === 'w') { e.preventDefault(); close(activeKey); }
+      else if (k === 'tab' || k === 'pagedown' || k === 'pageup') {
+        if (tabs.length < 2) return;
+        e.preventDefault();
+        const back = k === 'pageup' || (k === 'tab' && e.shiftKey);
+        const i = tabs.findIndex((x) => x.key === activeKey);
+        setActiveKey(tabs[(i + (back ? -1 : 1) + tabs.length) % tabs.length].key);
+      }
+    };
+    window.addEventListener('keydown', h, true);
+    return () => window.removeEventListener('keydown', h, true);
+  }, [visible, tabs, activeKey, sessionId, add]);
+
+  /** Every place worth jumping to: this session, then the repositories, then the live sessions of each, then home. */
+  const places = (): { label: string; hint?: string; icon: string; target: string | null; separator?: boolean }[] => {
+    const out: { label: string; hint?: string; icon: string; target: string | null; separator?: boolean }[] = [];
+    const seen = new Set<string | null>();
+    const push = (p: { label: string; hint?: string; icon: string; target: string | null }, sep = false) => { if (!seen.has(p.target)) { seen.add(p.target); out.push({ ...p, separator: sep && out.length > 0 }); } };
+    if (sessionId) push({ label: 'This workspace', hint: labelFor(sessionId), icon: 'crosshair', target: sessionId });
+    app.repos.forEach((r, i) => push({ label: r.name, hint: r.owner, icon: 'git-branch', target: 'repo:' + r.id }, i === 0));
+    app.sessions.filter((s) => !s.archivedAt).forEach((s, i) => push({ label: sessionTitle(s), hint: s.repoId.split('/').pop(), icon: 'tree-structure', target: s.id }, i === 0));
+    push({ label: 'Home folder', icon: 'house', target: null }, true);
+    return out;
+  };
+  const openMenu = (e: React.MouseEvent, mode: 'new' | 'jump') => {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const items: MenuItem[] = places().map((p) => ({
+      label: p.hint ? `${p.label}  ·  ${p.hint}` : p.label, icon: p.icon, separator: p.separator,
+      onClick: () => {
+        if (mode === 'new') { add(p.target); return; }
+        // Jump: `cd` in the shell you are in. Only a workspace has a path the renderer knows; the rest open a tab.
+        const path = !p.target ? null : p.target.startsWith('repo:') ? app.repos.find((x) => 'repo:' + x.id === p.target)?.localPath : app.sessions.find((x) => x.id === p.target)?.worktree;
+        if (path) { handles.current.get(activeKey)?.current?.run(cdCommand(path, windows)); handles.current.get(activeKey)?.current?.focus(); }
+        else add(p.target);
+      }
+    }));
+    setMenu({ x: r.left, y: r.top - 4 - items.length * 30, items });
+  };
+
+  const tabStyle = (on: boolean): React.CSSProperties => ({ display: 'flex', alignItems: 'center', gap: 6, height: '100%', padding: '0 8px 0 10px', cursor: 'pointer', maxWidth: 200, font: '400 11.5px/1.5 var(--font-mono)', color: on ? 'var(--text-1)' : 'var(--text-3)', boxShadow: on ? 'inset 0 -1px 0 var(--accent)' : 'none' });
+  const startDrag = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const y0 = e.clientY, h0 = height;
+    const move = (m: MouseEvent) => setHeight(Math.max(120, Math.min(window.innerHeight - 160, h0 + (y0 - m.clientY))));
+    const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+    window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
+  };
   return (
-    <div style={{ height, flex: 'none', display: 'flex', flexDirection: 'column', borderTop: '1px solid var(--border)', background: 'var(--bg-editor)' }}>
-      <div style={{ height: 30, flex: 'none', display: 'flex', alignItems: 'center', gap: 2, padding: '0 6px 0 12px', borderBottom: '1px solid var(--border-subtle)' }}>
-        <span style={tabStyle(tab === 'shell')} onClick={() => setTab('shell')}><i className="ph ph-terminal-window" style={{ fontSize: 13 }} />{sessionId && !sessionId.startsWith('repo:') ? 'shell · ' + sessionId : 'shell'}</span>
-        {sessionId && !sessionId.startsWith('repo:') ? <span style={tabStyle(tab === 'agent')} onClick={() => setTab('agent')}><i className="ph ph-robot" style={{ fontSize: 13 }} />agent output</span> : null}
+    <div style={{ height, flex: 'none', display: visible ? 'flex' : 'none', flexDirection: 'column', borderTop: '1px solid var(--border)', background: 'var(--bg-editor)', position: 'relative' }}>
+      <div onMouseDown={startDrag} style={{ position: 'absolute', top: -3, left: 0, right: 0, height: 6, cursor: 'ns-resize', zIndex: 5 }} />
+      <div style={{ height: 30, flex: 'none', display: 'flex', alignItems: 'center', gap: 2, padding: '0 6px 0 4px', borderBottom: '1px solid var(--border-subtle)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', height: '100%', minWidth: 0, overflowX: 'auto' }}>
+          {tabs.map((t) => (
+            <span key={t.key} style={tabStyle(view === 'shell' && t.key === activeKey)} onClick={() => { setActiveKey(t.key); setView('shell'); }}
+              onAuxClick={(e) => { if (e.button === 1) close(t.key); }} title={t.title || t.label}>
+              <i className="ph ph-terminal-window" style={{ fontSize: 13, flex: 'none', opacity: t.exited ? 0.5 : 1 }} />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: t.exited ? 'line-through' : 'none' }}>{t.label}</span>
+              <i className="ph ph-x" onClick={(e) => { e.stopPropagation(); close(t.key); }} style={{ fontSize: 11, flex: 'none', opacity: 0.6 }} />
+            </span>
+          ))}
+        </div>
+        <IconButton icon="plus" label="New terminal (Ctrl+Shift+T)" size="sm" onClick={() => add(sessionId)} />
+        <IconButton icon="caret-up" label="New terminal in…" size="sm" onClick={(e: any) => openMenu(e, 'new')} />
+        <IconButton icon="lightning" label="Jump to a project in this terminal" size="sm" onClick={(e: any) => openMenu(e, 'jump')} />
+        {hasAgent ? <span style={tabStyle(view === 'agent')} onClick={() => setView('agent')}><i className="ph ph-robot" style={{ fontSize: 13 }} />agent output</span> : null}
         <span style={{ flex: 1 }} />
         <IconButton icon="caret-down" label="Minimise" size="sm" onClick={onClose} />
       </div>
-      <div style={{ flex: 1, minHeight: 0, display: tab === 'shell' ? 'flex' : 'none' }}><XTerm sessionId={sessionId} themeKey={themeKey} /></div>
-      {tab === 'agent' ? (
+      <div style={{ flex: 1, minHeight: 0, display: view === 'shell' ? 'flex' : 'none', position: 'relative' }}>
+        {tabs.map((t) => {
+          const handle = handles.current.get(t.key) || (() => { const r = { current: null as TermHandle | null }; handles.current.set(t.key, r); return r; })();
+          const on = t.key === activeKey && view === 'shell' && visible;
+          return (
+            <div key={t.key} style={{ position: 'absolute', inset: 0, display: on ? 'flex' : 'none' }}>
+              <XTerm target={t.target} themeKey={themeKey} visible={on} handle={handle}
+                onTitle={(title) => setTabs((all) => all.map((x) => (x.key === t.key ? { ...x, title } : x)))}
+                onExit={() => setTabs((all) => all.map((x) => (x.key === t.key ? { ...x, exited: true } : x)))} />
+              {t.exited ? (
+                <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', gap: 8, padding: '4px 12px', background: 'var(--bg-app)', borderTop: '1px solid var(--border-subtle)', font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>
+                  Process exited.
+                  <button type="button" onClick={() => { const target = t.target; close(t.key); add(target); }} style={{ font: 'inherit', color: 'var(--accent-text, var(--accent))', background: 'none', border: 'none', cursor: 'pointer' }}>Restart</button>
+                  <button type="button" onClick={() => close(t.key)} style={{ font: 'inherit', color: 'var(--text-2)', background: 'none', border: 'none', cursor: 'pointer' }}>Close</button>
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+      {view === 'agent' ? (
         <pre className="selectable" style={{ flex: 1, minHeight: 0, overflow: 'auto', margin: 0, padding: '8px 14px', font: '400 12px/1.6 var(--font-mono)', color: 'var(--text-2)' }}>
           {bash.length === 0 ? <div style={{ color: 'var(--text-3)' }}>The agent has not run any commands yet.</div> : null}
           {bash.map((b, i) => (
@@ -363,6 +521,7 @@ export function TerminalDrawer({ height = 210, onClose, sessionId, themeKey }: {
           ))}
         </pre>
       ) : null}
+      {menu ? <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} /> : null}
     </div>
   );
 }

@@ -1,0 +1,3 @@
+## D-10 · 2026-10-23 · Permission model for agent tool calls
+`canUseTool` auto-allows reads, edits inside the session worktree and a short list of read-only commands. Other commands wait in "Needs you" unless they match the always-allowed patterns in Settings. "Always allow" derives a pattern from the command (`pnpm test *`) and adds it to that global list. Edits outside the worktree always ask. Replying in the composer while a request waits answers a question or denies an approval with an explanation.
+Why: matches the design's three approval surfaces and keeps agents inside their worktree without prompting for every read.

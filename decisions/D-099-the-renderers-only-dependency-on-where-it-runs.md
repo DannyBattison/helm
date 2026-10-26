@@ -1,0 +1,3 @@
+## D-99 · 2026-10-24 · The renderer's only dependency on where it runs is `HelmBridge`
+`HelmBridge` in `src/shared/types.ts` is the one interface the UI uses (`platform`, `invoke`, `on`, and new `windowControls`). Electron's preload implements it over IPC. Title-bar padding used to key off `platform() === 'darwin'`, which also meant "traffic lights on the left"; it now reads `windowControls()` (`left`, `right` or `none`, defaulting from `platform`) so a browser tab, which has no window buttons, is not padded for them. Keyboard shortcuts still follow `platform`.
+Why: the UI must be reusable unchanged by the desktop app and the hosted web client; the title bar was the one place it assumed Electron's window.

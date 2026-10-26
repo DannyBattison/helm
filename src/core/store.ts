@@ -141,6 +141,8 @@ export class Store {
     return out;
   }
 
+  get root() { return this.dir; }
+
   async load(dir: string) {
     this.dir = dir;
     await mkdir(join(this.dir, 'transcripts'), { recursive: true });

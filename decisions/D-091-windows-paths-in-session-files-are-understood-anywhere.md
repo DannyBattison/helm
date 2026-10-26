@@ -1,0 +1,3 @@
+## D-91 · 2026-10-23 · Windows paths in session files are understood anywhere
+`rel()` now treats a path or worktree that starts with a drive letter as a Windows path, whatever platform helm runs on. This makes `tests/subagent.test.ts`, whose fixture came from a Windows machine, pass on Linux, which the release workflow needs; behaviour on a single platform is unchanged. A hunk sent from the window to be reverted is also checked in the main process to have the shape the diff reader produces, so it can only touch the one file named.
+Why: the test failed on Linux before this work; hardening found in review.

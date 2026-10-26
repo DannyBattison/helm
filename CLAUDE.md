@@ -1,5 +1,5 @@
 # helm
 
-- Log every decision in `DECISIONS.md`, append-only, as `## D-NNN · date · title`, with the next number after the last entry.
-- After any merge or pull that touches `DECISIONS.md`, keep both sides' entries and renumber so the numbers run 1, 2, 3 … in order with no duplicates. `tests/decisions.test.ts` fails otherwise.
+- Log every decision as its own file, `decisions/YYYY-MM-DD-short-slug.md`, first line `## YYYY-MM-DD · Title` (see `decisions/README.md`). Append-only; never edit old entries. Don't add numbered `D-NNN` entries or recreate `DECISIONS.md`.
+- Decision files never conflict, so no renumbering after merges. `tests/decisions.test.ts` checks the file names and headings.
 - Commit as you go.

@@ -1,0 +1,3 @@
+## D-41 · 2026-10-23 · Lifetime tokens per repository
+helm keeps a running total per repository of input, output and cache-read tokens and the API-priced cost, updated on every message (subagents included) and persisted separately from sessions, so deleting a session does not lose its usage. The first time it loads, it is seeded from the sessions that exist. The total shown is input + output + cache read, the same definition as the Tokens column; the tooltip gives the breakdown and, in API-token mode, the cost. It appears in the repository header and on the Overview's repository rows.
+Why: user asked for lifetime tokens per project.

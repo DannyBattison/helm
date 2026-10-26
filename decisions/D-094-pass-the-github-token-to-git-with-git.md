@@ -1,0 +1,3 @@
+## D-94 · 2026-10-24 · Pass the GitHub token to git with GIT_CONFIG_PARAMETERS
+helm gave git its GitHub token as an `http.https://github.com/.extraheader` set through `GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_0`/`GIT_CONFIG_VALUE_0`. Those variables only exist in git 2.31 and later, so on older git (2.29 from Homebrew on an Intel Mac) the header was dropped and cloning a private repository failed with "could not read Username … terminal prompts disabled". The header now goes in `GIT_CONFIG_PARAMETERS` in its `'key=value'` form, which every git version reads, added after anything already in that variable.
+Why: cloning private repositories failed on older git.

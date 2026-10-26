@@ -1,0 +1,3 @@
+## D-152 · 2026-10-26 · Pull request titles are brief and the description stays current
+The title suggested for a new pull request is the first line of the task cut to 72 characters at a word boundary (`prTitle`), and helm cuts any title to 200 before sending it, since long ones made GitHub refuse the request. The full task, every commit and the file counts go in the description, inside a `<!-- helm:summary -->` block. While the pull request is open, helm rewrites that block after it pushes a session branch and at its two-minute poll whenever the commits changed, so later pushes show in the description. A description with no block (the user rewrote it) is never touched, and the title is never changed after opening. Tests only; not run against GitHub.
+Why: user request.

@@ -1,0 +1,2 @@
+## D-135 · 2026-10-26 · Automated agents are managed under Settings → Automated agents
+The list shows each agent's trigger, scope and last run, with run now, edit, delete and an on/off switch; a dialog creates and edits them. The signed-out state on the hosted server hides them. Typechecked (the hosted server project was not: its `ws` dependency is not installed here) and unit-tested for the logic in D-134, but the screen was not run in the app.
