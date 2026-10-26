@@ -171,6 +171,7 @@ export class SessionManager {
   // ---------------------------------------------------------------- transcript
   private async push(id: string, ev: TranscriptEvent): Promise<number> {
     const t = await this.store.transcript(id);
+    ev.at ??= Date.now();
     t.push(ev);
     this.store.saveTranscript(id);
     this.hooks.emitTranscript(id, t.length - 1, ev);
@@ -1024,6 +1025,7 @@ export class SessionManager {
     this.markChanged(s, s.subagents.find((x) => tkey === `${s.id}~${x.id}`));
     s.stuck = undefined;
     s.fileEdits = undefined;
+    this.pushEpoch++;
     await this.push(tkey, { k: 'commit', hash: m[1], msg: m[2], t: now });
     this.activity(s, 'commit', `committed ${m[1]} “${trunc(m[2], 70)}”`);
     if (this.store.data.settings.autoPush) void this.autoPush(s);
@@ -1031,10 +1033,23 @@ export class SessionManager {
   }
 
   /** Pushes the session's branch to GitHub, one push at a time per session so quick commits do not race. A failure is shown in the activity log and tried again at the next commit. */
-  private pushing = new Map<string, Promise<void>>();
+  private pushing = new Map<string, Promise<unknown>>();
+  /** Bumped whenever what is ahead of GitHub may have changed, so cached push status is not reused. */
+  pushEpoch = 0;
+  /** Runs a push for a session after any push already under way for it, so a manual push and an automatic one never race. */
+  serialPush<T>(id: string, fn: () => Promise<T>): Promise<T> {
+    const run = (this.pushing.get(id) ?? Promise.resolve()).catch(() => undefined).then(fn).finally(() => {
+      this.pushEpoch++;
+      const s = this.get(id);
+      if (s) s.pushedAt = Date.now();
+      this.touch();
+    });
+    this.pushing.set(id, run);
+    return run;
+  }
   autoPush(s: Session): Promise<void> {
     if (s.free || !s.branch || s.worktreeGone) return Promise.resolve();
-    const run = (this.pushing.get(s.id) ?? Promise.resolve()).then(async () => {
+    return this.serialPush(s.id, async () => {
       try {
         await G.git(s.worktree, 'push', '-u', 'origin', s.branch);
         this.activity(s, 'push', `pushed ${s.branch}`);
@@ -1042,8 +1057,6 @@ export class SessionManager {
         this.activity(s, 'push', `push of ${s.branch} failed: ${trunc(String(e?.message || e).split('\n').find((l) => l.trim()) || 'unknown error', 120)}`, { ok: false });
       }
     });
-    this.pushing.set(s.id, run);
-    return run;
   }
 
   private async locateEdit(s: Session, input: any) {

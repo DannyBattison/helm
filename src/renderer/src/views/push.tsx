@@ -13,7 +13,7 @@ export function usePush(repoId?: string, only?: string) {
   const app = useApp();
   const [targets, setTargets] = React.useState<PushTarget[]>([]);
   const [busy, setBusy] = React.useState(false);
-  const sig = app.sessions.map((s) => `${s.id}:${s.commits.length}:${s.status}`).join(',');
+  const sig = app.sessions.map((s) => `${s.id}:${s.commits.length}:${s.status}:${s.pushedAt ?? 0}`).join(',');
   const reload = React.useCallback(() => { api.pushStatus(repoId).then((l) => setTargets(only ? l.filter((t) => t.id === only) : l)).catch(() => undefined); }, [repoId, only]);
   React.useEffect(() => { reload(); const t = setInterval(reload, 30_000); return () => clearInterval(t); }, [reload, sig]);
   const ahead = targets.filter((t) => t.ahead > 0);
