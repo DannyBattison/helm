@@ -543,3 +543,7 @@ Descenders (p, y, g) were clipped by 1–2px in single-line UI text. `--type-lab
 ## D-131 · 2026-10-26 · The root README is short; coverage comes from a CI workflow and Codecov
 The README is now badges, a link to takethehelm.dev, the feature list, the `docker run` for the hosted image, a short develop section and a Buy Me a Coffee link. The details it dropped (GitHub sign-in, releases and signing, the architecture notes) are in `hosted/README.md`, the code and this file. The coverage badge needs `.github/workflows/ci.yml` (tests with `@vitest/coverage-v8`, uploaded to Codecov) and a `CODECOV_TOKEN` repository secret; it shows "unknown" until the first run. The `docker run` uses `ghcr.io/dannybattison/helm-hosted:latest` from hosted-image.yml.
 Why: user request.
+
+## D-132 · 2026-10-26 · The hosted README is shorter and covers hosting setup and auto-update
+`hosted/README.md` is reorganised: quick start, configuring (env file, reverse proxy with TLS, Claude and GitHub sign-in), updating, then the architecture notes and the "not safe yet" list. Updating includes a short bash script that pulls the image, compares it with the running container's and recreates the container only if newer, with a nightly cron line. The reverse-proxy and script examples were not run.
+Why: user request.
