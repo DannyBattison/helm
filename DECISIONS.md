@@ -521,14 +521,18 @@ Why: user request.
 On top of D-117, under `pointer: coarse` checkboxes and switches are drawn 1.4× larger inside a 40px row (`helm-tap-check`, `helm-tap-switch`, `helm-tap-label`), the title bar grows to 48px so the 44px icon buttons fit, tabs get 44px hit areas with a gap, and a tab's close glyph gets a larger tap area without moving the layout (`helm-tap-x`). The toast dismiss, the Code search's match-case toggle and the answer-option buttons in the chat and Inbox pick up the same `helm-tap-*` classes. Desktop sizes are unchanged. Merged with main's D-117, which sized the rest; this was done from reading the components, without screenshots.
 Why: user request; many controls were too small to hit reliably on a phone.
 
-## D-126 · 2026-10-26 · Once a pull request is open, the Changes panel's button becomes "Merge pull request"; the agent header no longer has one
+## D-126 · 2026-10-26 · A session's branch is renamed after Claude's name for it, once that exists
+A branch starts out named from the first words of the prompt. When Claude Code gives the conversation its own short name, helm renames the branch to the branch prefix plus a slug of that name (`git branch -m`, with `-2`, `-3` … if the name is taken), once per session. It is skipped when "push after every commit" is on (the agent was told the old name), when the branch is already on GitHub or has a pull request, and for free agents. The worktree folder and session id keep the prompt-based name. A name you set yourself does not rename the branch.
+Why: user request, so branches read like the friendly name instead of the prompt.
+
+## D-127 · 2026-10-26 · Once a pull request is open, the Changes panel's button becomes "Merge pull request"; the agent header no longer has one
 The Changes tab's main button was always "Create pull request", with a small "merge it here" link beneath. When the session has an open pull request (and "Pull request" is the chosen delivery) the button now reads "Merge pull request #N" and opens the merge dialog, and the title, description and draft fields, which only apply to creating one, are hidden. The commit-message field stays for "Commit only". The header's top-right Create / Merge / View pull request / Review changes buttons duplicated the tab and are removed; the "Merged into …" badge stays. Not typechecked or run: the worktree had no `node_modules`.
 Why: user request.
 
-## D-127 · 2026-10-26 · Creating a pull request no longer opens it in the browser
+## D-128 · 2026-10-26 · Creating a pull request no longer opens it in the browser
 The toast still shows the URL, and "View on GitHub" in the Changes panel opens it. The panel now turns into the merge button straight away, so the page is no longer needed to carry on.
 Why: user request.
 
-## D-128 · 2026-10-26 · Opening a new pull request in the browser is a setting, off by default
+## D-129 · 2026-10-26 · Opening a new pull request in the browser is a setting, off by default
 Settings → Git gains "Open new pull requests in the browser" (`openPrAfterCreate`). Off keeps D-127; on opens the pull request on GitHub as soon as helm creates it.
 Why: user request.
