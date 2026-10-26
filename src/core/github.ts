@@ -4,6 +4,7 @@ import type { Host } from './host';
 import type { Comment, Issue } from '../shared/issues';
 import { parseDispatch, type Workflow, type WorkflowRun } from '../shared/workflows';
 import type { DeviceCode, GhRepo, PullRequest, User } from '../shared/types';
+import { logLine } from './log';
 
 const SCOPES = 'repo read:org workflow';
 let token: string | null = null;
@@ -36,6 +37,13 @@ export async function clearToken() {
   await rm(tokenFile(), { force: true });
 }
 
+/** One line per rejected GitHub call. Records what kind of token was sent, never the token itself. */
+function logRejected(method: string, path: string, res: Response, message: string) {
+  const kind = !token ? 'none' : token.startsWith('github_pat_') ? 'fine-grained PAT' : token.startsWith('ghp_') ? 'classic PAT' : token.startsWith('gho_') ? 'OAuth' : token.startsWith('ghu_') ? 'app user' : 'unknown';
+  const h = (n: string) => res.headers.get(n);
+  logLine('warn', `GitHub ${method} ${path.replace(/^https:\/\/api\.github\.com/, '')} -> ${res.status} "${message}" (token: ${kind}, rate remaining: ${h('x-ratelimit-remaining') ?? '?'}, scopes: ${h('x-oauth-scopes') ?? '-'}, needs: ${h('x-accepted-oauth-scopes') ?? '-'}${h('x-github-sso') ? ', SSO required' : ''}, request ${h('x-github-request-id') ?? '?'})`);
+}
+
 async function gh(path: string, init: RequestInit = {}): Promise<any> {
   const res = await fetch(path.startsWith('http') ? path : 'https://api.github.com' + path, {
     ...init,
@@ -43,8 +51,15 @@ async function gh(path: string, init: RequestInit = {}): Promise<any> {
   });
   if (!res.ok) {
     let msg = res.statusText;
-    try { msg = ((await res.json()) as any).message || msg; } catch { /* ignore */ }
-    throw new Error(`GitHub: ${msg} (${res.status})`);
+    let detail = '';
+    try {
+      const j = (await res.json()) as any;
+      msg = j.message || msg;
+      // A 422 says only "Validation Failed"; the reason is in `errors`.
+      if (Array.isArray(j.errors) && j.errors.length) detail = ' [' + j.errors.map((e: any) => typeof e === 'string' ? e : [e.resource, e.field, e.code, e.message].filter(Boolean).join(' ')).join('; ') + ']';
+    } catch { /* ignore */ }
+    logRejected(init.method || 'GET', path, res, msg + detail);
+    throw new Error(`GitHub: ${msg}${detail} (${res.status})`);
   }
   return res.status === 204 ? null : res.json();
 }
@@ -216,7 +231,7 @@ export async function pullReviewComments(slug: string, number: number): Promise<
 // ---------------------------------------------------------------- actions
 async function ghText(path: string): Promise<string> {
   const res = await fetch('https://api.github.com' + path, { headers: { Accept: 'application/vnd.github.raw+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'helm', ...(token ? { Authorization: 'Bearer ' + token } : {}) } });
-  if (!res.ok) throw new Error(`GitHub: ${res.statusText} (${res.status})`);
+  if (!res.ok) { logRejected('GET', path, res, res.statusText); throw new Error(`GitHub: ${res.statusText} (${res.status})`); }
   return res.text();
 }
 

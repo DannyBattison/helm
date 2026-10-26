@@ -488,3 +488,7 @@ Why: user request.
 ## D-117 · 2026-10-25 · Touch screens get 44px targets and never zoom on focus
 The viewport now has `maximum-scale=1`, and the 16px minimum for fields applies on any touch screen (`pointer: coarse`) as well as below 768px, so tapping a textarea or input no longer zooms the page (tablets were missed before). On touch screens buttons, icon buttons, list rows, inputs, tabs and segmented controls are at least 44px tall (40px for segments), buttons use 14px text, and double-tap zoom is off (`touch-action: manipulation`). Desktop sizes are unchanged.
 Why: user request; the app felt small on mobile and focusing a field zoomed the page.
+
+## D-118 · 2026-10-26 · Log every rejected GitHub call, and show why a 422 was rejected
+A pull request failed with a 401 and then, on retry, a 422, and `helm.log` held only the 401s with no request or detail. Every non-OK GitHub API response now writes one warn line to `helm.log`: method, path, status, GitHub's message, the kind of token sent (classic or fine-grained PAT, OAuth, none; never the token), the rate-limit remaining, the token's scopes against the scopes the call accepts, whether SSO is required, and GitHub's request id. The thrown error also now carries GitHub's `errors` list, because a 422 says only "Validation Failed" and the reason (a pull request already exists, no commits between the branches, an invalid head) is in that list.
+Why: user request, to find out why the first attempt was a 401 and the next ones 422.
