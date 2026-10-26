@@ -583,3 +583,9 @@ Why: user request.
 ## D-141 · 2026-10-26 · Phone header 60px, with larger icons and title; the menu drawer is scaled up 20%
 The phone header goes from 56 to 60px (D-132, D-138), its icon buttons to 48px with 24px glyphs and the breadcrumb to 17px. The sidebar drawer gets `zoom: 1.2`, so its text, icons and rows grow together; the drawer's 300px (86vw) width is unchanged, so names truncate a little sooner. Not looked at in the app.
 Why: user request.
+
+## D-142 · 2026-10-26 · Resume agents on launch (setting), and Interrupt all / Resume all
+Settings → Claude Code gains "Resume agents on launch" (`resumeOnLaunch`, off by default). When on, once helm has started, each agent that was working when helm closed gets "Continue where you left off", one after another. Agents waiting on a question or approval stay waiting for you (they already resume when answered), and archived, merged, queued or worktree-less sessions are skipped.
+
+The "handbrake" is called **Interrupt all agents**, which matches the existing Pause/Interrupt wording. It interrupts every working agent at once (the same interrupt as the Pause button, so each can be continued), and holds the queue so a freed slot does not start a queued session in its place; the hold ends when you start a session, message one, or press Resume. **Resume all agents** continues every session that is paused or was stopped when helm closed, and releases the queue. Both are in the sidebar next to Repositories (the interrupt icon is always there, red while agents are working, disabled when none are), in the title bar while anything is working (so it is reachable on a phone), in the Cmd/Ctrl+K menu, and as configurable shortcuts (Mod+Shift+X and Mod+Shift+E, D-137). No confirmation, since the point is to be instant. `haltAll()` and `resumeAll()` are new API calls; the companion website does not get them. Not run in the app.
+Why: user request.

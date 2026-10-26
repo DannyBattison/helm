@@ -3,7 +3,7 @@ import type { BaseOption, GhRepo, MergeMethod, ModelAlias, PermMode, PullRequest
 import { api, platform } from '../api';
 import glyph from '../assets/helm-glyph-violet.svg';
 import { tilde } from '../lib';
-import { getUI, go, setUI, toast, useApp, useMoney } from '../store';
+import { getUI, go, haltAll, resumeAll, setUI, toast, useApp, useMoney } from '../store';
 import { Badge, Button, Checkbox, Dialog, IconButton, Input, Kbd, Select, Tabs, useNarrow } from '../ui';
 import { MODEL_OPTIONS, PERM_OPTIONS } from './Settings';
 import { useShortcutKeys } from '../shortcuts';
@@ -554,6 +554,8 @@ export function RemoveRepo({ id, onClose }: { id: string; onClose(): void }) {
 export function Palette({ onClose, toggleTheme }: { onClose(): void; toggleTheme(): void }) {
   const app = useApp();
   const newKeys = useShortcutKeys('newSession');
+  const haltKeys = useShortcutKeys('haltAll');
+  const resumeKeys = useShortcutKeys('resumeAll');
   const [q, setQ] = React.useState('');
   const [i, setI] = React.useState(0);
   type Item = { key: string; label: string; hint?: string; icon: string; section?: string; run(): void };
@@ -577,6 +579,8 @@ export function Palette({ onClose, toggleTheme }: { onClose(): void; toggleTheme
     { key: 'a-act', label: 'Activity', icon: 'pulse', run: () => go({ screen: 'activity' }) },
     { key: 'a-set', label: 'Settings', icon: 'gear-six', run: () => go({ screen: 'settings' }) },
     { key: 'a-new', label: 'New session', icon: 'plus', hint: newKeys.join(mac() ? '' : '+'), run: () => setUI({ newSession: {} }) },
+    { key: 'a-halt', label: 'Interrupt all agents', icon: 'hand-palm', hint: haltKeys.join(mac() ? '' : '+'), run: () => void haltAll() },
+    { key: 'a-resume', label: 'Resume all agents', icon: 'play', hint: resumeKeys.join(mac() ? '' : '+'), run: () => void resumeAll() },
     { key: 'a-free', label: 'New free agent (no repository)', icon: 'robot', run: () => setUI({ newSession: { repoId: '@free' } }) },
     { key: 'a-add', label: 'Add repository', icon: 'book-bookmark', run: () => setUI({ adding: true }) },
     { key: 'a-theme', label: 'Toggle theme', icon: 'sun', run: toggleTheme },

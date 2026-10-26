@@ -266,6 +266,8 @@ export interface Settings {
   permMode: PermMode;
   alwaysAllow: string[];
   runTests: boolean;
+  /** On launch, restart agents that were working when helm closed, so quitting does not lose their place. */
+  resumeOnLaunch: boolean;
   /** Push the branch to GitHub right after every commit, the agent's or one made from the Changes panel. */
   autoPush: boolean;
   /** Who the agent's commits are credited to: you, with Claude as a co-author, or Claude alone. */
@@ -830,6 +832,10 @@ export interface HelmApi {
   sendMessage(sessionId: string, text: string, images?: MessageImage[]): Promise<void>;
   setSessionEffort(sessionId: string, effort: Effort | null): Promise<void>;
   interrupt(sessionId: string): Promise<void>;
+  /** The emergency stop: interrupts every working agent at once and holds the queue. Resolves to how many were interrupted. */
+  haltAll(): Promise<number>;
+  /** Continues every agent that was paused, halted or stopped when helm closed, and lets queued sessions start again. Resolves to how many were continued. */
+  resumeAll(): Promise<number>;
   stopSession(sessionId: string): Promise<void>;
   resumeSession(sessionId: string): Promise<void>;
   /** What deleting a session would remove or lose, so the dialog can say so. */

@@ -366,6 +366,8 @@ export const api: HelmApi = {
   sendMessage: (id, text, images) => sessions.send(id, text, images),
   setSessionEffort: (id, e) => sessions.setEffort(id, e),
   interrupt: (id) => sessions.interrupt(id),
+  haltAll: () => sessions.haltAll(),
+  resumeAll: () => sessions.resumeAll(),
   stopSession: (id) => sessions.stop(id),
   async resumeSession(id) { await sessions.send(id, 'Continue where you left off.'); },
   sessionDeleteInfo: (id) => sessions.deleteInfo(id),
@@ -983,6 +985,8 @@ export async function start(h: Host) {
   void refreshPlan(true);
   setInterval(() => void refreshPlan(), 5 * 60_000);
   setInterval(refreshRates, 6 * 3600_000);
+  // Last, so the token, the Claude version and the repositories are ready before agents start again.
+  if (store.data.settings.resumeOnLaunch && !process.env.HELM_DEV_NO_RECOVER) void sessions.resumeInterrupted();
 }
 
 export async function shutdown() {

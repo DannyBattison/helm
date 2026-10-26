@@ -146,6 +146,8 @@ export class SessionManager {
     if (this.sessions.some((s) => s.queued)) void this.pumpQueue();
   }
 
+  /** Ids of sessions that were working when helm last closed, found by `recover`. */
+  private interruptedByQuit: string[] = [];
   /** Called once at startup: nothing is running, so nothing should claim to be. */
   recover() {
     for (const s of this.sessions) {
@@ -155,6 +157,7 @@ export class SessionManager {
         // Still waiting on the user. Its process is gone, but the question stands: answering it resumes the session.
         s.ask.orphaned = true;
       } else if (s.status === 'working' || s.status === 'attention') {
+        if (s.status === 'working' && !s.queued) this.interruptedByQuit.push(s.id);
         s.status = 'idle';
         s.step = 'Stopped when helm closed';
         s.ask = undefined;
@@ -199,6 +202,7 @@ export class SessionManager {
 
   // ---------------------------------------------------------------- create
   async create(input: NewSessionInput, extra: CreateExtra = {}): Promise<string> {
+    this.held = false;
     const free = input.repoId === FREE_ID;
     const repo = free ? undefined : this.store.data.repos.find((r) => r.id === input.repoId);
     if (!free && !repo) throw new Error('Repository not found');
@@ -268,7 +272,7 @@ export class SessionManager {
 
   /** Starts queued sessions whose wait is over, oldest first. Runs whenever anything changes. */
   async pumpQueue() {
-    if (this.pumping || this.quitting) return;
+    if (this.pumping || this.quitting || this.held) return;
     this.pumping = true;
     try {
       for (const s of queueOrder(this.sessions)) {
@@ -1337,6 +1341,7 @@ export class SessionManager {
 
   // ---------------------------------------------------------------- controls
   async send(id: string, text: string, images: MessageImage[] = []) {
+    this.held = false;
     const s = this.get(id);
     if (!s) throw new Error('Session not found');
     if (s.worktreeGone) throw new Error('This session\'s work was merged and its worktree removed, so it cannot be continued. Start a new session.');
@@ -1609,6 +1614,55 @@ export class SessionManager {
     this.quitting = true;
     for (const rt of this.rt.values()) { rt.queue.close(); rt.abort.abort(); }
     this.rt.clear();
+  }
+
+  /**
+   * Picks up the agents that were working when helm closed. A session that was waiting on a question or approval is left to
+   * the user, and one whose worktree is gone, or that was archived or merged meanwhile, cannot continue. One at a time, so
+   * starting many agents does not hit the machine and the API together.
+   */
+  async resumeInterrupted() {
+    const ids = this.interruptedByQuit;
+    this.interruptedByQuit = [];
+    for (const id of ids) {
+      const s = this.get(id);
+      if (!s || s.worktreeGone || s.archivedAt || s.mergedAt || s.status !== 'idle' || this.rt.has(id)) continue;
+      try {
+        this.activity(s, 'session', 'resumed automatically after helm was closed');
+        await this.send(id, 'helm was closed while you were working and has been reopened. Continue where you left off.');
+      } catch (e: any) {
+        this.activity(s, 'error', 'could not resume: ' + trunc(String(e?.message || e), 100), { ok: false });
+      }
+    }
+  }
+
+  /** While true, queued sessions do not start. Set by `haltAll`; cleared when the user starts or talks to a session. */
+  private held = false;
+
+  /** The emergency stop: interrupts every agent that is working, right now, and keeps the queue from starting others in their place. */
+  async haltAll(): Promise<number> {
+    this.held = true;
+    const working = this.sessions.filter((s) => s.status === 'working' && this.rt.has(s.id));
+    await Promise.all(working.map(async (s) => {
+      this.activity(s, 'session', 'halted with stop all', { who: this.me(), human: true });
+      await this.interrupt(s.id);
+    }));
+    this.touch();
+    return working.length;
+  }
+
+  /** Continues every agent that was paused or stopped when helm closed, and lets the queue run again. */
+  async resumeAll(): Promise<number> {
+    this.held = false;
+    const ids = this.sessions
+      .filter((s) => s.status === 'idle' && !s.queued && !s.archivedAt && !s.mergedAt && !s.worktreeGone && !this.rt.has(s.id) && /^(Paused|Stopped when helm closed)/.test(s.step))
+      .map((s) => s.id);
+    for (const id of ids) {
+      try { await this.send(id, 'Continue where you left off.'); }
+      catch (e: any) { const s = this.get(id); if (s) this.activity(s, 'error', 'could not resume: ' + trunc(String(e?.message || e), 100), { ok: false }); }
+    }
+    this.touch();
+    return ids.length;
   }
 
   async stopAll() {

@@ -2,7 +2,7 @@ import React from 'react';
 import { api, platform } from './api';
 import { dataStack, fontStack, uiStack } from './fonts';
 import { theme as resolveTheme } from './lib';
-import { dismissToast, getUI, go, init, setUI, useUI } from './store';
+import { dismissToast, getUI, go, haltAll, init, resumeAll, setUI, useUI } from './store';
 import { Button, Toast, useNarrow } from './ui';
 import { isShortcut } from './shortcuts';
 import { Activity, Dashboard } from './views/Dashboard';
@@ -63,6 +63,8 @@ export function App() {
       if (isShortcut(e, 'palette')) { e.preventDefault(); setUI({ palette: true }); }
       // Browsers reserve Cmd/Ctrl+N for a new window and often never deliver it, so Alt+N also works.
       else if (isShortcut(e, 'newSession') || isShortcut(e, 'newSessionAlt')) { e.preventDefault(); const r = getUI().route; setUI({ newSession: r.screen === 'repo' ? { repoId: r.id } : {} }); }
+      else if (isShortcut(e, 'haltAll')) { e.preventDefault(); void haltAll(); }
+      else if (isShortcut(e, 'resumeAll')) { e.preventDefault(); void resumeAll(); }
       else if (isShortcut(e, 'terminal')) { e.preventDefault(); setUI({ term: !getUI().term }); }
       else if (e.key === 'Escape') setUI({ palette: false, drawer: false });
     };
