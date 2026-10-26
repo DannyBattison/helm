@@ -346,3 +346,12 @@ export async function listRuns(slug: string, id: number, limit = 6): Promise<Wor
   const r = await gh(`/repos/${slug}/actions/workflows/${id}/runs?per_page=${limit}`);
   return (r.workflow_runs || []).map((x: any): WorkflowRun => ({ id: x.id, number: x.run_number, title: x.display_title || x.name || '', status: x.status, conclusion: x.conclusion, branch: x.head_branch || '', event: x.event, actor: x.triggering_actor?.login || x.actor?.login || '', url: x.html_url, at: x.created_at }));
 }
+
+export async function getPullBody(slug: string, number: number): Promise<string> {
+  const x = await gh(`/repos/${slug}/pulls/${number}`);
+  return x.body || '';
+}
+
+export async function updatePullBody(slug: string, number: number, body: string): Promise<void> {
+  await gh(`/repos/${slug}/pulls/${number}`, { method: 'PATCH', body: JSON.stringify({ body }), headers: { 'Content-Type': 'application/json' } });
+}

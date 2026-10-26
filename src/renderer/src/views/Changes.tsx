@@ -5,6 +5,7 @@ import { blockers } from '@shared/selfreview';
 import { api, platform } from '../api';
 import { Hl } from '../Hl';
 import { langFromPath } from '../highlight';
+import { prBody, prSummary, prTitle } from '@shared/prText';
 import { CHECK_RE, relTime } from '../lib';
 import { go, setUI, toast, useApp, useTranscript } from '../store';
 import { Avatar, Badge, BranchTag, Button, Checkbox, DiffStat, Grip, IconButton, Input, SegmentedControl, Select, usePaneWidth } from '../ui';
@@ -174,7 +175,7 @@ function ChangesView({ s }: { s: Session }) {
   const [composing, setComposing] = React.useState<number | null>(null);
   const [branches, setBranches] = React.useState<string[]>([]);
   const [base, setBase] = React.useState(s.base.replace(/^origin\//, ''));
-  const [title, setTitle] = React.useState(s.task);
+  const [title, setTitle] = React.useState(prTitle(s.task));
   const [body, setBody] = React.useState('');
   const [draft, setDraft] = React.useState(false);
   const [rm, setRm] = React.useState(s.removeAfterMerge);
@@ -237,8 +238,7 @@ function ChangesView({ s }: { s: Session }) {
   // Suggested PR text. Stops updating once the user types in it.
   React.useEffect(() => {
     if (!sum || bodyEdited.current) return;
-    const items = sum.commits.slice().reverse().map((c) => `- ${c.msg}`).join('\n');
-    setBody(`${s.task}\n\n${items ? items + '\n\n' : ''}${s.source?.kind === 'issue' ? `Closes #${s.source.number}\n\n` : ''}Created with helm · session ${s.id}`);
+    setBody(prBody(prSummary({ task: s.task, commits: sum.commits, issue: s.source?.kind === 'issue' ? s.source.number : undefined, files: sum.files.length, add: sum.files.reduce((n, f) => n + f.add, 0), del: sum.files.reduce((n, f) => n + f.del, 0) }), s.id));
   }, [sum, s.id]);
 
   const checks = transcript.filter((e) => e.k === 'bash' && e.done && CHECK_RE.test(e.cmd)) as Extract<(typeof transcript)[number], { k: 'bash' }>[];
