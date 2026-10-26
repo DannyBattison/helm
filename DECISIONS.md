@@ -559,3 +559,7 @@ Why: user request.
 ## D-135 · 2026-10-26 · Automated agents are managed under Settings → Automated agents
 The list shows each agent's trigger, scope and last run, with run now, edit, delete and an on/off switch; a dialog creates and edits them. The signed-out state on the hosted server hides them. Typechecked (the hosted server project was not: its `ws` dependency is not installed here) and unit-tested for the logic in D-134, but the screen was not run in the app.
 Why: user request.
+
+## D-136 · 2026-10-26 · The hosted image ships the common agent tools,, chosen by category
+`hosted/Dockerfile` takes an `INCLUDE` build argument: categories separated by `|` (CORE, SEARCH, NETWORK, EDITING, DOCUMENTS, MEDIA, BROWSING, or ALL). The default, `CORE|SEARCH|NETWORK|EDITING`, is `:latest`: Python 3 with a `/opt/venv` of the usual data libraries (owned by the helm user), ripgrep, fd, jq, yq, build-essential, sqlite3, wget, dig, ping, vim, nano and patch, on top of the always-present Node, git, gh, ssh, curl and tini. ALL (`:latest-full`) adds poppler, LibreOffice headless, pandoc, ffmpeg, ImageMagick, Tesseract and Playwright with Chromium; BROWSING turns on CORE. `PYTHONUNBUFFERED=1` and `LANG=C.UTF-8` are set. `hosted-image.yml` builds both with a matrix; the full tags end in `-full`. Go and composer were left out as optional. yq is pinned and downloaded from GitHub releases. Not built: docker is not available here, so the Dockerfile and workflow are untested.
+Why: user request.
