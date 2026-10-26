@@ -10,6 +10,9 @@ export const DEFAULT_GITHUB_CLIENT_ID = 'Ov23liTYcKE5lBWCEAAV';
 
 export const defaultSettings = (): Settings => ({
   theme: 'dark',
+  colorScheme: 'helm',
+  accentColor: '',
+  statusColors: {},
   githubClientId: process.env.HELM_GITHUB_CLIENT_ID || DEFAULT_GITHUB_CLIENT_ID,
   claudePath: '',
   defaultModel: 'sonnet',

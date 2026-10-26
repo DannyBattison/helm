@@ -278,6 +278,12 @@ export type ActivityKind =
 
 export interface Settings {
   theme: ThemePref;
+  /** Colour scheme id (see shared/schemes.ts); 'helm' is the stylesheet's own colours. */
+  colorScheme: string;
+  /** Accent colour (#rrggbb) over the scheme's own; empty keeps the scheme's. */
+  accentColor: string;
+  /** Status colours (#rrggbb) over the defaults, by key: working, attention, ready, error. */
+  statusColors: Record<string, string>;
   githubClientId: string;
   claudePath: string;
   defaultModel: ModelAlias;
