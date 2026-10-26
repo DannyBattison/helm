@@ -72,7 +72,7 @@ const host: Host = {
   async copyText(t) { clipboard.writeText(t); }
 };
 
-/** The wheel tile: the window and taskbar icon while developing, and on Linux. Installed builds get theirs from the installer. */
+/** The wheel in its circle: the window and taskbar icon while developing, and on Linux. Installed builds get theirs from the installer. */
 function appIcon() {
   const p = join(app.getAppPath(), 'desktop', 'build', 'icon.png');
   return existsSync(p) ? p : undefined;
