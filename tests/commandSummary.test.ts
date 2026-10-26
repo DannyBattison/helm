@@ -48,3 +48,10 @@ describe('commandSummary', () => {
     expect(commandSummary('')).toBe('Run a command');
   });
 });
+
+import { commandSteps } from '../src/shared/commandSummary';
+describe('commandSteps', () => {
+  it('lists every step, not just the first three', () => {
+    expect(commandSteps('git add . && git commit -m x && git push && git status && ls')).toHaveLength(5);
+  });
+});
