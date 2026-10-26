@@ -16,7 +16,7 @@ export function SegmentedControl({ options = [], value, defaultValue, size = 'md
               color: on ? 'var(--text-1)' : 'var(--text-3)', font: '500 12px/1.5 var(--font-sans)', whiteSpace: 'nowrap' }}>
             {o.icon ? <i className={'ph ph-' + o.icon} style={{ fontSize: 13 }} /> : null}
             {o.label}
-            {o.count != null ? <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{o.count}</span> : null}
+            {o.count != null ? <span style={{ minWidth: 22, boxSizing: 'border-box', marginLeft: 3, padding: '0 0 0 7px', borderLeft: '1px solid var(--border-strong)', textAlign: 'right', font: '400 11px/14px var(--font-mono)', fontVariantNumeric: 'tabular-nums', color: 'var(--text-3)' }}>{o.count}</span> : null}
           </button>
         );
       })}

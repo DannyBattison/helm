@@ -497,7 +497,7 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
           <span style={{ flex: 1 }} />
           {s.ctx ? <span title={`Context window: ${fmtTokens(s.ctx)} of 200k tokens in use`} style={{ font: '400 11.5px/1.5 var(--font-mono)', color: ctxPct >= 75 ? 'var(--status-attention-text)' : 'var(--text-3)', whiteSpace: 'nowrap' }}>{ctxPct}% context</span> : null}
           {working ? <Button size="sm" variant="ghost" kbd={interruptKey === 'esc' ? 'Esc' : interruptKey === 'double-esc' ? 'Esc Esc' : undefined} onClick={() => guard(api.interrupt(s.id))}>Interrupt</Button> : null}
-          <Button size="sm" variant="primary" icon="paper-plane-right" kbd={enterSends ? 'Enter' : MOD() + '↵'} disabled={!text.trim() && !images.length} onClick={send}>Send</Button>
+          <Button size="sm" variant="primary" icon="paper-plane-right" kbd={enterSends ? '↵' : MOD() + '↵'} disabled={!text.trim() && !images.length} onClick={send}>Send</Button>
         </div>
       </div>
     </div>
