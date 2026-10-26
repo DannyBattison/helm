@@ -507,10 +507,11 @@ export const api: HelmApi = {
   pushStatus(repoId) {
     // The window asks from several places on a timer. Share one answer instead of running git for each ask.
     const key = repoId || '*';
+    const epoch = sessions.pushEpoch;
     const hit = pushing.get(key);
-    if (hit) return hit;
-    const p = pushTargets(repoId).finally(() => setTimeout(() => pushing.delete(key), 4000));
-    pushing.set(key, p);
+    if (hit && hit.epoch === epoch) return hit.p;
+    const p = pushTargets(repoId).finally(() => setTimeout(() => { if (pushing.get(key)?.p === p) pushing.delete(key); }, 4000));
+    pushing.set(key, { p, epoch });
     return p;
   },
   async push({ repoId, target }) {
@@ -522,7 +523,8 @@ export const api: HelmApi = {
       try {
         const cwd = t.kind === 'checkout' ? repos.must(t.repoId).localPath : sess(t.id).worktree;
         if (t.dirty) uncommitted++;
-        await G.git(cwd, 'push', '-u', 'origin', t.branch);
+        const run = () => G.git(cwd, 'push', '-u', 'origin', t.branch);
+        await (t.kind === 'session' ? sessions.serialPush(t.id, run) : run());
         pushed.push(key);
         if (t.kind === 'session') void syncPr(sess(t.id));
         store.log({ kind: 'push', who: me(), human: true, what: `pushed ${t.branch} (${t.ahead} ${t.ahead === 1 ? 'commit' : 'commits'})`, repo: repoName(t.repoId), sessionId: t.kind === 'session' ? t.id : undefined });
@@ -533,6 +535,7 @@ export const api: HelmApi = {
       }
     }
     pushing.clear();
+    sessions.pushEpoch++;
     emitState();
     return { pushed, failed, uncommitted };
   },
@@ -916,7 +919,7 @@ async function aheadOf(cwd: string, branch: string): Promise<{ ahead: number; on
 }
 
 /** Every branch helm knows of that could be pushed: its sessions' branches, and the branch checked out in each repository's own folder. */
-const pushing = new Map<string, Promise<import('../shared/types').PushTarget[]>>();
+const pushing = new Map<string, { p: Promise<import('../shared/types').PushTarget[]>; epoch: number }>();
 async function pushTargets(repoId?: string): Promise<import('../shared/types').PushTarget[]> {
   const out: import('../shared/types').PushTarget[] = [];
   for (const r of store.data.repos.filter((x) => !repoId || x.id === repoId)) {

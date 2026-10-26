@@ -143,6 +143,8 @@ export interface Session {
   filesTouched: Record<string, { add: number; del: number }>;
   timeline: { t: number; status: Status }[];
   commits: { hash: string; at: number }[];
+  /** When a push for this session last finished, so views showing what is unpushed refresh. */
+  pushedAt?: number;
   ask?: PendingAsk;
   claudeSessionId?: string;
   editing?: { file: string; line: number };
@@ -246,7 +248,8 @@ export interface SessionArtifact { name: string; label: string; at: number; dism
 /** The file itself, as sent to the window. */
 export interface Artifact { name: string; mediaType: string; size: number; data: string | null }
 
-export type TranscriptEvent =
+/** `at` is when helm recorded the event. */
+export type TranscriptEvent = { at?: number } & (
   | { k: 'user'; t: number; text: string; from?: string; images?: MessageImage[]; cp?: number }
   | { k: 'subagent'; id: string; description: string; agentType: string; status: Subagent['status']; summary?: string }
   | { k: 'agent'; text: string; list?: string[] }
@@ -256,7 +259,7 @@ export type TranscriptEvent =
   | { k: 'commit'; hash: string; msg: string; t: number }
   | { k: 'permission'; askId: string; cmd: string; summary?: string; tool: string; why: string; pattern?: string; resolved?: 'approved' | 'always' | 'denied' }
   | { k: 'question'; askId: string; questions: AskQuestion[]; answered?: string }
-  | { k: 'note'; tone: 'attention' | 'error' | 'neutral'; text: string };
+  | { k: 'note'; tone: 'attention' | 'error' | 'neutral'; text: string });
 
 export interface ActivityEvent {
   id: string;
