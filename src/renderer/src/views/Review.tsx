@@ -161,7 +161,7 @@ export function Compare({ group }: { group: string }) {
         <h1 style={{ margin: 0, font: '600 20px/1.2 var(--font-sans)', letterSpacing: 'var(--tracking-tight)' }}>Compare runs</h1>
         <span style={{ font: '400 12.5px/1.45 var(--font-sans)', color: 'var(--text-3)', maxWidth: 780 }}>{members[0].task}</span>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(members.length, 4)}, minmax(240px, 1fr))`, gap: 12 }}>
+      <div className="helm-stack" style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(members.length, 4)}, minmax(240px, 1fr))`, gap: 12 }}>
         {members.map((s) => {
           const tokens = s.tokens.input + s.tokens.output + s.tokens.cacheRead;
           return (

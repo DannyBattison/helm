@@ -5,12 +5,12 @@ export function Tabs({ tabs = [], value, defaultValue, onChange, onClose, closab
   const cur = value ?? inner;
   const editor = variant === 'editor';
   return (
-    <div role="tablist" style={{ display: 'flex', alignItems: 'stretch', gap: editor ? 0 : 16, height: editor ? 34 : 32, borderBottom: '1px solid var(--border)', padding: editor ? 0 : '0 12px', overflow: 'hidden', ...style }}>
+    <div role="tablist" className="helm-hscroll helm-tap-tabbar" style={{ display: 'flex', alignItems: 'stretch', gap: editor ? 0 : 16, height: editor ? 34 : 32, borderBottom: '1px solid var(--border)', padding: editor ? 0 : '0 12px', ...style }}>
       {tabs.map(t => {
         const on = t.value === cur;
         return (
           <div key={t.value} role="tab" aria-selected={on} onClick={() => { setInner(t.value); onChange && onChange(t.value); }}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', whiteSpace: 'nowrap', marginBottom: -1,
+            style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', whiteSpace: 'nowrap', marginBottom: -1, flex: 'none',
               padding: editor ? '0 10px 0 12px' : 0,
               background: editor ? (on ? 'var(--bg-editor)' : 'transparent') : 'transparent',
               borderRight: editor ? '1px solid var(--border-subtle)' : 'none',

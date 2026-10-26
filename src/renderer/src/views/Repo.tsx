@@ -3,7 +3,7 @@ import type { DiffHunk, ExternalSession, FileChange, HistoryCommit, PullRequest,
 import { api, platform } from '../api';
 import { fmtTokens, lifetimeTokens, money, relTime, tilde } from '../lib';
 import { go, setUI, toast, useApp, useUI } from '../store';
-import { Avatar, Badge, BranchTag, Button, Dialog, DiffStat, Grip, SegmentedControl, Select, Skeleton, StatusDot, Tabs, useColumns, usePaneWidth } from '../ui';
+import { Avatar, Badge, BranchTag, Button, Dialog, DiffStat, Grip, SegmentedControl, Select, Skeleton, StatusDot, Tabs, useColumns, useNarrow, usePaneWidth } from '../ui';
 import { CodeView } from './CodeView';
 import { langFromPath } from '../highlight';
 import { DiffLine, SplitRows } from './Changes';
@@ -81,12 +81,12 @@ function HistorySkeleton({ col, n = 14 }: { col: Cols; n?: number }) {
   );
 }
 
-function HistoryList({ commits, sel, setSel, col, onOpen }: { commits: HistoryCommit[]; sel: number; setSel(i: number): void; col: Cols; onOpen(i: number): void }) {
+function HistoryList({ commits, sel, setSel, col, onOpen, tapOpen }: { commits: HistoryCommit[]; sel: number; setSel(i: number): void; col: Cols; onOpen(i: number): void; tapOpen?: boolean }) {
   return (
     <div style={{ position: 'relative' }}>
       <Graph commits={commits} />
       {commits.map((c, i) => (
-        <div key={c.hash} onClick={() => setSel(i)} onDoubleClick={() => onOpen(i)} style={{ height: ROW, display: 'grid', gridTemplateColumns: col.template, gap: 12, alignItems: 'center', padding: '0 16px 0 0', cursor: 'pointer',
+        <div key={c.hash} onClick={() => { setSel(i); if (tapOpen) onOpen(i); }} onDoubleClick={() => onOpen(i)} style={{ height: ROW, display: 'grid', gridTemplateColumns: col.template, gap: 12, alignItems: 'center', padding: '0 16px 0 0', cursor: 'pointer',
           background: sel === i ? 'var(--bg-selected)' : 'transparent', borderBottom: '1px solid var(--border-subtle)' }}>
           <span />
           <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
@@ -109,6 +109,7 @@ function CommitDiff({ repo, commit, files, start, onClose }: { repo: R; commit: 
   const [sel, setSel] = React.useState(start || files[0]?.path || '');
   const [hunks, setHunks] = React.useState<DiffHunk[] | null>(null);
   const [mode, setMode] = React.useState('u');
+  const narrow = useNarrow();
   React.useEffect(() => {
     if (!sel) return;
     let dead = false;
@@ -120,8 +121,8 @@ function CommitDiff({ repo, commit, files, start, onClose }: { repo: R; commit: 
   const lang = langFromPath(sel);
   return (
     <Dialog width={1180} title={commit.msg} description={`${commit.hash.slice(0, 7)} · ${commit.who} · ${files.length} ${files.length === 1 ? 'file' : 'files'}`} onClose={onClose}>
-      <div style={{ display: 'flex', height: 'min(68vh, 640px)', margin: '-8px -20px -16px', borderTop: '1px solid var(--border-subtle)' }}>
-        <div style={{ width: 280, flex: 'none', overflow: 'auto', borderRight: '1px solid var(--border)', background: 'var(--bg-sidebar)', padding: 4 }}>
+      <div style={{ display: 'flex', flexDirection: narrow ? 'column' : 'row', height: narrow ? 'min(78dvh, 640px)' : 'min(68vh, 640px)', margin: narrow ? '-8px -16px -14px' : '-8px -20px -16px', borderTop: '1px solid var(--border-subtle)' }}>
+        <div style={narrow ? { height: 112, flex: 'none', overflow: 'auto', borderBottom: '1px solid var(--border)', background: 'var(--bg-sidebar)', padding: 4 } : { width: 280, flex: 'none', overflow: 'auto', borderRight: '1px solid var(--border)', background: 'var(--bg-sidebar)', padding: 4 }}>
           {files.map((f) => {
             const parts = f.path.split('/');
             return (
@@ -197,7 +198,7 @@ function Worktrees({ repo, list, reload }: { repo: R; list: WorktreeInfo[] | nul
   const app = useApp();
   const col = useColumns('worktrees', [{ w: 230, min: 140 }, { w: 1, min: 160, flex: true }, { w: 150, min: 100 }, { w: 100, min: 70 }, { w: 100, min: 70 }, { w: 150, min: 100, fixed: true }]);
   return (
-    <div style={{ padding: '0 20px 20px' }}>
+    <div style={{ padding: '0 20px 20px', minWidth: col.minWidth + 40 }}>
       <div style={{ display: 'grid', gridTemplateColumns: col.template, gap: 12, padding: '10px 0', ...head }}>
         {col.cell(0, 'Branch')}{col.cell(1, 'Worktree')}{col.cell(2, 'Session')}{col.cell(3, 'Ahead / behind')}{col.cell(4, 'Uncommitted')}<span />
       </div>
@@ -230,6 +231,7 @@ function PullRequests({ prs, err, repoId }: { prs: PullRequest[] | null; err: st
   const col = useColumns('pulls', [{ w: 1, min: 220, flex: true }, { w: 70, min: 50 }, { w: 240, min: 120 }, { w: 230, min: 150, fixed: true }]);
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: '0 20px 8px' }}>
+      <div style={{ minWidth: col.minWidth + 32 }}>
       <div style={{ display: 'grid', gridTemplateColumns: '20px ' + col.template, gap: 12, padding: '10px 0', ...head }}>
         <span />{col.cell(0, 'Pull request')}{col.cell(1, 'Number')}{col.cell(2, 'Branch')}<span style={{ textAlign: 'right' }}>Status</span>
       </div>
@@ -247,6 +249,7 @@ function PullRequests({ prs, err, repoId }: { prs: PullRequest[] | null; err: st
           </Badge></span>
         </div>
       ))}
+      </div>
     </div>
   );
 }
@@ -331,8 +334,8 @@ export function ExternalSessionView({ repoId, id }: { repoId: string; id: string
             renderItem={(m) => <TranscriptItem m={m} s={null as any} onDeny={() => undefined} />}
             header={win.start > 0 ? <div style={{ font: '400 12px/1.4 var(--font-sans)', color: 'var(--text-3)', textAlign: 'center' }}>{win.start} earlier events. Scroll up to load them.</div> : null}
             footer={<>
-              {active ? <div style={{ marginLeft: 32, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1 var(--font-sans)', color: 'var(--status-working-text)' }}><i className="ph ph-circle-notch" style={{ fontSize: 14, animation: 'helm-spin .9s linear infinite' }} />Updating while it runs</div> : null}
-              <div style={{ marginLeft: 32, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>This session was started outside helm, so it is read-only here. To keep going, continue it where it started.</div>
+              {active ? <div style={{ marginLeft: 44, marginRight: 12, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1 var(--font-sans)', color: 'var(--status-working-text)' }}><i className="ph ph-circle-notch" style={{ fontSize: 14, animation: 'helm-spin .9s linear infinite' }} />Updating while it runs</div> : null}
+              <div style={{ marginLeft: 44, marginRight: 12, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>This session was started outside helm, so it is read-only here. To keep going, continue it where it started.</div>
             </>} />
         )}
       </div>
@@ -357,6 +360,7 @@ function ExternalSessions({ repo, onCount }: { repo: R; onCount(n: number): void
   const open = (x: ExternalSession) => go({ screen: 'external', repoId: repo.id, id: x.id });
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: '0 20px 12px' }}>
+      <div style={{ minWidth: col.minWidth + 32 }}>
       <div style={{ padding: '12px 0 4px', font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-3)', maxWidth: 760 }}>
         Claude Code sessions for this repository that helm did not start, for example from the VS Code extension or the command line. They are found by project folder in <code style={{ font: 'var(--type-data)' }}>~/.claude</code>, are read-only here, and also appear in the list on the left.{hiddenCount ? <> {hiddenCount} {hiddenCount === 1 ? 'is' : 'are'} archived: <a href="#" onClick={(e) => { e.preventDefault(); go({ screen: 'archive' }); }}>see the Archive</a>.</> : null}
       </div>
@@ -381,6 +385,7 @@ function ExternalSessions({ repo, onCount }: { repo: R; onCount(n: number): void
           <span style={{ font: '400 11.5px/1 var(--font-mono)', color: 'var(--text-3)', textAlign: 'right' }}>{x.size ? (x.size > 1e6 ? (x.size / 1e6).toFixed(1) + ' MB' : Math.max(1, Math.round(x.size / 1e3)) + ' kB') : ''}</span>
         </div>
       ))}
+      </div>
     </div>
   );
 }
@@ -422,6 +427,7 @@ export function Repo({ id, themeKey, tab: firstTab }: { id: string; themeKey: 'd
   const [fetching, setFetching] = React.useState(false);
   const [fetched, setFetched] = React.useState<number | null>(null);
   const [prErr, setPrErr] = React.useState('');
+  const narrow = useNarrow();
   const [extCount, setExtCount] = React.useState<number | undefined>(undefined);
   const sessSig = app.sessions.filter((s) => s.repoId === id).map((s) => s.id + s.status).join();
   const maxLane = (history || []).reduce((m, c) => Math.max(m, c.lane), 0);
@@ -458,8 +464,8 @@ export function Repo({ id, themeKey, tab: firstTab }: { id: string; themeKey: 'd
   };
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-      <div style={{ flex: 'none', padding: '14px 20px 0', display: 'flex', flexDirection: 'column', gap: 12, borderBottom: '1px solid var(--border)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div style={{ flex: 'none', padding: narrow ? '12px 12px 0' : '14px 20px 0', display: 'flex', flexDirection: 'column', gap: 12, borderBottom: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
           <i className="ph ph-book-bookmark" style={{ fontSize: 20, color: 'var(--text-3)' }} />
           <span style={{ font: '600 16px/1 var(--font-sans)' }}><span style={{ fontWeight: 400, color: 'var(--text-3)' }}>{repo.owner}/</span>{repo.name}</span>
           <Badge>{repo.private ? 'Private' : 'Public'}</Badge>
@@ -476,7 +482,7 @@ export function Repo({ id, themeKey, tab: firstTab }: { id: string; themeKey: 'd
           <span title={pushes.tip}><Button variant="ghost" icon="cloud-arrow-up" loading={pushes.busy} disabled={pushes.ahead.length === 0} onClick={pushes.push}>{pushes.commits ? `Push all · ${pushes.commits}` : 'Push all'}</Button></span>
           <Button variant="ghost" icon="arrows-clockwise" loading={fetching} onClick={fetchNow}>Fetch</Button>
           <Button variant="ghost" iconRight="arrow-square-out" onClick={() => api.openExternal(`https://github.com/${repo.id}`)}>GitHub</Button>
-          <Button variant="primary" icon="plus" kbd={platform() === 'darwin' ? '⌘N' : 'Ctrl+N'} onClick={() => setUI({ newSession: { repoId: repo.id } })}>New session</Button>
+          <Button variant="primary" icon="plus" kbd={narrow ? undefined : platform() === 'darwin' ? '⌘N' : 'Ctrl+N'} onClick={() => setUI({ newSession: { repoId: repo.id } })}>New session</Button>
         </div>
         <Tabs value={tab} onChange={setTab} style={{ borderBottom: 'none', padding: 0 }} tabs={[
           { value: 'history', label: 'History', icon: 'git-commit' },
@@ -490,7 +496,8 @@ export function Repo({ id, themeKey, tab: firstTab }: { id: string; themeKey: 'd
       </div>
       {tab === 'history' ? (
         <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ flex: 1, minWidth: 0, overflowX: 'auto', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ flex: 1, minHeight: 0, minWidth: narrow ? col.minWidth + 16 : undefined, display: 'flex', flexDirection: 'column' }}>
             <div style={{ display: 'grid', gridTemplateColumns: col.template, gap: 12, alignItems: 'center', height: 30, flex: 'none', padding: '0 16px 0 0', borderBottom: '1px solid var(--border)', ...head }}>
               <span />{col.cell(1, 'Message')}{col.cell(2, 'Author')}{col.cell(3, 'Commit')}<span style={{ textAlign: 'right' }}>When</span>
             </div>
@@ -498,12 +505,13 @@ export function Repo({ id, themeKey, tab: firstTab }: { id: string; themeKey: 'd
               const el = e.currentTarget;
               if (history && history.length >= limit && limit < 3000 && !more && el.scrollHeight - el.scrollTop - el.clientHeight < 500) { setMore(true); setLimit((l) => l + 300); }
             }} style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-              {history == null ? <HistorySkeleton col={col} /> : <HistoryList commits={history} sel={sel} setSel={setSel} col={col} onOpen={() => setDiff({})} />}
+              {history == null ? <HistorySkeleton col={col} /> : <HistoryList commits={history} sel={sel} setSel={setSel} col={col} onOpen={() => setDiff({})} tapOpen={narrow} />}
               {more ? <HistorySkeleton col={col} n={3} /> : null}
               {history && history.length > 0 && history.length < limit ? <div style={{ padding: '12px 16px', font: '400 11.5px/1 var(--font-sans)', color: 'var(--text-3)' }}>Start of history · {history.length} commits</div> : null}
             </div>
+            </div>
           </div>
-          {commit ? <CommitDetail repo={repo} c={commit} files={files} onOpen={(path) => setDiff({ path })} /> : null}
+          {commit && !narrow ? <CommitDetail repo={repo} c={commit} files={files} onOpen={(path) => setDiff({ path })} /> : null}
         </div>
       ) : tab === 'code' ? <RepoCode repo={repo} themeKey={themeKey} />
         : tab === 'memory' ? <RepoMemory repo={repo} />

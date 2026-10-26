@@ -1,3 +1,4 @@
+export { CopyBox } from './CopyBox';
 export { Avatar } from './Avatar';
 export { Badge } from './Badge';
 export { BranchTag } from './BranchTag';
@@ -20,7 +21,7 @@ export { Tabs } from './Tabs';
 export { Toast } from './Toast';
 export { Tooltip } from './Tooltip';
 export { TreeItem } from './TreeItem';
-export { Grip, useColumns, usePaneWidth } from './resize';
+export { COMPACT, Grip, PHONE, useColumns, useCompact, useNarrow, usePaneWidth } from './resize';
 export type { Col } from './resize';
 export { Skeleton } from './Skeleton';
 export { ContextMenu } from './ContextMenu';

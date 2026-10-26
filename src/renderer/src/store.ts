@@ -48,16 +48,26 @@ export interface UI {
   /** Show archived sessions in the left tree. Off by default. */
   showArchived: boolean;
   palette: boolean;
+  drawer: boolean;
   term: boolean;
   /** Set while resolving the first state snapshot fails. */
   fatal?: string;
 }
 
 function loadRoute(): Route {
-  try { return JSON.parse(localStorage.getItem('helm-route') || '') || { screen: 'overview' }; } catch { return { screen: 'overview' }; }
+  try {
+    // If the last start never got going (the window froze on the page it restored), do not go back to that page.
+    const started = localStorage.getItem('helm-start-at');
+    const settled = localStorage.getItem('helm-start-ok');
+    const crashed = started && settled !== started;
+    localStorage.setItem('helm-start-at', String(Date.now()));
+    setTimeout(() => { try { localStorage.setItem('helm-start-ok', localStorage.getItem('helm-start-at') || ''); } catch { /* storage unavailable */ } }, 6000);
+    if (crashed) return { screen: 'overview' };
+    return JSON.parse(localStorage.getItem('helm-route') || '') || { screen: 'overview' };
+  } catch { return { screen: 'overview' }; }
 }
 
-let ui: UI = { app: null, route: loadRoute(), transcripts: {}, externals: {}, toasts: [], adding: false, newSession: null, deleting: null, mergingPr: null, renaming: null, checkpointsOf: null, restoring: null, forking: null, continuing: null, remembering: null, removingRepo: null, showArchived: (() => { try { return localStorage.getItem('helm-show-archived') === '1'; } catch { return false; } })(), palette: false, term: false };
+let ui: UI = { app: null, route: loadRoute(), transcripts: {}, externals: {}, toasts: [], adding: false, newSession: null, deleting: null, mergingPr: null, renaming: null, checkpointsOf: null, restoring: null, forking: null, continuing: null, remembering: null, removingRepo: null, showArchived: (() => { try { return localStorage.getItem('helm-show-archived') === '1'; } catch { return false; } })(), palette: false, drawer: false, term: false };
 const listeners = new Set<() => void>();
 
 export function setUI(patch: Partial<UI> | ((u: UI) => Partial<UI>)) {
@@ -71,7 +81,7 @@ export function useUI<T>(sel: (u: UI) => T): T {
 
 export function go(route: Route) {
   try { localStorage.setItem('helm-route', JSON.stringify(route)); } catch { /* storage unavailable */ }
-  setUI({ route });
+  setUI({ route, drawer: false });
 }
 
 let toastId = 1;

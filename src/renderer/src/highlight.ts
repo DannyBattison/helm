@@ -70,7 +70,9 @@ export function highlightLine(text: string, lang: string | null | undefined): st
 
 type Rule = { lang: string; signals: RegExp[]; decisive?: RegExp[] };
 // A CSS rule opens with a selector. Lines that start with a keyword of another language (`interface Repo {`) are not selectors.
-const CSS_SELECTOR = /^(?!\s*(interface|class|function|if|else|for|while|switch|try|catch|struct|enum|impl|func|type|do|return|export|const|let|var|def|fn|namespace|module)\b)\s*(([.#][\w-]+|[a-z][\w-]*|:root|\*)(\s*[>+~,]?\s*[.#:]?[\w-]+)*|@media[^{]+)\s*\{\s*$/m;
+// Spaces and tabs only, never `\s`, which would run on across lines. Every extra word needs a separator before it, so a run of letters
+// cannot be split between repeats in more than one way. Without that, a line like `npx wrangler login` took tens of seconds.
+const CSS_SELECTOR = /^(?![ \t]*(?:interface|class|function|if|else|for|while|switch|try|catch|struct|enum|impl|func|type|do|return|export|const|let|var|def|fn|namespace|module)\b)[ \t]*(?:(?::root|\*|[.#]?[\w-]+)(?:(?:[ \t]*[>+~,][ \t]*|[ \t]+)[.#:]?[\w-]+)*|@media[^{\n]+)[ \t]*\{[ \t]*$/m;
 const RULES: Rule[] = [
   { lang: 'typescript', signals: [/^\s*import\s.+\sfrom\s+['"]/m, /^\s*(export\s+)?(default\s+)?(async\s+)?function\s+\w+\s*\(/m, /^\s*(export\s+)?(const|let|var)\s+\w+(\s*:\s*[\w<>[\]|, ]+)?\s*=/m, /=>\s*[{(\w]/, /^\s*(export\s+)?(interface|type)\s+\w+/m, /\bconsole\.\w+\(/, /^\s*(export\s+)?class\s+\w+(\s+extends\s+\w+)?\s*\{/m, /\brequire\(['"]/, /\buse(State|Effect|Ref|Memo)\(/] },
   { lang: 'python', signals: [/^\s*def\s+\w+\(.*\)\s*(->\s*[\w[\], .]+)?:\s*$/m, /^\s*class\s+\w+(\(.*\))?:\s*$/m, /^\s*from\s+[\w.]+\s+import\s+/m, /^\s*(elif|else|try|except|finally|with\s+.+|if\s+.+|for\s+.+\s+in\s+.+|while\s+.+):\s*$/m, /\bself\.\w+/, /^\s*@\w+(\.\w+)*(\(.*\))?\s*$/m, /^\s*print\(/m, /\bif __name__ == ['"]__main__['"]/] },

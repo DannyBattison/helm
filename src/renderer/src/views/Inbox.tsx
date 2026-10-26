@@ -73,8 +73,8 @@ export function Inbox() {
   const a = s?.ask;
   const q = a?.questions?.[0];
   return (
-    <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-      <div style={{ width: 340, flex: 'none', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', background: 'var(--bg-sidebar)' }}>
+    <div className="helm-split" style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+      <div className="helm-list" style={{ width: 340, flex: 'none', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', background: 'var(--bg-sidebar)' }}>
         <div style={{ padding: '16px 16px 10px', display: 'flex', flexDirection: 'column', gap: 4 }}>
           <h1 style={{ margin: 0, font: '600 18px/1.2 var(--font-sans)', letterSpacing: 'var(--tracking-tight)' }}>Inbox</h1>
           <span style={{ font: '400 12px/1.4 var(--font-sans)', color: 'var(--text-3)' }}>{items.length === 0 ? 'Nothing is waiting on you.' : `${blocked} ${blocked === 1 ? 'agent is' : 'agents are'} blocked on you · ${items.length} in all`}</span>

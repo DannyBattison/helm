@@ -3,12 +3,12 @@ import { sessionTitle } from '@shared/types';
 import React from 'react';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
-import { api, on, platform } from '../api';
+import { api, on, platform, windowControls } from '../api';
 import { fontStack } from '../fonts';
 import glyph from '../assets/helm-glyph-violet.svg';
 import { ago, elapsed, fmtTokens, isFreeGroup, lifetimeTokens, livePlan, reposWithSessions, runningSubagents, subagentTree, totals, untilReset } from '../lib';
-import { go, refreshExternals, setUI, toast, useApp, useMoney, useUI, useTranscript, type Route } from '../store';
-import { Avatar, Badge, Breadcrumbs, ContextMenu, Grip, IconButton, Kbd, Meter, TreeItem, usePaneWidth, type MenuItem } from '../ui';
+import { getUI, go, refreshExternals, setUI, toast, useApp, useMoney, useUI, useTranscript, type Route } from '../store';
+import { Avatar, Badge, Breadcrumbs, ContextMenu, Grip, IconButton, Kbd, Meter, TreeItem, useNarrow, usePaneWidth, type MenuItem } from '../ui';
 
 const mac = () => platform() === 'darwin';
 
@@ -41,7 +41,8 @@ export function PlanMeters() {
   );
 }
 
-export function Sidebar() {
+/** `drawer`: shown over the content on a phone. It fills the drawer, has a close button, and cannot be resized or dragged. */
+export function Sidebar({ drawer = false }: { drawer?: boolean }) {
   const app = useApp();
   const route = useUI((u) => u.route);
   const [closed, setClosed] = React.useState<Record<string, boolean>>({});
@@ -102,7 +103,7 @@ export function Sidebar() {
   // Reordering: repositories among themselves, and sessions within their repository. Subagents are never dragged on their own.
   const drag = React.useRef<{ kind: 'repo' | 'session'; id: string; repoId?: string } | null>(null);
   const [over, setOver] = React.useState<{ key: string; pos: 'before' | 'after' } | null>(null);
-  const dnd = (kind: 'repo' | 'session', id: string, repoId?: string) => ({
+  const dnd = (kind: 'repo' | 'session', id: string, repoId?: string) => drawer ? {} : ({
     draggable: true as const,
     onDragStart: (e: React.DragEvent) => { drag.current = { kind, id, repoId }; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', id); e.stopPropagation(); },
     onDragEnd: () => { drag.current = null; setOver(null); }
@@ -133,13 +134,14 @@ export function Sidebar() {
   const line = (id: string): React.CSSProperties => (over?.key === id ? { boxShadow: over.pos === 'before' ? 'inset 0 2px 0 var(--accent)' : 'inset 0 -2px 0 var(--accent)', borderRadius: 3 } : {});
   const subStatus = (st: string) => (st === 'working' ? 'working' : st === 'failed' ? 'error' : 'idle');
   return (
-    <aside style={{ position: 'relative', width, flex: 'none', display: 'flex', flexDirection: 'column', background: 'var(--bg-sidebar)', borderRight: '1px solid var(--border)' }}>
-      <Grip onMouseDown={grip} onDoubleClick={resetWidth} />
-      <div className="drag" style={{ height: 'var(--titlebar-h)', flex: 'none', display: 'flex', alignItems: 'center', gap: 10, padding: '0 14px 0 ' + (mac() ? 78 : 14) + 'px' }}>
-        <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+    <aside style={{ position: 'relative', width: drawer ? '100%' : width, flex: 'none', display: 'flex', flexDirection: 'column', background: 'var(--bg-sidebar)', borderRight: '1px solid var(--border)' }}>
+      {drawer ? null : <Grip onMouseDown={grip} onDoubleClick={resetWidth} />}
+      <div className="drag" style={{ height: 'var(--titlebar-h)', flex: 'none', display: 'flex', alignItems: 'center', gap: 10, padding: drawer ? '0 6px 0 14px' : '0 14px 0 ' + (windowControls() === 'left' ? 78 : 14) + 'px' }}>
+        <span style={{ marginLeft: drawer ? 0 : 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
           <img src={glyph} width="22" height="22" alt="" />
           <span style={{ font: '600 14px/1 var(--font-mono)', letterSpacing: '-0.02em', position: 'relative', top: '0.14em' }}>helm</span>
         </span>
+        {drawer ? <><span style={{ flex: 1 }} /><IconButton icon="x" label="Close menu" onClick={() => setUI({ drawer: false })} /></> : null}
       </div>
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: '4px 6px 8px' }}>
         <TreeItem icon="squares-four" label="Overview" selected={route.screen === 'overview' && !(route as any).filter} onClick={() => go({ screen: 'overview' })} />
@@ -156,7 +158,7 @@ export function Sidebar() {
             <div key={r.id} {...target('repo', r.id)} style={line(r.id)}>
               <div {...(isFreeGroup(r) ? {} : dnd('repo', r.id))} onContextMenu={(e) => { if (!isFreeGroup(r)) repoMenu(e, r); }}>
               <TreeItem icon={isFreeGroup(r) ? 'robot' : 'book-bookmark'} expandable={sessions.length > 0} expanded={open}
-                label={isFreeGroup(r) ? <span title="Agents that are not tied to a repository">Free agents</span> : <span>{app.settings.showRepoOwner && <span style={{ color: 'var(--text-3)' }}>{r.owner}/</span>}{r.name}</span>}
+                label={isFreeGroup(r) ? <span title="Agents that are not tied to a repository">Free agents</span> : <span>{app.settings.showOwner ? <span style={{ color: 'var(--text-3)' }}>{r.owner}/</span> : null}{r.name}</span>}
                 selected={!isFreeGroup(r) && route.screen === 'repo' && route.id === r.id} meta={sessions.length || null}
                 trailing={isFreeGroup(r) ? <IconButton icon="plus" label="New free agent" size="sm" onClick={(e: any) => { e.stopPropagation(); setUI({ newSession: { repoId: '@free' } }); }} /> : lifetimeTokens(app.lifetime[r.id]) ? <span title={`${lifetimeTokens(app.lifetime[r.id]).toLocaleString()} tokens used in ${r.name} over its lifetime, including deleted sessions`} style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)', flex: 'none', marginLeft: 6 }}>{fmtTokens(lifetimeTokens(app.lifetime[r.id]))}</span> : null}
                 onClick={() => { if (isFreeGroup(r) || (route.screen === 'repo' && route.id === r.id)) setClosed({ ...closed, [r.id]: open }); else go({ screen: 'repo', id: r.id }); }} />
@@ -218,19 +220,23 @@ export function Sidebar() {
 export function TitleBar({ crumbs, theme, setTheme }: { crumbs: any[]; theme: 'dark' | 'light'; setTheme(t: 'dark' | 'light'): void }) {
   const app = useApp();
   const need = app.sessions.filter((s) => s.status === 'attention').length;
+  const narrow = useNarrow();
   return (
-    <div className="drag" style={{ height: 'var(--titlebar-h)', flex: 'none', display: 'flex', alignItems: 'center', gap: 12, padding: '0 ' + (mac() ? 10 : 150) + 'px 0 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg-app)' }}>
-      <div style={{ flex: 1, minWidth: 0 }}><Breadcrumbs items={crumbs || []} /></div>
-      <button type="button" onClick={() => setUI({ palette: true })} style={{ width: 340, height: 26, flex: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '0 6px 0 10px', border: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border)', color: 'var(--text-3)', font: '400 12px/1 var(--font-sans)', cursor: 'pointer' }}>
+    <div className="drag" style={{ height: 'var(--titlebar-h)', flex: 'none', display: 'flex', alignItems: 'center', gap: narrow ? 6 : 12, padding: '0 ' + (windowControls() === 'right' ? 150 : 10) + 'px 0 ' + (narrow ? 8 : 16) + 'px', borderBottom: '1px solid var(--border)', background: 'var(--bg-app)' }}>
+      {narrow ? <IconButton icon="list" label="Menu" onClick={() => setUI({ drawer: !getUI().drawer })} /> : null}
+      <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}><Breadcrumbs items={crumbs || []} compact={narrow} style={narrow ? { font: '500 13px/1 var(--font-sans)' } : undefined} /></div>
+      {narrow ? <IconButton icon="magnifying-glass" label="Search" onClick={() => setUI({ palette: true })} /> : <button type="button" onClick={() => setUI({ palette: true })} style={{ width: 340, height: 26, flex: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '0 6px 0 10px', border: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border)', color: 'var(--text-3)', font: '400 12px/1 var(--font-sans)', cursor: 'pointer' }}>
         <i className="ph ph-magnifying-glass" style={{ fontSize: 13 }} />
         <span style={{ flex: 1, textAlign: 'left' }}>Search sessions and repositories</span>
         <Kbd keys={[mac() ? '⌘' : 'Ctrl', 'K']} />
-      </button>
-      <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 2 }}>
+      </button>}
+      <div style={{ flex: narrow ? 'none' : 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 2 }}>
         <IconButton icon="bell" label="Inbox" badge={need > 0} onClick={() => go({ screen: 'inbox' })} />
-        <IconButton icon={theme === 'dark' ? 'sun' : 'moon'} label="Toggle theme" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
-        <span style={{ width: 1, height: 16, background: 'var(--border)', margin: '0 6px' }} />
-        <Avatar name={app.user?.login || '?'} src={app.user?.avatar || undefined} size={22} />
+        {narrow ? null : <>
+          <IconButton icon={theme === 'dark' ? 'sun' : 'moon'} label="Toggle theme" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
+          <span style={{ width: 1, height: 16, background: 'var(--border)', margin: '0 6px' }} />
+          <Avatar name={app.user?.login || '?'} src={app.user?.avatar || undefined} size={22} />
+        </>}
       </div>
     </div>
   );
@@ -241,9 +247,21 @@ export function StatusBar() {
   const term = useUI((u) => u.term);
   const t = totals(app);
   const extLive = useUI((u) => Object.values(u.externals).reduce((n, l) => n + l.filter((x) => x.active).length, 0));
+  const narrow = useNarrow();
   const item: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, height: '100%', padding: '0 8px', color: 'var(--text-3)' };
   const dot = (c: string) => <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--status-' + c + ')' }} />;
   const tok = t.tokens >= 1e6 ? (t.tokens / 1e6).toFixed(2) + 'M' : t.tokens >= 1e3 ? Math.round(t.tokens / 1e3) + 'k' : String(t.tokens);
+  // A phone has room for the three counts and today's tokens; the terminal needs a keyboard and the Claude version can wait for Settings.
+  if (narrow) return (
+    <div style={{ height: 'var(--statusbar-h)', flex: 'none', display: 'flex', alignItems: 'center', padding: '0 4px', borderTop: '1px solid var(--border)', background: 'var(--bg-sidebar)', font: '400 11px/1 var(--font-mono)', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+      <span style={item} title="Working">{dot('working')}{t.working}</span>
+      <span style={item} title="Need you">{dot('attention')}{t.attention}</span>
+      <span style={item} title="Ready for review">{dot('ready')}{t.ready}</span>
+      {extLive ? <span style={item} title="Claude Code sessions running outside helm. Read-only."><i className="ph ph-eye" style={{ fontSize: 12 }} />{extLive}</span> : null}
+      <span style={{ flex: 1 }} />
+      <span style={item}>{tok} tokens today</span>
+    </div>
+  );
   return (
     <div style={{ height: 'var(--statusbar-h)', flex: 'none', display: 'flex', alignItems: 'center', padding: '0 6px', borderTop: '1px solid var(--border)', background: 'var(--bg-sidebar)', font: '400 11px/1 var(--font-mono)' }}>
       <span style={item}>{dot('working')}{t.working} working</span>
@@ -271,6 +289,21 @@ export function XTerm({ sessionId, themeKey }: { sessionId: string | null; theme
     t.loadAddon(fit);
     t.open(el.current!);
     term.current = t;
+    // xterm sends a literal ^V for Ctrl+V and never pastes, so paste and copy are done here: Ctrl/Cmd+V pastes, Ctrl/Cmd+C copies a
+    // selection (with nothing selected it still interrupts), and so do Ctrl+Shift+V and Ctrl+Shift+C.
+    const pasteIn = () => api.readClipboard().then((text) => { if (text) t.paste(text); }).catch(() => undefined);
+    t.attachCustomKeyEventHandler((e) => {
+      if (e.type !== 'keydown' || !(e.ctrlKey || e.metaKey) || e.altKey) return true;
+      const k = e.key.toLowerCase();
+      if (k === 'v') { e.preventDefault(); void pasteIn(); return false; }
+      if (k === 'c' && (e.shiftKey || t.hasSelection())) { e.preventDefault(); if (t.hasSelection()) void api.copyText(t.getSelection()); return false; }
+      return true;
+    });
+    const onContext = (e: MouseEvent) => {
+      e.preventDefault();
+      if (t.hasSelection()) { void api.copyText(t.getSelection()); t.clearSelection(); } else void pasteIn();
+    };
+    el.current!.addEventListener('contextmenu', onContext);
     let id: string | null = null;
     let dead = false;
     const doFit = () => { try { fit.fit(); if (id) void api.termResize(id, t.cols, t.rows); } catch { /* hidden */ } };
@@ -285,7 +318,8 @@ export function XTerm({ sessionId, themeKey }: { sessionId: string | null; theme
     const offE = on('termExit', (p) => { if (p.id === id) t.write('\r\n\x1b[2m[process exited]\x1b[0m\r\n'); });
     const ro = new ResizeObserver(doFit);
     ro.observe(el.current!);
-    return () => { dead = true; offD(); offE(); ro.disconnect(); if (id) void api.termClose(id); t.dispose(); };
+    const host = el.current!;
+    return () => { dead = true; offD(); offE(); ro.disconnect(); host.removeEventListener('contextmenu', onContext); if (id) void api.termClose(id); t.dispose(); };
   }, [sessionId]);
   React.useEffect(() => {
     if (term.current) { term.current.options.fontFamily = fontStack(font); }

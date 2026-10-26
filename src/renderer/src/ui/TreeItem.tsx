@@ -3,7 +3,7 @@ import React from 'react';
 export function TreeItem({ label, icon, depth = 0, expandable = false, expanded = false, selected = false, status, meta, mono = false, trailing, onClick, style }: any) {
   const [hover, setHover] = React.useState(false);
   return (
-    <div role="treeitem" aria-selected={selected} onClick={onClick} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+    <div role="treeitem" className="helm-tap-row" aria-selected={selected} onClick={onClick} onPointerEnter={(e) => { if (e.pointerType === 'mouse') setHover(true); }} onPointerLeave={() => setHover(false)}
       style={{ display: 'flex', alignItems: 'center', gap: 6, height: 26, padding: '0 8px 0 ' + (8 + depth * 14) + 'px', borderRadius: 'var(--radius-sm)', cursor: 'pointer',
         background: selected ? 'var(--bg-selected)' : hover ? 'var(--bg-hover)' : 'transparent', color: selected ? 'var(--text-1)' : 'var(--text-2)', ...style }}>
       <span style={{ width: 12, flex: 'none', display: 'grid', placeItems: 'center', color: 'var(--text-3)' }}>

@@ -217,6 +217,9 @@ export interface DailyUsage {
   cacheRead: number;
 }
 
+/** A file an agent put in its session's artifact folder. `data` (base64) is null when the file is too large to send. */
+export interface Artifact { name: string; mediaType: string; size: number; data: string | null }
+
 export type TranscriptEvent =
   | { k: 'user'; t: number; text: string; from?: string; images?: MessageImage[]; cp?: number }
   | { k: 'subagent'; id: string; description: string; agentType: string; status: Subagent['status']; summary?: string }
@@ -232,13 +235,22 @@ export type TranscriptEvent =
 export interface ActivityEvent {
   id: string;
   t: number;
-  kind: 'ready' | 'attention' | 'budget' | 'commit' | 'start' | 'merge' | 'done' | 'error';
+  kind: ActivityKind;
+  /** A session id for what an agent did, the user's login for what they asked helm to do, `helm` for what helm did by itself. */
   who: string;
   human?: boolean;
   what: string;
   repo: string;
   sessionId?: string;
+  /** The full command, path or error, when `what` is shortened. */
+  detail?: string;
+  /** False when the action failed. */
+  ok?: boolean;
 }
+
+export type ActivityKind =
+  | 'ready' | 'attention' | 'budget' | 'commit' | 'start' | 'merge' | 'done' | 'error'
+  | 'push' | 'fetch' | 'git' | 'pr' | 'worktree' | 'session' | 'approval' | 'bash' | 'edit';
 
 export interface Settings {
   theme: ThemePref;
@@ -308,14 +320,28 @@ export interface Settings {
   autoUpdate: boolean;
   editorFontSize: number;
   /** Font for the interface: labels, titles and prose. */
+  /** What interrupts a working agent from the keyboard: Esc, Esc pressed twice, or nothing (the Interrupt button still works). */
+  interruptKey: 'esc' | 'double-esc' | 'off';
+  /** Connect to a helm-companion server so the website can show this app's agents and answer them. Off until turned on. */
+  companionEnabled: boolean;
+  /** The companion server, for example `https://companion.example.com`. */
+  companionUrl: string;
+  /** Let the website approve commands, answer questions, message, pause and stop agents, and start sessions. Off leaves it read-only. */
+  companionControl: boolean;
+  /** The shell in the terminal: `auto` (zsh if installed, then Git Bash, WSL, PowerShell), an id from `listShells`, or `custom`. */
+  terminalShell: string;
+  /** The command to run for the `custom` shell, for example `wsl.exe -d Ubuntu -e zsh`. */
+  terminalShellCustom: string;
+  /** Which key sends a message from the composer. Enter sends and Shift+Enter starts a new line, or Ctrl/Cmd+Enter sends and Enter starts a new line. */
+  sendKey: 'enter' | 'mod-enter';
+  /** Show the organisation or user before each repository name in the left tree (`acme/` storefront). */
+  showOwner: boolean;
   uiFont: string;
   /** Monospaced font for data in the interface: paths, branches, hashes and numbers. */
   dataFont: string;
   /** Font family for code: the editor, terminal and diffs. */
   editorFont: string;
   editorLigatures: boolean;
-  /** Show the owner (`owner/`) before repository names in the left tree. */
-  showRepoOwner: boolean;
   density: 'Compact' | 'Comfortable';
   openIn: 'helm' | 'VS Code' | 'Cursor' | 'Zed';
 }
@@ -351,6 +377,17 @@ export interface Lifetime {
   cost: number;
 }
 
+/** Whether Claude Code is signed in on a machine where the app has to do that itself (the hosted server). */
+export interface ClaudeLogin {
+  loggedIn: boolean;
+  /** `none`, the account's login (`claude.ai`), `api key` or `subscription token`. */
+  method: string;
+  email?: string;
+  plan?: string;
+  /** Why it could not be checked, when it could not. */
+  error?: string;
+}
+
 export interface UpdateStatus {
   /** dev: a development build, which never updates. */
   state: 'dev' | 'idle' | 'checking' | 'downloading' | 'ready' | 'current' | 'error';
@@ -383,10 +420,15 @@ export interface WorktreeUsage {
 
 export interface AppState {
   ready: boolean;
+  /** Set only where the app signs Claude Code in itself (the hosted server); absent on the desktop. */
+  claudeLogin?: ClaudeLogin;
   user: User | null;
   repos: Repo[];
   sessions: Session[];
+  /** The latest few events. The Activity page reads the full log with `activityLog`. */
   activity: ActivityEvent[];
+  /** Counts every event logged, so a page can tell when to read the log again. */
+  activitySeq: number;
   settings: Settings;
   /** Spend per repo id since the start of the current week (Monday). */
   weekSpend: Record<string, number>;
@@ -398,6 +440,7 @@ export interface AppState {
   update: UpdateStatus;
   claudeVersion: string | null;
   plan: PlanUsage;
+  companion: CompanionState;
   /** USD to other currencies. */
   rates: Record<string, number>;
   platform: string;
@@ -645,6 +688,51 @@ export interface PushResult {
   uncommitted: number;
 }
 
+export interface ShellOption {
+  id: string;
+  label: string;
+}
+
+/** Where the companion connection stands. */
+export interface CompanionState {
+  state: 'off' | 'linking' | 'connecting' | 'connected' | 'error';
+  error?: string;
+  /** Shown while linking: the code to enter on GitHub. */
+  linkCode?: { userCode: string; verificationUri: string };
+  /** The GitHub username the companion knows this computer as. */
+  login?: string;
+  /** Browser tabs open on the website right now. */
+  viewers: number;
+}
+
+/** The small picture of helm that goes to the companion website: no code, no file contents, only what a phone screen needs. */
+export interface CompanionSnapshot {
+  at: number;
+  /** Counts every event logged, so the website knows when to read the activity log again. */
+  activitySeq: number;
+  user: { login: string; avatar: string };
+  billing: 'subscription' | 'api';
+  /** Display currency and the rate from USD, for amounts. */
+  currency: { code: string; rate: number };
+  /** Whether the website may answer and message agents, or only watch. */
+  control: boolean;
+  plan: { fiveHour?: PlanWindow; weekly?: PlanWindow };
+  tokensToday: number;
+  repos: { id: string; name: string; owner: string; lifetime: Lifetime; weekSpend: number; cap: number }[];
+  sessions: {
+    id: string; title: string; repoId: string; repoName: string; status: Status; step: string; branch: string; base: string; model: string; permMode: string;
+    startedAt: number; endedAt?: number; lastAccess: number;
+    tokens: number; tokenDetail: { input: number; output: number; cacheRead: number }; cost: number; budget: number; ctx: number;
+    files: number; add: number; del: number; commits: number; prUrl?: string; mergedInto?: string; archived: boolean; worktreeGone?: boolean;
+    subagents: { id: string; parentId: string | null; description: string; agentType: string; status: Subagent['status']; startedAt: number; endedAt?: number; tools: number; tokens: number; summary?: string; background?: boolean }[];
+    maxSubagents?: number;
+    ask?: { id: string; type: string; head: string; note: string; command?: string; tool?: string; pattern?: string; scope?: string; orphaned?: boolean; questions?: AskQuestion[] };
+  }[];
+  /** Sessions started outside helm (the VS Code extension, the CLI), read-only. */
+  externals: { repoId: string; id: string; title: string; branch?: string; active: boolean; lastModified: number; archived: boolean }[];
+  activity: { t: number; who: string; what: string; kind: string; repo: string; ok?: boolean }[];
+}
+
 export interface MergeInput {
   sessionId: string;
   /** Branch to merge into, without origin/. */
@@ -668,6 +756,12 @@ export interface MergeResult {
 /** Request/response calls from renderer to main. */
 export interface HelmApi {
   getState(): Promise<AppState>;
+  /** Forgets this computer's link to the companion server. Turning the companion on again links it afresh. */
+  companionUnlink(): Promise<void>;
+  /** The window was unresponsive for `ms`. Written to diagnostics.log, with the page it was on. */
+  reportStall(ms: number, where: string): Promise<void>;
+  /** The log of everything helm and its agents did, newest first. `before` is a timestamp to page back from. */
+  activityLog(opts?: { before?: number; limit?: number }): Promise<ActivityEvent[]>;
   updateSettings(patch: Partial<Settings>): Promise<void>;
 
   signInStart(): Promise<DeviceCode>;
@@ -678,6 +772,8 @@ export interface HelmApi {
   listGithubRepos(): Promise<GhRepo[]>;
   cloneRepos(ids: string[]): Promise<void>;
   cloneUrl(url: string, dir: string): Promise<void>;
+  listGithubOwners(): Promise<string[]>;
+  createGithubRepo(input: { name: string; description: string; private: boolean; owner?: string }): Promise<void>;
   inspectClone(path: string): Promise<{ ok: boolean; checks: { ok: boolean; warn?: boolean; text: string }[]; id?: string }>;
   addLocalRepo(path: string): Promise<void>;
   removeRepo(id: string): Promise<void>;
@@ -735,6 +831,8 @@ export interface HelmApi {
   setRepoMaxSubagents(repoId: string, max: number | null): Promise<void>;
   resolveAsk(sessionId: string, askId: string, answer: { decision: 'approve' | 'always' | 'deny'; text?: string } | { answers: Record<string, string> } | { addBudget: number }): Promise<void>;
   getTranscript(sessionId: string): Promise<TranscriptEvent[]>;
+  /** A file the agent made for the user (`artifact:` links in its replies), or null if it no longer exists. */
+  getArtifact(sessionId: string, name: string): Promise<Artifact | null>;
 
   /** A workspace id is a session id, or `repo:<owner/name>` for the repository's own checkout. */
   workspaceInfo(ws: string): Promise<WorkspaceInfo>;
@@ -778,6 +876,12 @@ export interface HelmApi {
   /** Opens the repository in the editor chosen in Settings. With helm as the editor it opens the Code tab instead. */
   openRepoInEditor(repoId: string): Promise<void>;
   checkClaude(path: string): Promise<string | null>;
+  /** Starts signing Claude Code in with a Claude subscription: returns the address to open. */
+  claudeLoginStart(): Promise<{ url: string }>;
+  /** Gives the code shown after approving, and returns where Claude Code stands. Rejects with the reason when it did not sign in. */
+  claudeLoginCode(code: string): Promise<ClaudeLogin>;
+  claudeLoginCancel(): Promise<void>;
+  claudeLogout(): Promise<ClaudeLogin>;
 
   termOpen(sessionId: string | null, cols: number, rows: number): Promise<string>;
   termWrite(id: string, data: string): Promise<void>;
@@ -785,6 +889,10 @@ export interface HelmApi {
   termClose(id: string): Promise<void>;
 
   copyText(text: string): Promise<void>;
+  /** The text on the clipboard, for pasting into the terminal. */
+  readClipboard(): Promise<string>;
+  /** The shells this computer has, for the terminal setting. */
+  listShells(): Promise<ShellOption[]>;
 
   checkpoints(sessionId: string): Promise<Checkpoint[]>;
   /** Puts the worktree back as it was at a checkpoint. A safety checkpoint is taken first, so the restore can be undone. Refused while the agent is working. */
@@ -847,11 +955,28 @@ export interface HelmApi {
 }
 
 /** Push events from main to renderer. */
+/**
+ * What the UI needs from the thing it runs in. Electron's preload implements it over IPC, the hosted server's web client over a
+ * WebSocket. The renderer imports nothing else from its environment.
+ */
+export interface HelmBridge {
+  /** The user's operating system, for keyboard shortcuts. */
+  platform: string;
+  /** Where the window's own buttons sit, so the title bar can leave room: the left (macOS), the right (Windows, Linux), or nowhere (a browser tab). Defaults from `platform`. */
+  windowControls?: 'left' | 'right' | 'none';
+  /** True in the browser client of a hosted server. */
+  hosted?: boolean;
+  invoke(channel: string, ...args: unknown[]): Promise<any>;
+  on<K extends keyof HelmEvents>(channel: K, cb: (payload: HelmEvents[K]) => void): () => void;
+}
+
 export interface HelmEvents {
   state: AppState;
   transcript: { sessionId: string; index: number; event: TranscriptEvent };
   toast: { tone: 'ready' | 'attention' | 'error' | 'neutral'; title: string; description?: string; sessionId?: string; tab?: string };
   termData: { id: string; data: string };
   termExit: { id: string };
+  /** A file for the user to keep. The hosted server sends it to the browser, which downloads it. */
+  download: { name: string; text: string };
   navigate: { screen: string; id?: string; tab?: string; file?: string; line?: number };
 }

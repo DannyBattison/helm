@@ -4,7 +4,7 @@ import { api, platform } from '../api';
 import glyph from '../assets/helm-glyph-violet.svg';
 import { tilde } from '../lib';
 import { getUI, go, setUI, toast, useApp, useMoney } from '../store';
-import { Badge, Button, Checkbox, Dialog, Input, Kbd, Select, Tabs } from '../ui';
+import { Badge, Button, Checkbox, Dialog, Input, Kbd, Select, Tabs, useNarrow } from '../ui';
 import { MODEL_OPTIONS, PERM_OPTIONS } from './Settings';
 import { VariantEditor, type Variant } from './Review';
 
@@ -91,6 +91,70 @@ export function SignIn() {
   );
 }
 
+
+// ------------------------------------------------------------------ sign in to Claude (hosted server)
+/**
+ * Shown over everything, and the app behind it switched off, when the server's Claude Code is not signed in: on a server nobody can run
+ * `claude` in front of it, so signing in is the first thing to do. Done when Claude Code reports that it is signed in.
+ */
+export function ClaudeLoginGate() {
+  const app = useApp();
+  const [step, setStep] = React.useState(0);
+  const [url, setUrl] = React.useState('');
+  const [code, setCode] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState(app.claudeLogin?.error || '');
+
+  const start = async () => {
+    setErr(''); setBusy(true);
+    try {
+      const r = await api.claudeLoginStart();
+      setUrl(r.url); setStep(1);
+      void api.openExternal(r.url);
+    } catch (e) { setErr(errText(e)); } finally { setBusy(false); }
+  };
+  const submit = async () => {
+    setErr(''); setBusy(true);
+    try { await api.claudeLoginCode(code); }
+    catch (e) { setErr(errText(e)); setStep(0); setCode(''); }
+    finally { setBusy(false); }
+  };
+  const startOver = () => { void api.claudeLoginCancel(); setStep(0); setCode(''); setErr(''); };
+  const text: React.CSSProperties = { margin: 0, font: '400 13px/1.55 var(--font-sans)', color: 'var(--text-2)' };
+
+  return (
+    <div role="dialog" aria-modal="true" aria-label="Sign in to Claude" style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'grid', placeItems: 'center', padding: 24, background: 'color-mix(in srgb, var(--bg-app) 86%, transparent)', backdropFilter: 'blur(6px)' }}>
+      <div style={{ width: 420, maxWidth: '100%', display: 'flex', flexDirection: 'column', gap: 18, padding: 28, borderRadius: 'var(--radius-lg)', background: 'var(--bg-panel)', boxShadow: 'inset 0 0 0 1px var(--border), 0 20px 60px rgba(0,0,0,.45)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <img src={glyph} width="30" height="30" alt="" />
+          <span style={{ font: '600 20px/1 var(--font-mono)', letterSpacing: '-0.02em', position: 'relative', top: '0.14em' }}>helm</span>
+        </div>
+        {step === 0 ? <>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <h1 style={{ margin: 0, font: '600 18px/1.3 var(--font-sans)' }}>Sign in to Claude to start</h1>
+            <p style={text}>helm runs Claude Code on this server, and it has to be signed in to your Claude account before agents can do anything. It uses your Claude subscription.</p>
+          </div>
+          <Button size="lg" variant="primary" fullWidth loading={busy} onClick={start}>Sign in with Claude</Button>
+          {err ? <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--status-error-text)' }}>{err}</span> : null}
+          <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Use your own account, on a server only you use: Anthropic's terms limit sharing a subscription login with other people or apps.</span>
+        </> : <>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <h1 style={{ margin: 0, font: '600 18px/1.3 var(--font-sans)' }}>Approve it on Claude, then paste the code</h1>
+            <p style={text}>We opened Claude in a new tab. Approve the sign-in there, and it shows a code. Paste it here to finish. If the tab did not open, use the button below.</p>
+          </div>
+          <Button variant="secondary" fullWidth iconRight="arrow-square-out" onClick={() => api.openExternal(url)}>Open Claude again</Button>
+          <Input mono autoFocus value={code} onChange={(e: any) => setCode(e.target.value)} onKeyDown={(e: any) => { if (e.key === 'Enter' && code.trim() && !busy) void submit(); }} placeholder="Paste the code here" />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Button variant="primary" style={{ flex: 1 }} loading={busy} disabled={!code.trim()} onClick={submit}>Continue</Button>
+            <Button variant="ghost" onClick={startOver}>Start over</Button>
+          </div>
+          {err ? <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--status-error-text)' }}>{err}</span> : null}
+        </>}
+      </div>
+    </div>
+  );
+}
+
 // ------------------------------------------------------------------ add repository
 export function AddRepo({ onClose }: { onClose(): void }) {
   const app = useApp();
@@ -104,9 +168,15 @@ export function AddRepo({ onClose }: { onClose(): void }) {
   const [dir, setDir] = React.useState(app.settings.cloneRoot);
   const [path, setPath] = React.useState('');
   const [insp, setInsp] = React.useState<{ ok: boolean; checks: { ok: boolean; warn?: boolean; text: string }[] } | null>(null);
+  const [newName, setNewName] = React.useState('');
+  const [newDesc, setNewDesc] = React.useState('');
+  const [newPrivate, setNewPrivate] = React.useState(true);
+  const [newOwner, setNewOwner] = React.useState('');
+  const [owners2, setOwners2] = React.useState<string[]>([]);
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState('');
 
+  React.useEffect(() => { api.listGithubOwners().then((o) => { setOwners2(o); setNewOwner(o[0] || ''); }).catch(() => undefined); }, []);
   React.useEffect(() => { api.listGithubRepos().then(setList).catch((e) => { setList([]); setLoadErr(errText(e)); }); }, []);
   React.useEffect(() => {
     setInsp(null);
@@ -124,22 +194,23 @@ export function AddRepo({ onClose }: { onClose(): void }) {
     try {
       if (tab === 'github') await api.cloneRepos(Object.keys(picked).filter((k) => picked[k]));
       else if (tab === 'url') await api.cloneUrl(url.trim(), dir);
+      else if (tab === 'new') await api.createGithubRepo({ name: newName.trim(), description: newDesc.trim(), private: newPrivate, owner: newOwner || undefined });
       else await api.addLocalRepo(path);
       onClose();
     } catch (e) { setErr(errText(e)); } finally { setBusy(false); }
   };
   const choose = async (set: (p: string) => void) => { const p = await api.chooseFolder(); if (p) set(p); };
-  const can = tab === 'github' ? n > 0 : tab === 'url' ? !!url.trim() && !!dir.trim() : !!insp?.ok;
+  const can = tab === 'github' ? n > 0 : tab === 'url' ? !!url.trim() && !!dir.trim() : tab === 'new' ? /^[A-Za-z0-9._-]+$/.test(newName.trim()) : !!insp?.ok;
 
   return (
     <Dialog width={600} title="Add repository" description="helm works with GitHub repositories so every session can branch, commit and open pull requests." onClose={onClose}
       footer={<>
-        <span style={{ flex: 1, font: '400 12px/1.3 var(--font-sans)', color: err ? 'var(--status-error-text)' : 'var(--text-3)' }}>{err || (tab === 'github' ? 'Cloned into ' + tilde(app.settings.cloneRoot, app.home) + '/<owner>/<name>' : '')}</span>
+        <span style={{ flex: 1, font: '400 12px/1.3 var(--font-sans)', color: err ? 'var(--status-error-text)' : 'var(--text-3)' }}>{err || (tab === 'github' || tab === 'new' ? 'Cloned into ' + tilde(app.settings.cloneRoot, app.home) + '/<owner>/<name>' : '')}</span>
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" icon="download-simple" loading={busy} disabled={!can} onClick={submit}>{tab === 'github' ? 'Clone ' + n + (n === 1 ? ' repository' : ' repositories') : tab === 'url' ? 'Clone' : 'Add'}</Button>
+        <Button variant="primary" icon="download-simple" loading={busy} disabled={!can} onClick={submit}>{tab === 'github' ? 'Clone ' + n + (n === 1 ? ' repository' : ' repositories') : tab === 'url' ? 'Clone' : tab === 'new' ? 'Create repository' : 'Add'}</Button>
       </>}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, margin: '-8px 0 0' }}>
-        <Tabs value={tab} onChange={setTab} style={{ padding: 0 }} tabs={[{ value: 'github', label: 'Your repositories', icon: 'github-logo' }, { value: 'url', label: 'Clone from URL', icon: 'link' }, { value: 'local', label: 'Existing clone', icon: 'folder-simple' }]} />
+        <Tabs value={tab} onChange={setTab} style={{ padding: 0 }} tabs={[{ value: 'github', label: 'Your repositories', icon: 'github-logo' }, { value: 'url', label: 'Clone from URL', icon: 'link' }, { value: 'new', label: 'Create new', icon: 'plus-circle' }, { value: 'local', label: 'Existing clone', icon: 'folder-simple' }]} />
         {tab === 'github' ? <>
           <div style={{ display: 'flex', gap: 8 }}>
             <Input icon="magnifying-glass" placeholder="Filter repositories" value={filter} onChange={(e: any) => setFilter(e.target.value)} style={{ flex: 1 }} />
@@ -164,10 +235,19 @@ export function AddRepo({ onClose }: { onClose(): void }) {
         </> : null}
         {tab === 'url' ? <>
           <Input mono icon="link" value={url} onChange={(e: any) => setUrl(e.target.value)} placeholder="https://github.com/owner/name or git@github.com:owner/name.git" />
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><span style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)', width: 70 }}>Clone into</span><Input mono value={dir} onChange={(e: any) => setDir(e.target.value)} style={{ flex: 1 }} /><Button onClick={() => choose(setDir)}>Choose…</Button></div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}><span style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)', width: 70 }}>Clone into</span><Input mono value={dir} onChange={(e: any) => setDir(e.target.value)} style={{ flex: '1 1 160px', minWidth: 0 }} /><Button onClick={() => choose(setDir)}>Choose…</Button></div>
+        </> : null}
+        {tab === 'new' ? <>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {owners2.length > 1 ? <Select value={newOwner} onChange={(e: any) => setNewOwner(e.target.value)} options={owners2.map((o) => ({ value: o, label: o }))} /> : null}
+            <Input mono autoFocus value={newName} onChange={(e: any) => setNewName(e.target.value)} placeholder="repository-name" style={{ flex: '1 1 160px', minWidth: 0 }} />
+          </div>
+          <Input value={newDesc} onChange={(e: any) => setNewDesc(e.target.value)} placeholder="Description (optional)" />
+          <Checkbox checked={newPrivate} onChange={setNewPrivate} label="Private" description="Only you and people you give access to can see it." />
+          <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>Created on GitHub with a README, then cloned and added to helm.</span>
         </> : null}
         {tab === 'local' ? <>
-          <div style={{ display: 'flex', gap: 8 }}><Input mono value={path} onChange={(e: any) => setPath(e.target.value)} placeholder="Path to an existing clone" style={{ flex: 1 }} /><Button onClick={() => choose(setPath)}>Choose folder…</Button></div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}><Input mono value={path} onChange={(e: any) => setPath(e.target.value)} placeholder="Path to an existing clone" style={{ flex: '1 1 160px', minWidth: 0 }} /><Button onClick={() => choose(setPath)}>Choose folder…</Button></div>
           {insp ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 12, borderRadius: 'var(--radius-md)', background: 'var(--bg-raised)', boxShadow: 'inset 0 0 0 1px var(--border)' }}>
               {insp.checks.map((c) => {
@@ -186,6 +266,7 @@ export function AddRepo({ onClose }: { onClose(): void }) {
 // ------------------------------------------------------------------ new session
 export function NewSession({ repoId, initial, onClose }: { repoId?: string; initial?: { task?: string; source?: import('@shared/types').Session['source']; base?: string }; onClose(): void }) {
   const app = useApp();
+  const narrow = useNarrow();
   const { sym, to, from } = useMoney();
   const sub = app.settings.billing === 'subscription';
   const [repo, setRepo] = React.useState(repoId || app.repos[0]?.id || '@free');
@@ -232,20 +313,20 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
   return (
     <Dialog width={560} title={free ? 'New free agent' : 'New session'} description={free ? 'An agent that is not tied to a repository, for research, writing, scripts and one-off jobs. It works in a folder of its own.' : 'The agent works in its own git worktree on a new branch. Your checkout is not touched.'} onClose={onClose}
       footer={<>
-        <span style={{ flex: 1, font: '400 12px/1.3 var(--font-sans)', color: err ? 'var(--status-error-text)' : 'var(--text-3)' }}>{err || (free ? (folder ? 'Works directly in your folder' : 'A new scratch folder, with git') : r ? `Branch ${app.settings.branchPrefix}<name> from ${base}` : '')}</span>
+        <span style={{ flex: narrow ? '1 1 100%' : 1, font: '400 12px/1.3 var(--font-sans)', color: err ? 'var(--status-error-text)' : 'var(--text-3)' }}>{err || (free ? (folder ? 'Works directly in your folder' : 'A new scratch folder, with git') : r ? `Branch ${app.settings.branchPrefix}<name> from ${base}` : '')}</span>
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" icon="play" kbd={mod + '↵'} loading={busy} disabled={!task.trim() || !repo} onClick={start}>{compare && !free ? `Start ${variants.length} runs` : after ? 'Queue session' : 'Start session'}</Button>
+        <Button variant="primary" icon="play" kbd={narrow ? undefined : mod + '↵'} loading={busy} disabled={!task.trim() || !repo} onClick={start}>{compare && !free ? `Start ${variants.length} runs` : after ? 'Queue session' : 'Start session'}</Button>
       </>}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <Select value={repo} onChange={(e: any) => { setRepo(e.target.value); if (e.target.value === '@free') setCompare(false); }} options={[{ value: '@free', label: 'No repository (free agent)' }, ...app.repos.map((x) => ({ value: x.id, label: x.id }))]} style={{ flex: 1 }} icon={free ? 'robot' : 'book-bookmark'} />
+        <div style={{ display: 'flex', flexDirection: narrow ? 'column' : 'row', gap: 8 }}>
+          <Select value={repo} onChange={(e: any) => { setRepo(e.target.value); if (e.target.value === '@free') setCompare(false); }} options={[{ value: '@free', label: 'No repository (free agent)' }, ...app.repos.map((x) => ({ value: x.id, label: x.id }))]} style={{ flex: narrow ? 'none' : 1, minWidth: 0 }} icon={free ? 'robot' : 'book-bookmark'} />
           {free ? <Button variant="secondary" icon="folder-open" onClick={() => void api.chooseFolder().then((f) => f && setFolder(f))}>{folder ? 'Change folder…' : 'Use my own folder…'}</Button>
             : <Select value={base} onChange={(e: any) => setBase(e.target.value)} options={bases.length ? bases.map((b) => ({ value: b.ref, label: b.label })) : [base]} mono icon="git-branch" />}
         </div>
-        <textarea autoFocus rows={5} value={task} onChange={(e) => setTask(e.target.value)} placeholder="What should the agent do? Be specific about the outcome, and mention files or checks that matter."
+        <textarea autoFocus={!narrow} rows={narrow ? 4 : 5} value={task} onChange={(e) => setTask(e.target.value)} placeholder="What should the agent do? Be specific about the outcome, and mention files or checks that matter."
           onKeyDown={(e) => { if (e.key === 'Enter' && (mac() ? e.metaKey : e.ctrlKey) && task.trim()) void start(); }}
           style={{ resize: 'vertical', border: 'none', outline: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border-strong)', color: 'var(--text-1)', font: '400 13px/1.55 var(--font-sans)', padding: '10px 12px' }} />
-        <div style={{ display: 'grid', gridTemplateColumns: sub ? '1fr 1fr' : '1fr 1fr 110px', gap: 8, ...(compare ? { opacity: 0.5 } : null) }}>
+        <div style={{ display: 'grid', gridTemplateColumns: narrow ? 'minmax(0,1fr)' : sub ? '1fr 1fr' : '1fr 1fr 110px', gap: 8, ...(compare ? { opacity: 0.5 } : null) }}>
           <Select disabled={compare} value={model} onChange={(e: any) => setModel(e.target.value)} options={MODEL_OPTIONS} />
           <Select value={perm} onChange={(e: any) => setPerm(e.target.value)} options={PERM_OPTIONS} />
           {sub ? null : <Input mono value={sym + budget} onChange={(e: any) => setBudget(e.target.value.replace(/[^0-9.]/g, ''))} />}

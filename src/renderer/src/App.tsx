@@ -3,9 +3,9 @@ import { api, platform } from './api';
 import { dataStack, fontStack, uiStack } from './fonts';
 import { theme as resolveTheme } from './lib';
 import { dismissToast, getUI, go, init, setUI, useUI } from './store';
-import { Button, Toast } from './ui';
+import { Button, Toast, useNarrow } from './ui';
 import { Activity, Dashboard } from './views/Dashboard';
-import { AddRepo, DeleteSession, MergePr, NewSession, Palette, RemoveRepo, RenameSession, SignIn } from './views/Dialogs';
+import { AddRepo, ClaudeLoginGate, DeleteSession, MergePr, NewSession, Palette, RemoveRepo, RenameSession, SignIn } from './views/Dialogs';
 import { Archive } from './views/Archive';
 import { Reports } from './views/Reports';
 import { Inbox } from './views/Inbox';
@@ -33,6 +33,8 @@ export function App() {
   const removingRepo = useUI((u) => u.removingRepo);
   const term = useUI((u) => u.term);
   const toasts = useUI((u) => u.toasts);
+  const drawer = useUI((u) => u.drawer);
+  const narrow = useNarrow();
   const [sysDark, setSysDark] = React.useState(0);
 
   React.useEffect(() => { void init(); }, []);
@@ -62,7 +64,7 @@ export function App() {
       if (m && e.key.toLowerCase() === 'k') { e.preventDefault(); setUI({ palette: true }); }
       else if (m && e.key.toLowerCase() === 'n') { e.preventDefault(); const r = getUI().route; setUI({ newSession: r.screen === 'repo' ? { repoId: r.id } : {} }); }
       else if (e.ctrlKey && e.key === '`') { e.preventDefault(); setUI({ term: !getUI().term }); }
-      else if (e.key === 'Escape') setUI({ palette: false });
+      else if (e.key === 'Escape') setUI({ palette: false, drawer: false });
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -110,11 +112,17 @@ export function App() {
     body = <Dashboard key={route.filter || 'all'} filter={route.filter} />;
   }
   const inCode = route.screen === 'session' && route.tab === 'code';
+  // On a server where Claude Code is not signed in yet, that comes first: the overlay covers the app and the app behind it is switched off.
+  const needsClaude = !!app.claudeLogin && !app.claudeLogin.loggedIn;
 
   return (
-    <div style={{ position: 'relative', height: '100%', minWidth: 1180, display: 'flex', flexDirection: 'column' }}>
+    <div style={{ position: 'relative', height: '100%', minWidth: 320, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ display: 'contents' }} {...(needsClaude ? { inert: true } : {})}>
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-        <Sidebar />
+        {narrow ? (drawer ? <>
+          <div onClick={() => setUI({ drawer: false })} style={{ position: 'absolute', inset: 0, zIndex: 40, background: 'rgba(0,0,0,0.45)', animation: 'helm-fade-in var(--dur-slow) var(--ease-out)' }} />
+          <div style={{ position: 'absolute', top: 0, bottom: 0, left: 0, zIndex: 41, width: 'min(300px, 86vw)', display: 'flex', boxShadow: 'var(--shadow-dialog)', animation: 'helm-drawer-in var(--dur-slow) var(--ease-out)' }}><Sidebar drawer /></div>
+        </> : null) : <Sidebar />}
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg-app)' }}>
           <TitleBar crumbs={crumbs} theme={theme} setTheme={toggleTheme as any} />
           {body}
@@ -134,7 +142,9 @@ export function App() {
       {renaming ? <RenameSession key={renaming} id={renaming} onClose={() => setUI({ renaming: null })} /> : null}
       {deleting ? <DeleteSession key={deleting} id={deleting} onClose={() => setUI({ deleting: null })} /> : null}
       {palette ? <Palette onClose={() => setUI({ palette: false })} toggleTheme={toggleTheme} /> : null}
-      <div style={{ position: 'absolute', right: 16, bottom: 40, zIndex: 60, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      </div>
+      {needsClaude ? <ClaudeLoginGate /> : null}
+      <div style={{ position: 'absolute', right: narrow ? 8 : 16, left: narrow ? 8 : undefined, bottom: narrow ? 32 : 40, zIndex: 60, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
         {toasts.map((t) => (
           <Toast key={t.id} tone={t.tone} title={t.title} description={t.description} onClose={() => dismissToast(t.id)}
             actions={t.sessionId ? <>

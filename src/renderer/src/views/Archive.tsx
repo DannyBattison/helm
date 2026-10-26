@@ -3,7 +3,7 @@ import type { ExternalSession, Session } from '@shared/types';
 import { api } from '../api';
 import { ago, fmtTokens, relTime, sessionTokens } from '../lib';
 import { go, setUI, toast, useApp, useUI } from '../store';
-import { Badge, Button, Input, StatusDot, useColumns } from '../ui';
+import { Badge, Button, Input, StatusDot, useColumns, useNarrow } from '../ui';
 
 const head: React.CSSProperties = { font: '500 10.5px/1 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' };
 const fail = (title: string) => (e: any) => toast({ tone: 'error', title, description: String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '') });
@@ -13,6 +13,7 @@ export function Archive() {
   const app = useApp();
   const externals = useUI((u) => u.externals);
   const [q, setQ] = React.useState('');
+  const narrow = useNarrow();
   const col = useColumns('archive', [{ w: 20, min: 20, fixed: true }, { w: 1, min: 220, flex: true }, { w: 170, min: 110 }, { w: 170, min: 110 }, { w: 90, min: 70 }, { w: 64, min: 50 }, { w: 200, min: 190, fixed: true }]);
   const days = app.settings.archiveAfterDays;
   const match = (...f: (string | undefined)[]) => !q.trim() || f.some((x) => x?.toLowerCase().includes(q.trim().toLowerCase()));
@@ -28,9 +29,9 @@ export function Archive() {
 
   return (
     <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-      <div style={{ padding: '20px 24px 32px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12 }}>
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div style={{ padding: narrow ? '14px 12px 24px' : '20px 24px 32px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12 }}>
+          <div style={{ flex: '1 1 240px', display: 'flex', flexDirection: 'column', gap: 4 }}>
             <h1 style={{ margin: 0, font: '600 20px/1.2 var(--font-sans)', letterSpacing: 'var(--tracking-tight)' }}>Archive</h1>
             <span style={{ font: '400 12px/1.4 var(--font-sans)', color: 'var(--text-3)' }}>
               {total} {total === 1 ? 'session' : 'sessions'} hidden from the left tree and Overview.{' '}
@@ -38,10 +39,11 @@ export function Archive() {
               <a href="#" onClick={(e) => { e.preventDefault(); go({ screen: 'settings', section: 'worktrees' }); }}>Change</a>
             </span>
           </div>
-          <Input icon="magnifying-glass" placeholder="Filter archived sessions" value={q} onChange={(e: any) => setQ(e.target.value)} style={{ width: 280 }} />
+          <Input icon="magnifying-glass" placeholder="Filter archived sessions" value={q} onChange={(e: any) => setQ(e.target.value)} style={{ width: narrow ? '100%' : 280 }} />
         </div>
 
         <div style={{ borderRadius: 'var(--radius-lg)', background: 'var(--bg-panel)', boxShadow: 'inset 0 0 0 1px var(--border)', overflowX: 'auto', overflowY: 'hidden' }}>
+          <div style={{ minWidth: col.minWidth + 24 }}>
           <div style={{ display: 'grid', gridTemplateColumns: col.template, gap: 12, alignItems: 'end', padding: '10px 12px', ...head }}>
             <span />{col.cell(1, 'Session')}{col.cell(2, 'Repository')}{col.cell(3, 'Archived')}{col.cell(4, 'Last active')}{col.cell(5, 'Tokens')}<span />
           </div>
@@ -82,6 +84,7 @@ export function Archive() {
               </span>
             </div>
           ))}
+          </div>
         </div>
       </div>
     </div>
