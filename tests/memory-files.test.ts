@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { deleteMemory, memoryDir, projectMemory, readMemory, writeMemory } from '../src/core/memory';
-import { installLogging, logFile, logLine, recentLog } from '../src/core/log';
+import { flushLog, installLogging, logFile, logLine, recentLog } from '../src/core/log';
 
 let home: string, repo: string, mem: string, oldHome: string | undefined, oldProfile: string | undefined;
 beforeEach(() => {
@@ -80,5 +80,6 @@ describe('log', () => {
     expect(text).toContain('ERROR two\n    lines');
     for (let i = 0; i < 450; i++) logLine('info', 'x' + i);
     expect(recentLog().length).toBe(400);
+    await flushLog();
   });
 });
