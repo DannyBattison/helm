@@ -28,6 +28,14 @@ FROM node:22-bookworm-slim
 # git: agents work in worktrees. ripgrep: Claude Code's search tools. tini: reaps the shells and agents the server starts.
 RUN apt-get update && apt-get install -y --no-install-recommends git openssh-client ca-certificates curl procps ripgrep tini \
     && rm -rf /var/lib/apt/lists/*
+# gh: the GitHub CLI, for agents and the terminal (`gh pr create`, `gh api`). helm writes its sign-in to gh's config, and the entrypoint makes
+# `gh auth git-credential` git's credential helper for github.com, so `git fetch` on a private repository works too.
+RUN mkdir -p -m 755 /etc/apt/keyrings \
+    && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+    && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list \
+    && apt-get update && apt-get install -y --no-install-recommends gh \
+    && rm -rf /var/lib/apt/lists/* && gh --version
 WORKDIR /app
 COPY --from=build /app /app
 

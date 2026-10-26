@@ -73,8 +73,10 @@ const subTone = (st: string) => (st === 'working' ? 'working' : st === 'failed' 
 const subLabel = (st: string) => (st === 'working' ? 'Running' : st === 'failed' ? 'Failed' : st === 'stopped' ? 'Stopped' : 'Done');
 
 function SubagentTree({ s, selected }: { s: S; selected?: string }) {
-  const rows = subagentTree(s);
-  if (!rows.length) return <span style={{ font: '400 12px/1.4 var(--font-sans)', color: 'var(--text-3)' }}>No subagents in this session.</span>;
+  const [all, setAll] = React.useState(false);
+  const hidden = (s.subagents || []).filter((a) => a.archived).length;
+  const rows = subagentTree(s, all || !!s.subagents.find((a) => a.id === selected && a.archived));
+  if (!rows.length && !hidden) return <span style={{ font: '400 12px/1.4 var(--font-sans)', color: 'var(--text-3)' }}>No subagents in this session.</span>;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
       {rows.map(({ a, depth }) => (
@@ -85,6 +87,7 @@ function SubagentTree({ s, selected }: { s: S; selected?: string }) {
           <span style={{ font: '400 10.5px/1 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap' }}>{a.tools} tools · {a.status === 'working' ? elapsed(a.startedAt) : elapsed(a.startedAt, a.endedAt)}</span>
         </div>
       ))}
+      {hidden ? <Button size="sm" variant="ghost" icon={all ? 'eye-slash' : 'archive'} onClick={() => setAll(!all)}>{all ? 'Hide archived' : `Show ${hidden} archived`}</Button> : null}
     </div>
   );
 }
@@ -199,7 +202,7 @@ function TranscriptItemView({ m, s, index, onDeny }: { m: TranscriptEvent; s: S;
         <Badge tone={subTone(m.status) as any} dot>{subLabel(m.status)}</Badge>
         <Button size="sm" variant="ghost" iconRight="arrow-right" onClick={() => go({ screen: 'session', id: s.id, tab: 'conversation', sub: m.id })}>Transcript</Button>
       </div>
-      {m.summary && m.status !== 'working' ? <div className="selectable" style={{ padding: '8px 12px 10px', borderTop: '1px solid var(--border-subtle)', font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-2)', whiteSpace: 'pre-wrap' }}>{m.summary}</div> : null}
+      {m.summary && m.status !== 'working' && !s.subagents.find((x) => x.id === m.id)?.archived ? <div className="selectable" style={{ padding: '8px 12px 10px', borderTop: '1px solid var(--border-subtle)', font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-2)', whiteSpace: 'pre-wrap' }}>{m.summary}</div> : null}
     </div>
   );
   if (m.k === 'user') return (

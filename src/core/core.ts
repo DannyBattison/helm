@@ -505,6 +505,7 @@ export const api: HelmApi = {
     if (s.free) throw new Error('A free agent has no repository to open a pull request in.');
     const repo = repos.must(s.repoId);
     if (input.files.length) await commitFiles(s.worktree, input.files, input.message || input.title);
+    await GH.ensureFresh();
     await G.git(s.worktree, 'push', '-u', 'origin', s.branch);
     store.log({ kind: 'push', who: me(), human: true, what: `pushed ${s.branch}`, repo: repo.name, sessionId: s.id });
     const url = await GH.createPull(repo.id, { head: s.branch, base: input.base, title: input.title, body: input.body, draft: input.draft });
@@ -946,13 +947,17 @@ export async function start(h: Host) {
   if (!process.env.HELM_DEV_NO_RECOVER) sessions.recover();
   if (host.companion !== false) void companion.loadKey().then(() => companion.apply());
   GH.setSignInGuard(host.allowLogin ?? null);
+  GH.watchAuth(() => G.setGitToken(GH.getToken()), () => { G.setGitToken(null); store.data.user = null; store.save(); emitState(); logLine('warn', 'GitHub rejected the sign-in and it could not be renewed; signed out'); });
   await GH.loadToken(host);
+  await GH.ensureFresh();
   // A server's list can change between runs: a token that belongs to someone no longer on it is dropped, not honoured.
   if (host.allowLogin && GH.getToken()) {
     const u = await GH.currentUser().catch(() => null);
     if (!u || !host.allowLogin(u.login)) { await GH.clearToken(); store.data.user = null; }
   }
   G.setGitToken(GH.getToken());
+  // git takes the token from the environment, so renew it before it lapses rather than when a push fails.
+  setInterval(() => void GH.ensureFresh(15 * 60_000), 5 * 60_000);
   if (!GH.getToken() && !process.env.HELM_DEV_SEED) store.data.user = null;
   claudeVersion = await detectClaude(store.data.settings.claudePath);
   host.setTheme?.(store.data.settings.theme);

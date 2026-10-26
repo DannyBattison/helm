@@ -5,7 +5,7 @@ export function Tabs({ tabs = [], value, defaultValue, onChange, onClose, closab
   const cur = value ?? inner;
   const editor = variant === 'editor';
   return (
-    <div role="tablist" className="helm-hscroll helm-tap-tabs" style={{ display: 'flex', alignItems: 'stretch', gap: editor ? 0 : 16, height: editor ? 34 : 32, borderBottom: '1px solid var(--border)', padding: editor ? 0 : '0 12px', ...style }}>
+    <div role="tablist" className="helm-hscroll helm-tap-tabbar" style={{ display: 'flex', alignItems: 'stretch', gap: editor ? 0 : 16, height: editor ? 34 : 32, borderBottom: '1px solid var(--border)', padding: editor ? 0 : '0 12px', ...style }}>
       {tabs.map(t => {
         const on = t.value === cur;
         return (
