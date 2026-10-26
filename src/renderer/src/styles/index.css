@@ -188,9 +188,11 @@ textarea {
 
 /* Phones: a taller header; the icon buttons in it grow with it. */
 @media (max-width: 767px) {
-  :root { --titlebar-h: 56px; }
-  .drag .helm-tap-icon { min-width: 44px !important; min-height: 44px !important; }
-  .drag .helm-tap-icon > i { font-size: 22px !important; }
+  :root { --titlebar-h: 60px; }
+  .drag .helm-tap-icon { min-width: 48px !important; min-height: 48px !important; }
+  .drag .helm-tap-icon > i { font-size: 24px !important; }
+  /* The menu drawer is the main way around on a phone: scale the whole sidebar up, text and icons together. */
+  .helm-drawer { zoom: 1.2; }
 }
 
 /* Single-line text cut with an ellipsis sits in a box that clips what overhangs it, so a tight inline line-height shaves the bottom off p, y and g.

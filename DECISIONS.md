@@ -579,3 +579,7 @@ Why: user request.
 ## D-140 · 2026-10-26 · Every inline line height under 1.5 in the renderer becomes 1.5
 The sidebar rows and the usage panel's "Input / Output / Cache read" labels clipped descenders for the same reason: both set a tight inline `font` shorthand (`13px/1`, `11.5px/1`), which leaves a line box shorter than Mona Sans's descenders, and the page has nothing else (no font-metric overrides) that explains it. Instead of fixing places one at a time (D-138, D-139), all 337 inline `font: …px/N var(--font-sans|mono)` with N from 1 to 1.4 now use 1.5, the same as `--type-label`. Rows and buttons with a set height centre their text, so they do not move; stacks of text gain a few pixels. Still 1.5 only where the font is a theme font: icon sizes, and text using the tokens, are untouched. Not looked at in the app, so some spacing may need nudging.
 Why: user request.
+
+## D-141 · 2026-10-26 · Phone header 60px, with larger icons and title; the menu drawer is scaled up 20%
+The phone header goes from 56 to 60px (D-132, D-138), its icon buttons to 48px with 24px glyphs and the breadcrumb to 17px. The sidebar drawer gets `zoom: 1.2`, so its text, icons and rows grow together; the drawer's 300px (86vw) width is unchanged, so names truncate a little sooner. Not looked at in the app.
+Why: user request.
