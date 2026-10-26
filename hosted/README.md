@@ -39,7 +39,7 @@ Always: Node and npm, bash and coreutils, git, gh, ssh, curl, ripgrep, tini as P
 | `MEDIA` | ffmpeg, ImageMagick, Tesseract |
 | `BROWSING` | Playwright and Chromium (turns on `CORE`) |
 
-The default is `CORE|SEARCH|NETWORK|EDITING` (`:latest`). `:latest-full` is `ALL` and is well over 1 GB larger. To choose your own: `docker build -f hosted/Dockerfile --build-arg 'INCLUDE=CORE|SEARCH|DOCUMENTS|BROWSING' -t helm-hosted .`
+The default is `CORE|SEARCH|NETWORK|EDITING|BROWSING` (`:latest`), which is already large because of Chromium. `:latest-full` is `ALL`, which adds LibreOffice, pandoc, ffmpeg, ImageMagick and Tesseract. To leave the browser out, use `INCLUDE=CORE|SEARCH|NETWORK|EDITING`. To choose your own: `docker build -f hosted/Dockerfile --build-arg 'INCLUDE=CORE|SEARCH|DOCUMENTS|BROWSING' -t helm-hosted .`
 
 ## Configuring
 

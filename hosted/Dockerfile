@@ -37,7 +37,7 @@ FROM node:22-bookworm-slim
 # Always there, whatever you pick: node and npm, bash and coreutils, git, openssh-client, ca-certificates, curl, procps, tini, gh, and ripgrep
 # (Claude Code's search tools use it). The default is the slim set; the published `-full` image is INCLUDE=ALL. For example:
 #   docker build -f hosted/Dockerfile --build-arg 'INCLUDE=CORE|SEARCH|DOCUMENTS' -t helm-hosted .
-ARG INCLUDE="CORE|SEARCH|NETWORK|EDITING"
+ARG INCLUDE="CORE|SEARCH|NETWORK|EDITING|BROWSING"
 ARG YQ_VERSION=v4.44.3
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
 RUN set -eu; \
