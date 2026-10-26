@@ -1066,5 +1066,7 @@ export interface HelmEvents {
   termExit: { id: string };
   /** A file for the user to keep. The hosted server sends it to the browser, which downloads it. */
   download: { name: string; text: string };
+  /** A desktop notification for a browser to show, when the host has no desktop of its own. */
+  notify: { kind: 'attention' | 'ready' | 'failed'; title: string; body: string; silent: boolean; sessionId: string };
   navigate: { screen: string; id?: string; tab?: string; file?: string; line?: number };
 }

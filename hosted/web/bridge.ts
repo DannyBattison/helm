@@ -21,6 +21,18 @@ function download({ name, text }: HelmEvents['download']) {
   setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
 }
 
+/** Shows a notification from the server unless this tab is being looked at. Needs permission, which a browser only grants after a click. */
+function notify(n: HelmEvents['notify'], open: (sessionId: string, kind: string) => void) {
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted' || document.hasFocus()) return;
+  // The tag makes several open tabs show one notification between them.
+  const note = new Notification(n.title, { body: n.body, silent: n.silent, tag: `helm-${n.sessionId}-${n.kind}`, icon: '/apple-touch-icon.png' });
+  note.onclick = () => { window.focus(); open(n.sessionId, n.kind); note.close(); };
+}
+
+if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+  addEventListener('pointerdown', () => { void Notification.requestPermission(); }, { once: true });
+}
+
 const clientPlatform = () => (/Mac/i.test(navigator.platform) ? 'darwin' : /Win/i.test(navigator.platform) ? 'win32' : 'linux');
 
 /**
@@ -61,7 +73,10 @@ export function createBridge(url: string): HelmBridge & { ready: Promise<void> }
         void fetch('/auth/claim', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ claim: m.claim }), credentials: 'same-origin' }).catch(() => undefined);
       } else if (m.t === 'event') {
         if (m.channel === 'download') download(m.payload as HelmEvents['download']);
-        else emit(m.channel, m.payload);
+        else {
+          if (m.channel === 'notify') notify(m.payload as HelmEvents['notify'], (id, kind) => emit('navigate', { screen: 'session', id, tab: kind === 'ready' ? 'changes' : 'conversation' }));
+          emit(m.channel, m.payload);
+        }
       }
     };
     ws.onclose = () => {
