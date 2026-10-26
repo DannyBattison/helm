@@ -4,6 +4,7 @@ import { join } from 'node:path';
 const ring: string[] = [];
 let file = '';
 let size = 0;
+let pending: Promise<void> = Promise.resolve();
 
 const stamp = () => new Date().toISOString();
 
@@ -13,15 +14,17 @@ export function logLine(level: 'info' | 'warn' | 'error', message: string) {
   if (ring.length > 400) ring.splice(0, ring.length - 400);
   if (!file) return;
   size += line.length + 1;
-  void (async () => {
+  pending = pending.then(async () => {
     try {
       if (size > 1_000_000) { await rename(file, file.replace(/\.log$/, '.old.log')); size = line.length; }
       await appendFile(file, line + '\n');
     } catch { /* logging must never throw */ }
-  })();
+  });
 }
 
 export const recentLog = () => ring.slice();
+/** Resolves once every queued line has been written. */
+export const flushLog = () => pending;
 export const logFile = () => file;
 
 /** Keeps what goes wrong: warnings and errors printed by the main process, and exceptions nobody caught. */
