@@ -18,23 +18,76 @@ let guard: ((login: string) => boolean) | null = null;
 /** Sets who may sign in (a hosted server's allow list). Null, the default, lets anyone: the desktop app's own user. */
 export function setSignInGuard(g: ((login: string) => boolean) | null) { guard = g; }
 
+/** What is kept in auth.bin. Only tokens from an OAuth app with expiring tokens switched on carry a refresh token. */
+type Auth = { token: string; refreshToken?: string; expiresAt?: number; refreshExpiresAt?: number; clientId?: string };
+let auth: Auth | null = null;
+let onChange: (() => void) | null = null;
+let onSignedOut: (() => void) | null = null;
+/** `change` runs whenever the token is replaced; `signedOut` when GitHub has rejected it and it cannot be renewed. */
+export function watchAuth(change: () => void, signedOut: () => void) { onChange = change; onSignedOut = signedOut; }
+
 export async function loadToken(h: Pick<Host, 'dataDir' | 'encrypt' | 'decrypt'>): Promise<string | null> {
   vault = h;
   try {
     const buf = await readFile(tokenFile());
-    token = vault.decrypt ? vault.decrypt(buf) : buf.toString('utf8');
-  } catch { token = null; }
+    const raw = vault.decrypt ? vault.decrypt(buf) : buf.toString('utf8');
+    // Files written before refresh tokens held the bare token.
+    auth = raw.startsWith('{') ? JSON.parse(raw) as Auth : { token: raw };
+    token = auth.token;
+  } catch { token = null; auth = null; }
   return token;
 }
 
-async function saveToken(t: string) {
-  token = t;
-  await writeFile(tokenFile(), vault.encrypt ? vault.encrypt(t) : Buffer.from(t));
+async function saveAuth(a: Auth) {
+  auth = a;
+  token = a.token;
+  const raw = JSON.stringify(a);
+  await writeFile(tokenFile(), vault.encrypt ? vault.encrypt(raw) : Buffer.from(raw));
+  onChange?.();
 }
 
 export async function clearToken() {
   token = null;
+  auth = null;
   await rm(tokenFile(), { force: true });
+}
+
+const EARLY = 60_000;
+let refreshing: Promise<boolean> | null = null;
+/** Trades the refresh token for a new access token. False when there is nothing to refresh with or GitHub refused; a network failure throws. */
+function refresh(): Promise<boolean> {
+  if (!auth?.refreshToken || !auth.clientId || (auth.refreshExpiresAt && auth.refreshExpiresAt < Date.now())) return Promise.resolve(false);
+  const a = auth;
+  return refreshing ??= (async () => {
+    try {
+      const res = await fetch('https://github.com/login/oauth/access_token', {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'helm' },
+        body: JSON.stringify({ client_id: a.clientId, grant_type: 'refresh_token', refresh_token: a.refreshToken })
+      });
+      const j: any = await res.json();
+      if (!j.access_token) {
+        logLine('warn', `GitHub token refresh refused: ${j.error || res.status}${j.error_description ? ' - ' + j.error_description : ''}`);
+        return false;
+      }
+      await saveAuth(fromGrant(j, a.clientId!));
+      logLine('info', `GitHub token refreshed${j.expires_in ? `, valid for ${Math.round(j.expires_in / 3600)}h` : ''}`);
+      return true;
+    } finally { refreshing = null; }
+  })();
+}
+
+/** Renews the token when it has expired or is about to. Failures are left for the next request to report. */
+export async function ensureFresh(within = EARLY): Promise<void> {
+  if (auth?.expiresAt && auth.expiresAt - Date.now() < within) await refresh().catch((e) => logLine('warn', 'GitHub token refresh failed: ' + String(e?.message || e)));
+}
+
+function fromGrant(j: any, clientId: string): Auth {
+  return {
+    token: j.access_token, clientId,
+    ...(j.refresh_token ? { refreshToken: j.refresh_token, refreshExpiresAt: j.refresh_token_expires_in ? Date.now() + j.refresh_token_expires_in * 1000 : undefined } : {}),
+    ...(j.expires_in ? { expiresAt: Date.now() + j.expires_in * 1000 } : {})
+  };
 }
 
 /** One line per rejected GitHub call. Records what kind of token was sent, never the token itself. */
@@ -44,11 +97,24 @@ function logRejected(method: string, path: string, res: Response, message: strin
   logLine('warn', `GitHub ${method} ${path.replace(/^https:\/\/api\.github\.com/, '')} -> ${res.status} "${message}" (token: ${kind}, rate remaining: ${h('x-ratelimit-remaining') ?? '?'}, scopes: ${h('x-oauth-scopes') ?? '-'}, needs: ${h('x-accepted-oauth-scopes') ?? '-'}${h('x-github-sso') ? ', SSO required' : ''}, request ${h('x-github-request-id') ?? '?'})`);
 }
 
+let probing = false;
 async function gh(path: string, init: RequestInit = {}): Promise<any> {
-  const res = await fetch(path.startsWith('http') ? path : 'https://api.github.com' + path, {
+  await ensureFresh();
+  const send = () => fetch(path.startsWith('http') ? path : 'https://api.github.com' + path, {
     ...init,
     headers: { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'helm', ...(token ? { Authorization: 'Bearer ' + token } : {}), ...(init.headers || {}) }
   });
+  let res = await send();
+  if (res.status === 401 && token && !probing) {
+    logRejected(init.method || 'GET', path, res, 'Bad credentials; trying a refresh');
+    if (await refresh().catch(() => false)) res = await send();
+    if (res.status === 401) {
+      // The token is dead and cannot be renewed: forget it, so the app shows signed out instead of failing on every call.
+      await clearToken();
+      onSignedOut?.();
+      throw new Error('GitHub: your sign-in has expired or was revoked. Sign in again in Settings. (401)');
+    }
+  }
   if (!res.ok) {
     let msg = res.statusText;
     let detail = '';
@@ -92,7 +158,7 @@ export async function waitDeviceFlow(): Promise<User> {
     const j: any = await res.json();
     if (j.access_token) {
       pending = null;
-      return acceptToken(j.access_token);
+      return acceptToken(j.access_token, fromGrant(j, p.clientId));
     }
     if (j.error === 'slow_down') interval += 5000;
     else if (j.error && j.error !== 'authorization_pending') throw new Error(j.error_description || j.error);
@@ -107,18 +173,19 @@ export const signInWithToken = (t: string): Promise<User> => acceptToken(t.trim(
  * Finds out whose token this is, and keeps it only if that person may sign in. The check comes before the token is saved, so someone who is
  * turned away leaves the person already signed in exactly as they were.
  */
-async function acceptToken(t: string): Promise<User> {
-  const prev = token;
+async function acceptToken(t: string, grant?: Auth): Promise<User> {
+  const prev = { token, auth };
   token = t;
+  probing = true;
   try {
     const u = await currentUser();
     if (guard && !guard(u.login)) throw new Error(`@${u.login} is not allowed to use this server.`);
-    await saveToken(t);
+    await saveAuth(grant || { token: t });
     return u;
   } catch (e) {
-    token = prev;
+    token = prev.token; auth = prev.auth;
     throw e;
-  }
+  } finally { probing = false; }
 }
 
 export function cancelDeviceFlow() { pending = null; }
@@ -230,6 +297,7 @@ export async function pullReviewComments(slug: string, number: number): Promise<
 
 // ---------------------------------------------------------------- actions
 async function ghText(path: string): Promise<string> {
+  await ensureFresh();
   const res = await fetch('https://api.github.com' + path, { headers: { Accept: 'application/vnd.github.raw+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'helm', ...(token ? { Authorization: 'Bearer ' + token } : {}) } });
   if (!res.ok) { logRejected('GET', path, res, res.statusText); throw new Error(`GitHub: ${res.statusText} (${res.status})`); }
   return res.text();
