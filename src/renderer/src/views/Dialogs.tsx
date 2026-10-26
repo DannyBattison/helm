@@ -3,9 +3,11 @@ import type { BaseOption, GhRepo, MergeMethod, ModelAlias, PermMode, PullRequest
 import { api, platform } from '../api';
 import glyph from '../assets/helm-glyph-violet.svg';
 import { tilde } from '../lib';
-import { getUI, go, setUI, toast, useApp, useMoney } from '../store';
-import { Badge, Button, Checkbox, Dialog, Input, Kbd, Select, Tabs, useNarrow } from '../ui';
+import { getUI, go, haltAll, resumeAll, setUI, toast, useApp, useMoney } from '../store';
+import { Badge, Button, Checkbox, Dialog, IconButton, Input, Kbd, Select, Tabs, useNarrow } from '../ui';
 import { MODEL_OPTIONS, PERM_OPTIONS } from './Settings';
+import { useShortcutKeys } from '../shortcuts';
+import { AttachmentChips, IMAGE_TYPES, readAttachments, type Draft } from './attach';
 import { VariantEditor, type Variant } from './Review';
 
 const errText = (e: any) => String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '');
@@ -44,16 +46,16 @@ export function SignIn() {
         <div style={{ width: 380, display: 'flex', flexDirection: 'column', gap: 24 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <img src={glyph} width="38" height="38" alt="" />
-            <span style={{ font: '600 26px/1 var(--font-mono)', letterSpacing: '-0.02em', position: 'relative', top: '0.14em' }}>helm</span>
+            <span style={{ font: '600 26px/1.5 var(--font-mono)', letterSpacing: '-0.02em', position: 'relative', top: '0.14em' }}>helm</span>
           </div>
           {step === 0 ? <>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <h1 style={{ margin: 0, font: '600 20px/1.25 var(--font-sans)' }}>Run Claude Code across all your repositories</h1>
+              <h1 style={{ margin: 0, font: '600 20px/1.5 var(--font-sans)' }}>Run Claude Code across all your repositories</h1>
               <p style={{ margin: 0, font: '400 13px/1.55 var(--font-sans)', color: 'var(--text-2)' }}>helm uses your GitHub account to list repositories, open pull requests and show history. A GitHub account is required.</p>
             </div>
             {needsClient ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <span style={{ font: '500 12px/1 var(--font-sans)', color: 'var(--text-2)' }}>GitHub OAuth app client ID</span>
+                <span style={{ font: '500 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>GitHub OAuth app client ID</span>
                 <Input mono value={clientId} onChange={(e: any) => setClientId(e.target.value)} placeholder="Ov23li…" />
                 <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>Create an OAuth app at github.com/settings/developers and enable device flow. helm never sees a client secret.</span>
               </div>
@@ -69,13 +71,13 @@ export function SignIn() {
             </span>
           </> : <>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <h1 style={{ margin: 0, font: '600 20px/1.25 var(--font-sans)' }}>Enter this code on GitHub</h1>
+              <h1 style={{ margin: 0, font: '600 20px/1.5 var(--font-sans)' }}>Enter this code on GitHub</h1>
               <p style={{ margin: 0, font: '400 13px/1.55 var(--font-sans)', color: 'var(--text-2)' }}>We opened {code?.verificationUri.replace('https://', '')} in your browser. This window continues once you approve.</p>
             </div>
-            <div className="selectable" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 64, borderRadius: 'var(--radius-lg)', background: 'var(--bg-panel)', boxShadow: 'inset 0 0 0 1px var(--border)', font: '500 26px/1 var(--font-mono)', letterSpacing: '0.12em' }}>
+            <div className="selectable" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 64, borderRadius: 'var(--radius-lg)', background: 'var(--bg-panel)', boxShadow: 'inset 0 0 0 1px var(--border)', font: '500 26px/1.5 var(--font-mono)', letterSpacing: '0.12em' }}>
               {code?.userCode.replace('-', '–')}
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>
               <i className="ph ph-circle-notch" style={{ fontSize: 14, animation: 'helm-spin .9s linear infinite' }} />Waiting for GitHub
               <span style={{ flex: 1 }} />
               <Button size="sm" variant="ghost" icon="copy" onClick={() => api.copyText(code!.userCode)}>Copy code</Button>
@@ -127,11 +129,11 @@ export function ClaudeLoginGate() {
       <div style={{ width: 420, maxWidth: '100%', display: 'flex', flexDirection: 'column', gap: 18, padding: 28, borderRadius: 'var(--radius-lg)', background: 'var(--bg-panel)', boxShadow: 'inset 0 0 0 1px var(--border), 0 20px 60px rgba(0,0,0,.45)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <img src={glyph} width="30" height="30" alt="" />
-          <span style={{ font: '600 20px/1 var(--font-mono)', letterSpacing: '-0.02em', position: 'relative', top: '0.14em' }}>helm</span>
+          <span style={{ font: '600 20px/1.5 var(--font-mono)', letterSpacing: '-0.02em', position: 'relative', top: '0.14em' }}>helm</span>
         </div>
         {step === 0 ? <>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <h1 style={{ margin: 0, font: '600 18px/1.3 var(--font-sans)' }}>Sign in to Claude to start</h1>
+            <h1 style={{ margin: 0, font: '600 18px/1.5 var(--font-sans)' }}>Sign in to Claude to start</h1>
             <p style={text}>helm runs Claude Code on this server, and it has to be signed in to your Claude account before agents can do anything. It uses your Claude subscription.</p>
           </div>
           <Button size="lg" variant="primary" fullWidth loading={busy} onClick={start}>Sign in with Claude</Button>
@@ -139,7 +141,7 @@ export function ClaudeLoginGate() {
           <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Use your own account, on a server only you use: Anthropic's terms limit sharing a subscription login with other people or apps.</span>
         </> : <>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <h1 style={{ margin: 0, font: '600 18px/1.3 var(--font-sans)' }}>Approve it on Claude, then paste the code</h1>
+            <h1 style={{ margin: 0, font: '600 18px/1.5 var(--font-sans)' }}>Approve it on Claude, then paste the code</h1>
             <p style={text}>We opened Claude in a new tab. Approve the sign-in there, and it shows a code. Paste it here to finish. If the tab did not open, use the button below.</p>
           </div>
           <Button variant="secondary" fullWidth iconRight="arrow-square-out" onClick={() => api.openExternal(url)}>Open Claude again</Button>
@@ -205,7 +207,7 @@ export function AddRepo({ onClose }: { onClose(): void }) {
   return (
     <Dialog width={600} title="Add repository" description="helm works with GitHub repositories so every session can branch, commit and open pull requests." onClose={onClose}
       footer={<>
-        <span style={{ flex: 1, font: '400 12px/1.3 var(--font-sans)', color: err ? 'var(--status-error-text)' : 'var(--text-3)' }}>{err || (tab === 'github' || tab === 'new' ? 'Cloned into ' + tilde(app.settings.cloneRoot, app.home) + '/<owner>/<name>' : '')}</span>
+        <span style={{ flex: 1, font: '400 12px/1.5 var(--font-sans)', color: err ? 'var(--status-error-text)' : 'var(--text-3)' }}>{err || (tab === 'github' || tab === 'new' ? 'Cloned into ' + tilde(app.settings.cloneRoot, app.home) + '/<owner>/<name>' : '')}</span>
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
         <Button variant="primary" icon="download-simple" loading={busy} disabled={!can} onClick={submit}>{tab === 'github' ? 'Clone ' + n + (n === 1 ? ' repository' : ' repositories') : tab === 'url' ? 'Clone' : tab === 'new' ? 'Create repository' : 'Add'}</Button>
       </>}>
@@ -217,25 +219,25 @@ export function AddRepo({ onClose }: { onClose(): void }) {
             <Select value={owner} onChange={(e: any) => setOwner(e.target.value)} options={owners.map((o) => ({ value: o, label: o === 'all' ? 'All owners' : o }))} />
           </div>
           <div style={{ maxHeight: 300, minHeight: 80, overflow: 'auto', borderRadius: 'var(--radius-md)', boxShadow: 'inset 0 0 0 1px var(--border)' }}>
-            {list == null ? <div style={{ padding: 16, font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>Loading your repositories…</div> : null}
+            {list == null ? <div style={{ padding: 16, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Loading your repositories…</div> : null}
             {loadErr ? <div style={{ padding: 16, font: '400 12px/1.45 var(--font-sans)', color: 'var(--status-error-text)' }}>{loadErr}</div> : null}
-            {list && !loadErr && shown.length === 0 ? <div style={{ padding: 16, font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>No repositories match.</div> : null}
+            {list && !loadErr && shown.length === 0 ? <div style={{ padding: 16, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>No repositories match.</div> : null}
             {shown.map((r, i) => (
               <div key={r.id} onClick={() => !r.added && setPicked({ ...picked, [r.id]: !picked[r.id] })} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderTop: i ? '1px solid var(--border-subtle)' : 'none', cursor: r.added ? 'default' : 'pointer', opacity: r.added ? 0.55 : 1 }}>
                 <Checkbox checked={r.added || !!picked[r.id]} disabled={r.added} />
                 <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 6, font: '500 13px/1.2 var(--font-sans)' }}>{r.id}{r.private ? <i className="ph ph-lock-simple" style={{ fontSize: 12, color: 'var(--text-3)' }} /> : null}</span>
-                  <span style={{ font: '400 12px/1.2 var(--font-sans)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.description || ' '}</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6, font: '500 13px/1.5 var(--font-sans)' }}>{r.id}{r.private ? <i className="ph ph-lock-simple" style={{ fontSize: 12, color: 'var(--text-3)' }} /> : null}</span>
+                  <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.description || ' '}</span>
                 </div>
-                <span style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)' }}>{r.lang}</span>
-                <span style={{ width: 76, textAlign: 'right', font: '400 11px/1 var(--font-sans)', color: 'var(--text-3)' }}>{r.added ? <Badge>Added</Badge> : r.updated}</span>
+                <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{r.lang}</span>
+                <span style={{ width: 76, textAlign: 'right', font: '400 11px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{r.added ? <Badge>Added</Badge> : r.updated}</span>
               </div>
             ))}
           </div>
         </> : null}
         {tab === 'url' ? <>
           <Input mono icon="link" value={url} onChange={(e: any) => setUrl(e.target.value)} placeholder="https://github.com/owner/name or git@github.com:owner/name.git" />
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}><span style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)', width: 70 }}>Clone into</span><Input mono value={dir} onChange={(e: any) => setDir(e.target.value)} style={{ flex: '1 1 160px', minWidth: 0 }} /><Button onClick={() => choose(setDir)}>Choose…</Button></div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}><span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)', width: 70 }}>Clone into</span><Input mono value={dir} onChange={(e: any) => setDir(e.target.value)} style={{ flex: '1 1 160px', minWidth: 0 }} /><Button onClick={() => choose(setDir)}>Choose…</Button></div>
         </> : null}
         {tab === 'new' ? <>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -276,6 +278,19 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
   const [dirty, setDirty] = React.useState(0);
   const [base, setBase] = React.useState(r?.defaultBranch || 'main');
   const [task, setTask] = React.useState(initial?.task || '');
+  const [images, setImages] = React.useState<Draft[]>([]);
+  const [focused, setFocused] = React.useState(false);
+  const [over, setOver] = React.useState(false);
+  const picker = React.useRef<HTMLInputElement>(null);
+  const taRef = React.useRef<HTMLTextAreaElement>(null);
+  const addImages = async (list: File[]) => { const d = await readAttachments(list, images.length); if (d.length) setImages((cur) => [...cur, ...d]); };
+  // Grows with the text, like the box in a conversation.
+  React.useLayoutEffect(() => {
+    const el = taRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 280) + 'px';
+  }, [task]);
   const [after, setAfter] = React.useState('');
   const [model, setModel] = React.useState<ModelAlias>(app.settings.defaultModel);
   const [perm, setPerm] = React.useState<PermMode>(app.settings.permMode);
@@ -296,7 +311,7 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
   const start = async () => {
     setBusy(true); setErr('');
     try {
-      const input = { repoId: repo, base: free ? '' : base, folder: free && folder ? folder : undefined, task: task.trim(), model, budget: sub ? 0 : from(parseFloat(budget)) || app.settings.sessionBudget, permMode: perm, after: after || undefined, source: initial?.source };
+      const input = { repoId: repo, base: free ? '' : base, folder: free && folder ? folder : undefined, task: task.trim(), images: images.length ? images.map(({ mediaType, data, name }) => ({ mediaType, data, name })) : undefined, model, budget: sub ? 0 : from(parseFloat(budget)) || app.settings.sessionBudget, permMode: perm, after: after || undefined, source: initial?.source };
       if (compare && !free) {
         const ids = await api.createGroup(input, variants.map((v) => ({ model: v.model, effort: v.effort === 'default' ? undefined : v.effort })));
         const group = getUI().app?.sessions.find((x) => x.id === ids[0])?.group;
@@ -313,7 +328,7 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
   return (
     <Dialog width={560} title={free ? 'New free agent' : 'New session'} description={free ? 'An agent that is not tied to a repository, for research, writing, scripts and one-off jobs. It works in a folder of its own.' : 'The agent works in its own git worktree on a new branch. Your checkout is not touched.'} onClose={onClose}
       footer={<>
-        <span style={{ flex: narrow ? '1 1 100%' : 1, font: '400 12px/1.3 var(--font-sans)', color: err ? 'var(--status-error-text)' : 'var(--text-3)' }}>{err || (free ? (folder ? 'Works directly in your folder' : 'A new scratch folder, with git') : r ? `Branch ${app.settings.branchPrefix}<name> from ${base}` : '')}</span>
+        <span style={{ flex: narrow ? '1 1 100%' : 1, font: '400 12px/1.5 var(--font-sans)', color: err ? 'var(--status-error-text)' : 'var(--text-3)' }}>{err || (free ? (folder ? 'Works directly in your folder' : 'A new scratch folder, with git') : r ? `Branch ${app.settings.branchPrefix}<name> from ${base}` : '')}</span>
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
         <Button variant="primary" icon="play" kbd={narrow ? undefined : mod + '↵'} loading={busy} disabled={!task.trim() || !repo} onClick={start}>{compare && !free ? `Start ${variants.length} runs` : after ? 'Queue session' : 'Start session'}</Button>
       </>}>
@@ -323,9 +338,23 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
           {free ? <Button variant="secondary" icon="folder-open" onClick={() => void api.chooseFolder().then((f) => f && setFolder(f))}>{folder ? 'Change folder…' : 'Use my own folder…'}</Button>
             : <Select value={base} onChange={(e: any) => setBase(e.target.value)} options={bases.length ? bases.map((b) => ({ value: b.ref, label: b.label })) : [base]} mono icon="git-branch" />}
         </div>
-        <textarea autoFocus={!narrow} rows={narrow ? 4 : 5} value={task} onChange={(e) => setTask(e.target.value)} placeholder="What should the agent do? Be specific about the outcome, and mention files or checks that matter."
-          onKeyDown={(e) => { if (e.key === 'Enter' && (mac() ? e.metaKey : e.ctrlKey) && task.trim()) void start(); }}
-          style={{ resize: 'vertical', border: 'none', outline: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border-strong)', color: 'var(--text-1)', font: '400 13px/1.55 var(--font-sans)', padding: '10px 12px' }} />
+        <div
+          onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
+          onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setOver(true); } }}
+          onDragLeave={() => setOver(false)}
+          onDrop={(e) => { if (e.dataTransfer.files.length) { e.preventDefault(); void addImages([...e.dataTransfer.files]); } setOver(false); }}
+          style={{ borderRadius: 'var(--radius-lg)', background: 'var(--bg-input)', transition: 'box-shadow .12s', boxShadow: over || focused ? 'var(--ring-focus), inset 0 0 0 1px var(--accent)' : 'inset 0 0 0 1px var(--border-strong)' }}>
+          <AttachmentChips images={images} onRemove={(id) => setImages((c) => c.filter((x) => x.id !== id))} />
+          <textarea ref={taRef} autoFocus={!narrow} rows={narrow ? 3 : 4} value={task} onChange={(e) => setTask(e.target.value)} placeholder="What should the agent do? Be specific about the outcome, and mention files or checks that matter. You can paste or drop images."
+            onPaste={(e) => { const f = [...e.clipboardData.files].filter((x) => x.type.startsWith('image/')); if (f.length) { e.preventDefault(); void addImages(f); } }}
+            onKeyDown={(e) => { if (e.key === 'Enter' && (mac() ? e.metaKey : e.ctrlKey) && task.trim()) void start(); }}
+            style={{ display: 'block', width: '100%', boxSizing: 'border-box', resize: 'none', border: 'none', outline: 'none', boxShadow: 'none', background: 'transparent', color: 'var(--text-1)', font: '400 13px/1.5 var(--font-sans)', padding: '10px 12px 4px', maxHeight: 280 }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px 6px 8px' }}>
+            <input ref={picker} type="file" accept={IMAGE_TYPES.join(',')} multiple hidden onChange={(e) => { void addImages([...(e.target.files || [])]); e.target.value = ''; }} />
+            <IconButton icon="paperclip" label="Attach an image" size="sm" onClick={() => picker.current?.click()} />
+            <span style={{ font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{images.length ? `${images.length} attached` : 'PNG, JPEG, GIF or WebP'}</span>
+          </div>
+        </div>
         <div style={{ display: 'grid', gridTemplateColumns: narrow ? 'minmax(0,1fr)' : sub ? '1fr 1fr' : '1fr 1fr 110px', gap: 8, ...(compare ? { opacity: 0.5 } : null) }}>
           <Select disabled={compare} value={model} onChange={(e: any) => setModel(e.target.value)} options={MODEL_OPTIONS} />
           <Select value={perm} onChange={(e: any) => setPerm(e.target.value)} options={PERM_OPTIONS} />
@@ -384,15 +413,33 @@ export function MergePr({ target, onClose }: { target: { repoId: string; number:
   return (
     <Dialog width={500} title={`Merge pull request #${target.number}?`} description={pr ? pr.title : undefined} onClose={onClose}
       footer={<>
-        <span style={{ flex: 1, font: '400 12px/1.4 var(--font-sans)', color: 'var(--status-error-text)' }}>{err}</span>
+        <span style={{ flex: 1, font: '400 12px/1.5 var(--font-sans)', color: 'var(--status-error-text)' }}>{err}</span>
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
         <Button variant="primary" icon="git-merge" loading={busy} disabled={!pr || pr.state !== 'open'} onClick={run}>{pr ? `Merge into ${pr.base}` : 'Merge'}</Button>
       </>}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {pr && pr.state !== 'open' ? <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>It is already {pr.state}.</span> : null}
         {note ? <span style={{ display: 'flex', gap: 8, alignItems: 'flex-start', font: '400 12px/1.45 var(--font-sans)', color: 'var(--status-attention-text)' }}><i className="ph-fill ph-warning-circle" style={{ fontSize: 14, marginTop: 1, flex: 'none' }} />{note}</span> : null}
+        {pr?.checkRuns?.length ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span style={{ font: '500 12px/1.5 var(--font-sans)', marginBottom: 4 }}>Checks</span>
+            {pr.checkRuns.map((c, i) => {
+              const tone = c.state === 'passing' ? 'ready' : c.state === 'failing' ? 'error' : c.state === 'pending' ? 'working' : 'idle';
+              const icon = c.state === 'passing' ? 'check-circle' : c.state === 'failing' ? 'x-circle' : c.state === 'pending' ? 'circle-notch' : 'minus-circle';
+              return (
+                <a key={i} href={c.url} title="View on GitHub" onClick={(e) => { e.preventDefault(); void api.openExternal(c.url); }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 6px', borderRadius: 'var(--radius-sm)', textDecoration: 'none', color: 'var(--text-1)', font: '400 12.5px/1.5 var(--font-sans)', cursor: 'pointer' }}>
+                  <i className={'ph-fill ph-' + icon} style={{ fontSize: 14, flex: 'none', color: 'var(--status-' + tone + (tone === 'idle' ? '' : '-text') + ', var(--text-3))', ...(c.state === 'pending' ? { animation: 'helm-spin .9s linear infinite' } : null) }} />
+                  <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
+                  <span style={{ font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{c.state === 'pending' ? 'Running' : c.state === 'passing' ? 'Passed' : c.state === 'failing' ? 'Failed' : 'Skipped'}</span>
+                  <i className="ph ph-arrow-square-out" style={{ fontSize: 13, color: 'var(--text-3)' }} />
+                </a>
+              );
+            })}
+          </div>
+        ) : null}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ font: '500 12px/1 var(--font-sans)' }}>How</span>
+          <span style={{ font: '500 12px/1.5 var(--font-sans)' }}>How</span>
           <Select value={method} onChange={(e: any) => setMethod(e.target.value)} options={[{ value: 'merge', label: 'Merge commit' }, { value: 'squash', label: 'Squash and merge' }, { value: 'rebase', label: 'Rebase and merge' }]} />
           <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>{METHOD_HELP[method]}</span>
         </div>
@@ -415,7 +462,7 @@ export function RenameSession({ id, onClose }: { id: string; onClose(): void }) 
   return (
     <Dialog width={440} title="Rename session" description={s.free ? (s.title && !s.customTitle ? 'Claude named this one.' : 'Only the name in helm changes.') : s.title && !s.customTitle ? `Claude named this one. Branch ${s.branch} is not changed.` : `The branch ${s.branch} is not changed.`} onClose={onClose}
       footer={<>
-        <span style={{ flex: 1, font: '400 12px/1.3 var(--font-sans)', color: 'var(--status-error-text)' }}>{err}</span>
+        <span style={{ flex: 1, font: '400 12px/1.5 var(--font-sans)', color: 'var(--status-error-text)' }}>{err}</span>
         {s.customTitle ? <Button variant="ghost" onClick={() => void save('')}>Use Claude's name</Button> : null}
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
         <Button variant="primary" disabled={!name.trim()} onClick={() => void save(name)}>Rename</Button>
@@ -450,7 +497,7 @@ export function DeleteSession({ id, onClose }: { id: string; onClose(): void }) 
   return (
     <Dialog width={520} title={`Delete ${s.id}?`} description="The conversation and its record in helm are removed. Your checkout and other sessions are not touched." onClose={onClose}
       footer={<>
-        <span style={{ flex: 1, font: '400 12px/1.3 var(--font-sans)', color: 'var(--status-error-text)' }}>{err}</span>
+        <span style={{ flex: 1, font: '400 12px/1.5 var(--font-sans)', color: 'var(--status-error-text)' }}>{err}</span>
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
         <Button variant="danger" icon="trash" loading={busy} disabled={!info} onClick={run}>Delete session</Button>
       </>}>
@@ -489,7 +536,7 @@ export function RemoveRepo({ id, onClose }: { id: string; onClose(): void }) {
   return (
     <Dialog width={480} title={`Remove ${repo.id} from helm?`} description="helm stops tracking it. The folder on disk and the repository on GitHub are not touched." onClose={onClose}
       footer={<>
-        <span style={{ flex: 1, font: '400 12px/1.3 var(--font-sans)', color: 'var(--status-error-text)' }}>{err}</span>
+        <span style={{ flex: 1, font: '400 12px/1.5 var(--font-sans)', color: 'var(--status-error-text)' }}>{err}</span>
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
         <Button variant="danger" icon="trash" loading={busy} disabled={mine.length > 0} onClick={run}>Remove repository</Button>
       </>}>
@@ -506,6 +553,9 @@ export function RemoveRepo({ id, onClose }: { id: string; onClose(): void }) {
 // ------------------------------------------------------------------ command palette
 export function Palette({ onClose, toggleTheme }: { onClose(): void; toggleTheme(): void }) {
   const app = useApp();
+  const newKeys = useShortcutKeys('newSession');
+  const haltKeys = useShortcutKeys('haltAll');
+  const resumeKeys = useShortcutKeys('resumeAll');
   const [q, setQ] = React.useState('');
   const [i, setI] = React.useState(0);
   type Item = { key: string; label: string; hint?: string; icon: string; section?: string; run(): void };
@@ -528,7 +578,9 @@ export function Palette({ onClose, toggleTheme }: { onClose(): void; toggleTheme
     { key: 'a-reports', label: 'Reports', icon: 'chart-line-up', run: () => go({ screen: 'reports' }) },
     { key: 'a-act', label: 'Activity', icon: 'pulse', run: () => go({ screen: 'activity' }) },
     { key: 'a-set', label: 'Settings', icon: 'gear-six', run: () => go({ screen: 'settings' }) },
-    { key: 'a-new', label: 'New session', icon: 'plus', hint: mac() ? '⌘N' : 'Ctrl+N', run: () => setUI({ newSession: {} }) },
+    { key: 'a-new', label: 'New session', icon: 'plus', hint: newKeys.join(mac() ? '' : '+'), run: () => setUI({ newSession: {} }) },
+    { key: 'a-halt', label: 'Interrupt all agents', icon: 'hand-palm', hint: haltKeys.join(mac() ? '' : '+'), run: () => void haltAll() },
+    { key: 'a-resume', label: 'Resume all agents', icon: 'play', hint: resumeKeys.join(mac() ? '' : '+'), run: () => void resumeAll() },
     { key: 'a-free', label: 'New free agent (no repository)', icon: 'robot', run: () => setUI({ newSession: { repoId: '@free' } }) },
     { key: 'a-add', label: 'Add repository', icon: 'book-bookmark', run: () => setUI({ adding: true }) },
     { key: 'a-theme', label: 'Toggle theme', icon: 'sun', run: toggleTheme },
@@ -556,20 +608,20 @@ export function Palette({ onClose, toggleTheme }: { onClose(): void; toggleTheme
             }} />
         </div>
         <div style={{ maxHeight: 360, overflow: 'auto', padding: 6 }}>
-          {f.length === 0 ? <div style={{ padding: 14, font: '400 13px/1 var(--font-sans)', color: 'var(--text-3)' }}>{searching ? 'Searching…' : 'Nothing matches.'}</div> : null}
+          {f.length === 0 ? <div style={{ padding: 14, font: '400 13px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{searching ? 'Searching…' : 'Nothing matches.'}</div> : null}
           {f.map((it, n) => (
             <React.Fragment key={it.key}>
-            {it.section && f[n - 1]?.section !== it.section ? <div style={{ padding: '10px 10px 4px', font: '500 10.5px/1 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>{it.section}</div> : null}
+            {it.section && f[n - 1]?.section !== it.section ? <div style={{ padding: '10px 10px 4px', font: '500 10.5px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>{it.section}</div> : null}
             <div onMouseEnter={() => setI(n)} onClick={() => go_(it)} style={{ display: 'flex', alignItems: 'center', gap: 10, height: 34, padding: '0 10px', borderRadius: 'var(--radius-md)', cursor: 'pointer', background: n === i ? 'var(--bg-selected)' : 'transparent' }}>
               <i className={'ph ph-' + it.icon} style={{ fontSize: 15, color: 'var(--text-3)' }} />
-              <span style={{ font: it.section ? '400 12.5px/1.2 var(--font-sans)' : '500 13px/1 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: it.section ? '66%' : undefined, flex: it.section ? '0 1 auto' : 'none' }}>{it.label}</span>
-              <span style={{ flex: 1, minWidth: 0, font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textAlign: it.section ? 'right' : undefined }}>{it.hint}</span>
+              <span style={{ font: it.section ? '400 12.5px/1.5 var(--font-sans)' : '500 13px/1.5 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: it.section ? '66%' : undefined, flex: it.section ? '0 1 auto' : 'none' }}>{it.label}</span>
+              <span style={{ flex: 1, minWidth: 0, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textAlign: it.section ? 'right' : undefined }}>{it.hint}</span>
             </div>
             </React.Fragment>
           ))}
-          {searching && f.length > 0 ? <div style={{ padding: '8px 10px', font: '400 11.5px/1 var(--font-sans)', color: 'var(--text-3)' }}>Searching conversations, commits and code…</div> : null}
+          {searching && f.length > 0 ? <div style={{ padding: '8px 10px', font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Searching conversations, commits and code…</div> : null}
         </div>
-        <div style={{ display: 'flex', gap: 14, padding: '8px 12px', borderTop: '1px solid var(--border-subtle)', font: '400 11px/1 var(--font-sans)', color: 'var(--text-3)' }}>
+        <div style={{ display: 'flex', gap: 14, padding: '8px 12px', borderTop: '1px solid var(--border-subtle)', font: '400 11px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>
           <span style={{ display: 'flex', gap: 5, alignItems: 'center' }}><Kbd keys={['↑', '↓']} /> move</span>
           <span style={{ display: 'flex', gap: 5, alignItems: 'center' }}><Kbd keys={['↵']} /> open</span>
           <span style={{ display: 'flex', gap: 5, alignItems: 'center' }}><Kbd keys={['Esc']} /> close</span>

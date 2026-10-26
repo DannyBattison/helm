@@ -18,7 +18,7 @@ const ROW = 36;
 const LANE_X = (l: number) => 14 + l * 16;
 const GRAPH_COLOR: Record<string, string> = { main: 'var(--text-2)', working: 'var(--status-working)', attention: 'var(--status-attention)', ready: 'var(--status-ready)', idle: 'var(--status-idle)', error: 'var(--status-idle)' };
 const errText = (e: any) => String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '');
-const head: React.CSSProperties = { font: '500 10.5px/1 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' };
+const head: React.CSSProperties = { font: '500 10.5px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' };
 
 function Graph({ commits }: { commits: HistoryCommit[] }) {
   const index = new Map(commits.map((c, i) => [c.hash, i]));
@@ -91,13 +91,13 @@ function HistoryList({ commits, sel, setSel, col, onOpen, tapOpen }: { commits: 
           <span />
           <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
             {c.refs.slice(0, 3).map((r) => <BranchTag key={r} name={r} kind={/^v\d/.test(r) ? 'commit' : 'branch'} style={r === 'main' || r === 'master' ? { boxShadow: 'inset 0 0 0 1px var(--border-strong)' } : { flex: 'none' }} />)}
-            <span style={{ font: '400 13px/1 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.msg}</span>
+            <span style={{ font: '400 13px/1.5 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.msg}</span>
           </span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, font: c.agent ? '400 11.5px/1 var(--font-mono)' : '400 12px/1 var(--font-sans)', color: 'var(--text-2)' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, font: c.agent ? '400 11.5px/1.5 var(--font-mono)' : '400 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>
             <Avatar agent={c.agent} name={c.who} size={16} /><span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.who}</span>
           </span>
-          <span style={{ font: '400 11.5px/1 var(--font-mono)', color: 'var(--text-3)' }}>{c.hash.slice(0, 7)}</span>
-          <span style={{ font: '400 11.5px/1 var(--font-mono)', color: 'var(--text-3)', textAlign: 'right' }}>{relTime(c.at)}</span>
+          <span style={{ font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{c.hash.slice(0, 7)}</span>
+          <span style={{ font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-3)', textAlign: 'right' }}>{relTime(c.at)}</span>
         </div>
       ))}
     </div>
@@ -128,8 +128,8 @@ function CommitDiff({ repo, commit, files, start, onClose }: { repo: R; commit: 
             return (
               <div key={f.path} onClick={() => setSel(f.path)} style={{ display: 'flex', alignItems: 'center', gap: 8, height: 38, padding: '0 8px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', background: sel === f.path ? 'var(--bg-selected)' : 'transparent' }}>
                 <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                  <span style={{ font: '400 12px/1.1 var(--font-mono)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{parts[parts.length - 1]}</span>
-                  <span style={{ font: '400 10.5px/1.1 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{parts.slice(0, -1).join('/') || '.'}</span>
+                  <span style={{ font: '400 12px/1.5 var(--font-mono)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{parts[parts.length - 1]}</span>
+                  <span style={{ font: '400 10.5px/1.5 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{parts.slice(0, -1).join('/') || '.'}</span>
                 </div>
                 <DiffStat additions={f.add} deletions={f.del} blocks={false} />
               </div>
@@ -138,15 +138,15 @@ function CommitDiff({ repo, commit, files, start, onClose }: { repo: R; commit: 
         </div>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg-editor)' }}>
           <div style={{ height: 38, flex: 'none', display: 'flex', alignItems: 'center', gap: 10, padding: '0 12px 0 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg-panel)' }}>
-            <span style={{ font: '400 12.5px/1 var(--font-mono)', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sel}</span>
+            <span style={{ font: '400 12.5px/1.5 var(--font-mono)', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sel}</span>
             <SegmentedControl size="sm" value={mode} onChange={setMode} options={[{ value: 'u', label: 'Unified' }, { value: 's', label: 'Split' }]} />
           </div>
           <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-            {hunks == null ? <div style={{ padding: 16, font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>Loading diff…</div>
+            {hunks == null ? <div style={{ padding: 16, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Loading diff…</div>
               : hunks.length === 0 ? <div style={{ padding: 16, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>No textual changes in this file. It may be binary, renamed or empty.</div>
               : hunks.map((h, i) => (
                 <div key={i}>
-                  <div style={{ padding: '6px 16px', font: '400 11.5px/1.4 var(--font-mono)', color: 'var(--accent-text)', background: 'var(--accent-muted)' }}>{h.header}</div>
+                  <div style={{ padding: '6px 16px', font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--accent-text)', background: 'var(--accent-muted)' }}>{h.header}</div>
                   {mode === 's' ? <SplitRows lines={h.lines} onComment={noop} lang={lang} /> : h.lines.map((l, j) => <DiffLine key={j} l={l} onComment={noop} lang={lang} />)}
                 </div>
               ))}
@@ -165,8 +165,8 @@ function CommitDetail({ repo, c, files, onOpen }: { repo: R; c: HistoryCommit; f
     <aside style={{ position: 'relative', width: w, flex: 'none', borderLeft: '1px solid var(--border)', background: 'var(--bg-panel)', padding: 16, display: 'flex', flexDirection: 'column', gap: 16, overflow: 'auto' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <Grip edge="left" onMouseDown={grip} onDoubleClick={reset} />
-        <span className="selectable" style={{ font: '600 14px/1.35 var(--font-sans)' }}>{c.msg}</span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 6, font: '400 12px/1 var(--font-sans)', color: 'var(--text-2)' }}>
+        <span className="selectable" style={{ font: '600 14px/1.5 var(--font-sans)' }}>{c.msg}</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>
           <Avatar agent={c.agent} name={c.who} size={18} />{c.who}{c.agent ? <span style={{ color: 'var(--text-3)' }}>· on behalf of {app.user?.login}</span> : null}
         </span>
         <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}><BranchTag kind="commit" name={c.hash.slice(0, 7)} />{c.refs.map((r) => <BranchTag key={r} name={r} />)}</span>
@@ -177,7 +177,7 @@ function CommitDetail({ repo, c, files, onOpen }: { repo: R; c: HistoryCommit; f
         {(files || []).slice(0, 80).map((f) => (
           <div key={f.path} onClick={() => onOpen(f.path)} className="helm-row-hover" title="Show diff" style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 26, padding: '0 6px', margin: '0 -6px', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }}>
             <i className="ph ph-file-code" style={{ fontSize: 13, color: 'var(--text-3)' }} />
-            <span style={{ flex: 1, minWidth: 0, font: '400 11.5px/1.2 var(--font-mono)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.path}</span>
+            <span style={{ flex: 1, minWidth: 0, font: '400 11.5px/1.5 var(--font-mono)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.path}</span>
             <DiffStat additions={f.add} deletions={f.del} blocks={false} />
           </div>
         ))}
@@ -208,10 +208,10 @@ function Worktrees({ repo, list, reload }: { repo: R; list: WorktreeInfo[] | nul
         return (
           <div key={w.path} style={{ display: 'grid', gridTemplateColumns: col.template, gap: 12, alignItems: 'center', minHeight: 40, borderTop: '1px solid var(--border-subtle)' }}>
             <span style={{ minWidth: 0 }}><BranchTag worktree={!!w.sessionId} name={w.branch} /></span>
-            <span title={w.path} style={{ font: '400 11.5px/1.2 var(--font-mono)', color: 'var(--text-2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tilde(w.path, app.home)}</span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6, font: '400 12px/1 var(--font-mono)', minWidth: 0 }}>{s ? <><StatusDot status={s.status} size={7} />{s.id}</> : <span style={{ color: 'var(--text-3)', fontFamily: 'var(--font-sans)' }}>{w.main ? 'Your checkout' : 'No session'}</span>}</span>
-            <span style={{ font: '400 11.5px/1 var(--font-mono)', color: 'var(--text-2)' }}>↑{w.ahead} ↓{w.behind}</span>
-            <span style={{ font: '400 11.5px/1 var(--font-mono)', color: w.dirty ? 'var(--status-attention-text)' : 'var(--text-3)' }}>{w.dirty ? w.dirty + (w.dirty === 1 ? ' file' : ' files') : 'clean'}</span>
+            <span title={w.path} style={{ font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tilde(w.path, app.home)}</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6, font: '400 12px/1.5 var(--font-mono)', minWidth: 0 }}>{s ? <><StatusDot status={s.status} size={7} />{s.id}</> : <span style={{ color: 'var(--text-3)', fontFamily: 'var(--font-sans)' }}>{w.main ? 'Your checkout' : 'No session'}</span>}</span>
+            <span style={{ font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-2)' }}>↑{w.ahead} ↓{w.behind}</span>
+            <span style={{ font: '400 11.5px/1.5 var(--font-mono)', color: w.dirty ? 'var(--status-attention-text)' : 'var(--text-3)' }}>{w.dirty ? w.dirty + (w.dirty === 1 ? ' file' : ' files') : 'clean'}</span>
             <span style={{ display: 'flex', justifyContent: 'flex-end', gap: 4 }}>
               {s ? <Button size="sm" variant="ghost" onClick={() => go({ screen: 'session', id: s.id, tab: 'code' })}>Open</Button> : null}
               {!w.main && (!s || s.status === 'idle' || s.status === 'ready') ? <Button size="sm" variant="ghost" onClick={async () => {
@@ -241,8 +241,8 @@ function PullRequests({ prs, err, repoId }: { prs: PullRequest[] | null; err: st
       {(prs || []).map((p) => (
         <div key={p.number} onClick={() => api.openExternal(p.url)} className="helm-row-hover" style={{ display: 'grid', gridTemplateColumns: '20px ' + col.template, gap: 12, alignItems: 'center', minHeight: 44, borderTop: '1px solid var(--border-subtle)', cursor: 'pointer' }}>
           <i className="ph ph-git-pull-request" style={{ fontSize: 15, color: p.state === 'open' ? 'var(--status-ready)' : p.state === 'merged' ? 'var(--accent-text)' : 'var(--status-idle)' }} />
-          <span style={{ font: '500 13px/1 var(--font-sans)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title}</span>
-          <span style={{ font: '400 11.5px/1 var(--font-mono)', color: 'var(--text-3)' }}>#{p.number}</span>
+          <span style={{ font: '500 13px/1.5 var(--font-sans)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title}</span>
+          <span style={{ font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>#{p.number}</span>
           <span style={{ minWidth: 0 }}><BranchTag name={p.branch} /></span>
           <span style={{ textAlign: 'right', display: 'inline-flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>{p.state === 'open' ? <Button size="sm" variant="ghost" icon="chats" title="Start a session that addresses the review comments" onClick={(e: any) => { e.stopPropagation(); api.feedbackTask(repoId, p.number).then((t) => setUI({ newSession: { repoId, task: t.task, base: t.base } })).catch((err: any) => toast({ tone: 'error', title: 'No comments to address', description: errText(err) })); }}>Fix comments</Button> : null}{p.state === 'open' && !p.draft ? <Button size="sm" variant="secondary" icon="git-merge" onClick={(e: any) => { e.stopPropagation(); setUI({ mergingPr: { repoId: repoId, number: p.number, sessionId: app.sessions.find((x) => x.prUrl === p.url)?.id } }); }}>Merge</Button> : null}<Badge tone={p.state === 'merged' ? 'accent' : p.draft ? 'idle' : p.checks === 'failing' ? 'error' : p.checks === 'pending' ? 'working' : p.state === 'open' ? 'ready' : 'idle'}>
             {p.state === 'merged' ? 'Merged' : p.state === 'closed' ? 'Closed' : p.draft ? 'Draft' : p.checks === 'failing' ? 'Checks failing' : p.checks === 'pending' ? 'Checks running' : p.checks === 'passing' ? 'Checks passing' : 'Open'}
@@ -313,13 +313,13 @@ export function ExternalSessionView({ repoId, id }: { repoId: string; id: string
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
           <Button size="sm" variant="ghost" icon="arrow-left" onClick={() => go({ screen: 'repo', id: repoId, tab: 'external' })}>All sessions</Button>
           <i className="ph ph-eye" title="Read-only" style={{ fontSize: 16, color: 'var(--text-3)' }} />
-          <span style={{ font: '600 15px/1.2 var(--font-sans)', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{known?.title || 'Claude Code session'}</span>
+          <span style={{ font: '600 15px/1.5 var(--font-sans)', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{known?.title || 'Claude Code session'}</span>
           {known?.branch ? <BranchTag name={known.branch} /> : null}
           <Badge tone="neutral">External · read-only</Badge>
           <Button size="sm" variant="secondary" icon="play" disabled={active} title={active ? 'It is running right now. Let it finish first.' : 'Copy this conversation into a helm session with its own worktree'} onClick={() => setUI({ continuing: { repoId, externalId: id, title: known?.title || 'Claude Code session' } })}>Continue in helm</Button>
           {active ? <Badge tone="working" dot>Active now</Badge> : known ? <Badge>Last active {ago(known.lastModified)}</Badge> : null}
         </div>
-        <div style={{ font: '400 11.5px/1.4 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={known?.cwd}>{known?.cwd ? tilde(known.cwd, app.home) + ' · ' : ''}{id}{win ? ` · ${win.total} events` : ''}</div>
+        <div style={{ font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={known?.cwd}>{known?.cwd ? tilde(known.cwd, app.home) + ' · ' : ''}{id}{win ? ` · ${win.total} events` : ''}</div>
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>
         {win == null ? (
@@ -332,9 +332,9 @@ export function ExternalSessionView({ repoId, id }: { repoId: string; id: string
         ) : (
           <TranscriptList items={win.events} firstIndex={win.start} onStartReached={loadEarlier}
             renderItem={(m) => <TranscriptItem m={m} s={null as any} onDeny={() => undefined} />}
-            header={win.start > 0 ? <div style={{ font: '400 12px/1.4 var(--font-sans)', color: 'var(--text-3)', textAlign: 'center' }}>{win.start} earlier events. Scroll up to load them.</div> : null}
+            header={win.start > 0 ? <div style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)', textAlign: 'center' }}>{win.start} earlier events. Scroll up to load them.</div> : null}
             footer={<>
-              {active ? <div style={{ marginLeft: 44, marginRight: 12, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1 var(--font-sans)', color: 'var(--status-working-text)' }}><i className="ph ph-circle-notch" style={{ fontSize: 14, animation: 'helm-spin .9s linear infinite' }} />Updating while it runs</div> : null}
+              {active ? <div style={{ marginLeft: 44, marginRight: 12, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1.5 var(--font-sans)', color: 'var(--status-working-text)' }}><i className="ph ph-circle-notch" style={{ fontSize: 14, animation: 'helm-spin .9s linear infinite' }} />Updating while it runs</div> : null}
               <div style={{ marginLeft: 44, marginRight: 12, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>This session was started outside helm, so it is read-only here. To keep going, continue it where it started.</div>
             </>} />
         )}
@@ -375,14 +375,14 @@ function ExternalSessions({ repo, onCount }: { repo: R; onCount(n: number): void
           <StatusDot status={x.active ? 'working' : 'idle'} />
           <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-              <span style={{ font: '500 13px/1.2 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{x.title}</span>
+              <span style={{ font: '500 13px/1.5 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{x.title}</span>
               {x.active ? <Badge tone="working">Active · read-only</Badge> : null}
             </span>
-            {x.cwd && x.cwd !== repo.localPath ? <span style={{ font: '400 11px/1.2 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tilde(x.cwd, app.home)}</span> : null}
+            {x.cwd && x.cwd !== repo.localPath ? <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tilde(x.cwd, app.home)}</span> : null}
           </span>
           <span style={{ minWidth: 0 }}>{x.branch ? <BranchTag name={x.branch} /> : null}</span>
-          <span style={{ font: '400 11.5px/1 var(--font-mono)', color: x.active ? 'var(--status-working-text)' : 'var(--text-3)' }}>{x.active ? 'active now' : ago(x.lastModified)}</span>
-          <span style={{ font: '400 11.5px/1 var(--font-mono)', color: 'var(--text-3)', textAlign: 'right' }}>{x.size ? (x.size > 1e6 ? (x.size / 1e6).toFixed(1) + ' MB' : Math.max(1, Math.round(x.size / 1e3)) + ' kB') : ''}</span>
+          <span style={{ font: '400 11.5px/1.5 var(--font-mono)', color: x.active ? 'var(--status-working-text)' : 'var(--text-3)' }}>{x.active ? 'active now' : ago(x.lastModified)}</span>
+          <span style={{ font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-3)', textAlign: 'right' }}>{x.size ? (x.size > 1e6 ? (x.size / 1e6).toFixed(1) + ' MB' : Math.max(1, Math.round(x.size / 1e3)) + ' kB') : ''}</span>
         </div>
       ))}
       </div>
@@ -401,12 +401,12 @@ function RepoCode({ repo, themeKey }: { repo: R; themeKey: 'dark' | 'light' }) {
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <div style={{ height: 38, flex: 'none', display: 'flex', alignItems: 'center', gap: 10, padding: '0 16px', borderBottom: '1px solid var(--border-subtle)' }}>
-        <span style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>Editing</span>
+        <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Editing</span>
         <Select size="sm" value={ws} onChange={(e: any) => setWs(e.target.value)} options={[{ value: 'repo:' + repo.id, label: 'Your checkout' }, ...sessions.map((s) => ({ value: s.id, label: 'Session · ' + s.id }))]} />
         {info ? <BranchTag name={info.branch} /> : null}
-        {info && info.dirty ? <span style={{ font: '400 11.5px/1 var(--font-mono)', color: 'var(--status-attention-text)' }}>{info.dirty} uncommitted</span> : null}
+        {info && info.dirty ? <span style={{ font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--status-attention-text)' }}>{info.dirty} uncommitted</span> : null}
         <span style={{ flex: 1 }} />
-        <span style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>{session ? 'Saving writes to this session’s worktree.' : 'Saving writes straight to your checkout.'}</span>
+        <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{session ? 'Saving writes to this session’s worktree.' : 'Saving writes straight to your checkout.'}</span>
       </div>
       <CodeView key={ws} wsId={ws} session={session} branch={info?.branch || repo.defaultBranch} themeKey={themeKey} />
     </div>
@@ -467,16 +467,16 @@ export function Repo({ id, themeKey, tab: firstTab }: { id: string; themeKey: 'd
       <div style={{ flex: 'none', padding: narrow ? '12px 12px 0' : '14px 20px 0', display: 'flex', flexDirection: 'column', gap: 12, borderBottom: '1px solid var(--border)' }}>
         <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
           <i className="ph ph-book-bookmark" style={{ fontSize: 20, color: 'var(--text-3)' }} />
-          <span style={{ font: '600 16px/1 var(--font-sans)' }}><span style={{ fontWeight: 400, color: 'var(--text-3)' }}>{repo.owner}/</span>{repo.name}</span>
+          <span style={{ font: '600 16px/1.5 var(--font-sans)' }}><span style={{ fontWeight: 400, color: 'var(--text-3)' }}>{repo.owner}/</span>{repo.name}</span>
           <Badge>{repo.private ? 'Private' : 'Public'}</Badge>
           <BranchTag name={repo.defaultBranch} />
-          <span title={repo.localPath} style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fetched ? 'Fetched just now' : tilde(repo.localPath, app.home)}</span>
+          <span title={repo.localPath} style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fetched ? 'Fetched just now' : tilde(repo.localPath, app.home)}</span>
           {(() => {
             const l = app.lifetime[repo.id];
             const n = lifetimeTokens(l);
             if (!n) return null;
             const tip = `Lifetime usage in this repository, across every session including deleted ones.\nInput ${fmtTokens(l.input)} · Output ${fmtTokens(l.output)} · Cache read ${fmtTokens(l.cacheRead)}` + (app.settings.billing === 'api' ? `\nCost ${money(l.cost)} (API prices)` : '');
-            return <span title={tip} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, height: 20, padding: '0 7px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-raised)', boxShadow: 'inset 0 0 0 1px var(--border)', font: '400 11.5px/1 var(--font-mono)', color: 'var(--text-2)', whiteSpace: 'nowrap' }}><i className="ph ph-coins" style={{ fontSize: 12, color: 'var(--text-3)' }} />{fmtTokens(n)} tokens lifetime</span>;
+            return <span title={tip} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, height: 20, padding: '0 7px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-raised)', boxShadow: 'inset 0 0 0 1px var(--border)', font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-2)', whiteSpace: 'nowrap' }}><i className="ph ph-coins" style={{ fontSize: 12, color: 'var(--text-3)' }} />{fmtTokens(n)} tokens lifetime</span>;
           })()}
           <span style={{ flex: 1 }} />
           <span title={pushes.tip}><Button variant="ghost" icon="cloud-arrow-up" loading={pushes.busy} disabled={pushes.ahead.length === 0} onClick={pushes.push}>{pushes.commits ? `Push all · ${pushes.commits}` : 'Push all'}</Button></span>
@@ -507,7 +507,7 @@ export function Repo({ id, themeKey, tab: firstTab }: { id: string; themeKey: 'd
             }} style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
               {history == null ? <HistorySkeleton col={col} /> : <HistoryList commits={history} sel={sel} setSel={setSel} col={col} onOpen={() => setDiff({})} tapOpen={narrow} />}
               {more ? <HistorySkeleton col={col} n={3} /> : null}
-              {history && history.length > 0 && history.length < limit ? <div style={{ padding: '12px 16px', font: '400 11.5px/1 var(--font-sans)', color: 'var(--text-3)' }}>Start of history · {history.length} commits</div> : null}
+              {history && history.length > 0 && history.length < limit ? <div style={{ padding: '12px 16px', font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Start of history · {history.length} commits</div> : null}
             </div>
             </div>
           </div>

@@ -151,3 +151,13 @@ export function useMoney() {
 }
 
 export const useSubscription = () => useUI((u) => u.app?.settings.billing === 'subscription');
+
+/** The emergency stop: interrupts every working agent, and says how many it stopped. */
+export const haltAll = () => api.haltAll()
+  .then((n) => toast({ tone: 'neutral', title: n ? `Interrupted ${n} ${n === 1 ? 'agent' : 'agents'}` : 'No agents were working' }))
+  .catch((e) => toast({ tone: 'error', title: 'Could not interrupt the agents', description: String(e?.message || e) }));
+
+/** Continues every paused agent, and says how many. */
+export const resumeAll = () => api.resumeAll()
+  .then((n) => toast({ tone: 'neutral', title: n ? `Resumed ${n} ${n === 1 ? 'agent' : 'agents'}` : 'No paused agents to resume' }))
+  .catch((e) => toast({ tone: 'error', title: 'Could not resume the agents', description: String(e?.message || e) }));

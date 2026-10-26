@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import type { Host } from './host';
 import type { Comment, Issue } from '../shared/issues';
 import { parseDispatch, type Workflow, type WorkflowRun } from '../shared/workflows';
-import type { DeviceCode, GhRepo, PullRequest, User } from '../shared/types';
+import type { CheckRun, DeviceCode, GhRepo, PullRequest, User } from '../shared/types';
 import { logLine } from './log';
 
 const SCOPES = 'repo read:org workflow';
@@ -275,14 +275,16 @@ export async function listPulls(slug: string): Promise<PullRequest[]> {
   const r: any[] = await gh(`/repos/${slug}/pulls?state=all&per_page=30&sort=updated&direction=desc`);
   return Promise.all(r.map(async (p) => {
     let checks: PullRequest['checks'] = 'none';
+    let checkRuns: CheckRun[] | undefined;
     if (p.state === 'open') {
       try {
         const c = await gh(`/repos/${slug}/commits/${p.head.sha}/check-runs?per_page=50`);
         const runs: any[] = c.check_runs || [];
         if (runs.length) checks = runs.some((x) => x.status !== 'completed') ? 'pending' : runs.every((x) => ['success', 'neutral', 'skipped'].includes(x.conclusion)) ? 'passing' : 'failing';
+        checkRuns = runs.map((x) => ({ name: String(x.name), state: x.status !== 'completed' ? 'pending' : x.conclusion === 'skipped' ? 'skipped' : ['success', 'neutral'].includes(x.conclusion) ? 'passing' : 'failing', url: String(x.html_url || x.details_url || `${p.html_url}/checks`) }));
       } catch { /* ignore */ }
     }
-    return { number: p.number, title: p.title, branch: p.head.ref, base: p.base.ref, state: p.merged_at ? 'merged' : p.state, draft: p.draft, url: p.html_url, checks } as PullRequest;
+    return { number: p.number, title: p.title, branch: p.head.ref, base: p.base.ref, state: p.merged_at ? 'merged' : p.state, draft: p.draft, url: p.html_url, checks, checkRuns } as PullRequest;
   }));
 }
 

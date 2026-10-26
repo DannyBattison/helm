@@ -6,7 +6,7 @@ export function Panel({ title, icon, actions, padded = true, children, style, bo
       {title || actions ? (
         <header style={{ height: 34, flex: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '0 6px 0 12px', borderBottom: '1px solid var(--border-subtle)' }}>
           {icon ? <i className={'ph ph-' + icon} style={{ fontSize: 14, color: 'var(--text-3)' }} /> : null}
-          <span style={{ font: '600 12px/1 var(--font-sans)', color: 'var(--text-1)', flex: 1, minWidth: 0 }}>{title}</span>
+          <span style={{ font: '600 12px/1.5 var(--font-sans)', color: 'var(--text-1)', flex: 1, minWidth: 0 }}>{title}</span>
           {actions ? <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>{actions}</div> : null}
         </header>
       ) : null}

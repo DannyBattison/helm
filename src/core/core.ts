@@ -380,6 +380,8 @@ export const api: HelmApi = {
   sendMessage: (id, text, images) => sessions.send(id, text, images),
   setSessionEffort: (id, e) => sessions.setEffort(id, e),
   interrupt: (id) => sessions.interrupt(id),
+  haltAll: () => sessions.haltAll(),
+  resumeAll: () => sessions.resumeAll(),
   stopSession: (id) => sessions.stop(id),
   async resumeSession(id) { await sessions.send(id, 'Continue where you left off.'); },
   sessionDeleteInfo: (id) => sessions.deleteInfo(id),
@@ -396,6 +398,7 @@ export const api: HelmApi = {
   resolveAsk: (id, askId, answer) => sessions.resolveAsk(id, askId, answer),
   getTranscript: (id) => store.transcript(id),
   getArtifact: (id, name) => readArtifact(id, name),
+  dismissArtifact: (id, name) => sessions.dismissArtifact(id, name),
   listRepoArtifacts: (id) => listRepoArtifacts(repos.must(id).id),
   addRepoArtifact: (id, name, data) => addRepoArtifact(repos.must(id).id, name, data),
   removeRepoArtifact: (id, name) => removeRepoArtifact(repos.must(id).id, name),
@@ -488,6 +491,17 @@ export const api: HelmApi = {
     store.log({ kind: 'commit', who: me(), human: true, what: `committed ${files.length} ${files.length === 1 ? 'file' : 'files'}: ${message.split('\n')[0].slice(0, 80)}`, repo: w.sessionId ? repoName(sessions.get(w.sessionId)?.repoId || '') : '', sessionId: w.sessionId, detail: files.join('\n') });
     const s = w.sessionId ? sessions.get(w.sessionId) : undefined;
     if (s) await sessions.refreshStats(s);
+    if (store.data.settings.autoPush) {
+      if (s) await sessions.autoPush(s);
+      else {
+        // The repository's own checkout: push whatever branch is checked out, if any.
+        const branch = (await G.git(w.worktree, 'symbolic-ref', '--short', '-q', 'HEAD').catch(() => '')).trim();
+        if (branch) {
+          const ok = await G.git(w.worktree, 'push', '-u', 'origin', branch).then(() => true, () => false);
+          store.log({ kind: 'push', who: me(), human: true, what: ok ? `pushed ${branch}` : `push of ${branch} failed`, repo: repoName(id.slice(5)), ok });
+        }
+      }
+    }
   },
   pushStatus(repoId) {
     // The window asks from several places on a timer. Share one answer instead of running git for each ask.
@@ -995,6 +1009,8 @@ export async function start(h: Host) {
   void refreshPlan(true);
   setInterval(() => void refreshPlan(), 5 * 60_000);
   setInterval(refreshRates, 6 * 3600_000);
+  // Last, so the token, the Claude version and the repositories are ready before agents start again.
+  if (store.data.settings.resumeOnLaunch && !process.env.HELM_DEV_NO_RECOVER) void sessions.resumeInterrupted();
 }
 
 export async function shutdown() {

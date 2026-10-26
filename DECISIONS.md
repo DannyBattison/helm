@@ -558,4 +558,69 @@ Why: user request.
 
 ## D-135 · 2026-10-26 · Automated agents are managed under Settings → Automated agents
 The list shows each agent's trigger, scope and last run, with run now, edit, delete and an on/off switch; a dialog creates and edits them. The signed-out state on the hosted server hides them. Typechecked (the hosted server project was not: its `ws` dependency is not installed here) and unit-tested for the logic in D-134, but the screen was not run in the app.
+
+## D-136 · 2026-10-26 · UI tweaks: Alt+N, dialog drag-out, bigger phone header, floating new-session button
+Browsers reserve Cmd/Ctrl+N for a new window and often never deliver it to the page, so Alt+N also opens the new-session dialog (Cmd/Ctrl+N is kept for the desktop app and browsers that pass it on). A dialog's scrim now closes it only when the press began on the scrim as well as the release, so dragging a text selection out of the textarea no longer dismisses it. On phones the header is 56px (was 48 on touch only), its icons are 44px hit areas with larger glyphs, and the breadcrumb is 16px. A floating "+" button at bottom right opens the new-session dialog. Not run in a browser; `tsc` is not installed in the worktree.
+Why: user request.
+
+## D-137 · 2026-10-26 · The new-session prompt is the conversation's input, with image attachments
+The prompt in the New session dialog now looks and behaves like the box in a conversation: one rounded field with a focus ring that grows with the text, a toolbar with an attach button, image chips, and paste and drop of images. "Files" means images (PNG, JPEG, GIF, WebP; 6 at most, 5 MB each), the only attachment kind a conversation takes. The shared limits, reader and chips moved to `views/attach.tsx`. `NewSessionInput` gains `images`, sent with the first message; a queued session keeps them in memory until it starts, so they are lost if helm restarts first. Not run in the app; `tsc` is not installed in the worktree.
+Why: user request.
+
+## D-138 · 2026-10-26 · Code blocks in the conversation wrap long lines
+Fenced code blocks in messages and the edit diffs in the transcript used `white-space: pre` and scrolled sideways, which cut long lines off on a narrow screen. They now wrap (`pre-wrap`, breaking anywhere when a word is too long). The diff grid's second column became `minmax(0, 1fr)` so it can shrink. Not run in the app.
+Why: user request.
+
+## D-139 · 2026-10-26 · Auto push: helm pushes after every commit, and it is a setting (on by default)
+"Push after every commit" only asked the agent to push, which it could forget. The setting is now `autoPush` ("Auto push" in Settings → Git, replacing `pushOnCommit`), on by default. When on, helm itself runs `git push -u origin <branch>` right after it sees the agent commit (one push at a time per session) and after a commit from the Changes panel (`commitOnly`, also for a repository's own checkout). The agent is told not to push, since helm does. A failed push is written to the activity log and retried at the next commit; it never blocks the commit. Free agents have no remote and are skipped. Because the branch is on GitHub from the first commit, the rename-after-Claude-names-it step now leaves it alone (it already skipped pushed branches). The old stored `pushOnCommit` value is ignored. Not run in the app; `tsc` is not installed in the worktree.
+Why: user request.
+
+## D-140 · 2026-10-26 · The merge dialog lists the pull request's checks, each a link to GitHub
+Under "Its checks are still running" (or failing) the merge dialog now lists every check run with its state (Running, Passed, Failed, Skipped); clicking one opens its page on GitHub. `PullRequest` gains `checkRuns` (name, state, URL), filled from the same check-runs request that already gave the summary, for open pull requests only. Older commit statuses (not check runs) are still not shown. Not run in the app; `tsc` is not installed in the worktree.
+Why: user request.
+
+## D-141 · 2026-10-26 · Keyboard shortcuts can be changed in Settings
+A new Settings → Keyboard shortcuts section lists the shortcuts helm owns and lets you change each one: click it, press the new keys (Esc cancels, Backspace turns it off), Reset puts one back and Reset all puts back every one. They are Search (Mod+K), New session (Mod+N), a second New session shortcut for browsers (Alt+N, from D-136), Terminal (Ctrl+`), Open a file (Mod+P) and Save file (Mod+S) in the Code tab. `Mod` is Cmd on a Mac and Ctrl elsewhere. Only changes are stored, in `settings.shortcuts`, so a default can change later for everyone who has not touched it. A shortcut needs a modifier (a bare letter would fire while typing) and cannot duplicate another action's; the hints in the title bar, search, Code tab and buttons follow the setting. Not configurable: keys local to a control (arrows and Enter in lists, Esc to close, Cmd/Ctrl+Enter to send or start, which has its own "Send messages with" setting, the Inbox's single-letter keys) and the terminal's copy and paste keys. The matching code is in `src/shared/shortcuts.ts` with tests in `tests/shortcuts.test.ts`.
+Why: user request.
+
+## D-142 · 2026-10-26 · Text cut with an ellipsis gets a 1.5 line height, whatever its inline font says
+D-130 raised the tokens, but most truncated labels set their own tight `font: …/1` or `/1.2` inline, in a box with `overflow: hidden`, which still shaved the bottom pixel off p, y and g. A global rule in `styles/index.css` matches any element whose inline style has `text-overflow: ellipsis` and sets `line-height: 1.5 !important` (`!important` is needed to beat the inline `font` shorthand). The phone breadcrumb, the phone status bar and the session header's row, which clip without an ellipsis, were changed by hand. Not looked at in the app.
+Why: user request.
+
+## D-143 · 2026-10-26 · Sidebar rows set their own 1.5 line height
+The tree rows that make up the sidebar (`TreeItem`) now put 1.5 in the label and count fonts themselves instead of relying on the global ellipsis rule from D-142, since a row's label is clipped by its `overflow: hidden`. Not looked at in the app.
+Why: user request.
+
+## D-144 · 2026-10-26 · Every inline line height under 1.5 in the renderer becomes 1.5
+The sidebar rows and the usage panel's "Input / Output / Cache read" labels clipped descenders for the same reason: both set a tight inline `font` shorthand (`13px/1`, `11.5px/1`), which leaves a line box shorter than Mona Sans's descenders, and the page has nothing else (no font-metric overrides) that explains it. Instead of fixing places one at a time (D-142, D-143), all 337 inline `font: …px/N var(--font-sans|mono)` with N from 1 to 1.4 now use 1.5, the same as `--type-label`. Rows and buttons with a set height centre their text, so they do not move; stacks of text gain a few pixels. Still 1.5 only where the font is a theme font: icon sizes, and text using the tokens, are untouched. Not looked at in the app, so some spacing may need nudging.
+Why: user request.
+
+## D-145 · 2026-10-26 · Phone header 60px, with larger icons and title; the menu drawer is scaled up 20%
+The phone header goes from 56 to 60px (D-136, D-142), its icon buttons to 48px with 24px glyphs and the breadcrumb to 17px. The sidebar drawer gets `zoom: 1.2`, so its text, icons and rows grow together; the drawer's 300px (86vw) width is unchanged, so names truncate a little sooner. Not looked at in the app.
+Why: user request.
+
+## D-146 · 2026-10-26 · Resume agents on launch (setting), and Interrupt all / Resume all
+Settings → Claude Code gains "Resume agents on launch" (`resumeOnLaunch`, off by default). When on, once helm has started, each agent that was working when helm closed gets "Continue where you left off", one after another. Agents waiting on a question or approval stay waiting for you (they already resume when answered), and archived, merged, queued or worktree-less sessions are skipped.
+
+The "handbrake" is called **Interrupt all agents**, which matches the existing Pause/Interrupt wording. It interrupts every working agent at once (the same interrupt as the Pause button, so each can be continued), and holds the queue so a freed slot does not start a queued session in its place; the hold ends when you start a session, message one, or press Resume. **Resume all agents** continues every session that is paused or was stopped when helm closed, and releases the queue. Both are in the sidebar next to Repositories (the interrupt icon is always there, red while agents are working, disabled when none are), in the title bar while anything is working (so it is reachable on a phone), in the Cmd/Ctrl+K menu, and as configurable shortcuts (Mod+Shift+X and Mod+Shift+E, D-141). No confirmation, since the point is to be instant. `haltAll()` and `resumeAll()` are new API calls; the companion website does not get them. Not run in the app.
+Why: user request.
+
+## D-147 · 2026-10-26 · A command in the conversation expands to show the whole command and its output
+The one-line row for a command the agent ran is still cut short, but when the command or its result does not fit (over 80 characters, several lines, or output over 40 characters or several lines) it shows a caret and the row can be clicked (unless text is selected) to open the full command, highlighted, wrapping and with a copy button, plus the output in a scrollable box. A multi-line command shows its first line and an ellipsis when closed. Permission requests already showed the whole command and are unchanged. The output is whatever helm already keeps for the row, so it may itself be shortened. Not run in the app.
+Why: user request.
+
+## D-148 · 2026-10-26 · Command previews get a summary header
+Permission requests for a command (in the conversation, the Inbox and the overview) now lead with a few words on what it does, such as "Install dependencies", with "· needs your permission" after it in the conversation, instead of the generic "Wants to run a command". The command rows in the conversation show the same summary before the command. The summary is the description the agent gives the Bash tool when it gives one (the permission note no longer repeats it); otherwise `src/shared/commandSummary.ts` reads the command: common git, npm/pnpm/yarn, test and file commands get a name, anything else is "Run <program>", and "and more" is added after a chain. Rows already in a transcript keep their old look, since they were saved without one. Not run in the app.
+Why: user request.
+
+## D-149 · 2026-10-26 · Clicking an image artifact opens it in a lightbox
+An image the agent left for the user (an `artifact:` link in its reply) opens over the whole window when clicked, whether it is shown inline or as a file chip: the picture at up to the window's size, and under it the file name, size, a Download button and a close button. Esc, the close button or a click outside the picture closes it (a drag that ends outside does not, as with dialogs, D-136). Only images helm can show inline are previewed (PNG, JPEG, GIF, WebP, SVG, AVIF, and only when the file was small enough to be sent); other files stay a download. The images you attach to your own messages do not open in it yet. Checked in a headless browser with a made-up artifact. New: `ui/Lightbox.tsx`.
+Why: user request.
+
+## D-150 · 2026-10-26 · Artifacts wait in the Inbox until dismissed or downloaded
+When an agent's reply links a file with `artifact:`, helm records it on the session (`artifacts`, first sight only, so re-mentioning a file does not bring it back) and the Inbox lists it as "File for you", one item per file, below failures and finished work but above queued sessions. Its detail view shows the picture (click to enlarge in the lightbox, D-149) or the file name, its size, and two buttons: **Download** (key `d`), which saves the file and then dismisses it, and **Dismiss** (key `x`). The lightbox's own Download does the same. A file that has expired can only be dismissed, and one too large to send cannot be downloaded here. Dismissing takes it off the Inbox only: the file and its link in the conversation stay. Archiving a session (by hand, automatically, after a merge, or when a comparison group keeps another run) dismisses its artifacts, and deleting it removes the session and its files, so nothing of it stays in the Inbox. Artifacts do not count in the sidebar's Inbox badge or the tray, since nothing is blocked on them. Items are now told apart by `inboxKey` (session plus file), not by session alone. Artifacts a session produced before this change are not added. Not run in the app.
+Why: user request.
+
+## D-151 · 2026-10-26 · Toasts appear at the top right
+Toast notifications moved from the bottom right to the top right, just under the title bar so they never cover its buttons (search, inbox, interrupt all). On a phone they span the width, under the header. Not looked at in the app.
 Why: user request.

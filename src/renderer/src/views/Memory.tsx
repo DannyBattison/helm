@@ -95,15 +95,15 @@ export function RepoMemory({ repo }: { repo: R }) {
     <div key={e.path} className="helm-row-hover" onClick={() => setSel(e.path)} style={{ display: 'flex', flexDirection: 'column', gap: 3, padding: '8px 14px', cursor: 'pointer', borderTop: '1px solid var(--border-subtle)', background: sel === e.path ? 'var(--bg-raised)' : undefined }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
         <i className={`ph ph-${icon}`} style={{ fontSize: 14, color: 'var(--text-3)', flex: 'none' }} />
-        <span style={{ font: '600 12.5px/1.3 var(--font-sans)', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.kind === 'instructions' || e.index ? e.file : e.name}</span>
+        <span style={{ font: '600 12.5px/1.5 var(--font-sans)', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.kind === 'instructions' || e.index ? e.file : e.name}</span>
         {e.kind === 'memory' && !e.index && issuesOf(e).length ? <i className="ph ph-warning" title={issuesOf(e).map((i) => i.text).join('\n')} style={{ fontSize: 13, color: 'var(--status-attention-text)' }} /> : null}
-        {e.kind === 'memory' && !e.index && ins ? <span title={ins.usage[e.file] ? `Read in ${ins.usage[e.file].sessions} of ${ins.sessions} sessions` : 'No session has read this'} style={{ font: '400 10.5px/1 var(--font-mono)', color: 'var(--text-3)' }}>{ins.usage[e.file]?.sessions ?? 0}×</span> : null}
+        {e.kind === 'memory' && !e.index && ins ? <span title={ins.usage[e.file] ? `Read in ${ins.usage[e.file].sessions} of ${ins.sessions} sessions` : 'No session has read this'} style={{ font: '400 10.5px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{ins.usage[e.file]?.sessions ?? 0}×</span> : null}
         {e.type ? <Badge tone={TYPE_TONE[e.type] as any}>{e.type}</Badge> : null}
       </div>
       {e.description || e.kind === 'instructions' ? <div style={{ ...muted, paddingLeft: 21, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{e.description || tilde(e.path, app.home)}</div> : null}
     </div>
   );
-  const heading = (t: string) => <div style={{ padding: '10px 14px 6px', font: '600 10.5px/1 var(--font-sans)', letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-3)' }}>{t}</div>;
+  const heading = (t: string) => <div style={{ padding: '10px 14px 6px', font: '600 10.5px/1.5 var(--font-sans)', letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-3)' }}>{t}</div>;
 
   if (!mem) return <div style={{ flex: 1, padding: 20, display: 'flex', flexDirection: 'column', gap: 10 }}>{[60, 80, 50, 70].map((w, i) => <Skeleton key={i} w={w + '%'} h={14} />)}</div>;
   const empty = !mem.memories.length && !mem.instructions.length;
@@ -112,7 +112,7 @@ export function RepoMemory({ repo }: { repo: R }) {
       <div className="helm-list" style={{ width: 380, flex: 'none', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8, flex: 'none' }}>
           <Input value={q} placeholder={`Search ${mem.memories.filter((m) => !m.index).length} memories`} onChange={(e: any) => setQ(e.target.value)} />
-          {ins && ins.issues.length ? <div onClick={() => setFlagged(!flagged)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 'var(--radius-md)', cursor: 'pointer', background: flagged ? 'var(--status-attention-bg)' : 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px ' + (flagged ? 'var(--status-attention)' : 'var(--border)'), font: '400 12px/1.3 var(--font-sans)', color: 'var(--text-2)' }}><i className="ph ph-warning" style={{ color: 'var(--status-attention-text)' }} />{new Set(ins.issues.map((i) => i.path)).size} {new Set(ins.issues.map((i) => i.path)).size === 1 ? 'memory needs' : 'memories need'} a look<span style={{ flex: 1 }} /><span style={{ color: 'var(--text-3)' }}>{flagged ? 'Show all' : 'Show only these'}</span></div> : null}
+          {ins && ins.issues.length ? <div onClick={() => setFlagged(!flagged)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 'var(--radius-md)', cursor: 'pointer', background: flagged ? 'var(--status-attention-bg)' : 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px ' + (flagged ? 'var(--status-attention)' : 'var(--border)'), font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}><i className="ph ph-warning" style={{ color: 'var(--status-attention-text)' }} />{new Set(ins.issues.map((i) => i.path)).size} {new Set(ins.issues.map((i) => i.path)).size === 1 ? 'memory needs' : 'memories need'} a look<span style={{ flex: 1 }} /><span style={{ color: 'var(--text-3)' }}>{flagged ? 'Show all' : 'Show only these'}</span></div> : null}
           {types.length > 2 ? <SegmentedControl value={type} onChange={setType} options={types.map((t) => ({ value: t, label: t === 'all' ? 'All' : t }))} /> : null}
         </div>
         <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
@@ -124,7 +124,7 @@ export function RepoMemory({ repo }: { repo: R }) {
           {needle && !memories.length ? <div style={{ ...muted, padding: '8px 14px' }}>Nothing matches.</div> : null}
         </div>
         {mem.dir ? <div title={mem.dir} style={{ ...muted, flex: 'none', padding: '8px 14px', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', font: '400 11px/1.3 var(--font-mono)' }}>{tilde(mem.dir, app.home)}</span>
+          <span style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', font: '400 11px/1.5 var(--font-mono)' }}>{tilde(mem.dir, app.home)}</span>
           <Button size="sm" variant="ghost" icon="folder-open" onClick={() => api.openFolder(mem.dir!)}>Open</Button>
         </div> : null}
       </div>
@@ -132,9 +132,9 @@ export function RepoMemory({ repo }: { repo: R }) {
         {!cur ? <div style={{ ...muted, padding: 24, maxWidth: 520 }}>Pick a memory to read it. Claude loads the index at the start of every session in this repository, and reads individual memories when they look relevant. Edit or delete one here and the next session sees the change.</div> : <>
           <div style={{ flex: 'none', padding: '12px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ font: '600 15px/1.25 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cur.kind === 'memory' && !cur.index ? cur.name : cur.file}</div>
-              <div style={{ font: '400 11.5px/1.4 var(--font-mono)', color: 'var(--text-3)', marginTop: 3 }} title={cur.path}>{cur.kind === 'memory' ? cur.file : tilde(cur.path, app.home)} · changed {relTime(cur.modified)}{ins && cur.kind === 'memory' && !cur.index ? ` · read in ${ins.usage[cur.file]?.sessions ?? 0} of ${ins.sessions} sessions${ins.usage[cur.file] ? ', last ' + relTime(ins.usage[cur.file].last) : ''}` : ''}</div>
-              {issuesOf(cur).map((i, n) => <div key={n} style={{ font: '400 12px/1.4 var(--font-sans)', color: 'var(--status-attention-text)', marginTop: 4, display: 'flex', gap: 6 }}><i className="ph ph-warning" style={{ marginTop: 2 }} />{i.text}</div>)}
+              <div style={{ font: '600 15px/1.5 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cur.kind === 'memory' && !cur.index ? cur.name : cur.file}</div>
+              <div style={{ font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-3)', marginTop: 3 }} title={cur.path}>{cur.kind === 'memory' ? cur.file : tilde(cur.path, app.home)} · changed {relTime(cur.modified)}{ins && cur.kind === 'memory' && !cur.index ? ` · read in ${ins.usage[cur.file]?.sessions ?? 0} of ${ins.sessions} sessions${ins.usage[cur.file] ? ', last ' + relTime(ins.usage[cur.file].last) : ''}` : ''}</div>
+              {issuesOf(cur).map((i, n) => <div key={n} style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--status-attention-text)', marginTop: 4, display: 'flex', gap: 6 }}><i className="ph ph-warning" style={{ marginTop: 2 }} />{i.text}</div>)}
             </div>
             {cur.type ? <Badge tone={TYPE_TONE[cur.type] as any}>{cur.type}</Badge> : null}
             {draft == null ? <Button size="sm" variant="secondary" icon="pencil-simple" disabled={text == null} onClick={() => setDraft(text ?? '')}>Edit</Button> : <>

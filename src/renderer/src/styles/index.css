@@ -185,3 +185,18 @@ textarea {
 @media (max-width: 767px) {
   .helm-hide-phone { display: none !important; }
 }
+
+/* Phones: a taller header; the icon buttons in it grow with it. */
+@media (max-width: 767px) {
+  :root { --titlebar-h: 60px; }
+  .drag .helm-tap-icon { min-width: 48px !important; min-height: 48px !important; }
+  .drag .helm-tap-icon > i { font-size: 24px !important; }
+  /* The menu drawer is the main way around on a phone: scale the whole sidebar up, text and icons together. */
+  .helm-drawer { zoom: 1.2; }
+}
+
+/* Single-line text cut with an ellipsis sits in a box that clips what overhangs it, so a tight inline line-height shaves the bottom off p, y and g.
+   The inline `font` shorthand sets that line-height, so only !important beats it. 1.5 matches --type-label. */
+[style*='text-overflow: ellipsis'] {
+  line-height: 1.5 !important;
+}

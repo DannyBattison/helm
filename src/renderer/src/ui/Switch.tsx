@@ -11,7 +11,7 @@ export function Switch({ checked, defaultChecked = false, label, disabled = fals
         <span style={{ position: 'absolute', top: 2, left: on ? 13 : 2, width: 11, height: 11, borderRadius: '50%', background: on ? 'var(--text-on-accent)' : 'var(--text-2)',
           transition: 'left var(--dur) var(--ease-out)' }} />
       </span>
-      {label ? <span style={{ font: '400 13px/1.35 var(--font-sans)', color: 'var(--text-1)' }}>{label}</span> : null}
+      {label ? <span style={{ font: '400 13px/1.5 var(--font-sans)', color: 'var(--text-1)' }}>{label}</span> : null}
     </label>
   );
 }

@@ -1,5 +1,6 @@
 import React from 'react';
-import type { AutomatedAgent, AutomationTrigger } from '@shared/types';
+import type { AutomatedAgent } from '@shared/types';
+import type { AutomationTrigger } from '@shared/automations';
 import { DAYS, describeTrigger, TRIGGER_LABELS, validateAgent } from '@shared/automations';
 import { api } from '../api';
 import { toast, useApp } from '../store';

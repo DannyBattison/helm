@@ -5,7 +5,7 @@ import { ago, fmtTokens, relTime, sessionTokens } from '../lib';
 import { go, setUI, toast, useApp, useUI } from '../store';
 import { Badge, Button, Input, StatusDot, useColumns, useNarrow } from '../ui';
 
-const head: React.CSSProperties = { font: '500 10.5px/1 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' };
+const head: React.CSSProperties = { font: '500 10.5px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' };
 const fail = (title: string) => (e: any) => toast({ tone: 'error', title, description: String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '') });
 
 /** Everything hidden from the left tree and Overview, with a way back. */
@@ -32,8 +32,8 @@ export function Archive() {
       <div style={{ padding: narrow ? '14px 12px 24px' : '20px 24px 32px', display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div style={{ display: 'flex', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12 }}>
           <div style={{ flex: '1 1 240px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <h1 style={{ margin: 0, font: '600 20px/1.2 var(--font-sans)', letterSpacing: 'var(--tracking-tight)' }}>Archive</h1>
-            <span style={{ font: '400 12px/1.4 var(--font-sans)', color: 'var(--text-3)' }}>
+            <h1 style={{ margin: 0, font: '600 20px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-tight)' }}>Archive</h1>
+            <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>
               {total} {total === 1 ? 'session' : 'sessions'} hidden from the left tree and Overview.{' '}
               {days ? `Sessions not opened for ${days} days are archived automatically.` : 'Automatic archiving is off.'}{' '}
               <a href="#" onClick={(e) => { e.preventDefault(); go({ screen: 'settings', section: 'worktrees' }); }}>Change</a>
@@ -53,12 +53,12 @@ export function Archive() {
             <div key={s.id} className="helm-row-hover" onClick={() => go({ screen: 'session', id: s.id, tab: s.status === 'ready' ? 'changes' : 'conversation' })} style={{ display: 'grid', gridTemplateColumns: col.template, gap: 12, alignItems: 'center', minHeight: 48, padding: '0 12px', borderTop: '1px solid var(--border-subtle)', cursor: 'pointer' }}>
               <StatusDot status={s.status} pulse={false} />
               <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
-                <span style={{ font: '500 13px/1.2 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.task}</span>
-                <span style={{ font: '400 11px/1.2 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.free ? s.worktree.split(/[\\/]/).filter(Boolean).slice(-2).join('/') : s.branch}{s.files ? ` · ${s.files} files changed` : ''}{s.mergedAt ? ` · merged into ${s.mergedInto}` : s.prUrl ? ' · PR open' : ''}</span>
+                <span style={{ font: '500 13px/1.5 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.task}</span>
+                <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.free ? s.worktree.split(/[\\/]/).filter(Boolean).slice(-2).join('/') : s.branch}{s.files ? ` · ${s.files} files changed` : ''}{s.mergedAt ? ` · merged into ${s.mergedInto}` : s.prUrl ? ' · PR open' : ''}</span>
               </span>
-              <span style={{ font: '400 12px/1 var(--font-mono)', color: 'var(--text-2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.free ? 'Free agents' : s.repoId}</span>
-              <span style={{ font: '400 12px/1.3 var(--font-sans)', color: 'var(--text-2)' }}>{relTime(s.archivedAt!)} · {reason(s)}</span>
-              <span style={{ font: '400 11.5px/1 var(--font-mono)', color: 'var(--text-3)' }}>{ago(s.lastAccess) === 'now' ? 'just now' : ago(s.lastAccess) + ' ago'}</span>
+              <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.free ? 'Free agents' : s.repoId}</span>
+              <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>{relTime(s.archivedAt!)} · {reason(s)}</span>
+              <span style={{ font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{ago(s.lastAccess) === 'now' ? 'just now' : ago(s.lastAccess) + ' ago'}</span>
               <span style={{ font: 'var(--type-data)', color: 'var(--text-2)' }}>{fmtTokens(sessionTokens(s))}</span>
               <span style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }} onClick={(e) => e.stopPropagation()}>
                 <Button size="sm" variant="secondary" icon="arrow-counter-clockwise" onClick={() => void restore(s)}>Restore</Button>
@@ -72,12 +72,12 @@ export function Archive() {
               <StatusDot status="idle" />
               <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                 <i className="ph ph-eye" style={{ fontSize: 13, color: 'var(--text-3)', flex: 'none' }} />
-                <span style={{ font: 'italic 500 13px/1.2 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{x.title}</span>
+                <span style={{ font: 'italic 500 13px/1.5 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{x.title}</span>
                 <Badge>External · read-only</Badge>
               </span>
-              <span style={{ font: '400 12px/1 var(--font-mono)', color: 'var(--text-2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{repoId}</span>
-              <span style={{ font: '400 12px/1.3 var(--font-sans)', color: 'var(--text-2)' }}>{x.archiveReason === 'age' ? `idle for ${days} days` : 'by you'}</span>
-              <span style={{ font: '400 11.5px/1 var(--font-mono)', color: 'var(--text-3)' }}>{relTime(x.lastModified)}</span>
+              <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{repoId}</span>
+              <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>{x.archiveReason === 'age' ? `idle for ${days} days` : 'by you'}</span>
+              <span style={{ font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{relTime(x.lastModified)}</span>
               <span style={{ font: 'var(--type-data)', color: 'var(--text-3)' }}>{x.size ? (x.size > 1e6 ? (x.size / 1e6).toFixed(0) + ' MB' : Math.max(1, Math.round(x.size / 1e3)) + ' kB') : ''}</span>
               <span style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }} onClick={(e) => e.stopPropagation()}>
                 <Button size="sm" variant="secondary" icon="arrow-counter-clockwise" onClick={() => api.archiveExternal(x.id, false).then(() => import('../store').then((m) => m.refreshExternals())).catch(fail('Could not restore'))}>Restore</Button>

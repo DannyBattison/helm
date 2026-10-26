@@ -2,8 +2,9 @@ import React from 'react';
 import { api, platform } from './api';
 import { dataStack, fontStack, uiStack } from './fonts';
 import { theme as resolveTheme } from './lib';
-import { dismissToast, getUI, go, init, setUI, useUI } from './store';
+import { dismissToast, getUI, go, haltAll, init, resumeAll, setUI, useUI } from './store';
 import { Button, Toast, useNarrow } from './ui';
+import { isShortcut } from './shortcuts';
 import { Activity, Dashboard } from './views/Dashboard';
 import { AddRepo, ClaudeLoginGate, DeleteSession, MergePr, NewSession, Palette, RemoveRepo, RenameSession, SignIn } from './views/Dialogs';
 import { Archive } from './views/Archive';
@@ -58,12 +59,13 @@ export function App() {
   const toggleTheme = () => void api.updateSettings({ theme: theme === 'dark' ? 'light' : 'dark' });
 
   React.useEffect(() => {
-    const mac = platform() === 'darwin';
     const onKey = (e: KeyboardEvent) => {
-      const m = mac ? e.metaKey : e.ctrlKey;
-      if (m && e.key.toLowerCase() === 'k') { e.preventDefault(); setUI({ palette: true }); }
-      else if (m && e.key.toLowerCase() === 'n') { e.preventDefault(); const r = getUI().route; setUI({ newSession: r.screen === 'repo' ? { repoId: r.id } : {} }); }
-      else if (e.ctrlKey && e.key === '`') { e.preventDefault(); setUI({ term: !getUI().term }); }
+      if (isShortcut(e, 'palette')) { e.preventDefault(); setUI({ palette: true }); }
+      // Browsers reserve Cmd/Ctrl+N for a new window and often never deliver it, so Alt+N also works.
+      else if (isShortcut(e, 'newSession') || isShortcut(e, 'newSessionAlt')) { e.preventDefault(); const r = getUI().route; setUI({ newSession: r.screen === 'repo' ? { repoId: r.id } : {} }); }
+      else if (isShortcut(e, 'haltAll')) { e.preventDefault(); void haltAll(); }
+      else if (isShortcut(e, 'resumeAll')) { e.preventDefault(); void resumeAll(); }
+      else if (isShortcut(e, 'terminal')) { e.preventDefault(); setUI({ term: !getUI().term }); }
       else if (e.key === 'Escape') setUI({ palette: false, drawer: false });
     };
     window.addEventListener('keydown', onKey);
@@ -71,7 +73,7 @@ export function App() {
   }, []);
 
   if (fatal) return <div style={{ padding: 24, font: '400 13px/1.5 var(--font-sans)', color: 'var(--status-error-text)' }}>helm could not start: {fatal}</div>;
-  if (!app) return <div style={{ height: '100%', display: 'grid', placeItems: 'center', font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>Loading…</div>;
+  if (!app) return <div style={{ height: '100%', display: 'grid', placeItems: 'center', font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Loading…</div>;
   if (!app.user) return <SignIn />;
 
   let body: React.ReactNode;
@@ -130,6 +132,7 @@ export function App() {
         </div>
       </div>
       <StatusBar />
+      {narrow && !newSession && !drawer && !adding ? <button type="button" aria-label="New session" title="New session" onClick={() => { const r = getUI().route; setUI({ newSession: r.screen === 'repo' ? { repoId: r.id } : {} }); }} style={{ position: 'absolute', right: 16, bottom: 'calc(var(--statusbar-h) + 16px + env(safe-area-inset-bottom, 0px))', zIndex: 30, width: 56, height: 56, display: 'grid', placeItems: 'center', border: 'none', borderRadius: '50%', background: 'var(--accent)', color: '#fff', boxShadow: 'var(--shadow-dialog)', cursor: 'pointer' }}><i className="ph ph-plus" style={{ fontSize: 24 }} /></button> : null}
       {adding ? <AddRepo onClose={() => setUI({ adding: false })} /> : null}
       {newSession ? <NewSession repoId={newSession.repoId} initial={newSession} onClose={() => setUI({ newSession: null })} /> : null}
       {removingRepo ? <RemoveRepo key={removingRepo} id={removingRepo} onClose={() => setUI({ removingRepo: null })} /> : null}
@@ -144,7 +147,7 @@ export function App() {
       {palette ? <Palette onClose={() => setUI({ palette: false })} toggleTheme={toggleTheme} /> : null}
       </div>
       {needsClaude ? <ClaudeLoginGate /> : null}
-      <div style={{ position: 'absolute', right: narrow ? 8 : 16, left: narrow ? 8 : undefined, bottom: narrow ? 32 : 40, zIndex: 60, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
+      <div style={{ position: 'absolute', right: narrow ? 8 : 16, left: narrow ? 8 : undefined, top: 'calc(var(--titlebar-h) + 8px)', zIndex: 60, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
         {toasts.map((t) => (
           <Toast key={t.id} tone={t.tone} title={t.title} description={t.description} onClose={() => dismissToast(t.id)}
             actions={t.sessionId ? <>

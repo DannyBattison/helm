@@ -7,6 +7,7 @@ import { auditText } from '../shared/redact';
 import { queueBlock, queueOrder } from '../shared/queue';
 import { stuckReason } from '../shared/stuck';
 import { REVIEW_SCHEMA, parseReview, reviewPrompt } from '../shared/selfreview';
+import { commandSummary } from '../shared/commandSummary';
 import { FREE_ID, freeRepo, sessionTitle, type ActivityEvent, type Checkpoint, type Effort, type MessageImage, type ModelAlias, type NewSessionInput, type PendingAsk, type PermMode, type Session, type Status, type Subagent, type TranscriptEvent } from '../shared/types';
 import { artifactDir, dropArtifacts, ensureArtifactDir } from './artifacts';
 import * as G from './git';
@@ -147,6 +148,8 @@ export class SessionManager {
     if (this.sessions.some((s) => s.queued)) void this.pumpQueue();
   }
 
+  /** Ids of sessions that were working when helm last closed, found by `recover`. */
+  private interruptedByQuit: string[] = [];
   /** Called once at startup: nothing is running, so nothing should claim to be. */
   recover() {
     for (const s of this.sessions) {
@@ -156,6 +159,7 @@ export class SessionManager {
         // Still waiting on the user. Its process is gone, but the question stands: answering it resumes the session.
         s.ask.orphaned = true;
       } else if (s.status === 'working' || s.status === 'attention') {
+        if (s.status === 'working' && !s.queued) this.interruptedByQuit.push(s.id);
         s.status = 'idle';
         s.step = 'Stopped when helm closed';
         s.ask = undefined;
@@ -200,6 +204,7 @@ export class SessionManager {
 
   // ---------------------------------------------------------------- create
   async create(input: NewSessionInput, extra: CreateExtra = {}): Promise<string> {
+    this.held = false;
     const free = input.repoId === FREE_ID;
     const repo = free ? undefined : this.store.data.repos.find((r) => r.id === input.repoId);
     if (!free && !repo) throw new Error('Repository not found');
@@ -253,10 +258,12 @@ export class SessionManager {
     if (blocked) { s.status = 'idle'; s.step = 'Queued. ' + blocked; s.timeline = [{ t: now, status: 'idle' }]; }
     this.sessions.push(s);
     this.activity(s, 'start', blocked ? `queued: ${blocked.toLowerCase()}` : free ? `started in ${wt}` : `started on ${branch}`);
-    await this.push(id, { k: 'user', t: now, text: input.task, cp: await this.checkpoint(s, 'Start: ' + input.task) });
+    const pics = input.images?.length ? input.images : undefined;
+    await this.push(id, { k: 'user', t: now, text: input.task, images: pics, cp: await this.checkpoint(s, 'Start: ' + input.task) });
+    if (blocked && pics) this.queuedImages.set(id, pics);
     if (blocked) { this.touch(); return id; }
     this.touch();
-    await this.start(s, input.task);
+    await this.start(s, input.task, pics);
     return id;
   }
 
@@ -264,10 +271,12 @@ export class SessionManager {
   /** Sessions with an agent at work. A session waiting on you does not use a slot. */
   private runningCount() { return this.sessions.filter((s) => s.status === 'working' && this.rt.has(s.id)).length; }
   private pumping = false;
+  /** Images attached to a task that is still waiting in the queue. Kept in memory only. */
+  private queuedImages = new Map<string, MessageImage[]>();
 
   /** Starts queued sessions whose wait is over, oldest first. Runs whenever anything changes. */
   async pumpQueue() {
-    if (this.pumping || this.quitting) return;
+    if (this.pumping || this.quitting || this.held) return;
     this.pumping = true;
     try {
       for (const s of queueOrder(this.sessions)) {
@@ -292,7 +301,9 @@ export class SessionManager {
     this.activity(s, 'start', 'left the queue');
     this.store.save();
     this.hooks.emitState();
-    await this.start(s, s.task);
+    const pics = this.queuedImages.get(s.id);
+    this.queuedImages.delete(s.id);
+    await this.start(s, s.task, pics);
   }
 
   /** Starts a queued session now, whatever it is waiting for. */
@@ -452,6 +463,7 @@ export class SessionManager {
       await this.stop(s.id);
       s.archivedAt = Date.now();
       s.archivedAuto = undefined;
+      this.dismissAllArtifacts(s);
     }
     this.touch();
   }
@@ -532,8 +544,8 @@ export class SessionManager {
       st.commitAuthor === 'sole'
         ? `End every commit message with a blank line and this trailer: "Helm-Session: ${s.id}". Do not add any Co-authored-by trailer. The commits are authored by Claude alone.`
         : `End every commit message with a blank line and this trailer: "Co-authored-by: helm session ${s.id} <noreply@helm.app>".`,
-      st.pushOnCommit
-        ? `Push after every commit: run \`git push -u origin ${s.branch}\` right after each \`git commit\`. Do not open pull requests; the user does that from helm.`
+      st.autoPush && !s.free
+        ? 'Do not push and do not open pull requests. helm pushes your branch to GitHub after each commit, and the user opens the pull request from helm.'
         : 'Do not push and do not open pull requests; the user does that from helm after reviewing your changes.',
       'If you need a decision from the user, ask with the AskUserQuestion tool instead of guessing.',
       art,
@@ -651,6 +663,7 @@ export class SessionManager {
     for (const b of m.message?.content || []) {
       if (b.type === 'text' && b.text?.trim()) {
         await this.push(tkey, { k: 'agent', text: b.text.trim() });
+        this.collectArtifacts(s, b.text);
       } else if (b.type === 'tool_use') {
         await this.onToolUse(s, rt, b, tkey, sub);
       }
@@ -760,7 +773,7 @@ export class SessionManager {
           if (b.type !== 'tool_use') continue;
           const input = b.input || {};
           if (COMMAND_TOOLS.has(b.name)) {
-            pending.set(b.id, { kind: 'bash', idx: ev.push({ k: 'bash', id: b.id, cmd: String(input.command || ''), out: '', ok: true, meta: '', done: false }) - 1 });
+            pending.set(b.id, { kind: 'bash', idx: ev.push({ k: 'bash', id: b.id, cmd: String(input.command || ''), summary: commandSummary(String(input.command || ''), input.description), out: '', ok: true, meta: '', done: false }) - 1 });
           } else if (EDIT_TOOLS.has(b.name)) {
             const file = rel(wt, String(input.file_path || input.notebook_path || ''));
             const lines: [string, string][] = [];
@@ -839,7 +852,7 @@ export class SessionManager {
       const cmd = String(input.command || '');
       const gitKind = /(^|&&|;|\|\|)\s*git\s+(?:-C\s+\S+\s+)?push\b/.test(cmd) ? 'push' : /(^|&&|;|\|\|)\s*git\s+(?:-C\s+\S+\s+)?(fetch|pull|merge|rebase|checkout|switch|branch|reset|stash|tag|clone|worktree|cherry-pick|revert)\b/.test(cmd) ? 'git' : 'bash';
       this.activity(s, gitKind, (sub ? `${sub.description}: ` : '') + 'ran ' + trunc(cmd.replace(/\s+/g, ' '), 110), { detail: cmd });
-      const idx = await this.push(tkey, { k: 'bash', id: b.id, cmd, out: '', ok: true, meta: '', done: false });
+      const idx = await this.push(tkey, { k: 'bash', id: b.id, cmd, summary: commandSummary(cmd, input.description), out: '', ok: true, meta: '', done: false });
       rt.toolStart.set(b.id, { t: Date.now(), idx, kind: 'bash', input, tkey, name });
       s.step = (sub ? `${sub.description}: ` : '') + 'Running ' + trunc(cmd, 80);
       return;
@@ -979,7 +992,24 @@ export class SessionManager {
     s.fileEdits = undefined;
     await this.push(tkey, { k: 'commit', hash: m[1], msg: m[2], t: now });
     this.activity(s, 'commit', `committed ${m[1]} “${trunc(m[2], 70)}”`);
+    if (this.store.data.settings.autoPush) void this.autoPush(s);
     this.touch();
+  }
+
+  /** Pushes the session's branch to GitHub, one push at a time per session so quick commits do not race. A failure is shown in the activity log and tried again at the next commit. */
+  private pushing = new Map<string, Promise<void>>();
+  autoPush(s: Session): Promise<void> {
+    if (s.free || !s.branch || s.worktreeGone) return Promise.resolve();
+    const run = (this.pushing.get(s.id) ?? Promise.resolve()).then(async () => {
+      try {
+        await G.git(s.worktree, 'push', '-u', 'origin', s.branch);
+        this.activity(s, 'push', `pushed ${s.branch}`);
+      } catch (e: any) {
+        this.activity(s, 'push', `push of ${s.branch} failed: ${trunc(String(e?.message || e).split('\n').find((l) => l.trim()) || 'unknown error', 120)}`, { ok: false });
+      }
+    });
+    this.pushing.set(s.id, run);
+    return run;
   }
 
   private async locateEdit(s: Session, input: any) {
@@ -1154,8 +1184,9 @@ export class SessionManager {
       if (plain && SAFE_CMD.test(cmd.trim())) return { behavior: 'allow', updatedInput: input };
       if (plain && st.alwaysAllow.some((p) => globMatch(p, cmd))) return { behavior: 'allow', updatedInput: input };
       const pattern = commandPattern(cmd);
-      const ask: PendingAsk = { id: uid(), type: 'approve', at: Date.now(), tool, command: cmd, pattern, head: 'Wants to run a command', note: o?.decisionReason || o?.description || `Runs inside ${s.worktree}. Your checkout is untouched.` };
-      await this.push(s.id, { k: 'permission', askId: ask.id, cmd, tool, why: ask.note, pattern });
+      const summary = commandSummary(cmd, input.description);
+      const ask: PendingAsk = { id: uid(), type: 'approve', at: Date.now(), tool, command: cmd, summary, pattern, head: 'Wants to run a command', note: o?.decisionReason || `Runs inside ${s.worktree}. Your checkout is untouched.` };
+      await this.push(s.id, { k: 'permission', askId: ask.id, cmd, summary, tool, why: ask.note, pattern });
       return this.waitAsk(s, rt, ask, 'tool', input, tool);
     }
     if (EDIT_TOOLS.has(tool)) {
@@ -1319,6 +1350,7 @@ export class SessionManager {
 
   // ---------------------------------------------------------------- controls
   async send(id: string, text: string, images: MessageImage[] = []) {
+    this.held = false;
     const s = this.get(id);
     if (!s) throw new Error('Session not found');
     if (s.worktreeGone) throw new Error('This session\'s work was merged and its worktree removed, so it cannot be continued. Start a new session.');
@@ -1417,8 +1449,8 @@ export class SessionManager {
     const st = this.store.data.settings;
     if (s.free || s.branchNamed || !s.branch || !s.branch.startsWith(st.branchPrefix)) return;
     s.branchNamed = true;
-    // The agent is told the branch name when it must push, and a pushed branch may already have a pull request.
-    if (st.pushOnCommit || s.prUrl) return;
+    // A pushed branch may already have a pull request; the check below leaves one that is on GitHub alone.
+    if (s.prUrl) return;
     const repo = this.repoOf(s);
     if (await G.gitOk(repo.localPath, 'rev-parse', '--verify', '--quiet', 'refs/remotes/origin/' + s.branch)) return;
     const base = st.branchPrefix + slug(title);
@@ -1452,6 +1484,7 @@ export class SessionManager {
     if (archived && (this.rt.has(id) || s.status === 'working' || s.status === 'attention')) throw new Error('Stop the session before archiving it.');
     s.archivedAt = archived ? Date.now() : undefined;
     s.archivedAuto = undefined;
+    if (archived) this.dismissAllArtifacts(s);
     if (!archived) s.lastAccess = Date.now();
     this.activity(s, 'session', archived ? 'archived the session' : 'restored the session from the archive', { who: this.me(), human: true });
     this.touch();
@@ -1479,6 +1512,7 @@ export class SessionManager {
       if ((s.lastAccess || s.startedAt) > cutoff) continue;
       s.archivedAt = Date.now();
       s.archivedAuto = true;
+      this.dismissAllArtifacts(s);
       this.activity(s, 'session', `archived automatically after ${days} idle days`, { who: 'helm', human: true });
       any = true;
     }
@@ -1523,7 +1557,7 @@ export class SessionManager {
     s.mergedInto = merged.into;
     s.mergedAt = merged.at ?? Date.now();
     this.activity(s, 'worktree', `cleaned up after the merge${opts.branch ? ': worktree and branch removed' : opts.worktree ? ': worktree removed' : ''}`, { who: 'helm', human: true });
-    if (record === 'archive') { s.archivedAt = Date.now(); s.archivedAuto = undefined; }
+    if (record === 'archive') { s.archivedAt = Date.now(); s.archivedAuto = undefined; this.dismissAllArtifacts(s); }
     this.touch();
   }
 
@@ -1591,6 +1625,80 @@ export class SessionManager {
     this.quitting = true;
     for (const rt of this.rt.values()) { rt.queue.close(); rt.abort.abort(); }
     this.rt.clear();
+  }
+
+  /**
+   * Picks up the agents that were working when helm closed. A session that was waiting on a question or approval is left to
+   * the user, and one whose worktree is gone, or that was archived or merged meanwhile, cannot continue. One at a time, so
+   * starting many agents does not hit the machine and the API together.
+   */
+  async resumeInterrupted() {
+    const ids = this.interruptedByQuit;
+    this.interruptedByQuit = [];
+    for (const id of ids) {
+      const s = this.get(id);
+      if (!s || s.worktreeGone || s.archivedAt || s.mergedAt || s.status !== 'idle' || this.rt.has(id)) continue;
+      try {
+        this.activity(s, 'session', 'resumed automatically after helm was closed');
+        await this.send(id, 'helm was closed while you were working and has been reopened. Continue where you left off.');
+      } catch (e: any) {
+        this.activity(s, 'error', 'could not resume: ' + trunc(String(e?.message || e), 100), { ok: false });
+      }
+    }
+  }
+
+  /** Notes the `artifact:` links in an agent's reply, so each file waits in the Inbox. A file already seen, dismissed or not, is not added again. */
+  private collectArtifacts(s: Session, text: string) {
+    let added = false;
+    for (const m of text.matchAll(/\[([^\]]*)\]\(artifact:([^)\s]+)\)/g)) {
+      let name = m[2];
+      try { name = decodeURIComponent(name); } catch { /* keep it as written */ }
+      if (s.artifacts?.some((a) => a.name === name)) continue;
+      (s.artifacts ||= []).push({ name, label: m[1] || name, at: Date.now() });
+      added = true;
+    }
+    if (added) this.touch();
+  }
+
+  private dismissAllArtifacts(s: Session) {
+    for (const a of s.artifacts || []) a.dismissed = true;
+  }
+
+  async dismissArtifact(id: string, name: string) {
+    const s = this.get(id);
+    const a = s?.artifacts?.find((x) => x.name === name);
+    if (!a || a.dismissed) return;
+    a.dismissed = true;
+    this.touch();
+  }
+
+  /** While true, queued sessions do not start. Set by `haltAll`; cleared when the user starts or talks to a session. */
+  private held = false;
+
+  /** The emergency stop: interrupts every agent that is working, right now, and keeps the queue from starting others in their place. */
+  async haltAll(): Promise<number> {
+    this.held = true;
+    const working = this.sessions.filter((s) => s.status === 'working' && this.rt.has(s.id));
+    await Promise.all(working.map(async (s) => {
+      this.activity(s, 'session', 'halted with stop all', { who: this.me(), human: true });
+      await this.interrupt(s.id);
+    }));
+    this.touch();
+    return working.length;
+  }
+
+  /** Continues every agent that was paused or stopped when helm closed, and lets the queue run again. */
+  async resumeAll(): Promise<number> {
+    this.held = false;
+    const ids = this.sessions
+      .filter((s) => s.status === 'idle' && !s.queued && !s.archivedAt && !s.mergedAt && !s.worktreeGone && !this.rt.has(s.id) && /^(Paused|Stopped when helm closed)/.test(s.step))
+      .map((s) => s.id);
+    for (const id of ids) {
+      try { await this.send(id, 'Continue where you left off.'); }
+      catch (e: any) { const s = this.get(id); if (s) this.activity(s, 'error', 'could not resume: ' + trunc(String(e?.message || e), 100), { ok: false }); }
+    }
+    this.touch();
+    return ids.length;
   }
 
   async stopAll() {

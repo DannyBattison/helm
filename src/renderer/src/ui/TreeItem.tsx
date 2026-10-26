@@ -11,8 +11,8 @@ export function TreeItem({ label, icon, depth = 0, expandable = false, expanded 
       </span>
       {status ? <span style={{ width: 7, height: 7, flex: 'none', borderRadius: '50%', background: 'var(--status-' + status + ')', animation: status === 'working' ? 'helm-pulse 1.6s var(--ease-in-out) infinite' : undefined }} />
         : icon ? <i className={'ph ph-' + icon} style={{ fontSize: 14, flex: 'none', color: selected ? 'var(--accent-text)' : 'var(--text-3)' }} /> : null}
-      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', font: mono ? '400 12px/1 var(--font-mono)' : '400 13px/1 var(--font-sans)', color: selected || hover ? 'var(--text-1)' : undefined }}>{label}</span>
-      {meta != null ? <span style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)', flex: 'none' }}>{meta}</span> : null}
+      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', font: mono ? '400 12px/1.5 var(--font-mono)' : '400 13px/1.5 var(--font-sans)', color: selected || hover ? 'var(--text-1)' : undefined }}>{label}</span>
+      {meta != null ? <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)', flex: 'none' }}>{meta}</span> : null}
       {trailing}
     </div>
   );

@@ -8,7 +8,7 @@ export function Toast({ tone = 'neutral', title, description, actions, onClose, 
     <div role="status" style={{ width: 360, maxWidth: '100%', display: 'flex', gap: 10, padding: '10px 10px 10px 12px', borderRadius: 'var(--radius-lg)', background: 'var(--bg-overlay)', boxShadow: 'var(--shadow-toast)', animation: 'helm-in var(--dur-slow) var(--ease-out)', ...style }}>
       <i className={'ph-fill ph-' + (ICON[tone] || ICON.neutral)} style={{ fontSize: 16, color, marginTop: 1 }} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
-        <div style={{ font: '600 13px/1.3 var(--font-sans)', color: 'var(--text-1)' }}>{title}</div>
+        <div style={{ font: '600 13px/1.5 var(--font-sans)', color: 'var(--text-1)' }}>{title}</div>
         {description ? <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>{description}</div> : null}
         {actions ? <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>{actions}</div> : null}
       </div>
