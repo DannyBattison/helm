@@ -549,7 +549,7 @@ Browsers reserve Cmd/Ctrl+N for a new window and often never deliver it to the p
 Why: user request.
 
 ## D-133 · 2026-10-26 · The new-session prompt is the conversation's input, with image attachments
-The prompt in the New session dialog now looks and behaves like the box in a conversation: one rounded field with a focus ring that grows with the text, a toolbar with an attach button, image chips, and paste and drop of images. "Files" means images (PNG, JPEG, GIF, WebP; 6 at most, 5 MB each), the only attachment kind a conversation takes. The shared limits, reader and chips moved to `views/attach.ts`. `NewSessionInput` gains `images`, sent with the first message; a queued session keeps them in memory until it starts, so they are lost if helm restarts first. Not run in the app; `tsc` is not installed in the worktree.
+The prompt in the New session dialog now looks and behaves like the box in a conversation: one rounded field with a focus ring that grows with the text, a toolbar with an attach button, image chips, and paste and drop of images. "Files" means images (PNG, JPEG, GIF, WebP; 6 at most, 5 MB each), the only attachment kind a conversation takes. The shared limits, reader and chips moved to `views/attach.tsx`. `NewSessionInput` gains `images`, sent with the first message; a queued session keeps them in memory until it starts, so they are lost if helm restarts first. Not run in the app; `tsc` is not installed in the worktree.
 Why: user request.
 
 ## D-134 · 2026-10-26 · Code blocks in the conversation wrap long lines
