@@ -13,12 +13,12 @@ export interface TrayEntry {
   actions: { label: string; action: TrayAction }[];
 }
 
-const WORD: Record<InboxKind, string> = { approve: 'approval', question: 'question', budget: 'limit reached', error: 'failed', stuck: 'looks stuck', ready: 'ready for review', queued: 'queued' };
+const WORD: Record<InboxKind, string> = { approve: 'approval', question: 'question', budget: 'limit reached', error: 'failed', stuck: 'looks stuck', artifact: 'file for you', ready: 'ready for review', queued: 'queued' };
 const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
 
 /** What the tray menu lists: things waiting on you, each with the actions that can be taken from the menu. Queued and stuck sessions are left to the Inbox. */
 export function trayEntries(sessions: Session[], max = 8): { entries: TrayEntry[]; total: number } {
-  const items = inbox(sessions).filter((i) => i.kind !== 'queued' && i.kind !== 'stuck');
+  const items = inbox(sessions).filter((i) => i.kind !== 'queued' && i.kind !== 'stuck' && i.kind !== 'artifact');
   const entries = items.slice(0, max).map(({ session: s, kind }): TrayEntry => {
     const open = { label: 'Open session', action: { do: 'open' } as TrayAction };
     const a = s.ask;

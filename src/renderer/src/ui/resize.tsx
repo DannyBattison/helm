@@ -125,5 +125,29 @@ export function useColumns(key: string, cols: Col[]) {
       ) : null}
     </span>
   );
-  return { template, cell, reset };
+  // The narrowest the table can be. Below this a phone scrolls it sideways instead of squeezing the cells.
+  const minWidth = cols.reduce((n, c, i) => n + (c.flex ? c.min : c.fixed ? c.w : ws[i]), 0) + 12 * (cols.length - 1);
+  return { template, cell, reset, minWidth };
 }
+
+/** Phone widths: below this the sidebar is a drawer and every page lays itself out in one column. */
+export const PHONE = 768;
+/** Below this there is no room for a side panel next to the main content (the session's usage panel, the review sidebar): it folds away. */
+export const COMPACT = 1100;
+
+/** True while the window is narrower than `max` pixels. */
+export function useNarrow(max = PHONE) {
+  const query = `(max-width: ${max - 1}px)`;
+  const [narrow, setNarrow] = React.useState(() => window.matchMedia(query).matches);
+  React.useEffect(() => {
+    const mq = window.matchMedia(query);
+    const h = () => setNarrow(mq.matches);
+    h();
+    mq.addEventListener('change', h);
+    return () => mq.removeEventListener('change', h);
+  }, [query]);
+  return narrow;
+}
+
+/** True when there is no room for a side panel next to the main content. */
+export const useCompact = () => useNarrow(COMPACT);

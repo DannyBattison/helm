@@ -15,9 +15,9 @@ export function Button({ variant = 'secondary', size = 'md', icon, iconRight, kb
   const v = VARIANTS[variant] || VARIANTS.secondary;
   const off = disabled || loading;
   return (
-    <button type={type} disabled={off} onClick={onClick}
-      onMouseEnter={() => setHover(true)} onMouseLeave={() => { setHover(false); setPress(false); }}
-      onMouseDown={() => setPress(true)} onMouseUp={() => setPress(false)}
+    <button type={type} className="helm-tap-btn" disabled={off} onClick={onClick}
+      onPointerEnter={(e) => { if (e.pointerType === 'mouse') setHover(true); }} onPointerLeave={() => { setHover(false); setPress(false); }}
+      onPointerDown={() => setPress(true)} onPointerUp={() => setPress(false)} onPointerCancel={() => setPress(false)}
       style={{
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: s.gap, height: s.h, padding: '0 ' + s.px + 'px',
         width: fullWidth ? '100%' : undefined, border: 'none', borderRadius: 'var(--radius-md)', boxShadow: v.ring,
@@ -29,7 +29,7 @@ export function Button({ variant = 'secondary', size = 'md', icon, iconRight, kb
       {loading ? <i className="ph ph-circle-notch" style={{ fontSize: s.ic, animation: 'helm-spin .8s linear infinite' }} /> : icon ? <i className={'ph ph-' + icon} style={{ fontSize: s.ic }} /> : null}
       {children}
       {iconRight ? <i className={'ph ph-' + iconRight} style={{ fontSize: s.ic }} /> : null}
-      {kbd ? <span style={{ font: '400 11px/1 var(--font-mono)', opacity: 0.6, marginLeft: 2 }}>{kbd}</span> : null}
+      {kbd ? <span style={{ font: '400 11px/1.5 var(--font-mono)', opacity: 0.6, marginLeft: 2 }}>{kbd}</span> : null}
     </button>
   );
 }

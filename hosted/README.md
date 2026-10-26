@@ -1,72 +1,133 @@
-# helm hosted server (proof of concept)
+# helm hosted
 
-helm in a browser. One deployment, one user, one Anthropic login. The server runs the desktop app's main process (`src/core/core.ts`) as a plain Node process; the browser runs the desktop app's renderer (`src/renderer`) unchanged. Nothing here is copied from the app: both ends are imported from `../src`.
-
-```
-browser ── renderer (src/renderer) ── HelmBridge ──WebSocket──▶ server.ts ── api (src/core/core.ts) ── Agent SDK, git, GitHub
-```
-
-## Run in Docker (as if hosted)
-
-The image carries its own Node, git and Claude Code binary (the one the Agent SDK ships for Linux, at the version helm is built against), runs as a normal user, and keeps everything under one volume.
+helm in a browser. One server, one user, one Anthropic login. The server runs the desktop app's core (`src/core/core.ts`) as a plain Node process, and the browser runs the desktop app's renderer (`src/renderer`) unchanged.
 
 ```
-cd hosted
-cp .env.example .env        # fill it in (below)
-docker compose up --build
+browser ── renderer ── HelmBridge ──WebSocket──▶ server.ts ── core.ts ── Agent SDK, git, GitHub
 ```
 
-Open `http://127.0.0.1:8787` and sign in with GitHub. The port is published on this computer only.
+This is a proof of concept. Read [Not safe yet](#not-safe-yet) before putting it anywhere public.
 
-### The `.env` file
+## Quick start
+
+```
+docker run -d --name helm --restart unless-stopped \
+  -p 127.0.0.1:8787:8787 \
+  -v helm-home:/home/helm \
+  -e HELM_HOSTED_ALLOWED_USER=your-github-username \
+  -e HELM_HOSTED_SECRET=$(openssl rand -hex 32) \
+  ghcr.io/dannybattison/helm-hosted:latest
+```
+
+Open <http://127.0.0.1:8787>, sign in with GitHub, then sign in to Claude when asked. Everything (state, clones, worktrees, the GitHub token, Claude's login) lives in the `helm-home` volume, so it survives restarts and upgrades.
+
+If the image is private, make the package public in its GitHub settings, or `docker login ghcr.io` with a token that has `read:packages`.
+
+To build it yourself instead: `cd hosted && cp .env.example .env && docker compose up --build`.
+
+### What is in the image
+
+Always: Node and npm, bash and coreutils, git, gh, ssh, curl, ripgrep, tini as PID 1, a non-root user, `LANG=C.UTF-8` and `PYTHONUNBUFFERED=1`. The rest is picked by categories, with the `INCLUDE` build argument (separated by `|`, any case, or `ALL`):
+
+| Category | Adds |
+| --- | --- |
+| `CORE` | Python 3, pip, venv and `/opt/venv` with requests, httpx, pandas, numpy, beautifulsoup4, lxml, pyyaml, pydantic, matplotlib; zip, unzip, less, tree, file |
+| `SEARCH` | fd, jq, yq |
+| `NETWORK` | wget, dig, ping |
+| `EDITING` | vim, nano, patch, diffutils, build-essential, sqlite3 |
+| `DOCUMENTS` | poppler-utils, LibreOffice (headless), pandoc |
+| `MEDIA` | ffmpeg, ImageMagick, Tesseract |
+| `BROWSING` | Playwright and Chromium (turns on `CORE`) |
+
+The default is `CORE|SEARCH|NETWORK|EDITING|BROWSING` (`:latest`), which is already large because of Chromium. `:latest-full` is `ALL`, which adds LibreOffice, pandoc, ffmpeg, ImageMagick and Tesseract. To leave the browser out, use `INCLUDE=CORE|SEARCH|NETWORK|EDITING`. To choose your own: `docker build -f hosted/Dockerfile --build-arg 'INCLUDE=CORE|SEARCH|DOCUMENTS|BROWSING' -t helm-hosted .`
+
+## Configuring
+
+Put settings in an env file (`docker run --env-file helm.env …`, or `.env` for compose) rather than `-e` flags. That keeps the secret stable when you recreate the container.
 
 | Variable | Meaning |
 | --- | --- |
-| `HELM_HOSTED_ALLOWED_USER` | **Required.** The one GitHub username allowed in (not case sensitive). Anyone else is turned away, and the server will not start without it or with more than one name. That person can run commands inside the container. |
-| `HELM_HOSTED_SECRET` | Signs the sign-in cookie. 32+ random characters (`openssl rand -hex 32`). If it is left out, everyone is signed out whenever the container restarts. |
-| `ANTHROPIC_API_KEY` | Optional. An API key for agents, instead of signing in with Claude. See below. |
-| `CLAUDE_CODE_OAUTH_TOKEN` | Optional. A long-lived subscription token (`claude setup-token`), instead of signing in with Claude. |
+| `HELM_HOSTED_ALLOWED_USER` | **Required.** The one GitHub username let in. Anyone else is turned away. That person can run commands in the container. |
+| `HELM_HOSTED_SECRET` | Signs the sign-in cookie. 32+ random characters. If unset, everyone is signed out on every restart. |
+| `ANTHROPIC_API_KEY` | Optional. Agents use this API key instead of a Claude login (billed per token). |
+| `CLAUDE_CODE_OAUTH_TOKEN` | Optional. A long-lived subscription token from `claude setup-token`, instead of the in-app login. |
 | `HELM_GIT_NAME`, `HELM_GIT_EMAIL` | Who agent commits are made as. |
 
-Without `docker`: `HELM_HOSTED_ALLOWED_USER=you HELM_HOSTED_SECRET=... npm start` after `npm run build`, with Node 22 and git installed, and the same variables.
+Without Docker: build, then `HELM_HOSTED_ALLOWED_USER=you HELM_HOSTED_SECRET=… npm start`, with Node 22 and git installed.
 
-### Claude: sign in from the app (no key needed)
+### Putting it on a server
 
-The first thing you see after signing in to GitHub, if the server's Claude Code is not signed in, is a full-screen overlay: **Sign in to Claude to start**. Nothing behind it can be used until it is done.
+The port is bound to `127.0.0.1` on purpose. To reach it from elsewhere, keep that binding and put a TLS-terminating reverse proxy on the same machine (Caddy, nginx, Traefik), forwarding to `127.0.0.1:8787`. Websockets must be passed through, and the proxy must send the original `Host` header, since the server refuses cross-origin sockets. Caddy does all of this in two lines:
 
-1. **Sign in with Claude** opens Claude in a new tab (the button is there if the tab does not open).
-2. Approve it with your Claude account. Claude shows a code.
-3. Paste the code into the overlay and press **Continue**. The overlay goes away.
+```
+helm.example.com {
+    reverse_proxy 127.0.0.1:8787
+}
+```
 
-Behind the scenes the server runs `claude auth login` in a terminal, hands you the address it prints, and types the code you paste into the prompt it is waiting at. Claude Code keeps its login in `/home/helm/.claude`, inside the volume, so it survives restarts and every agent uses it. helm never sees a token: only the one-time code, passing from you to the command that asked for it. Settings, then Claude Code, shows who is signed in and has a **Sign out**.
+### Signing in to Claude
 
-This uses your Claude **subscription**. Anthropic's terms limit sharing a subscription login with other people or apps (D-069), so use your own account, on a server only you use.
+If no key or token is set, the first visit shows **Sign in to Claude to start**: press the button, approve in the tab that opens, paste the code Claude shows, and press **Continue**. The server runs `claude auth login` for you; helm only passes the one-time code along. The login is kept in the volume. Settings → Claude Code shows who is signed in and has a sign out.
 
-### Or an API key, instead
+This uses your subscription. Anthropic's terms limit sharing a subscription login, so use your own account on a server only you use.
 
-If `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`) is set in `.env`, agents use it and the overlay never appears. An API key comes from <https://console.anthropic.com/settings/keys> (create one; it starts `sk-ant-`, is shown once, and needs credit under Billing, billed per token and separately from a subscription).
+### Signing in with GitHub
 
-## Signing in
+This is the only login to helm itself. After GitHub says who you are, the server checks it is `HELM_HOSTED_ALLOWED_USER` before storing anything, then sets a signed, HttpOnly cookie so reloads don't ask again. Until then a page sees the sign-in screen and nothing else. Sockets from other origins are refused.
 
-There is one login: helm's own GitHub sign-in screen, the same one the desktop app shows. On the hosted server it also checks who signed in. A page that has not signed in is shown that screen and nothing else (the server answers only the four calls the screen needs, and sends it a state with nobody signed in and none of the server's paths or settings). When the sign-in completes, helm asks whether that username is `HELM_HOSTED_ALLOWED_USER` before it keeps anything: if not, the person is told so, no token is stored, and whoever is already signed in is untouched. If so, the page is let in and given a signed, HttpOnly, same-site cookie, so reloading does not mean signing in again; a new visitor without the cookie has to sign in. The WebSocket is also refused for a page on another origin, so another site cannot use the cookie.
+## Updating
 
-Signing in asks GitHub for repository access (helm needs it), and the token is kept on the server, in the data volume, unencrypted. There is no second login.
+The image is published to `ghcr.io/dannybattison/helm-hosted`: `latest` follows main, and each `v*` tag gets its own version. To update by hand, pull and recreate the container; the volume keeps your data.
 
-## What is shared, and where the seams are
+To do it automatically, save this as `~/helm-update.sh` and `chmod +x` it. It pulls, compares the running container's image with the newest one, and recreates the container only if they differ:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+IMAGE=ghcr.io/dannybattison/helm-hosted:latest
+NAME=helm
+ENV_FILE=$HOME/helm.env
+
+running=$(docker inspect -f '{{.Image}}' "$NAME" 2>/dev/null || true)
+docker pull -q "$IMAGE" >/dev/null
+latest=$(docker image inspect -f '{{.Id}}' "$IMAGE")
+
+[ "$running" = "$latest" ] && exit 0
+
+echo "$(date -Is) updating $NAME to $latest"
+docker rm -f "$NAME" >/dev/null 2>&1 || true
+docker run -d --name "$NAME" --restart unless-stopped \
+  -p 127.0.0.1:8787:8787 \
+  -v helm-home:/home/helm \
+  --env-file "$ENV_FILE" \
+  "$IMAGE" >/dev/null
+docker image prune -f >/dev/null
+```
+
+Then run it nightly from cron (`crontab -e`):
+
+```
+30 3 * * * $HOME/helm-update.sh >> $HOME/helm-update.log 2>&1
+```
+
+Things to know:
+
+- Recreating restarts the container, which ends any running agents and terminals. Pick an hour you aren't working; the nightly run does nothing when there is no new image.
+- With `HELM_HOSTED_SECRET` in the env file, you stay signed in across updates.
+- To pin a version instead of following main, set `IMAGE` to a tag such as `…/helm-hosted:v1.2.3` and change it when you want to upgrade.
+- Using compose instead? Replace the body with `docker compose pull && docker compose up -d` (it only recreates when the image changed).
+
+## How it fits together
 
 - `HelmBridge` (`src/shared/types.ts`) is everything the renderer needs from its environment. Electron's preload and `web/bridge.ts` both implement it.
-- `Host` (`src/core/host.ts`) is everything `core.ts` needs from where it runs. `desktop/main/index.ts` implements it with Electron, `hosted/src/host.ts` with Node.
-- The renderer's title bar asks the bridge where window buttons are (`windowControls`), so a browser tab leaves no room for them.
-- Anything that acts on the user's own computer (choose a folder, open a link, copy) is done by the browser in `web/bridge.ts`; the server refuses those names.
+- `Host` (`src/core/host.ts`) is everything `core.ts` needs from where it runs: Electron in `desktop/main/index.ts`, Node in `hosted/src/host.ts`.
+- Things that act on your own computer (choose a folder, open a link, copy) are done by the browser in `web/bridge.ts`; the server refuses them.
 
 ## Not safe yet
 
-- The allowed user has a shell. The agent can run any command as the server's user, and the terminal tab is a shell on the server.
-- The GitHub token is stored unencrypted in `HELM_DATA_DIR` (mode 0700); there is no keychain on a server.
-- No sandbox, no egress control, no resource limits. The VM or container this runs in is the boundary.
-- A dropped connection can miss transcript events; the UI refetches `state` on reconnect but not open transcripts.
+- The allowed user has a shell. Agents run any command as the server's user, and the terminal tab is a shell on the server.
+- The GitHub token is stored unencrypted in the data volume (mode 0700). There is no keychain.
+- No sandbox, egress control or resource limits. The VM or container is the boundary.
+- A dropped connection can miss transcript events; the UI refetches state on reconnect, but not open transcripts.
 - Desktop notifications, badges and "open in VS Code" do nothing.
-
-### Published image
-
-`.github/workflows/hosted-image.yml` builds this image and pushes it to `ghcr.io/<owner>/helm-hosted` (`latest` from main, a version for each `v*` tag). On a server: `docker pull ghcr.io/<owner>/helm-hosted:latest`, then run it with the same `.env` and volume as `docker-compose.yml` (replace `build:` with `image:`). The package starts out private: make it public in its settings on GitHub, or `docker login ghcr.io` on the server with a token that has `read:packages`.

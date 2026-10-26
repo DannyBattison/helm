@@ -16,7 +16,7 @@ export function CopyBox({ text, children, style }: { text: string; children: Rea
       {children}
       <button type="button" onClick={copy} aria-label={done ? 'Copied' : 'Copy'} title={done ? 'Copied' : 'Copy'}
         style={{ position: 'absolute', top: 6, right: 6, display: 'flex', alignItems: 'center', gap: 5, height: 24, padding: '0 8px', border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'pointer', opacity: hover || done ? 1 : 0, pointerEvents: hover || done ? 'auto' : 'none',
-          transition: 'opacity var(--dur-fast) var(--ease-out)', background: 'var(--bg-raised)', color: done ? 'var(--status-ready-text, var(--status-ready))' : 'var(--text-2)', boxShadow: 'inset 0 0 0 1px var(--border-strong)', font: '500 11.5px/1 var(--font-sans)' }}>
+          transition: 'opacity var(--dur-fast) var(--ease-out)', background: 'var(--bg-raised)', color: done ? 'var(--status-ready-text, var(--status-ready))' : 'var(--text-2)', boxShadow: 'inset 0 0 0 1px var(--border-strong)', font: '500 11.5px/1.5 var(--font-sans)' }}>
         <i className={'ph ph-' + (done ? 'check' : 'copy')} style={{ fontSize: 13 }} />{done ? 'Copied' : 'Copy'}
       </button>
     </div>

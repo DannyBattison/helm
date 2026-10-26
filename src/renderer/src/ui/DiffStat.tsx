@@ -5,7 +5,7 @@ export function DiffStat({ additions = 0, deletions = 0, files, blocks = true, s
   const n = 5;
   const g = total ? Math.round((additions / total) * n) : 0;
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, font: '400 11.5px/1 var(--font-mono)', whiteSpace: 'nowrap', ...style }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, font: '400 11.5px/1.5 var(--font-mono)', whiteSpace: 'nowrap', ...style }}>
       {files != null ? <span style={{ color: 'var(--text-3)' }}>{files} {files === 1 ? 'file' : 'files'}</span> : null}
       <span style={{ color: 'var(--diff-add-fg)' }}>+{additions}</span>
       <span style={{ color: 'var(--diff-del-fg)' }}>−{deletions}</span>

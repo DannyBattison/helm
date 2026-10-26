@@ -5,21 +5,21 @@ import { FREE_ID, repoLabel } from '@shared/types';
 import { api } from '../api';
 import { fmtTokens } from '../lib';
 import { go, toast, useApp, useMoney } from '../store';
-import { Badge, Button, Meter, Panel, SegmentedControl, Stat } from '../ui';
+import { Badge, Button, Meter, Panel, SegmentedControl, Stat, useNarrow } from '../ui';
 
 const fail = (title: string) => (e: any) => toast({ tone: 'error', title, description: String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '') });
-const head: React.CSSProperties = { font: '500 10.5px/1 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' };
-const mono: React.CSSProperties = { font: '400 12px/1.2 var(--font-mono)' };
+const head: React.CSSProperties = { font: '500 10.5px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' };
+const mono: React.CSSProperties = { font: '400 12px/1.5 var(--font-mono)' };
 const pct = (x: number) => Math.round(x * 100) + '%';
 const empty = (text: string) => <div style={{ font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-3)', padding: '4px 0' }}>{text}</div>;
 
 /** A row with a name, a bar scaled to the largest value in its list, and a figure. */
 function BarRow({ label, value, max, text, sub, onClick, tone }: { label: React.ReactNode; value: number; max: number; text: React.ReactNode; sub?: React.ReactNode; onClick?: () => void; tone?: string }) {
   return (
-    <div onClick={onClick} className={onClick ? 'helm-row-hover' : undefined} style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 220px) 1fr auto', gap: 12, alignItems: 'center', padding: '5px 4px', cursor: onClick ? 'pointer' : undefined, borderRadius: 'var(--radius-sm)' }}>
+    <div onClick={onClick} className={'helm-barrow' + (onClick ? ' helm-row-hover' : '')} style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 220px) 1fr auto', gap: 12, alignItems: 'center', padding: '5px 4px', cursor: onClick ? 'pointer' : undefined, borderRadius: 'var(--radius-sm)' }}>
       <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
         <span style={{ ...mono, color: 'var(--text-1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
-        {sub ? <span style={{ font: '400 11px/1.2 var(--font-sans)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</span> : null}
+        {sub ? <span style={{ font: '400 11px/1.5 var(--font-sans)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</span> : null}
       </span>
       <div style={{ height: 6, borderRadius: 999, background: 'var(--bg-active)', overflow: 'hidden' }}>
         <div style={{ width: (max ? Math.max(value / max, value > 0 ? 0.01 : 0) * 100 : 0) + '%', height: '100%', borderRadius: 999, background: tone || 'var(--accent)' }} />
@@ -40,7 +40,7 @@ function Columns({ data, format, height = 96 }: { data: { key: string; value: nu
           <div key={d.key} title={`${label(d.key)}: ${format(d.value)}`} style={{ flex: 1, minWidth: 1, height: Math.max(d.value > 0 ? 3 : 1, max ? (d.value / max) * height : 1), borderRadius: '2px 2px 0 0', background: d.value > 0 ? 'var(--accent)' : 'var(--border)' }} />
         ))}
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, font: '400 10.5px/1 var(--font-mono)', color: 'var(--text-3)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, font: '400 10.5px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>
         <span>{data[0] ? label(data[0].key) : ''}</span>
         <span>{data.length ? label(data[data.length - 1].key) : ''}</span>
       </div>
@@ -48,7 +48,7 @@ function Columns({ data, format, height = 96 }: { data: { key: string; value: nu
   );
 }
 
-const Grid = ({ children, cols = 2 }: { children: React.ReactNode; cols?: number }) => <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gap: 12 }}>{children}</div>;
+const Grid = ({ children, cols = 2 }: { children: React.ReactNode; cols?: number }) => <div className="helm-stack" style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gap: 12 }}>{children}</div>;
 
 function Spend({ r, fmt }: { r: Report; fmt: (v: number, whole?: boolean) => string }) {
   const s = r.spend;
@@ -68,7 +68,7 @@ function Spend({ r, fmt }: { r: Report; fmt: (v: number, whole?: boolean) => str
       </Panel>
       {s.fiveHour || s.weekly ? (
         <Panel title="Plan usage pace" icon="gauge">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, font: '400 12.5px/1.4 var(--font-sans)', color: 'var(--text-2)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>
             {s.fiveHour ? <span><b style={{ color: 'var(--text-1)', fontWeight: 600 }}>5-hour window:</b> {soon(s.fiveHour)}.</span> : null}
             {s.weekly ? <span><b style={{ color: 'var(--text-1)', fontWeight: 600 }}>Weekly:</b> {soon(s.weekly)}.</span> : null}
           </div>
@@ -90,7 +90,7 @@ function Spend({ r, fmt }: { r: Report; fmt: (v: number, whole?: boolean) => str
         {s.topSessions.length ? s.topSessions.map((x) => <BarRow key={x.id} label={x.id} value={x.cost} max={s.topSessions[0].cost} text={fmt(x.cost)} sub={`${repoLabel(x.repoId)} · ${x.model}`} onClick={() => go({ screen: 'session', id: x.id })} />) : empty('No sessions in this period.')}
       </Panel>
       <Panel title="Cost per outcome" icon="target">
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12 }}>
+        <div className="helm-grid2" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12 }}>
           {(['merged', 'pr', 'open', 'abandoned'] as const).map((k) => (
             <Stat key={k} label={{ merged: 'Merged', pr: 'In a pull request', open: 'In progress', abandoned: 'Abandoned' }[k]} value={o.counts[k]} detail={fmt(o.cost[k]) + ' spent'} tone={k === 'abandoned' && o.counts[k] ? 'attention' : undefined} />
           ))}
@@ -117,7 +117,7 @@ function Throughput({ r }: { r: Report }) {
         </div>
       </Panel>
       <Panel title="Sessions per week" icon="calendar-blank">
-        <div style={{ display: 'flex', gap: 14, marginBottom: 8, font: '400 11.5px/1 var(--font-sans)', color: 'var(--text-3)' }}>
+        <div style={{ display: 'flex', gap: 14, marginBottom: 8, font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>
           <span><i style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: 'var(--text-3)', marginRight: 5 }} />Started</span>
           <span><i style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: 'var(--status-ready)', marginRight: 5 }} />Merged</span>
           <span><i style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: 'var(--status-attention)', marginRight: 5 }} />Abandoned</span>
@@ -129,7 +129,7 @@ function Throughput({ r }: { r: Report }) {
               {([['started', 'var(--text-3)'], ['merged', 'var(--status-ready)'], ['abandoned', 'var(--status-attention)']] as const).map(([k, c]) => (
                 <div key={k} title={`${w[k]} ${k}`} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <div style={{ height: 5, width: (w[k] / max) * 100 + '%', minWidth: w[k] ? 3 : 0, borderRadius: 999, background: c }} />
-                  {w[k] ? <span style={{ font: '400 10.5px/1 var(--font-mono)', color: 'var(--text-3)' }}>{w[k]}</span> : null}
+                  {w[k] ? <span style={{ font: '400 10.5px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{w[k]}</span> : null}
                 </div>
               ))}
             </div>
@@ -164,11 +164,11 @@ function Approvals({ r }: { r: Report }) {
         </div>
       </Panel>
       {a.suggestions.length ? (
-        <Panel title="Suggested allow rules" icon="lightbulb" actions={<span style={{ font: '400 11.5px/1 var(--font-sans)', color: 'var(--text-3)', paddingRight: 8 }}>approved often, never denied</span>}>
+        <Panel title="Suggested allow rules" icon="lightbulb" actions={<span style={{ font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)', paddingRight: 8 }}>approved often, never denied</span>}>
           {a.suggestions.map((x) => (
             <div key={x.pattern} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 4px' }}>
               <code style={{ ...mono, color: 'var(--text-1)' }}>{x.pattern}</code>
-              <span style={{ flex: 1, font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>approved {x.count} times</span>
+              <span style={{ flex: 1, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>approved {x.count} times</span>
               <Button size="sm" variant="secondary" icon="check" onClick={() => void allow(x.pattern)}>Always allow</Button>
             </div>
           ))}
@@ -193,7 +193,7 @@ function Quality({ r }: { r: Report }) {
           <div key={x.id} className="helm-row-hover" onClick={() => go({ screen: 'session', id: x.id })} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '6px 4px', cursor: 'pointer', borderRadius: 'var(--radius-sm)' }}>
             <Badge tone="attention" icon="warning">Stuck</Badge>
             <span style={{ ...mono }}>{x.id}</span>
-            <span style={{ flex: 1, font: '400 12.5px/1.3 var(--font-sans)', color: 'var(--text-2)' }}>{x.reason}</span>
+            <span style={{ flex: 1, font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>{x.reason}</span>
             <span style={{ ...mono, color: 'var(--text-3)' }}>{repoLabel(x.repoId)}</span>
           </div>
         )) : empty('No session looks stuck. A session is flagged when it edits one file 10 times, or fails the same command 3 times in a row, without committing.')}
@@ -290,17 +290,17 @@ function Disk() {
         {rows == null ? empty('Measuring. The first time can take a while for big repositories.') : null}
         {rows && !rows.length ? empty('No session has a worktree.') : null}
         {(rows || []).map((r) => (
-          <div key={r.sessionId} style={{ display: 'grid', gridTemplateColumns: 'minmax(140px, 240px) 1fr auto', gap: 12, alignItems: 'center', padding: '7px 4px', borderTop: '1px solid var(--border-subtle)' }}>
+          <div key={r.sessionId} className="helm-barrow" style={{ display: 'grid', gridTemplateColumns: 'minmax(140px, 240px) 1fr auto', gap: 12, alignItems: 'center', padding: '7px 4px', borderTop: '1px solid var(--border-subtle)' }}>
             <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
               <span style={{ ...mono, cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} onClick={() => go({ screen: 'session', id: r.sessionId })}>{r.sessionId}</span>
-              <span style={{ font: '400 11px/1.2 var(--font-sans)', color: 'var(--text-3)' }}>{r.repoId} · {r.running ? 'running' : r.merged ? 'merged' : r.archived ? 'archived' : r.status}{r.dirty ? ` · ${r.dirty} uncommitted` : ''}{r.unpushed ? ` · ${r.unpushed} unpushed` : ''}</span>
+              <span style={{ font: '400 11px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{r.repoId} · {r.running ? 'running' : r.merged ? 'merged' : r.archived ? 'archived' : r.status}{r.dirty ? ` · ${r.dirty} uncommitted` : ''}{r.unpushed ? ` · ${r.unpushed} unpushed` : ''}</span>
             </span>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <div style={{ height: 6, borderRadius: 999, background: 'var(--bg-active)', overflow: 'hidden', display: 'flex' }} title={`${gb(r.bytes)}, of which ${gb(r.reclaimable)} can be freed (${r.reclaimDirs.join(', ') || 'nothing'})`}>
                 <div style={{ width: (max ? ((r.bytes - r.reclaimable) / max) * 100 : 0) + '%', background: 'var(--text-3)' }} />
                 <div style={{ width: (max ? (r.reclaimable / max) * 100 : 0) + '%', background: 'var(--accent)' }} />
               </div>
-              <span style={{ font: '400 11px/1.2 var(--font-mono)', color: 'var(--text-3)' }}>{gb(r.bytes)}{r.partial ? '+' : ''}{r.reclaimable ? ` · ${gb(r.reclaimable)} in ${r.reclaimDirs.join(', ')}` : ''}</span>
+              <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{gb(r.bytes)}{r.partial ? '+' : ''}{r.reclaimable ? ` · ${gb(r.reclaimable)} in ${r.reclaimDirs.join(', ')}` : ''}</span>
             </div>
             <span style={{ display: 'flex', gap: 4 }}>
               <Button size="sm" variant="secondary" icon="broom" disabled={!r.reclaimable || r.running || !!busy} loading={busy === 'c' + r.sessionId} title={r.running ? 'Stop the session first' : undefined} onClick={() => void act('c' + r.sessionId, () => api.cleanWorktree(r.sessionId), (b) => `Freed ${gb(b)}`)}>Clean</Button>
@@ -325,6 +325,7 @@ const TABS = [
 ];
 
 export function Reports({ tab = 'spend' }: { tab?: string }) {
+  const narrow = useNarrow();
   const app = useApp();
   const { fmt } = useMoney();
   const [days, setDays] = React.useState(() => { try { return +(localStorage.getItem('helm-report-days') || 30) || 30; } catch { return 30; } });
@@ -341,16 +342,16 @@ export function Reports({ tab = 'spend' }: { tab?: string }) {
 
   return (
     <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-      <div style={{ padding: '20px 24px 32px', display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 1200 }}>
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12 }}>
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <h1 style={{ margin: 0, font: '600 20px/1.2 var(--font-sans)', letterSpacing: 'var(--tracking-tight)' }}>Reports</h1>
-            <span style={{ font: '400 12px/1.4 var(--font-sans)', color: 'var(--text-3)' }}>What your agents cost, how long things take, and where they need you. Spend history starts when this version was first run.</span>
+      <div style={{ padding: narrow ? '14px 12px 24px' : '20px 24px 32px', display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 1200 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12 }}>
+          <div style={{ flex: '1 1 240px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <h1 style={{ margin: 0, font: '600 20px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-tight)' }}>Reports</h1>
+            <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>What your agents cost, how long things take, and where they need you. Spend history starts when this version was first run.</span>
           </div>
           <SegmentedControl value={String(days)} onChange={(v: string) => set(+v)} options={[{ value: '7', label: '7 days' }, { value: '30', label: '30 days' }, { value: '90', label: '90 days' }]} />
         </div>
         <SegmentedControl value={tab} onChange={(v: string) => go({ screen: 'reports', tab: v })} options={TABS} style={{ alignSelf: 'flex-start' }} />
-        {err ? <div style={{ color: 'var(--status-error-text)', font: '400 12.5px/1.4 var(--font-sans)' }}>Could not build the report: {err}</div> : null}
+        {err ? <div style={{ color: 'var(--status-error-text)', font: '400 12.5px/1.5 var(--font-sans)' }}>Could not build the report: {err}</div> : null}
         {!report && !err && tab !== 'disk' && tab !== 'digest' && tab !== 'audit' ? <div style={{ ...head }}>Working it out…</div> : null}
         {report && tab === 'spend' ? <Spend r={report} fmt={fmt} /> : null}
         {report && tab === 'throughput' ? <Throughput r={report} /> : null}

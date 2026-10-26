@@ -23,13 +23,13 @@ export function CheckpointsDialog({ id, onClose }: { id: string; onClose(): void
     <Dialog width={560} title="Checkpoints" description="helm saves the worktree before each message you send, uncommitted and new files included. Restoring one puts everything back as it was." onClose={onClose}
       footer={<><span style={{ flex: 1 }} /><Button variant="ghost" onClick={onClose}>Close</Button></>}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 360, overflow: 'auto' }}>
-        {list == null ? <span style={{ font: '400 12.5px/1 var(--font-sans)', color: 'var(--text-3)' }}>Reading…</span> : null}
+        {list == null ? <span style={{ font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Reading…</span> : null}
         {list?.length === 0 ? <span style={{ font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>No checkpoints yet. One is taken each time you send a message.</span> : null}
         {list?.slice().reverse().map((c) => (
           <div key={c.n} className="helm-row-hover" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 8px', borderRadius: 'var(--radius-sm)' }}>
-            <span style={{ font: '500 11px/1 var(--font-mono)', color: 'var(--text-3)', width: 22 }}>#{c.n}</span>
-            <span style={{ flex: 1, minWidth: 0, font: '400 12.5px/1.3 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={c.label}>{c.label.startsWith('Before restoring') ? c.label : clean(c.label)}</span>
-            <span style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)' }}>{relTime(c.at)}</span>
+            <span style={{ font: '500 11px/1.5 var(--font-mono)', color: 'var(--text-3)', width: 22 }}>#{c.n}</span>
+            <span style={{ flex: 1, minWidth: 0, font: '400 12.5px/1.5 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={c.label}>{c.label.startsWith('Before restoring') ? c.label : clean(c.label)}</span>
+            <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{relTime(c.at)}</span>
             <Button size="sm" variant="secondary" icon="clock-counter-clockwise" onClick={() => { onClose(); setUI({ restoring: { sessionId: id, n: c.n, label: c.label } }); }}>Restore</Button>
           </div>
         ))}
@@ -49,7 +49,7 @@ export function RestoreDialog({ target, onClose }: { target: { sessionId: string
   return (
     <Dialog width={500} title={`Restore checkpoint ${target.n}?`} onClose={onClose}
       footer={<>
-        <span style={{ flex: 1, font: '400 12px/1.3 var(--font-sans)', color: 'var(--status-error-text)' }}>{err}</span>
+        <span style={{ flex: 1, font: '400 12px/1.5 var(--font-sans)', color: 'var(--status-error-text)' }}>{err}</span>
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
         <Button variant="primary" icon="clock-counter-clockwise" loading={busy} onClick={go_}>Restore</Button>
       </>}>
@@ -74,7 +74,7 @@ export function ForkDialog({ target, onClose }: { target: { sessionId: string; i
   return (
     <Dialog width={560} title="Fork into a new session" description={target.index == null ? 'A new session continues from this one as it is now.' : 'The new session has the conversation up to just before this message, and the worktree as it was then. This session is left as it is.'} onClose={onClose}
       footer={<>
-        <span style={{ flex: 1, font: '400 12px/1.3 var(--font-sans)', color: 'var(--status-error-text)' }}>{err}</span>
+        <span style={{ flex: 1, font: '400 12px/1.5 var(--font-sans)', color: 'var(--status-error-text)' }}>{err}</span>
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
         <Button variant="primary" icon="git-fork" loading={busy} disabled={!task.trim()} onClick={start}>Start fork</Button>
       </>}>
@@ -96,7 +96,7 @@ export function ContinueDialog({ target, onClose }: { target: { repoId: string; 
   return (
     <Dialog width={560} title="Continue in helm" description={`“${target.title}” keeps running nowhere: helm copies its conversation into a new session with its own worktree, and carries on from there. The original is left untouched.`} onClose={onClose}
       footer={<>
-        <span style={{ flex: 1, font: '400 12px/1.3 var(--font-sans)', color: 'var(--status-error-text)' }}>{err}</span>
+        <span style={{ flex: 1, font: '400 12px/1.5 var(--font-sans)', color: 'var(--status-error-text)' }}>{err}</span>
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
         <Button variant="primary" icon="play" loading={busy} disabled={!task.trim()} onClick={start}>Continue</Button>
       </>}>
@@ -118,16 +118,16 @@ export function ForecastNotice({ conflicts }: { conflicts: Conflict[] }) {
   const name = (id: string) => { const s = app.sessions.find((x) => x.id === id); return s ? sessionTitle(s) : id; };
   return (
     <div style={{ borderRadius: 'var(--radius-lg)', background: 'var(--status-attention-bg)', boxShadow: 'inset 0 0 0 1px var(--status-attention)', padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <span style={{ font: '600 12.5px/1.2 var(--font-sans)', color: 'var(--status-attention-text)', display: 'flex', alignItems: 'center', gap: 6 }}><i className="ph ph-git-merge" />Merge conflicts ahead</span>
+      <span style={{ font: '600 12.5px/1.5 var(--font-sans)', color: 'var(--status-attention-text)', display: 'flex', alignItems: 'center', gap: 6 }}><i className="ph ph-git-merge" />Merge conflicts ahead</span>
       {conflicts.slice(0, 6).map((c, i) => (
         <div key={i} style={{ font: '400 12.5px/1.45 var(--font-sans)', color: 'var(--text-1)' }}>
           <a href="#" onClick={(e) => { e.preventDefault(); go({ screen: 'session', id: c.a, tab: 'changes' }); }}>{name(c.a)}</a>
           {' '}{c.kind === 'conflict' ? 'would conflict with' : 'edits the same files as'}{' '}
           {c.b.startsWith('origin/') ? <b>{c.b}</b> : <a href="#" onClick={(e) => { e.preventDefault(); go({ screen: 'session', id: c.b, tab: 'changes' }); }}>{name(c.b)}</a>}
-          <span style={{ font: '400 11.5px/1 var(--font-mono)', color: 'var(--text-3)', marginLeft: 8 }}>{c.files.slice(0, 3).join(', ')}{c.files.length > 3 ? ` +${c.files.length - 3}` : ''}</span>
+          <span style={{ font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-3)', marginLeft: 8 }}>{c.files.slice(0, 3).join(', ')}{c.files.length > 3 ? ` +${c.files.length - 3}` : ''}</span>
         </div>
       ))}
-      {conflicts.length > 6 ? <span style={{ font: '400 11.5px/1 var(--font-sans)', color: 'var(--text-3)' }}>and {conflicts.length - 6} more</span> : null}
+      {conflicts.length > 6 ? <span style={{ font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>and {conflicts.length - 6} more</span> : null}
     </div>
   );
 }
@@ -158,21 +158,21 @@ export function Compare({ group }: { group: string }) {
   return (
     <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '20px 24px 32px', display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <h1 style={{ margin: 0, font: '600 20px/1.2 var(--font-sans)', letterSpacing: 'var(--tracking-tight)' }}>Compare runs</h1>
+        <h1 style={{ margin: 0, font: '600 20px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-tight)' }}>Compare runs</h1>
         <span style={{ font: '400 12.5px/1.45 var(--font-sans)', color: 'var(--text-3)', maxWidth: 780 }}>{members[0].task}</span>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(members.length, 4)}, minmax(240px, 1fr))`, gap: 12 }}>
+      <div className="helm-stack" style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(members.length, 4)}, minmax(240px, 1fr))`, gap: 12 }}>
         {members.map((s) => {
           const tokens = s.tokens.input + s.tokens.output + s.tokens.cacheRead;
           return (
             <div key={s.id} style={{ borderRadius: 'var(--radius-lg)', background: 'var(--bg-panel)', boxShadow: `inset 0 0 0 1px ${s.archivedAt ? 'var(--border-subtle)' : 'var(--border)'}`, padding: 14, display: 'flex', flexDirection: 'column', gap: 10, opacity: s.archivedAt ? 0.6 : 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <StatusDot status={s.status} />
-                <span style={{ font: '600 13px/1.2 var(--font-mono)' }}>{s.model}{s.effort ? ` · ${s.effort}` : ''}</span>
+                <span style={{ font: '600 13px/1.5 var(--font-mono)' }}>{s.model}{s.effort ? ` · ${s.effort}` : ''}</span>
                 {s.archivedAt ? <Badge>Archived</Badge> : null}
               </div>
-              <span style={{ font: '400 12px/1.4 var(--font-sans)', color: 'var(--text-2)', minHeight: 34 }}>{s.step}</span>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, font: '400 12px/1.2 var(--font-mono)' }}>
+              <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-2)', minHeight: 34 }}>{s.step}</span>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, font: '400 12px/1.5 var(--font-mono)' }}>
                 <span style={{ color: 'var(--text-3)' }}>Files</span><span>{s.files}</span>
                 <span style={{ color: 'var(--text-3)' }}>Lines</span><span><span style={{ color: 'var(--diff-add-fg)' }}>+{s.add}</span> <span style={{ color: 'var(--diff-del-fg)' }}>−{s.del}</span></span>
                 <span style={{ color: 'var(--text-3)' }}>Commits</span><span>{s.commits.length}</span>
@@ -203,7 +203,7 @@ export function VariantEditor({ variants, onChange }: { variants: Variant[]; onC
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       {variants.map((v, i) => (
         <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <span style={{ font: '500 11px/1 var(--font-mono)', color: 'var(--text-3)', width: 14 }}>{i + 1}</span>
+          <span style={{ font: '500 11px/1.5 var(--font-mono)', color: 'var(--text-3)', width: 14 }}>{i + 1}</span>
           <Select value={v.model} onChange={(e: any) => set(i, { model: e.target.value })} options={[{ value: 'sonnet', label: 'Sonnet' }, { value: 'opus', label: 'Opus' }, { value: 'haiku', label: 'Haiku' }]} style={{ flex: 1 }} />
           <Select value={v.effort} onChange={(e: any) => set(i, { effort: e.target.value })} options={EFFORT_OPTIONS} style={{ flex: 1 }} />
           <Button size="sm" variant="ghost" icon="x" disabled={variants.length <= 2} onClick={() => onChange(variants.filter((_, k) => k !== i))} />
@@ -235,7 +235,7 @@ export function RememberDialog({ target, onClose }: { target: { repoId: string; 
   return (
     <Dialog width={560} title="Remember this" description="Write it the way you would tell a new colleague. It is added under “Learned in helm” and read at the start of every session in the repository." onClose={onClose}
       footer={<>
-        <span style={{ flex: 1, font: '400 12px/1.3 var(--font-sans)', color: 'var(--status-error-text)' }}>{err}</span>
+        <span style={{ flex: 1, font: '400 12px/1.5 var(--font-sans)', color: 'var(--status-error-text)' }}>{err}</span>
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
         <Button variant="primary" icon="bookmark-simple" loading={busy} disabled={text.trim().length < 3} onClick={save}>Add</Button>
       </>}>

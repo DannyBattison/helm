@@ -10,10 +10,13 @@ import * as GH from './github';
 import { Companion } from './companion';
 import { installLogging, logFile, logLine, recentLog } from './log';
 import { cleanHeavy, dirSize, reclaimableBytes } from './disk';
+import { readArtifact } from './artifacts';
+import { addRepoArtifact, listRepoArtifacts, removeRepoArtifact, setRepoArtifactDir } from './repoartifacts';
 import { diagnostics } from '../shared/diagnostics';
 import { memoryHealth, memoryReads, STALE_DAYS, type MemoryFile, type MemoryUsage } from '../shared/memoryhealth';
 import type { Host } from './host';
 import { appendInstruction, deleteMemory, projectMemory, readMemory, writeMemory } from './memory';
+import { Automations } from './automations';
 import { RepoService } from './repos';
 import { forecastRepo, revertHunk } from './review';
 import { SessionManager } from './sessions';
@@ -27,6 +30,7 @@ import { prepareInputs } from '../shared/workflows';
 import { searchEvents, type SearchResults } from '../shared/search';
 import { sessionTitle } from '../shared/types';
 import { feedbackTask, issueTask, pullNumber } from '../shared/issues';
+import { prBody, prSummary, prTitle, replaceSummary } from '../shared/prText';
 import { auditCsv, buildReport, digestMarkdown, sessionsCsv, spendCsv, type ReportInput } from '../shared/reports';
 
 let host: Host;
@@ -52,6 +56,7 @@ function buildState(): AppState {
     activitySeq: store.logSeq,
     companion: companion.state,
     settings: store.data.settings,
+    automations: store.data.automations,
     weekSpend: store.weekSpend(),
     lifetime: store.data.totals,
     tokensToday: store.tokensToday(),
@@ -146,6 +151,17 @@ Object.assign(companionOps, {
   externalTranscript: async (repoId: string, sessionId: string, limit: number) => { const r = await externalTranscript(repoId, sessionId, { tail: limit }); return { ready: r.ready, total: r.total, start: r.start, events: r.events }; },
   archiveExternal: (sessionId: string, archived: boolean) => api.archiveExternal(sessionId, archived),
   activity: (before: number | undefined, limit: number) => store.readLog(before, limit)
+});
+const automations = new Automations(store, {
+  listPulls: (id) => GH.listPulls(id),
+  listIssues: (id) => GH.listIssues(id),
+  start: async (repoId, base, task, a) => {
+    await sessions.create({ repoId, base, task, model: a.model, budget: a.budget, permMode: a.permMode, automation: { id: a.id, name: a.name } });
+  },
+  automatedBranches: (repoId) => new Set(store.data.sessions.filter((s) => s.repoId === repoId && s.automation).map((s) => s.branch)),
+  repoName: (id) => repoName(id),
+  defaultBranch: (id) => repos.must(id).defaultBranch,
+  changed: () => { store.save(); emitState(); }
 });
 const terms = new Terminals((id, data) => send('termData', { id, data }), (id) => send('termExit', { id }));
 
@@ -316,6 +332,8 @@ export const api: HelmApi = {
   async listGithubRepos() { return GH.listRepos(new Set(store.data.repos.map((r) => r.id))); },
   async cloneRepos(ids) { for (const id of ids) { await repos.cloneSlug(id); store.log({ kind: 'git', who: me(), human: true, what: 'cloned the repository', repo: repoName(id) }); } },
   async cloneUrl(url, dir) { await repos.cloneUrl(url, dir); store.log({ kind: 'git', who: me(), human: true, what: `cloned ${url}`, repo: url.split('/').pop()?.replace(/\.git$/, '') || '' }); },
+  async listGithubOwners() { return GH.listOwners(); },
+  async createGithubRepo(input) { const r = await repos.createRepo(input); store.log({ kind: 'git', who: me(), human: true, what: 'created the repository on GitHub', repo: r.name }); },
   async inspectClone(path) { return repos.inspect(path); },
   async addLocalRepo(path) { await repos.addFromPath(expandHome(path)); store.log({ kind: 'git', who: me(), human: true, what: `added ${path}`, repo: path.split(/[\\/]/).pop() || '' }); },
   async removeRepo(id) {
@@ -363,6 +381,8 @@ export const api: HelmApi = {
   sendMessage: (id, text, images) => sessions.send(id, text, images),
   setSessionEffort: (id, e) => sessions.setEffort(id, e),
   interrupt: (id) => sessions.interrupt(id),
+  haltAll: () => sessions.haltAll(),
+  resumeAll: () => sessions.resumeAll(),
   stopSession: (id) => sessions.stop(id),
   async resumeSession(id) { await sessions.send(id, 'Continue where you left off.'); },
   sessionDeleteInfo: (id) => sessions.deleteInfo(id),
@@ -378,6 +398,14 @@ export const api: HelmApi = {
   async setRepoMaxSubagents(id, max) { repos.must(id).maxSubagents = max ?? undefined; store.save(); emitState(); },
   resolveAsk: (id, askId, answer) => sessions.resolveAsk(id, askId, answer),
   getTranscript: (id) => store.transcript(id),
+  getArtifact: (id, name) => readArtifact(id, name),
+  dismissArtifact: (id, name) => sessions.dismissArtifact(id, name),
+  listRepoArtifacts: (id) => listRepoArtifacts(repos.must(id).id),
+  addRepoArtifact: (id, name, data) => addRepoArtifact(repos.must(id).id, name, data),
+  removeRepoArtifact: (id, name) => removeRepoArtifact(repos.must(id).id, name),
+  async saveAutomation(a) { return automations.save(a); },
+  async deleteAutomation(id) { automations.remove(id); },
+  runAutomation: (id) => automations.runNow(id),
 
   async workspaceInfo(id) {
     const w = ws(id);
@@ -464,6 +492,17 @@ export const api: HelmApi = {
     store.log({ kind: 'commit', who: me(), human: true, what: `committed ${files.length} ${files.length === 1 ? 'file' : 'files'}: ${message.split('\n')[0].slice(0, 80)}`, repo: w.sessionId ? repoName(sessions.get(w.sessionId)?.repoId || '') : '', sessionId: w.sessionId, detail: files.join('\n') });
     const s = w.sessionId ? sessions.get(w.sessionId) : undefined;
     if (s) await sessions.refreshStats(s);
+    if (store.data.settings.autoPush) {
+      if (s) await sessions.autoPush(s);
+      else {
+        // The repository's own checkout: push whatever branch is checked out, if any.
+        const branch = (await G.git(w.worktree, 'symbolic-ref', '--short', '-q', 'HEAD').catch(() => '')).trim();
+        if (branch) {
+          const ok = await G.git(w.worktree, 'push', '-u', 'origin', branch).then(() => true, () => false);
+          store.log({ kind: 'push', who: me(), human: true, what: ok ? `pushed ${branch}` : `push of ${branch} failed`, repo: repoName(id.slice(5)), ok });
+        }
+      }
+    }
   },
   pushStatus(repoId) {
     // The window asks from several places on a timer. Share one answer instead of running git for each ask.
@@ -485,6 +524,7 @@ export const api: HelmApi = {
         if (t.dirty) uncommitted++;
         await G.git(cwd, 'push', '-u', 'origin', t.branch);
         pushed.push(key);
+        if (t.kind === 'session') void syncPr(sess(t.id));
         store.log({ kind: 'push', who: me(), human: true, what: `pushed ${t.branch} (${t.ahead} ${t.ahead === 1 ? 'commit' : 'commits'})`, repo: repoName(t.repoId), sessionId: t.kind === 'session' ? t.id : undefined });
       } catch (e: any) {
         const error = String(e?.message || e).split('\n').slice(-2).join(' ').trim();
@@ -501,9 +541,10 @@ export const api: HelmApi = {
     if (s.free) throw new Error('A free agent has no repository to open a pull request in.');
     const repo = repos.must(s.repoId);
     if (input.files.length) await commitFiles(s.worktree, input.files, input.message || input.title);
+    await GH.ensureFresh();
     await G.git(s.worktree, 'push', '-u', 'origin', s.branch);
     store.log({ kind: 'push', who: me(), human: true, what: `pushed ${s.branch}`, repo: repo.name, sessionId: s.id });
-    const url = await GH.createPull(repo.id, { head: s.branch, base: input.base, title: input.title, body: input.body, draft: input.draft });
+    const url = await GH.createPull(repo.id, { head: s.branch, base: input.base, title: prTitle(input.title, 200), body: input.body, draft: input.draft });
     s.prUrl = url;
     s.prAt = Date.now();
     s.removeAfterMerge = input.removeAfterMerge;
@@ -894,6 +935,24 @@ async function pushTargets(repoId?: string): Promise<import('../shared/types').P
   return out;
 }
 
+// ------------------------------------------------------------------ pull request description upkeep
+const prSynced = new Map<string, string>();
+/** Keeps the helm-written summary in a session's open pull request in step with its branch, so commits pushed later show up in the description. A description the user rewrote (no helm block) is left alone. */
+async function syncPr(s: { id: string; repoId: string; worktree: string; base: string; task: string; source?: { kind: string; number: number }; prUrl?: string; mergedAt?: number; worktreeGone?: boolean }) {
+  const n = pullNumber(s.prUrl);
+  if (!n || s.mergedAt || s.worktreeGone) return;
+  try {
+    const sum = await G.changes(s.worktree, s.base);
+    const sig = sum.commits.map((c) => c.hash).join(',');
+    if (prSynced.get(s.id) === sig) return;
+    const summary = prSummary({ task: s.task, commits: sum.commits, issue: s.source?.kind === 'issue' ? s.source.number : undefined, files: sum.files.length, add: sum.files.reduce((a, f) => a + f.add, 0), del: sum.files.reduce((a, f) => a + f.del, 0) });
+    const body = await GH.getPullBody(s.repoId, n);
+    const next = replaceSummary(body, summary);
+    if (next !== null && next !== body) await GH.updatePullBody(s.repoId, n, next);
+    prSynced.set(s.id, sig);
+  } catch { /* offline; tried again at the next push or poll */ }
+}
+
 // ------------------------------------------------------------------ merged PR cleanup
 const mergingHere = new Set<string>();
 async function pollMerges() {
@@ -905,6 +964,7 @@ async function pollMerges() {
       const prs = await GH.listPulls(repoId);
       for (const s of list) {
         const pr = prs.find((p) => p.url === s.prUrl);
+        if (pr?.state === 'open') await syncPr(s);
         if (pr?.state === 'merged') {
           const delBranch = s.deleteBranchAfterMerge ?? s.removeAfterMerge;
           await sessions.finishMerged(s.id, { into: pr.base }, { worktree: s.removeAfterMerge || delBranch, branch: delBranch });
@@ -942,27 +1002,36 @@ export async function start(h: Host) {
   if (!process.env.HELM_DEV_NO_RECOVER) sessions.recover();
   if (host.companion !== false) void companion.loadKey().then(() => companion.apply());
   GH.setSignInGuard(host.allowLogin ?? null);
+  GH.watchAuth(() => G.setGitToken(GH.getToken()), () => { G.setGitToken(null); store.data.user = null; store.save(); emitState(); logLine('warn', 'GitHub rejected the sign-in and it could not be renewed; signed out'); });
   await GH.loadToken(host);
+  await GH.ensureFresh();
   // A server's list can change between runs: a token that belongs to someone no longer on it is dropped, not honoured.
   if (host.allowLogin && GH.getToken()) {
     const u = await GH.currentUser().catch(() => null);
     if (!u || !host.allowLogin(u.login)) { await GH.clearToken(); store.data.user = null; }
   }
   G.setGitToken(GH.getToken());
+  // git takes the token from the environment, so renew it before it lapses rather than when a push fails.
+  setInterval(() => void GH.ensureFresh(15 * 60_000), 5 * 60_000);
   if (!GH.getToken() && !process.env.HELM_DEV_SEED) store.data.user = null;
   claudeVersion = await detectClaude(store.data.settings.claudePath);
   host.setTheme?.(store.data.settings.theme);
   if (host.requireClaudeLogin) { void refreshClaudeLogin(); setInterval(() => void refreshClaudeLogin(), 5 * 60_000); }
   setInterval(pollMerges, 120_000);
+  setInterval(() => void automations.tick(), 60_000);
+  setTimeout(() => void automations.tick(), 30_000);
   setInterval(() => void refreshForecast(), 20_000);
   setTimeout(() => void refreshForecast(), 4000);
   void detectCurrency().then(refreshRates);
   sessions.autoArchive();
   setInterval(() => sessions.autoArchive(), 3600_000);
   repos.setCacheDir(join(host.dataDir, 'history-cache'));
+  setRepoArtifactDir(join(host.dataDir, 'repo-artifacts'));
   void refreshPlan(true);
   setInterval(() => void refreshPlan(), 5 * 60_000);
   setInterval(refreshRates, 6 * 3600_000);
+  // Last, so the token, the Claude version and the repositories are ready before agents start again.
+  if (store.data.settings.resumeOnLaunch && !process.env.HELM_DEV_NO_RECOVER) void sessions.resumeInterrupted();
 }
 
 export async function shutdown() {

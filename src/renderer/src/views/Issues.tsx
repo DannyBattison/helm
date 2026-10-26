@@ -30,7 +30,7 @@ export function Issues({ repoId }: { repoId: string }) {
       <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
         <Input icon="magnifying-glass" placeholder="Filter issues" value={q} onChange={(e: any) => setQ(e.target.value)} style={{ width: 280 }} />
       </div>
-      {issues == null ? <span style={{ font: '400 12.5px/1 var(--font-sans)', color: 'var(--text-3)' }}>Loading issues…</span> : null}
+      {issues == null ? <span style={{ font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Loading issues…</span> : null}
       {err ? <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--status-error-text)' }}>{err}</div> : null}
       {issues && !err && shown.length === 0 ? <div style={{ font: '400 13px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{issues.length ? 'No issue matches.' : 'No open issues.'}</div> : null}
       {shown.map((i) => {
@@ -39,8 +39,8 @@ export function Issues({ repoId }: { repoId: string }) {
           <div key={i.number} className="helm-row-hover" style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 48, padding: '6px 4px', borderTop: '1px solid var(--border-subtle)' }}>
             <i className="ph ph-circle-dashed" style={{ fontSize: 15, color: 'var(--status-ready)' }} />
             <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <span style={{ font: '500 13px/1.2 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'pointer' }} onClick={() => void api.openExternal(i.url)}>{i.title}</span>
-              <span style={{ display: 'flex', gap: 6, alignItems: 'center', font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)' }}>
+              <span style={{ font: '500 13px/1.5 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'pointer' }} onClick={() => void api.openExternal(i.url)}>{i.title}</span>
+              <span style={{ display: 'flex', gap: 6, alignItems: 'center', font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>
                 #{i.number} · {i.author} · {relTime(Date.parse(i.updated))}{i.comments ? ` · ${i.comments} comments` : ''}
                 {i.labels.slice(0, 4).map((l) => <Badge key={l}>{l}</Badge>)}
               </span>

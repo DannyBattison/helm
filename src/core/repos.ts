@@ -41,6 +41,10 @@ export class RepoService {
     return this.addFromPath(dest);
   }
 
+  async createRepo(input: { name: string; description: string; private: boolean; owner?: string }): Promise<Repo> {
+    return this.cloneSlug(await GH.createRepo(input));
+  }
+
   async cloneUrl(url: string, dir: string): Promise<Repo> {
     const slug = G.parseGithubUrl(url);
     if (!slug) throw new Error('That is not a GitHub URL.');

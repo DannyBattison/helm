@@ -14,7 +14,7 @@ export function Badge({ tone = 'neutral', dot = false, mono = false, icon, child
   const [bg, fg] = TONES[tone] || TONES.neutral;
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, height: 18, padding: '0 6px', borderRadius: 'var(--radius-xs)', background: bg, color: fg,
-      font: mono ? '500 11px/1 var(--font-mono)' : '500 11px/1 var(--font-sans)', whiteSpace: 'nowrap', ...style }}>
+      font: mono ? '500 11px/1.5 var(--font-mono)' : '500 11px/1.5 var(--font-sans)', whiteSpace: 'nowrap', ...style }}>
       {dot ? <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor' }} /> : null}
       {icon ? <i className={'ph ph-' + icon} style={{ fontSize: 12 }} /> : null}
       {children}

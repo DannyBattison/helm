@@ -14,9 +14,15 @@ body,
   height: 100%;
   overflow: hidden;
 }
+/* On a phone the browser's own bars come and go; the dynamic height keeps the status bar and the composer on screen. */
+#root {
+  height: 100dvh;
+}
 body {
   user-select: none;
   -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
 }
 input,
 textarea,
@@ -63,6 +69,81 @@ textarea {
 .helm-row-hover:hover {
   background: var(--bg-hover);
 }
+@media (hover: none) {
+  .helm-row-hover:hover {
+    background: transparent;
+  }
+}
+
+/* A strip that scrolls sideways when it does not fit (tabs, filters, toolbars), without a scrollbar in the way. */
+.helm-hscroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.helm-hscroll::-webkit-scrollbar {
+  display: none;
+}
+
+@keyframes helm-drawer-in {
+  from { transform: translateX(-100%); }
+  to { transform: none; }
+}
+@keyframes helm-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Touch screens: iOS zooms into any field with text smaller than 16px, and does not zoom back out. */
+@media (max-width: 767px), (pointer: coarse) {
+  input:not([type='checkbox']):not([type='radio']),
+  textarea:not(.monaco-editor textarea):not(.xterm textarea) {
+    font-size: 16px !important;
+  }
+}
+
+/* Touch screens: targets of at least 40px (44px for rows and tabs), with room between neighbours. */
+@media (pointer: coarse) {
+  .helm-tap-row {
+    min-height: 44px !important;
+    height: auto !important;
+  }
+  .helm-tap-icon {
+    min-width: 44px !important;
+    min-height: 44px !important;
+  }
+  .helm-tap-btn {
+    min-height: 44px !important;
+    padding-left: 14px !important;
+    padding-right: 14px !important;
+    font-size: 14px !important;
+  }
+  .helm-tap-field {
+    height: 44px !important;
+  }
+  .helm-tap-tabbar {
+    height: auto !important;
+    min-height: 44px;
+  }
+  .helm-tap-seg {
+    min-height: 40px !important;
+    height: auto !important;
+    padding-left: 14px !important;
+    padding-right: 14px !important;
+  }
+  :root { --titlebar-h: 48px; }
+  .helm-tap-tabbar { gap: 4px !important; }
+  .helm-tap-tabbar > [role='tab'] { min-height: 44px; padding-left: 12px !important; padding-right: 12px !important; }
+  .helm-tap-check, .helm-tap-switch { zoom: 1.4; }
+  .helm-tap-label { min-height: 40px; align-items: center !important; }
+  /* A small glyph inside a tap target (a tab's close): the padding grows the hit area, the margin keeps the layout. */
+  .helm-tap-x { padding: 12px !important; margin: -12px -12px -12px -4px !important; }
+  body {
+    -webkit-text-size-adjust: 100%;
+    touch-action: manipulation;
+  }
+}
 
 /* Syntax colours for code outside the editor: the same tokens the Monaco themes use. */
 .hljs-keyword, .hljs-selector-tag, .hljs-doctag, .hljs-meta .hljs-keyword { color: var(--syn-keyword); }
@@ -76,3 +157,46 @@ textarea {
 .hljs-punctuation, .hljs-operator, .hljs-tag .hljs-attr + .hljs-string { color: var(--syn-punct); }
 .hljs-emphasis { font-style: italic; }
 .hljs-strong { font-weight: 600; }
+
+/* Phones: multi-column grids fold. Inline grid templates need !important to be overridden. */
+@media (max-width: 767px) {
+  .helm-stack { grid-template-columns: minmax(0, 1fr) !important; }
+  .helm-grid2 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  /* A name, a bar and a figure: the bar drops under the name and figure. */
+  .helm-barrow { grid-template-columns: minmax(0, 1fr) auto !important; row-gap: 4px !important; }
+  .helm-barrow > :nth-child(2) { grid-column: 1 / -1; grid-row: 2; }
+  /* A settings row: the control goes under its description. */
+  .helm-setting { flex-direction: column !important; align-items: stretch !important; gap: 10px !important; }
+  .helm-setting > :last-child { flex-wrap: wrap; }
+}
+@media (max-width: 767px) {
+  .helm-setting input, .helm-setting textarea { width: 100% !important; box-sizing: border-box; }
+  .helm-setting > :last-child > * { max-width: 100%; }
+}
+
+/* Phones: side-by-side panes (file list and diff, list and detail) stack and the page scrolls. */
+@media (max-width: 767px) {
+  .helm-split { flex-direction: column !important; overflow-y: auto !important; overflow-x: hidden !important; }
+  .helm-split > * { flex: none !important; width: 100% !important; min-width: 0; box-sizing: border-box; border-left: none !important; border-right: none !important; border-bottom: 1px solid var(--border); }
+  .helm-split > .helm-list { max-height: 36dvh; }
+  .helm-split > .helm-main { height: 72dvh; }
+  .helm-split [role='separator'] { display: none !important; }
+}
+@media (max-width: 767px) {
+  .helm-hide-phone { display: none !important; }
+}
+
+/* Phones: a taller header; the icon buttons in it grow with it. */
+@media (max-width: 767px) {
+  :root { --titlebar-h: 60px; }
+  .drag .helm-tap-icon { min-width: 48px !important; min-height: 48px !important; }
+  .drag .helm-tap-icon > i { font-size: 24px !important; }
+  /* The menu drawer is the main way around on a phone: scale the whole sidebar up, text and icons together. */
+  .helm-drawer { zoom: 1.2; }
+}
+
+/* Single-line text cut with an ellipsis sits in a box that clips what overhangs it, so a tight inline line-height shaves the bottom off p, y and g.
+   The inline `font` shorthand sets that line-height, so only !important beats it. 1.5 matches --type-label. */
+[style*='text-overflow: ellipsis'] {
+  line-height: 1.5 !important;
+}

@@ -48,6 +48,7 @@ export interface UI {
   /** Show archived sessions in the left tree. Off by default. */
   showArchived: boolean;
   palette: boolean;
+  drawer: boolean;
   term: boolean;
   /** Set while resolving the first state snapshot fails. */
   fatal?: string;
@@ -66,7 +67,7 @@ function loadRoute(): Route {
   } catch { return { screen: 'overview' }; }
 }
 
-let ui: UI = { app: null, route: loadRoute(), transcripts: {}, externals: {}, toasts: [], adding: false, newSession: null, deleting: null, mergingPr: null, renaming: null, checkpointsOf: null, restoring: null, forking: null, continuing: null, remembering: null, removingRepo: null, showArchived: (() => { try { return localStorage.getItem('helm-show-archived') === '1'; } catch { return false; } })(), palette: false, term: false };
+let ui: UI = { app: null, route: loadRoute(), transcripts: {}, externals: {}, toasts: [], adding: false, newSession: null, deleting: null, mergingPr: null, renaming: null, checkpointsOf: null, restoring: null, forking: null, continuing: null, remembering: null, removingRepo: null, showArchived: (() => { try { return localStorage.getItem('helm-show-archived') === '1'; } catch { return false; } })(), palette: false, drawer: false, term: false };
 const listeners = new Set<() => void>();
 
 export function setUI(patch: Partial<UI> | ((u: UI) => Partial<UI>)) {
@@ -80,7 +81,7 @@ export function useUI<T>(sel: (u: UI) => T): T {
 
 export function go(route: Route) {
   try { localStorage.setItem('helm-route', JSON.stringify(route)); } catch { /* storage unavailable */ }
-  setUI({ route });
+  setUI({ route, drawer: false });
 }
 
 let toastId = 1;
@@ -150,3 +151,13 @@ export function useMoney() {
 }
 
 export const useSubscription = () => useUI((u) => u.app?.settings.billing === 'subscription');
+
+/** The emergency stop: interrupts every working agent, and says how many it stopped. */
+export const haltAll = () => api.haltAll()
+  .then((n) => toast({ tone: 'neutral', title: n ? `Interrupted ${n} ${n === 1 ? 'agent' : 'agents'}` : 'No agents were working' }))
+  .catch((e) => toast({ tone: 'error', title: 'Could not interrupt the agents', description: String(e?.message || e) }));
+
+/** Continues every paused agent, and says how many. */
+export const resumeAll = () => api.resumeAll()
+  .then((n) => toast({ tone: 'neutral', title: n ? `Resumed ${n} ${n === 1 ? 'agent' : 'agents'}` : 'No paused agents to resume' }))
+  .catch((e) => toast({ tone: 'error', title: 'Could not resume the agents', description: String(e?.message || e) }));
