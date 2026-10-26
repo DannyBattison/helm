@@ -524,3 +524,7 @@ Why: user request; many controls were too small to hit reliably on a phone.
 ## D-126 · 2026-10-26 · Once a pull request is open, the Changes panel's button becomes "Merge pull request"; the agent header no longer has one
 The Changes tab's main button was always "Create pull request", with a small "merge it here" link beneath. When the session has an open pull request (and "Pull request" is the chosen delivery) the button now reads "Merge pull request #N" and opens the merge dialog, and the title, description and draft fields, which only apply to creating one, are hidden. The commit-message field stays for "Commit only". The header's top-right Create / Merge / View pull request / Review changes buttons duplicated the tab and are removed; the "Merged into …" badge stays. Not typechecked or run: the worktree had no `node_modules`.
 Why: user request.
+
+## D-127 · 2026-10-26 · Creating a pull request no longer opens it in the browser
+The toast still shows the URL, and "View on GitHub" in the Changes panel opens it. The panel now turns into the merge button straight away, so the page is no longer needed to carry on.
+Why: user request.
