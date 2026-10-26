@@ -147,7 +147,7 @@ export function App() {
       {palette ? <Palette onClose={() => setUI({ palette: false })} toggleTheme={toggleTheme} /> : null}
       </div>
       {needsClaude ? <ClaudeLoginGate /> : null}
-      <div style={{ position: 'absolute', right: narrow ? 8 : 16, left: narrow ? 8 : undefined, bottom: narrow ? 32 : 40, zIndex: 60, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
+      <div style={{ position: 'absolute', right: narrow ? 8 : 16, left: narrow ? 8 : undefined, top: 'calc(var(--titlebar-h) + 8px)', zIndex: 60, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
         {toasts.map((t) => (
           <Toast key={t.id} tone={t.tone} title={t.title} description={t.description} onClose={() => dismissToast(t.id)}
             actions={t.sessionId ? <>
