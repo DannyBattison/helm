@@ -1,7 +1,7 @@
 import React from 'react';
 import type { ModelAlias, PermMode, Settings as SettingsT } from '@shared/types';
 import { api, platform } from '../api';
-import { livePlan, untilReset } from '../lib';
+import { backendFor, livePlan, modelOptions, untilReset } from '../lib';
 import { CURRENCIES, rateFor } from '@shared/money';
 import { BUNDLED_FONTS, fontStack, SYSTEM_DEFAULT, systemFonts, systemUiFonts, uiStack, UI_BUNDLED_FONTS, dataStack } from '../fonts';
 import { ACCENT_SWATCHES, SCHEMES, STATUS_KEYS, STATUS_LABEL, isHex, schemeVars } from '@shared/schemes';
@@ -14,7 +14,6 @@ const errText = (e: any) => String(e?.message || e).replace(/^Error invoking rem
 const set = (patch: Partial<SettingsT>) => void api.updateSettings(patch);
 
 export const PERM_OPTIONS = [{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits, ask for commands' }, { value: 'plan', label: 'Plan only' }, { value: 'all', label: 'Allow everything' }];
-export const MODEL_OPTIONS = [{ value: 'sonnet', label: 'Sonnet' }, { value: 'opus', label: 'Opus' }, { value: 'haiku', label: 'Haiku' }];
 
 /** Which shell the terminal starts: whatever is installed here, or any command. Changes apply to terminals opened after it. */
 function TerminalShellRow({ st, set }: { st: any; set(p: any): void }) {
@@ -306,16 +305,17 @@ export function Settings({ section }: { section?: string }) {
             <H sub="Defaults for new sessions. Each session can override them.">Claude Code</H>
             <SettingRow title="CLI" desc={st.claudePath ? 'Custom path' : 'Uses the Claude Code bundled with helm unless a path is set.'}>
               <Field value={st.claudePath} onCommit={(v: string) => set({ claudePath: v.trim() })} placeholder="Path to claude (optional)" style={{ width: 260 }} />
-              {app.claudeVersion ? <Badge tone="ready" dot>{app.claudeVersion}</Badge> : <Badge>bundled</Badge>}
+              {(() => { const v = app.backends.find((b) => b.id === 'claude')?.version; return v ? <Badge tone="ready" dot>{v}</Badge> : <Badge>bundled</Badge>; })()}
             </SettingRow>
             {app.agentLogin ? (
               <SettingRow title="Claude account" desc={app.agentLogin.loggedIn
                 ? (/key|token/.test(app.agentLogin.method) ? `Using the ${app.agentLogin.method} set in this server's environment.` : `Signed in with your Claude subscription${app.agentLogin.email ? ` as ${app.agentLogin.email}` : ''}${app.agentLogin.plan ? ` (${app.agentLogin.plan})` : ''}.`)
                 : 'Not signed in. Agents cannot run until you sign in.'}>
-                {app.agentLogin.loggedIn && !/key|token/.test(app.agentLogin.method) ? <Button size="sm" variant="ghost" onClick={() => void api.agentLogout()}>Sign out</Button> : null}
+                {app.agentLogin.loggedIn && !/key|token/.test(app.agentLogin.method) ? <Button size="sm" variant="ghost" onClick={() => void api.agentLogout(app.agentLogin!.backend)}>Sign out</Button> : null}
               </SettingRow>
             ) : null}
-            <SettingRow title="Default model"><Select value={st.defaultModel} onChange={(e: any) => set({ defaultModel: e.target.value as ModelAlias })} options={MODEL_OPTIONS} /></SettingRow>
+            {app.backends.length > 1 ? <SettingRow title="Default agent" desc="Which agent new sessions use. Each session can override it."><Select value={st.defaultBackend} onChange={(e: any) => set({ defaultBackend: e.target.value, defaultModel: backendFor(app, e.target.value)?.models[0]?.id ?? st.defaultModel })} options={app.backends.map((b) => ({ value: b.id, label: b.label }))} /></SettingRow> : null}
+            <SettingRow title="Default model"><Select value={st.defaultModel} onChange={(e: any) => set({ defaultModel: e.target.value as ModelAlias })} options={modelOptions(app, st.defaultBackend)} /></SettingRow>
             <SettingRow title="Permission mode" desc={st.permMode === 'all' ? 'Agents run every command and edit every file without asking. The worktree keeps them off your checkout, but they can still reach the network and files outside it. Pre-approved patterns and approvals no longer matter.' : 'What an agent can do without asking you first.'}><Select value={st.permMode} onChange={(e: any) => set({ permMode: e.target.value as PermMode })} options={PERM_OPTIONS} /></SettingRow>
             <SettingRow title="Always allowed commands" desc="Comma separated patterns. * matches anything. Added to when you choose Always allow.">
               <Field value={st.alwaysAllow} format={(v: string[]) => v.join(', ')} parse={(s: string) => s.split(',').map((x) => x.trim()).filter(Boolean)} onCommit={(v: string[]) => set({ alwaysAllow: v })} style={{ width: 260 }} />

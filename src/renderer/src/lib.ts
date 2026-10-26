@@ -1,4 +1,11 @@
-import { freeRepo, FREE_ID, type AppState, type Repo, type Session, type Status } from '../../shared/types';
+import { freeRepo, FREE_ID, type AgentCapabilities, type AppState, type BackendInfo, type Repo, type Session, type Status } from '../../shared/types';
+
+/** The named agent backend, or the first when the name is empty or unknown (sessions saved before there were others have none). */
+export const backendFor = (app: AppState, id?: string): BackendInfo | undefined => app.backends?.find((b) => b.id === id) ?? app.backends?.[0];
+/** Choices for a model picker, from whichever backend the session or setting uses. */
+export const modelOptions = (app: AppState, id?: string) => (backendFor(app, id)?.models ?? []).map((m) => ({ value: m.id, label: m.label }));
+/** Whether the session's backend supports something. True until the backends have loaded, so controls don't flicker away. */
+export const can = (app: AppState, s: { backend?: string }, what: keyof AgentCapabilities) => backendFor(app, s.backend)?.capabilities[what] ?? true;
 
 export const STATUS_LABEL: Record<Status, string> = { working: 'Working', attention: 'Needs you', ready: 'Ready for review', idle: 'Done', error: 'Failed' };
 
@@ -58,11 +65,11 @@ export const isFreeGroup = (r: { id: string }) => r.id === FREE_ID;
 
 export const repoOf = (app: AppState, s: Session): Repo | undefined => app.repos.find((r) => r.id === s.repoId);
 
-export const MODEL_LABEL = { sonnet: 'Sonnet', opus: 'Opus', haiku: 'Haiku' } as const;
+export const MODEL_LABEL: Record<string, string> = { sonnet: 'Sonnet', opus: 'Opus', haiku: 'Haiku' };
 
 export function prettyModel(s: Session): string {
   const m = s.modelName?.match(/(opus|sonnet|haiku)[-_ ]?(\d+)?[-_.]?(\d+)?/i);
-  if (!m) return MODEL_LABEL[s.model];
+  if (!m) return MODEL_LABEL[s.model] ?? s.modelName ?? s.model;
   const name = m[1][0].toUpperCase() + m[1].slice(1).toLowerCase();
   return m[2] ? `${name} ${m[2]}${m[3] && m[3].length < 3 ? '.' + m[3] : ''}` : name;
 }

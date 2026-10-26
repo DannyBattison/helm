@@ -17,7 +17,7 @@ export interface AutomatedAgent {
   scope: string;
   trigger: AutomationTrigger;
   enabled: boolean;
-  model: 'sonnet' | 'opus' | 'haiku';
+  model: string;
   permMode: 'ask' | 'edits' | 'plan' | 'all';
   /** Spend limit for each session it starts. */
   budget: number;

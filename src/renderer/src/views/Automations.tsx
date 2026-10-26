@@ -4,10 +4,10 @@ import type { AutomationTrigger } from '@shared/automations';
 import { DAYS, describeTrigger, TRIGGER_LABELS, validateAgent } from '@shared/automations';
 import { api } from '../api';
 import { toast, useApp } from '../store';
+import { modelOptions } from '../lib';
 import { Badge, Button, Dialog, Input, SegmentedControl, Select, Switch } from '../ui';
 
 const errText = (e: any) => String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '');
-const MODELS = [{ value: 'sonnet', label: 'Sonnet' }, { value: 'opus', label: 'Opus' }, { value: 'haiku', label: 'Haiku' }];
 const PERMS = [{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits, ask for commands' }, { value: 'plan', label: 'Plan only' }, { value: 'all', label: 'Allow everything' }];
 const EVERY = [{ value: 'hour', label: 'Every hour' }, { value: 'day', label: 'Every day' }, { value: 'weekday', label: 'Every weekday' }, { value: 'week', label: 'Every week' }];
 
@@ -22,6 +22,7 @@ const label = (text: string, child: React.ReactNode) => (
 );
 
 function Editor({ draft, repos, onClose }: { draft: Draft; repos: { id: string }[]; onClose(): void }) {
+  const app = useApp();
   const [d, setD] = React.useState(draft);
   const [busy, setBusy] = React.useState(false);
   const t = d.trigger;
@@ -55,7 +56,7 @@ function Editor({ draft, repos, onClose }: { draft: Draft; repos: { id: string }
           style={{ resize: 'vertical', boxSizing: 'border-box', width: '100%', padding: 10, borderRadius: 'var(--radius-md)', border: 0, outline: 0, boxShadow: 'inset 0 0 0 1px var(--border)', background: 'var(--bg-editor)', color: 'var(--text-1)', font: 'var(--type-data)' }} />)}
         <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)', marginTop: -6 }}>You can use {'{{repo}}, {{number}}, {{title}}, {{url}} and {{branch}}'}. The trigger is added to the start of the task.</span>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          {label('Model', <Select value={d.model} onChange={(e: any) => set({ model: e.target.value })} options={MODELS} />)}
+          {label('Model', <Select value={d.model} onChange={(e: any) => set({ model: e.target.value })} options={modelOptions(app, app.settings.defaultBackend)} />)}
           {label('Permissions', <Select value={d.permMode} onChange={(e: any) => set({ permMode: e.target.value })} options={PERMS} />)}
           {label('Budget per session', <Input mono value={String(d.budget)} onChange={(e: any) => set({ budget: Number(e.target.value) || 0 })} style={{ width: 80 }} />)}
         </div>
