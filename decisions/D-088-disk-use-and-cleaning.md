@@ -1,0 +1,3 @@
+## D-88 · 2026-10-23 · Disk use and cleaning
+Reports → Disk lists every session worktree with its size (`du -sk`, or a bounded walk on Windows) and how much of that is build output that can go, remembered for five minutes. Clean deletes node_modules, dist, build, out, .next, target, .venv and a few similar folders at the top of a worktree, and only where git ignores the folder and nothing in it is tracked, so ignored files that are not build output, such as the copied .env, are never touched. It is refused while the agent is working. Remove takes an archived or merged session's worktree away (the branch and conversation stay), and is refused with uncommitted files or unpushed commits.
+Why: user request. Each worktree carries its own node_modules.

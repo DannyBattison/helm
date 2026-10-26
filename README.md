@@ -53,7 +53,7 @@ npm test           # tests
 npm run typecheck
 ```
 
-Needs Node 22+, git, and a Claude login (or `ANTHROPIC_API_KEY`). Layout: `src/core` (the app's logic, no Electron), `src/renderer` (React UI, shared), `desktop/` (Electron), `hosted/` (browser version). Decisions are logged in [DECISIONS.md](DECISIONS.md).
+Needs Node 22+, git, and a Claude login (or `ANTHROPIC_API_KEY`). Layout: `src/core` (the app's logic, no Electron), `src/renderer` (React UI, shared), `desktop/` (Electron), `hosted/` (browser version). Decisions are logged in [decisions/](decisions/).
 
 ## Support
 

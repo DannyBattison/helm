@@ -1,0 +1,3 @@
+## D-84 · 2026-10-23 · GitHub issues and review comments become sessions
+Repository → Issues lists open issues; Start session opens New session with the task filled in from the issue, its labels and the last 12 comments (HTML comments removed, long text cut), and remembers the issue on the session, so the suggested pull request text says "Closes #n". Pull requests → Fix comments starts a session from the pull request's branch with its review comments as the task. A session with a pull request has "Send new review comments to the agent", which sends only what arrived since the last time (not by you) and records when. All of it uses the REST API with the existing token.
+Why: user request.
