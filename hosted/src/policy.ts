@@ -15,7 +15,7 @@ const PRIVATE_SETTINGS = ['claudePath', 'worktreeRoot', 'cloneRoot', 'copyFiles'
 export function signedOutState(s: AppState): AppState {
   const settings: Record<string, unknown> = { ...(s.settings as any) };
   for (const k of PRIVATE_SETTINGS) if (k in settings) settings[k] = Array.isArray(settings[k]) ? [] : '';
-  return { ...s, claudeLogin: undefined, user: null, repos: [], sessions: [], activity: [], weekSpend: {}, lifetime: {}, tokensToday: 0, plan: { at: 0 }, home: '', settings: settings as any } as AppState;
+  return { ...s, claudeLogin: undefined, user: null, repos: [], sessions: [], activity: [], automations: [], weekSpend: {}, lifetime: {}, tokensToday: 0, plan: { at: 0 }, home: '', settings: settings as any } as AppState;
 }
 
 /** Allows at most `max` sign-in starts per address per minute: each one is a request to GitHub, and starting one cancels another person's. */

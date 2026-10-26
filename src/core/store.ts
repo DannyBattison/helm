@@ -1,7 +1,8 @@
 import { existsSync } from 'node:fs';
 import { appendFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { ActivityEvent, AuditEntry, DailyUsage, Lifetime, ModelAlias, PlanUsage, Repo, Session, Settings, TranscriptEvent, User } from '../shared/types';
+import type { AutomationSeen } from '../shared/automations';
+import type { ActivityEvent, AutomatedAgent, AuditEntry, DailyUsage, Lifetime, ModelAlias, PlanUsage, Repo, Session, Settings, TranscriptEvent, User } from '../shared/types';
 import { dayStart, home, uid, weekStart } from './util';
 
 /** helm's registered GitHub OAuth app. Client IDs are public; the device flow uses no secret. */
@@ -85,10 +86,13 @@ interface Persisted {
   audit: AuditEntry[];
   /** Usage per day, repository and model, kept for good. */
   daily: DailyUsage[];
+  automations: AutomatedAgent[];
+  /** What event-driven automated agents have already looked at, per repository id. */
+  automationSeen: Record<string, AutomationSeen>;
 }
 
 export class Store {
-  data: Persisted = { user: null, repos: [], sessions: [], activity: [], settings: defaultSettings(), usage: [], plan: { at: 0 }, totals: {}, extArchive: {}, fx: { rates: {}, at: 0 }, audit: [], daily: [] };
+  data: Persisted = { user: null, repos: [], sessions: [], activity: [], settings: defaultSettings(), usage: [], plan: { at: 0 }, totals: {}, extArchive: {}, fx: { rates: {}, at: 0 }, audit: [], daily: [], automations: [], automationSeen: {} };
   private transcripts = new Map<string, TranscriptEvent[]>();
   private dir = '';
   private timer: NodeJS.Timeout | null = null;
@@ -145,6 +149,8 @@ export class Store {
       }
       this.data.audit ||= [];
       this.data.daily ||= [];
+      this.data.automations ||= [];
+      this.data.automationSeen ||= {};
       // The copy list used to be one comma-separated line. It is now gitignore patterns, one per line.
       if (!/[\r\n]/.test(this.data.settings.copyFiles) && this.data.settings.copyFiles.includes(',')) this.data.settings.copyFiles = this.data.settings.copyFiles.split(',').map((x) => x.trim()).filter(Boolean).join('\n');
       // Lifetime totals started later than sessions did: seed them from the sessions that exist, once.
