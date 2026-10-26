@@ -493,16 +493,20 @@ export class SessionManager {
   private baseAppend(s: Session, artifacts: string): string {
     const st = this.store.data.settings;
     const art = `To hand the user a file (a generated image, chart, report, export), write it to ${artifacts} (not into the worktree), then link it in your reply as [label](artifact:file.ext), using a plain file name without spaces. For an image use ![description](artifact:file.png) and helm shows it in the chat; any other file becomes a download button. These files are temporary and are deleted with the session.`;
+    // Claude has a dedicated question tool and helm limits its subagents; another agent is simply told to ask, and manages its own helpers.
+    const be = this.backendOf(s);
+    const ask = be.id === 'claude' ? 'ask with the AskUserQuestion tool' : 'ask the user';
+    const subs = be.capabilities.subagents;
     if (s.free) {
       return [
         `You are a free agent running inside helm: you are not tied to any repository. Your working directory is ${s.worktree}.`,
         s.free.managed
           ? 'It is a folder made for this task alone. git is set up in it so the user can see what you changed; you may commit, but you do not have to. There is no remote, so do not push or open pull requests.'
           : 'It is one of the user\'s own folders, and you are working in it directly with nothing to undo your changes, so be careful with anything destructive. Do not push or open pull requests unless asked.',
-        'Stay in this directory unless the user asks you to work elsewhere. If you need a decision from the user, ask with the AskUserQuestion tool instead of guessing.',
+        `Stay in this directory unless the user asks you to work elsewhere. If you need a decision from the user, ${ask} instead of guessing.`,
         art,
-        `Subagents: at most ${this.sessionLimit(s)} may run at once in this session. Start independent work in parallel only within that limit. ${HAND_BACK}`
-      ].join('\n');
+        subs ? `Subagents: at most ${this.sessionLimit(s)} may run at once in this session. Start independent work in parallel only within that limit. ${HAND_BACK}` : ''
+      ].filter(Boolean).join('\n');
     }
     const others = (s.extras || []).map((x) => `- ${x.repoId}: ${x.worktree} (branch ${x.branch}, based on ${x.base})`);
     return [
@@ -510,14 +514,14 @@ export class SessionManager {
       others.length ? `This session spans more than one repository. Besides this one (${s.repoId}), you have a worktree in each of these, which you may read and edit and commit in (use git -C <path>):\n${others.join('\n')}\nCommit in each repository whose files you changed; each one gets its own pull request.` : '',
       'Commit as you go: make a commit each time a coherent piece of work is done and working, rather than one big commit at the end. Keep commits small with clear messages.',
       st.commitAuthor === 'sole'
-        ? `End every commit message with a blank line and this trailer: "Helm-Session: ${s.id}". Do not add any Co-authored-by trailer. The commits are authored by Claude alone.`
+        ? `End every commit message with a blank line and this trailer: "Helm-Session: ${s.id}". Do not add any Co-authored-by trailer. The commits are authored by ${this.backendOf(s).shortName} alone.`
         : `End every commit message with a blank line and this trailer: "Co-authored-by: helm session ${s.id} <noreply@helm.app>".`,
       st.autoPush && !s.free
         ? 'Do not push and do not open pull requests. helm pushes your branch to GitHub after each commit, and the user opens the pull request from helm.'
         : 'Do not push and do not open pull requests; the user does that from helm after reviewing your changes.',
-      'If you need a decision from the user, ask with the AskUserQuestion tool instead of guessing.',
+      `If you need a decision from the user, ${ask} instead of guessing.`,
       art,
-      `Subagents: at most ${this.sessionLimit(s)} may run at once in this session and ${this.repoLimit(s)} across the repository. Start independent work in parallel only within those limits. ${HAND_BACK}`,
+      subs ? `Subagents: at most ${this.sessionLimit(s)} may run at once in this session and ${this.repoLimit(s)} across the repository. Start independent work in parallel only within those limits. ${HAND_BACK}` : '',
       st.runTests ? 'Before you finish, run the project\'s tests (from package.json, go.mod, Makefile or equivalent) when they exist, and state the result.' : ''
     ].filter(Boolean).join('\n');
   }
@@ -534,7 +538,7 @@ export class SessionManager {
       systemAppend: this.systemAppend(s, artifacts),
       resume: s.agentSessionId,
       extraDirs: [...(s.uploads ? [s.uploads.dir] : []), ...(s.extras || []).map((x) => x.worktree)],
-      env: settings.commitAuthor === 'sole' ? { GIT_AUTHOR_NAME: 'Claude', GIT_AUTHOR_EMAIL: 'noreply@anthropic.com' } : {},
+      env: settings.commitAuthor === 'sole' ? { GIT_AUTHOR_NAME: this.backendOf(s).identity.name, GIT_AUTHOR_EMAIL: this.backendOf(s).identity.email } : {},
       remoteControl: settings.remoteControl,
       canUseTool: (tool, input, o) => this.canUse(s, rt, tool, input, o),
       admitSubagent: (id) => this.checkSubagentLimit(s, rt, id)
@@ -1381,7 +1385,7 @@ export class SessionManager {
     if (!s) return;
     title = title.trim().slice(0, 120);
     s.customTitle = title || undefined;
-    this.activity(s, 'session', title ? `renamed to “${title}”` : 'went back to Claude\'s name', { who: this.me(), human: true });
+    this.activity(s, 'session', title ? `renamed to “${title}”` : 'went back to the agent\'s name', { who: this.me(), human: true });
     this.touch();
     // Keep Claude Code's own name in step, so the same session reads the same in VS Code.
     if (title && s.agentSessionId) await this.conversationsOf(s).rename(s.agentSessionId, s.worktree, title).catch(() => undefined);

@@ -16,6 +16,8 @@ export const defaultChoice = (app: AppState) => {
   const all = modelChoices(app);
   return all.some((c) => c.value === want) ? want : all[0]?.value ?? want;
 };
+/** What the session's agent is called: Claude, Codex. */
+export const agentName = (app: AppState, s: { backend?: string }) => backendFor(app, s.backend)?.shortName ?? 'Claude';
 /** Whether the session's backend supports something. True until the backends have loaded, so controls don't flicker away. */
 export const can = (app: AppState, s: { backend?: string }, what: keyof AgentCapabilities) => backendFor(app, s.backend)?.capabilities[what] ?? true;
 

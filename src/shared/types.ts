@@ -42,6 +42,8 @@ export interface AgentCapabilities {
 export interface BackendInfo {
   id: string;
   label: string;
+  /** What the agent is called in a conversation: Claude, Codex. */
+  shortName: string;
   models: ModelInfo[];
   capabilities: AgentCapabilities;
   /** The installed command-line version, or null when it uses the copy bundled with helm or none was found. */

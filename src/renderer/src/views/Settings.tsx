@@ -343,7 +343,7 @@ export function Settings({ section }: { section?: string }) {
   const subCols = useColumns('subagent-repos', [{ w: 1, min: 160, flex: true }, { w: 170, min: 110, fixed: true }]);
   const pctOptions = [{ value: '0', label: 'Off' }, { value: '50', label: '50%' }, { value: '70', label: '70%' }, { value: '80', label: '80%' }, { value: '90', label: '90%' }];
   const subLimits = (extra: number[]) => [...new Set([0, 1, 2, 3, 4, 6, 8, 12, ...extra])].sort((a, b) => a - b).map((n) => ({ value: String(n), label: n === 0 ? 'Off' : String(n) }));
-  const nav = [['account', 'Account', 'github-logo'], ['agents', 'Claude Code', 'robot'], ['automations', 'Automated agents', 'clock-clockwise'], ['worktrees', 'Worktrees', 'tree-structure'], ['budgets', 'Usage', 'coins'], ...(hosted ? [] : [['companion', 'Companion', 'broadcast']]), ['notifications', 'Notifications', 'bell'], ['appearance', 'Appearance', 'paint-brush'], ['shortcuts', 'Keyboard shortcuts', 'keyboard'], ['about', 'About and support', 'info']];
+  const nav = [['account', 'Account', 'github-logo'], ['agents', 'Agents', 'robot'], ['automations', 'Automated agents', 'clock-clockwise'], ['worktrees', 'Worktrees', 'tree-structure'], ['budgets', 'Usage', 'coins'], ...(hosted ? [] : [['companion', 'Companion', 'broadcast']]), ['notifications', 'Notifications', 'bell'], ['appearance', 'Appearance', 'paint-brush'], ['shortcuts', 'Keyboard shortcuts', 'keyboard'], ['about', 'About and support', 'info']];
   const notif = (key: 'notifyAttention' | 'notifyReady' | 'notifyFailed' | 'notifyChecks', title: string) => (
     <SettingRow title={title}>
       <Switch checked={st[key].desktop} onChange={(v: boolean) => set({ [key]: { ...st[key], desktop: v } })} label="Desktop" />
@@ -403,11 +403,11 @@ export function Settings({ section }: { section?: string }) {
               </div>
             ) : null}
             {app.repos.length ? <RepoArtifactsSection repos={app.repos} /> : null}
-            <SettingRow title="Remote Control for new and resumed sessions" desc="Starts Remote Control (/rc) in every agent, so you can follow and drive it from claude.ai/code or the Claude app. Takes effect when a session next starts. Needs a Claude subscription sign-in, and can be blocked by your organisation."><Switch checked={st.remoteControl} onChange={(v: boolean) => set({ remoteControl: v })} /></SettingRow>
+            <SettingRow title="Remote Control for new and resumed sessions" desc="Starts Remote Control (/rc) in every Claude Code agent, so you can follow and drive it from claude.ai/code or the Claude app. Takes effect when a session next starts. Needs a Claude subscription sign-in, and can be blocked by your organisation. Codex has no equivalent."><Switch checked={st.remoteControl} onChange={(v: boolean) => set({ remoteControl: v })} /></SettingRow>
             <SettingRow title="Auto push" desc="Pushes the branch to GitHub right after every commit, whether the agent or you made it from the Changes panel, so nothing exists only on this machine. Free agents have no remote and are not pushed. A failed push shows in the activity log and is tried again at the next commit."><Switch checked={st.autoPush} onChange={(v: boolean) => set({ autoPush: v })} /></SettingRow>
             <SettingRow title="Resume agents on launch" desc="When helm opens, agents that were working when it closed pick up where they left off, one after another. Agents waiting on your answer still wait for you, and archived or merged sessions stay as they are."><Switch checked={st.resumeOnLaunch} onChange={(v: boolean) => set({ resumeOnLaunch: v })} /></SettingRow>
-            <SettingRow title="Commit author" desc="Co-author: commits are authored by you, with a Co-authored-by trailer for the session. Claude only: commits are authored by Claude, with no co-author. Takes effect when a session next starts.">
-              <SegmentedControl value={st.commitAuthor} onChange={(v: string) => set({ commitAuthor: v as any })} options={[{ value: 'coauthor', label: 'Co-author' }, { value: 'sole', label: 'Claude only' }]} />
+            <SettingRow title="Commit author" desc="Co-author: commits are authored by you, with a Co-authored-by trailer for the session. Agent only: commits are authored by the agent (Claude or Codex), with no co-author. Takes effect when a session next starts.">
+              <SegmentedControl value={st.commitAuthor} onChange={(v: string) => set({ commitAuthor: v as any })} options={[{ value: 'coauthor', label: 'Co-author' }, { value: 'sole', label: 'Agent only' }]} />
             </SettingRow>
             <SettingRow title="Send messages with" desc={st.sendKey === 'enter' ? 'Enter sends. Shift+Enter starts a new line.' : 'Ctrl+Enter (Cmd+Enter on a Mac) sends. Enter starts a new line.'}>
               <SegmentedControl value={st.sendKey} onChange={(v: string) => set({ sendKey: v as any })} options={[{ value: 'enter', label: 'Enter' }, { value: 'mod-enter', label: platform() === 'darwin' ? 'Cmd+Enter' : 'Ctrl+Enter' }]} />
@@ -446,7 +446,7 @@ export function Settings({ section }: { section?: string }) {
             </SettingRow>
           </> : null}
           {sec === 'budgets' ? <>
-            <H sub="How helm measures and limits usage. Pick the option that matches how you pay for Claude.">Usage</H>
+            <H sub="How helm measures and limits usage. Pick the option that matches how you pay for Claude. Codex reports how it is paid for itself, from its account.">Usage</H>
             <SettingRow title="Billing" desc={st.billing === 'subscription' ? 'A Claude subscription (Pro or Max). Usage is limited by plan windows, not dollars, so helm shows plan usage and has no dollar budgets.' : 'Pay per token with an API key. helm tracks cost and enforces the dollar budgets below.'}>
               <SegmentedControl value={st.billing} onChange={(v: string) => set({ billing: v as any, billingDetected: true })} options={[{ value: 'subscription', label: 'Subscription' }, { value: 'api', label: 'API tokens' }]} />
             </SettingRow>
@@ -461,7 +461,7 @@ export function Settings({ section }: { section?: string }) {
               }} options={CURRENCIES as any} />
             </SettingRow>
             {st.billing === 'subscription' ? <>
-              <SettingRow title="Current plan usage" desc="Reported by Claude Code after each message. A window resets by itself.">
+              <SettingRow title="Current plan usage" desc="Reported by Claude Code after each message. Codex's windows are shown in the sidebar. A window resets by itself.">
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: 260 }}>
                   <Meter label="5-hour window" value={plan.fiveHour?.util ?? 0} max={1} warnAt={st.warnAt / 100} detail={plan.fiveHour ? `${Math.round(plan.fiveHour.util * 100)}% · resets ${untilReset(plan.fiveHour.resetsAt)}` : 'no data yet'} />
                   <Meter label="Weekly" value={plan.weekly?.util ?? 0} max={1} warnAt={st.warnAt / 100} detail={plan.weekly ? `${Math.round(plan.weekly.util * 100)}% · resets ${untilReset(plan.weekly.resetsAt)}` : 'no data yet'} />

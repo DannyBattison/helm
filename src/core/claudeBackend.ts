@@ -114,6 +114,8 @@ export interface ClaudePaths {
 export class ClaudeBackend implements AgentBackend {
   readonly id = 'claude';
   readonly label = 'Claude Code';
+  readonly shortName = 'Claude';
+  readonly identity = { name: 'Claude', email: 'noreply@anthropic.com' };
   readonly bundled = true;
   readonly models = MODELS;
   readonly capabilities: AgentCapabilities = { subagents: true, planMode: true, effort: true, fork: true, cost: true, planUsage: true };

@@ -3,7 +3,7 @@ import { BackendRegistry, type AgentBackend } from '../src/core/backend';
 import { claudeEvents } from '../src/core/claudeBackend';
 
 const fake = (id: string, models: string[]): AgentBackend => ({
-  id, label: id.toUpperCase(), models: models.map((m) => ({ id: m, label: m, price: [1, 2] as [number, number] })),
+  id, label: id.toUpperCase(), shortName: id, identity: { name: id, email: 'x@y' }, models: models.map((m) => ({ id: m, label: m, price: [1, 2] as [number, number] })),
   capabilities: { subagents: false, planMode: false, effort: false, fork: false, cost: false, planUsage: false },
   version: async () => '1.0', start: () => { throw new Error('unused'); }, review: async () => ({ text: '', cost: 0, failure: '' })
 });

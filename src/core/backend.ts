@@ -125,6 +125,10 @@ export interface PlanProbe { billing: 'subscription' | 'api'; fiveHour?: PlanWin
 export interface AgentBackend {
   readonly id: string;
   readonly label: string;
+  /** What the agent is called in a conversation and in a commit's author. */
+  readonly shortName: string;
+  /** Who commits are attributed to when the user chooses "agent only". */
+  readonly identity: { name: string; email: string };
   /** Ships with helm, so a missing command-line tool does not make it unavailable. */
   readonly bundled?: boolean;
   /** The models it offers. May change after `refresh`. */
@@ -156,7 +160,7 @@ export class BackendRegistry {
     return Promise.all(this.list.map(async (b) => {
       const login = logins[b.id];
       const version = await b.version().catch(() => null);
-      return { id: b.id, label: b.label, models: b.models, capabilities: b.capabilities, version, installed: !!b.bundled || version !== null, canSignIn: !!b.auth, login, ready: (!b.auth || !!login?.loggedIn) && (!!b.bundled || version !== null) };
+      return { id: b.id, label: b.label, shortName: b.shortName, models: b.models, capabilities: b.capabilities, version, installed: !!b.bundled || version !== null, canSignIn: !!b.auth, login, ready: (!b.auth || !!login?.loggedIn) && (!!b.bundled || version !== null) };
     }));
   }
 }

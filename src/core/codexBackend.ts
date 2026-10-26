@@ -213,6 +213,8 @@ export function windowsOf(snap: Json): { fiveHour?: PlanWindow; weekly?: PlanWin
 export class CodexBackend implements AgentBackend {
   readonly id = 'codex';
   readonly label = 'Codex';
+  readonly shortName = 'Codex';
+  readonly identity = { name: 'Codex', email: 'noreply@openai.com' };
   models: ModelInfo[] = [];
   readonly capabilities: AgentCapabilities = { subagents: false, planMode: true, effort: true, fork: true, cost: false, planUsage: true };
   private server: CodexServer;

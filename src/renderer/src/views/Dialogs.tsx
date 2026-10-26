@@ -2,7 +2,7 @@ import React from 'react';
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_FILES, MAX_UPLOAD_TOTAL, type BaseOption, type GhRepo, type MergeMethod, type ModelAlias, type PermMode, type PullRequest, type SessionDeleteInfo } from '@shared/types';
 import { api, platform } from '../api';
 import glyph from '../assets/helm-glyph-violet.svg';
-import { billingOf, defaultChoice, modelChoices, splitChoice, tilde } from '../lib';
+import { agentName, billingOf, defaultChoice, modelChoices, splitChoice, tilde } from '../lib';
 import { getUI, go, haltAll, resumeAll, setUI, toast, useApp, useMoney } from '../store';
 import { Badge, Button, Checkbox, Dialog, IconButton, Input, Kbd, SegmentedControl, Select, Tabs, useNarrow } from '../ui';
 import { PERM_OPTIONS } from './Settings';
@@ -51,7 +51,7 @@ export function SignIn() {
           </div>
           {step === 0 ? <>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <h1 style={{ margin: 0, font: '600 20px/1.5 var(--font-sans)' }}>Run Claude Code across all your repositories</h1>
+              <h1 style={{ margin: 0, font: '600 20px/1.5 var(--font-sans)' }}>Run coding agents across all your repositories</h1>
               <p style={{ margin: 0, font: '400 13px/1.55 var(--font-sans)', color: 'var(--text-2)' }}>helm uses your GitHub account to list repositories, open pull requests and show history. A GitHub account is required.</p>
             </div>
             {needsClient ? (
@@ -477,7 +477,8 @@ export function MergePr({ target, onClose }: { target: { repoId: string; number:
 }
 
 export function RenameSession({ id, onClose }: { id: string; onClose(): void }) {
-  const s = useApp().sessions.find((x) => x.id === id);
+  const app = useApp();
+  const s = app.sessions.find((x) => x.id === id);
   const [name, setName] = React.useState(s?.customTitle || s?.title || '');
   const [err, setErr] = React.useState('');
   if (!s) return null;
@@ -485,10 +486,10 @@ export function RenameSession({ id, onClose }: { id: string; onClose(): void }) 
     try { await api.renameSession(id, v); onClose(); } catch (e) { setErr(errText(e)); }
   };
   return (
-    <Dialog width={440} title="Rename session" description={s.free ? (s.title && !s.customTitle ? 'Claude named this one.' : 'Only the name in helm changes.') : s.title && !s.customTitle ? `Claude named this one. Branch ${s.branch} is not changed.` : `The branch ${s.branch} is not changed.`} onClose={onClose}
+    <Dialog width={440} title="Rename session" description={s.free ? (s.title && !s.customTitle ? `${agentName(app, s)} named this one.` : 'Only the name in helm changes.') : s.title && !s.customTitle ? `${agentName(app, s)} named this one. Branch ${s.branch} is not changed.` : `The branch ${s.branch} is not changed.`} onClose={onClose}
       footer={<>
         <span style={{ flex: 1, font: '400 12px/1.5 var(--font-sans)', color: 'var(--status-error-text)' }}>{err}</span>
-        {s.customTitle ? <Button variant="ghost" onClick={() => void save('')}>Use Claude's name</Button> : null}
+        {s.customTitle ? <Button variant="ghost" onClick={() => void save('')}>Use {agentName(app, s)}'s name</Button> : null}
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
         <Button variant="primary" disabled={!name.trim()} onClick={() => void save(name)}>Rename</Button>
       </>}>
