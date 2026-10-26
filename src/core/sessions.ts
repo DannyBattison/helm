@@ -460,6 +460,7 @@ export class SessionManager {
       await this.stop(s.id);
       s.archivedAt = Date.now();
       s.archivedAuto = undefined;
+      this.dismissAllArtifacts(s);
     }
     this.touch();
   }
@@ -657,6 +658,7 @@ export class SessionManager {
     for (const b of m.message?.content || []) {
       if (b.type === 'text' && b.text?.trim()) {
         await this.push(tkey, { k: 'agent', text: b.text.trim() });
+        this.collectArtifacts(s, b.text);
       } else if (b.type === 'tool_use') {
         await this.onToolUse(s, rt, b, tkey, sub);
       }
@@ -1477,6 +1479,7 @@ export class SessionManager {
     if (archived && (this.rt.has(id) || s.status === 'working' || s.status === 'attention')) throw new Error('Stop the session before archiving it.');
     s.archivedAt = archived ? Date.now() : undefined;
     s.archivedAuto = undefined;
+    if (archived) this.dismissAllArtifacts(s);
     if (!archived) s.lastAccess = Date.now();
     this.activity(s, 'session', archived ? 'archived the session' : 'restored the session from the archive', { who: this.me(), human: true });
     this.touch();
@@ -1504,6 +1507,7 @@ export class SessionManager {
       if ((s.lastAccess || s.startedAt) > cutoff) continue;
       s.archivedAt = Date.now();
       s.archivedAuto = true;
+      this.dismissAllArtifacts(s);
       this.activity(s, 'session', `archived automatically after ${days} idle days`, { who: 'helm', human: true });
       any = true;
     }
@@ -1548,7 +1552,7 @@ export class SessionManager {
     s.mergedInto = merged.into;
     s.mergedAt = merged.at ?? Date.now();
     this.activity(s, 'worktree', `cleaned up after the merge${opts.branch ? ': worktree and branch removed' : opts.worktree ? ': worktree removed' : ''}`, { who: 'helm', human: true });
-    if (record === 'archive') { s.archivedAt = Date.now(); s.archivedAuto = undefined; }
+    if (record === 'archive') { s.archivedAt = Date.now(); s.archivedAuto = undefined; this.dismissAllArtifacts(s); }
     this.touch();
   }
 
@@ -1636,6 +1640,31 @@ export class SessionManager {
         this.activity(s, 'error', 'could not resume: ' + trunc(String(e?.message || e), 100), { ok: false });
       }
     }
+  }
+
+  /** Notes the `artifact:` links in an agent's reply, so each file waits in the Inbox. A file already seen, dismissed or not, is not added again. */
+  private collectArtifacts(s: Session, text: string) {
+    let added = false;
+    for (const m of text.matchAll(/\[([^\]]*)\]\(artifact:([^)\s]+)\)/g)) {
+      let name = m[2];
+      try { name = decodeURIComponent(name); } catch { /* keep it as written */ }
+      if (s.artifacts?.some((a) => a.name === name)) continue;
+      (s.artifacts ||= []).push({ name, label: m[1] || name, at: Date.now() });
+      added = true;
+    }
+    if (added) this.touch();
+  }
+
+  private dismissAllArtifacts(s: Session) {
+    for (const a of s.artifacts || []) a.dismissed = true;
+  }
+
+  async dismissArtifact(id: string, name: string) {
+    const s = this.get(id);
+    const a = s?.artifacts?.find((x) => x.name === name);
+    if (!a || a.dismissed) return;
+    a.dismissed = true;
+    this.touch();
   }
 
   /** While true, queued sessions do not start. Set by `haltAll`; cleared when the user starts or talks to a session. */

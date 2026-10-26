@@ -137,6 +137,8 @@ export interface Session {
   editing?: { file: string; line: number };
   error?: string;
   prUrl?: string;
+  /** Files the agent handed over (`artifact:` links in its replies). They wait in the Inbox until dismissed or downloaded; archiving the session dismisses them. */
+  artifacts?: SessionArtifact[];
   removeAfterMerge: boolean;
   /** Delete the branch, here and on GitHub, once merged. Sessions saved before this existed follow `removeAfterMerge`. */
   deleteBranchAfterMerge?: boolean;
@@ -226,6 +228,9 @@ export interface DailyUsage {
 }
 
 /** A file an agent put in its session's artifact folder. `data` (base64) is null when the file is too large to send. */
+/** An artifact a session's agent linked to, as the Inbox tracks it. */
+export interface SessionArtifact { name: string; label: string; at: number; dismissed?: boolean }
+/** The file itself, as sent to the window. */
 export interface Artifact { name: string; mediaType: string; size: number; data: string | null }
 
 export type TranscriptEvent =
@@ -861,6 +866,8 @@ export interface HelmApi {
   getTranscript(sessionId: string): Promise<TranscriptEvent[]>;
   /** A file the agent made for the user (`artifact:` links in its replies), or null if it no longer exists. */
   getArtifact(sessionId: string, name: string): Promise<Artifact | null>;
+  /** Takes an artifact off the Inbox. The file stays, and its link in the conversation still works. */
+  dismissArtifact(sessionId: string, name: string): Promise<void>;
 
   /** A workspace id is a session id, or `repo:<owner/name>` for the repository's own checkout. */
   workspaceInfo(ws: string): Promise<WorkspaceInfo>;

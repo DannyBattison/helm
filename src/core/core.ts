@@ -384,6 +384,7 @@ export const api: HelmApi = {
   resolveAsk: (id, askId, answer) => sessions.resolveAsk(id, askId, answer),
   getTranscript: (id) => store.transcript(id),
   getArtifact: (id, name) => readArtifact(id, name),
+  dismissArtifact: (id, name) => sessions.dismissArtifact(id, name),
 
   async workspaceInfo(id) {
     const w = ws(id);

@@ -51,7 +51,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
   const [subsClosed, setSubsClosed] = React.useState<Record<string, boolean>>({});
   const [width, grip, resetWidth] = usePaneWidth('sidebar', 240, 180, 440);
   const t = totals(app);
-  const inboxCount = inbox(app.sessions).filter((i) => i.kind !== 'queued' && i.kind !== 'stuck').length;
+  const inboxCount = inbox(app.sessions).filter((i) => i.kind !== 'queued' && i.kind !== 'stuck' && i.kind !== 'artifact').length;
   const externals = useUI((u) => u.externals);
   const showArchived = useUI((u) => u.showArchived);
   const archivedCount = app.sessions.filter((x) => x.archivedAt).length + Object.values(externals).reduce((n, l) => n + l.filter((x) => x.archived).length, 0);

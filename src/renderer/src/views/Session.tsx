@@ -11,6 +11,7 @@ import { TranscriptList } from './TranscriptList';
 import { usePush } from './push';
 import { SessionConflicts } from './Review';
 import { CodeView } from './CodeView';
+import { downloadArtifact, EMBEDDABLE, fmtSize, isPreviewable } from './artifact';
 import { AttachmentChips, IMAGE_TYPES, readAttachments, type Draft } from './attach';
 
 const guard = (p: Promise<any>) => p.catch((e: any) => toast({ tone: 'error', title: 'That did not work', description: String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '') }));
@@ -119,8 +120,6 @@ function ToolRow({ tool, target, meta, session }: { tool: string; target: string
 }
 
 const safeDecode = (s: string) => { try { return decodeURIComponent(s); } catch { return s; } };
-const EMBEDDABLE = /^image\/(png|jpeg|gif|webp|svg\+xml|avif)$/;
-const fmtSize = (n: number) => (n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(1) + ' MB');
 
 /** A file the agent left for the user: shown in the chat if it is an image, otherwise a download. It lives in the temp folder, so it may be gone by the time an old or archived chat is opened. */
 function ArtifactView({ sessionId, name, label, embed }: { sessionId: string; name: string; label: string; embed: boolean }) {
@@ -134,16 +133,8 @@ function ArtifactView({ sessionId, name, label, embed }: { sessionId: string; na
   const box: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 'var(--radius-md)', boxShadow: 'inset 0 0 0 1px var(--border)', background: 'var(--bg-editor)', maxWidth: '100%' };
   if (art === undefined) return <span style={{ ...box, color: 'var(--text-3)' }}><i className="ph ph-circle-notch" style={{ animation: 'helm-spin .9s linear infinite' }} />{label || name}</span>;
   if (!art) return <span style={{ ...box, color: 'var(--text-3)' }}><i className="ph ph-clock-countdown" />{label || name}: this artifact has expired</span>;
-  const download = () => {
-    if (art.data == null) return;
-    const bytes = Uint8Array.from(atob(art.data), (c) => c.charCodeAt(0));
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([bytes], { type: art.mediaType }));
-    a.download = art.name;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
-  };
-  const previewable = art.data != null && EMBEDDABLE.test(art.mediaType);
+  const download = () => downloadArtifact(art);
+  const previewable = isPreviewable(art);
   const lightbox = zoom && previewable ? <Lightbox src={`data:${art.mediaType};base64,${art.data}`} name={art.name} size={fmtSize(art.size)} alt={label || art.name} onDownload={download} onClose={() => setZoom(false)} /> : null;
   const button = <Button size="sm" variant="secondary" icon="download-simple" disabled={art.data == null} title={art.data == null ? 'Too large to download here' : undefined} onClick={download}>Download</Button>;
   if (embed && art.data != null && EMBEDDABLE.test(art.mediaType)) return (
