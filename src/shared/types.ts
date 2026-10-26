@@ -289,6 +289,8 @@ export interface Settings {
   mergeMethod: MergeMethod;
   /** How finished work is delivered: as a pull request, or merged straight into the default branch. The Changes tab can override it per session. */
   deliver: 'pr' | 'merge';
+  /** Open a pull request in the browser once helm has created it. */
+  openPrAfterCreate: boolean;
   /** Start Remote Control (`/rc`) in every session, so it can be followed and driven from claude.ai/code or the Claude app. */
   remoteControl: boolean;
   /** Archive sessions that have not been opened for this many days. 0 never archives. */
