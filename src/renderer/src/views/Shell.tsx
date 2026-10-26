@@ -11,7 +11,7 @@ import glyph from '../assets/helm-glyph-violet.svg';
 import { ago, backendFor, elapsed, fmtTokens, isFreeGroup, lifetimeTokens, livePlan, reposWithSessions, runningSubagents, subagentTree, totals, untilReset } from '../lib';
 import { getUI, go, haltAll, isResumable, refreshExternals, resumeAll, setUI, toast, useApp, useMoney, useUI, useTranscript, type Route } from '../store';
 import { useShortcutKeys } from '../shortcuts';
-import { Avatar, Badge, Breadcrumbs, ContextMenu, Grip, IconButton, Kbd, Meter, TreeItem, useNarrow, usePaneWidth, type MenuItem } from '../ui';
+import { Avatar, Badge, Breadcrumbs, ContextMenu, Grip, Hint, IconButton, Kbd, Meter, TreeItem, useNarrow, usePaneWidth, type MenuItem } from '../ui';
 
 const mac = () => platform() === 'darwin';
 
@@ -142,7 +142,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
     <aside className={drawer ? "helm-drawer" : undefined} style={{ position: 'relative', width: drawer ? '100%' : width, flex: 'none', display: 'flex', flexDirection: 'column', background: 'var(--bg-sidebar)', borderRight: '1px solid var(--border)' }}>
       {drawer ? null : <Grip onMouseDown={grip} onDoubleClick={resetWidth} />}
       <div className="drag" style={{ height: 'var(--titlebar-h)', flex: 'none', display: 'flex', alignItems: 'center', gap: 10, padding: drawer ? '0 6px 0 14px' : '0 14px 0 ' + (windowControls() === 'left' ? 78 : 14) + 'px' }}>
-        <span style={{ marginLeft: drawer ? 0 : 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ marginLeft: drawer ? 0 : 'auto', marginRight: drawer || windowControls() === 'left' ? 0 : 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
           <img src={glyph} width="22" height="22" alt="" />
           <span style={{ font: '600 14px/1.5 var(--font-mono)', letterSpacing: '-0.02em', position: 'relative', top: '0.14em' }}>helm</span>
         </span>
@@ -155,7 +155,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
         <TreeItem icon="pulse" label="Activity" selected={route.screen === 'activity'} onClick={() => go({ screen: 'activity' })} />
         <TreeItem icon="chart-line-up" label="Reports" selected={route.screen === 'reports'} onClick={() => go({ screen: 'reports' })} />
         <TreeItem icon="archive" label="Archive" selected={route.screen === 'archive'} onClick={() => go({ screen: 'archive' })} trailing={archivedCount ? <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{archivedCount}</span> : null} />
-        <SectionLabel action={<><IconButton icon="play" label={paused ? `Continue all agents (${paused} interrupted)` : 'Continue all agents: none were interrupted'} size="sm" disabled={!paused} onClick={() => void resumeAll()} /><IconButton icon="pause" label={working ? `Interrupt all agents (${working} working)` : 'Interrupt all agents: none are working'} size="sm" disabled={!working} onClick={() => void haltAll()} style={working ? { color: 'var(--status-error-text)' } : undefined} /><IconButton icon="archive" label={showArchived ? 'Hide archived sessions' : 'Show archived sessions'} size="sm" active={showArchived} onClick={toggleArchived} /><IconButton icon="plus" label="Add repository" size="sm" onClick={() => setUI({ adding: true })} /></>}>Repositories</SectionLabel>
+        <SectionLabel action={<><IconButton icon="archive" label={showArchived ? 'Hide archived sessions' : 'Show archived sessions'} size="sm" active={showArchived} onClick={toggleArchived} /><Hint id="add-repo" side="right" title="Add a repository" text="Start here: pick a GitHub repository for agents to work in."><IconButton icon="plus" label="Add repository" size="sm" onClick={() => setUI({ adding: true })} /></Hint></>}>Repositories</SectionLabel>
         {app.repos.length === 0 ? <div style={{ padding: '4px 10px 6px', font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>No repositories yet. Use + to add one from GitHub.</div> : null}
         {reposWithSessions(app, showArchived).map(({ repo: r, sessions }) => {
           const open = !closed[r.id];
@@ -165,7 +165,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
               <TreeItem icon={isFreeGroup(r) ? 'robot' : 'book-bookmark'} expandable={sessions.length > 0} expanded={open}
                 label={isFreeGroup(r) ? <span title="Agents that are not tied to a repository">Free agents</span> : <span>{app.settings.showOwner ? <span style={{ color: 'var(--text-3)' }}>{r.owner}/</span> : null}{r.name}</span>}
                 selected={!isFreeGroup(r) && route.screen === 'repo' && route.id === r.id} meta={sessions.length || null}
-                trailing={isFreeGroup(r) ? <IconButton icon="plus" label="New free agent" size="sm" onClick={(e: any) => { e.stopPropagation(); setUI({ newSession: { repoId: '@free' } }); }} /> : lifetimeTokens(app.lifetime[r.id]) ? <span title={`${lifetimeTokens(app.lifetime[r.id]).toLocaleString()} tokens used in ${r.name} over its lifetime, including deleted sessions`} style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)', flex: 'none', marginLeft: 6 }}>{fmtTokens(lifetimeTokens(app.lifetime[r.id]))}</span> : null}
+                trailing={isFreeGroup(r) ? (app.settings.freeAgents ? <IconButton icon="plus" label="New free agent" size="sm" onClick={(e: any) => { e.stopPropagation(); setUI({ newSession: { repoId: '@free' } }); }} /> : null) : lifetimeTokens(app.lifetime[r.id]) ? <span title={`${lifetimeTokens(app.lifetime[r.id]).toLocaleString()} tokens used in ${r.name} over its lifetime, including deleted sessions`} style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)', flex: 'none', marginLeft: 6 }}>{fmtTokens(lifetimeTokens(app.lifetime[r.id]))}</span> : null}
                 onClick={() => { if (isFreeGroup(r) || (route.screen === 'repo' && route.id === r.id)) setClosed({ ...closed, [r.id]: open }); else go({ screen: 'repo', id: r.id }); }} />
               </div>
               {open ? sessions.map((s) => {
@@ -233,15 +233,19 @@ export function TitleBar({ crumbs, theme, setTheme }: { crumbs: any[]; theme: 'd
     <div className="drag" style={{ height: 'var(--titlebar-h)', flex: 'none', display: 'flex', alignItems: 'center', gap: narrow ? 6 : 12, padding: '0 ' + (windowControls() === 'right' ? 150 : 10) + 'px 0 ' + (narrow ? 8 : 16) + 'px', borderBottom: '1px solid var(--border)', background: 'var(--bg-app)' }}>
       {narrow ? <IconButton size="lg" icon="list" label="Menu" onClick={() => setUI({ drawer: !getUI().drawer })} /> : null}
       <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', padding: '3px 0' }}><Breadcrumbs items={crumbs || []} compact={narrow} style={narrow ? { font: '500 17px/1.5 var(--font-sans)' } : undefined} /></div>
-      {narrow ? <IconButton size="lg" icon="magnifying-glass" label="Search" onClick={() => setUI({ palette: true })} /> : <button type="button" onClick={() => setUI({ palette: true })} style={{ width: 340, height: 26, flex: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '0 6px 0 10px', border: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border)', color: 'var(--text-3)', font: '400 12px/1.5 var(--font-sans)', cursor: 'pointer' }}>
+      {narrow ? <IconButton size="lg" icon="magnifying-glass" label="Search" onClick={() => setUI({ palette: true })} /> : <Hint id="search" title="Search anything" text="Jump to any session or repository, and run commands, from here." style={{ flex: "none" }}><button type="button" onClick={() => setUI({ palette: true })} style={{ width: 340, height: 26, flex: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '0 6px 0 10px', border: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border)', color: 'var(--text-3)', font: '400 12px/1.5 var(--font-sans)', cursor: 'pointer' }}>
         <i className="ph ph-magnifying-glass" style={{ fontSize: 13 }} />
         <span style={{ flex: 1, textAlign: 'left' }}>Search sessions and repositories</span>
         <Kbd keys={searchKeys} />
-      </button>}
+      </button></Hint>}
       <div style={{ flex: narrow ? 'none' : 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 2 }}>
-        {paused > 0 ? <IconButton size={narrow ? 'lg' : 'md'} icon="play" label={`Continue all agents (${paused} interrupted)`} onClick={() => void resumeAll()} /> : null}
-        {working > 0 ? <IconButton size={narrow ? 'lg' : 'md'} icon="pause" label={`Interrupt all agents (${working} working)`} onClick={() => void haltAll()} style={{ color: 'var(--status-error-text)' }} /> : null}
-        <IconButton size={narrow ? 'lg' : 'md'} icon="bell" label="Inbox" badge={need > 0} onClick={() => go({ screen: 'inbox' })} />
+        <Hint id="play-pause" title="Pause and continue everything" text="Interrupt every working agent in one go, then continue them all when you are ready.">
+          <span style={{ display: 'inline-flex', gap: 2 }}>
+            <IconButton size={narrow ? 'lg' : 'md'} icon="play" label={paused ? `Continue all agents (${paused} interrupted)` : 'Continue all agents: none were interrupted'} disabled={!paused} hoverColor="var(--status-ready-text)" onClick={() => void resumeAll()} />
+            <IconButton size={narrow ? 'lg' : 'md'} icon="pause" label={working ? `Interrupt all agents (${working} working)` : 'Interrupt all agents: none are working'} disabled={!working} hoverColor="var(--status-error-text)" onClick={() => void haltAll()} />
+          </span>
+        </Hint>
+        <Hint id="inbox" title="Your inbox" text="Approvals, questions and finished work that need you collect here."><IconButton size={narrow ? 'lg' : 'md'} icon="bell" label="Inbox" badge={need > 0} onClick={() => go({ screen: 'inbox' })} /></Hint>
         {narrow ? null : <>
           <IconButton icon={theme === 'dark' ? 'sun' : 'moon'} label="Toggle theme" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
           <span style={{ width: 1, height: 16, background: 'var(--border)', margin: '0 6px' }} />

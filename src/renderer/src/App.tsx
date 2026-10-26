@@ -15,6 +15,7 @@ import { Compare, CheckpointsDialog, ContinueDialog, ForkDialog, RememberDialog,
 import { ExternalSessionView, Repo } from './views/Repo';
 import { Session } from './views/Session';
 import { Settings } from './views/Settings';
+import { sessionTitle } from '@shared/types';
 import { Sidebar, StatusBar, TerminalDrawer, TitleBar } from './views/Shell';
 
 export function App() {
@@ -85,6 +86,25 @@ export function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  const pageTitle = (() => {
+    const base = 'Helm';
+    if (!app?.user) return base;
+    const join = (...p: (string | undefined)[]) => [...p.filter(Boolean)].join(' - ') + ' | ' + base;
+    switch (route.screen) {
+      case 'session': { const s = app.sessions.find((x) => x.id === route.id); return s ? join(sessionTitle(s), s.free ? 'Free agents' : s.repoId) : join(route.id); }
+      case 'external': return join(getUI().externals[route.repoId]?.find((e) => e.id === route.id)?.title || 'Claude Code session', route.repoId);
+      case 'repo': return join(route.id);
+      case 'settings': return join('Settings');
+      case 'archive': return join('Archive');
+      case 'inbox': return join('Inbox');
+      case 'compare': return join('Compare runs');
+      case 'reports': return join('Reports');
+      case 'activity': return join('Activity');
+      default: return join(route.filter === 'attention' ? 'Needs you' : 'Overview');
+    }
+  })();
+  React.useEffect(() => { document.title = pageTitle; }, [pageTitle]);
+
   if (fatal) return <div style={{ padding: 24, font: '400 13px/1.5 var(--font-sans)', color: 'var(--status-error-text)' }}>helm could not start: {fatal}</div>;
   if (!app) return <div style={{ height: '100%', display: 'grid', placeItems: 'center', font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Loading…</div>;
   if (!app.user) return <SignIn />;
@@ -96,14 +116,14 @@ export function App() {
     const r = s && app.repos.find((x) => x.id === s.repoId);
     const subA = route.sub ? s?.subagents.find((x) => x.id === route.sub) : undefined;
     crumbs = [{ label: s?.free ? 'Free agents' : r?.id || 'Session', icon: s?.free ? 'robot' : 'book-bookmark', onClick: r && (() => go({ screen: 'repo', id: r.id })) }, subA ? { label: route.id, onClick: () => go({ screen: 'session', id: route.id, tab: 'conversation' }) } : route.id, ...(subA ? [{ label: subA.description, icon: 'tree-structure' }] : [])];
-    body = <Session key={route.id} id={route.id} tab={route.tab || 'conversation'} sub={route.sub} file={route.file} line={route.line} setTab={(t) => go({ screen: 'session', id: route.id, tab: t })} themeKey={theme} />;
+    body = <Session key={route.id} id={route.id} tab={route.tab || 'conversation'} sub={route.sub} file={route.file} line={route.line} msg={route.msg} setTab={(t) => go({ screen: 'session', id: route.id, tab: t })} themeKey={theme} />;
   } else if (route.screen === 'external') {
     const x = getUI().externals[route.repoId]?.find((e) => e.id === route.id);
     crumbs = [{ label: route.repoId, icon: 'book-bookmark', onClick: () => go({ screen: 'repo', id: route.repoId, tab: 'external' }) }, { label: x?.title || 'Claude Code session', icon: 'eye' }];
     body = <ExternalSessionView key={route.id} repoId={route.repoId} id={route.id} />;
   } else if (route.screen === 'repo') {
     crumbs = [{ label: route.id, icon: 'book-bookmark' }];
-    body = <Repo key={route.id + ':' + (route.tab || '')} id={route.id} tab={route.tab} themeKey={theme} />;
+    body = <Repo key={route.id + ':' + (route.tab || '') + ':' + (route.hash || route.file || '')} id={route.id} tab={route.tab} hash={route.hash} file={route.file} line={route.line} themeKey={theme} />;
   } else if (route.screen === 'settings') {
     crumbs = [{ label: 'Settings', icon: 'gear-six' }];
     body = <Settings section={route.section} />;

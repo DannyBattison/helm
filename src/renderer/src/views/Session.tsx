@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Session as S, TranscriptEvent, ModelAlias, PermMode, Effort, MessageImage, Artifact } from '@shared/types';
 import { api, platform } from '../api';
+import { commandSteps } from '@shared/commandSummary';
 import { Cmd, Hl } from '../Hl';
 import { highlightBlock, langFromPath, langFromTag } from '../highlight';
 import { can, clock, elapsed, fmtTokens, modelOptions, prettyModel, runningSubagents, STATUS_LABEL, subagentTree, tilde } from '../lib';
@@ -20,6 +21,9 @@ const MOD = () => (platform() === 'darwin' ? '⌘' : 'Ctrl+');
 
 const label: React.CSSProperties = { font: '500 10.5px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' };
 const box: React.CSSProperties = { borderRadius: 'var(--radius-md)', background: 'var(--bg-panel)', boxShadow: 'inset 0 0 0 1px var(--border)', overflow: 'hidden' };
+
+/** Tooltip over a command's summary: each step on its own line when there is more than one (the header may only name three). */
+const stepsTip = (cmd: string, summary?: string) => { const steps = commandSteps(cmd); return steps.length > 1 ? steps.map((x, i) => `${i + 1}. ${x}`).join('\n') : summary; };
 
 function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string): void }) {
   const { fmt } = useMoney();
@@ -49,8 +53,8 @@ function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string
         </div>
         {s.queued ? <><Button variant="primary" icon="play" onClick={() => guard(api.startQueued(s.id))}>Start now</Button><Button variant="ghost" onClick={() => guard(api.cancelQueued(s.id))}>Cancel</Button></> : null}
         {s.status === 'idle' && /^Stopped/.test(s.step) ? <Button variant="secondary" icon="play" onClick={() => guard(api.resumeSession(s.id))}>Resume</Button> : null}
-        {s.status === 'working' ? <Button variant="ghost" icon="pause" onClick={() => guard(api.interrupt(s.id))}>Pause</Button> : null}
-        {running ? <Button variant="ghost" icon="stop" onClick={() => guard(api.stopSession(s.id))}>Stop</Button> : null}
+        {s.status === 'working' ? <Tooltip side="bottom" wide content="Halt the agent's current turn but keep the session open, so you can redirect it with a new message."><Button variant="ghost" icon="pause" onClick={() => guard(api.interrupt(s.id))}>Pause</Button></Tooltip> : null}
+        {running ? <Tooltip side="bottom" wide content="End the session entirely, discarding any pending prompts. You'd need to Resume to start it again."><Button variant="ghost" icon="stop" onClick={() => guard(api.stopSession(s.id))}>Stop</Button></Tooltip> : null}
         {push.commits && !s.worktreeGone ? <span title={push.tip}><Button variant="secondary" icon="cloud-arrow-up" loading={push.busy} onClick={push.push}>Push · {push.commits}</Button></span> : null}
         {!s.worktreeGone && !(s.free && !s.free.managed) ? <IconButton icon="clock-counter-clockwise" label="Checkpoints" onClick={() => setUI({ checkpointsOf: s.id })} /> : null}
         {s.agentSessionId && can(app, s, 'fork') && !s.worktreeGone && !s.free ? <IconButton icon="git-fork" label="Fork this session" onClick={() => setUI({ forking: { sessionId: s.id, index: null, text: '' } })} /> : null}
@@ -190,7 +194,7 @@ function BashRow({ m, box }: { m: Extract<TranscriptEvent, { k: 'bash' }>; box: 
     <div style={{ marginLeft: 44, marginRight: 12, ...box }}>
       <div onClick={long ? () => { if (!window.getSelection()?.toString()) setOpen(!open); } : undefined} style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 30, padding: '0 10px', background: 'var(--bg-editor)', cursor: long ? 'pointer' : undefined }}>
         <i className="ph ph-terminal" style={{ fontSize: 13, color: 'var(--text-3)' }} />
-        {m.summary ? <span style={{ font: '500 12px/1.5 var(--font-sans)', color: 'var(--text-1)', flex: 'none', maxWidth: '45%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.summary}</span> : null}
+        {m.summary ? <span style={{ font: '500 12px/1.5 var(--font-sans)', color: 'var(--text-1)', flex: 'none', maxWidth: '45%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={stepsTip(m.cmd, m.summary)}>{m.summary}</span> : null}
         <span className="selectable" style={{ font: '400 12px/1.5 var(--font-mono)', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><span style={{ color: 'var(--text-3)' }}>$ </span><Hl text={m.cmd.split('\n')[0]} lang="bash" />{m.cmd.includes('\n') ? <span style={{ color: 'var(--text-3)' }}> …</span> : null}</span>
         {m.done ? <span style={{ font: '400 12px/1.5 var(--font-mono)', color: m.ok ? 'var(--diff-add-fg)' : 'var(--diff-del-fg)', maxWidth: 260, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{result.split('\n')[0]}</span>
           : <i className="ph ph-circle-notch" style={{ fontSize: 13, color: 'var(--status-working-text)', animation: 'helm-spin .9s linear infinite' }} />}
@@ -228,7 +232,7 @@ function TranscriptItemView({ m, s, index, onDeny }: { m: TranscriptEvent; s: S;
     <div onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} style={{ position: 'relative', display: 'flex', gap: 10, ...(!m.from ? { background: 'var(--bg-selected)', borderRadius: 'var(--radius-md)', padding: '10px 12px', boxShadow: 'inset 0 0 0 1px var(--border)' } : null) }}>
       <Avatar agent={!!m.from} name={m.from || app.user?.login || 'you'} src={m.from ? undefined : app.user?.avatar || undefined} size={22} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <span style={{ font: m.from ? '500 12px/1.5 var(--font-mono)' : '500 12px/1.5 var(--font-sans)' }}>{m.from ? m.from + ' → subagent' : app.user?.login || 'you'} {m.t ? <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)', marginLeft: 6 }}>{clock(m.t)}</span> : null}</span>
+        <span style={{ font: m.from ? '500 12px/1.5 var(--font-mono)' : '500 12px/1.5 var(--font-sans)' }}>{m.from ? m.from + ' → subagent' : app.user?.login || 'you'} {m.t || m.at ? <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)', marginLeft: 6 }}>{clock(m.t || m.at!)}</span> : null}</span>
         <div className="selectable" style={{ font: '400 13px/1.55 var(--font-sans)', color: 'var(--text-1)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.text}</div>
         {hover && s && !m.from && !s.worktreeGone && index != null ? (
           <div style={{ position: 'absolute', top: 6, right: 8, display: 'flex', gap: 2, background: 'var(--bg-overlay)', borderRadius: 'var(--radius-sm)', boxShadow: 'var(--shadow-popover)', padding: 2 }}>
@@ -246,7 +250,7 @@ function TranscriptItemView({ m, s, index, onDeny }: { m: TranscriptEvent; s: S;
     <div style={{ display: 'flex', gap: 10, padding: '10px 12px' }}>
       <Avatar agent name="Claude" size={22} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <span style={{ font: '500 12px/1.5 var(--font-sans)' }}>Claude</span>
+        <span style={{ font: '500 12px/1.5 var(--font-sans)' }}>Claude {m.at ? <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)', marginLeft: 6 }}>{clock(m.at)}</span> : null}</span>
         <div className="selectable" style={{ font: '400 13px/1.6 var(--font-sans)', color: 'var(--text-1)', display: 'flex', flexDirection: 'column', gap: 6, wordBreak: 'break-word' }}><Rich text={m.text} sessionId={s?.id} /></div>
       </div>
     </div>
@@ -301,7 +305,7 @@ function TranscriptItemView({ m, s, index, onDeny }: { m: TranscriptEvent; s: S;
     const isCmd = m.tool === 'Bash' || m.tool === 'PowerShell';
     return (
       <div style={{ marginLeft: 44, marginRight: 12, borderRadius: 'var(--radius-md)', background: 'var(--status-attention-bg)', boxShadow: 'inset 0 0 0 1px var(--status-attention)', padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, font: '600 13px/1.5 var(--font-sans)', color: 'var(--status-attention-text)' }}><i className="ph-fill ph-shield-warning" style={{ fontSize: 15 }} />{isCmd ? <>{m.summary || 'Run a command'}<span style={{ fontWeight: 400, color: 'var(--text-2)' }}> · needs your permission</span></> : m.tool === 'ExitPlanMode' ? 'Plan ready for approval' : 'Permission needed'}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, font: '600 13px/1.5 var(--font-sans)', color: 'var(--status-attention-text)' }}><i className="ph-fill ph-shield-warning" style={{ fontSize: 15 }} />{isCmd ? <><span title={stepsTip(m.cmd, m.summary)}>{m.summary || 'Run a command'}</span><span style={{ fontWeight: 400, color: 'var(--text-2)' }}> · needs your permission</span></> : m.tool === 'ExitPlanMode' ? 'Plan ready for approval' : 'Permission needed'}</div>
         <CopyBox text={m.cmd}>        <code className="selectable" style={{ font: 'var(--type-code)', padding: '6px 10px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-editor)', color: 'var(--text-1)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{isCmd ? <><span style={{ color: 'var(--text-3)' }}>$ </span><Cmd text={m.cmd} /></> : m.cmd}</code></CopyBox>
         <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>{m.why}</div>
         {restarted ? <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>helm was restarted while this waited. Approving starts the session again and has the agent run it.</div> : null}
@@ -498,7 +502,7 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
           <span style={{ flex: 1 }} />
           {s.ctx ? <span title={`Context window: ${fmtTokens(s.ctx)} of 200k tokens in use`} style={{ font: '400 11.5px/1.5 var(--font-mono)', color: ctxPct >= 75 ? 'var(--status-attention-text)' : 'var(--text-3)', whiteSpace: 'nowrap' }}>{ctxPct}% context</span> : null}
           {working ? <Button size="sm" variant="ghost" kbd={interruptKey === 'esc' ? 'Esc' : interruptKey === 'double-esc' ? 'Esc Esc' : undefined} onClick={() => guard(api.interrupt(s.id))}>Interrupt</Button> : null}
-          <Button size="sm" variant="primary" icon="paper-plane-right" kbd={enterSends ? 'Enter' : MOD() + '↵'} disabled={!text.trim() && !images.length} onClick={send}>Send</Button>
+          <Button size="sm" variant="primary" icon="paper-plane-right" kbd={enterSends ? '↵' : MOD() + '↵'} disabled={!text.trim() && !images.length} onClick={send}>Send</Button>
         </div>
       </div>
     </div>
@@ -608,7 +612,7 @@ function SubagentView({ s, subId }: { s: S; subId: string }) {
   );
 }
 
-export function Session({ id, tab, setTab, themeKey, sub, file, line }: { id: string; tab: string; setTab(t: string): void; themeKey: 'dark' | 'light'; sub?: string; file?: string; line?: number }) {
+export function Session({ id, tab, setTab, themeKey, sub, file, line, msg }: { id: string; tab: string; setTab(t: string): void; themeKey: 'dark' | 'light'; sub?: string; file?: string; line?: number; msg?: number }) {
   const app = useApp();
   const s = app.sessions.find((x) => x.id === id);
   const items = useTranscript(id);
@@ -649,7 +653,7 @@ export function Session({ id, tab, setTab, themeKey, sub, file, line }: { id: st
     <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <div style={{ flex: 1, minHeight: 0 }}>
-          <TranscriptList items={items || []} renderItem={(m, i) => <TranscriptItem m={m} s={s} index={i} onDeny={() => input.current?.focus()} />}
+          <TranscriptList items={items || []} focusIndex={msg} renderItem={(m, i) => <TranscriptItem m={m} s={s} index={i} onDeny={() => input.current?.focus()} />}
             header={!items ? <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Loading conversation…</span> : null}
             footer={<>
               {s.status === 'working' ? (

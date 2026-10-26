@@ -1,5 +1,5 @@
 import React from 'react';
-import type { ChangesSummary, DiffHunk, ReviewComment, Session } from '@shared/types';
+import type { ChangesSummary, ExtraRepo, DiffHunk, ReviewComment, Session } from '@shared/types';
 import { hunkId } from '@shared/hunks';
 import { blockers } from '@shared/selfreview';
 import { api, platform } from '../api';
@@ -148,6 +148,44 @@ function ReviewPanel({ s, onOpen }: { s: Session; onOpen(file: string): void }) 
 }
 
 /** A free agent's folder, when it is one of yours: there is no git history to compare against, so nothing to show. */
+/** Commits and a pull request for one of the additional repositories of a multi-repo session. */
+function ExtraRepoPr({ s, x }: { s: Session; x: ExtraRepo }) {
+  const app = useApp();
+  const [sum, setSum] = React.useState<ChangesSummary | null>(null);
+  const [title, setTitle] = React.useState(prTitle(s.task));
+  const [draft, setDraft] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const base = x.base.replace(/^origin\//, '');
+  React.useEffect(() => { api.extraChanges(s.id, x.repoId).then(setSum).catch(() => setSum(null)); }, [s.id, x.repoId, s.commits.length, s.pushedAt, x.prUrl]);
+  const files = sum?.files.length || 0;
+  const create = async () => {
+    if (!sum) return;
+    setBusy(true);
+    try {
+      const body = prBody(prSummary({ task: s.task, commits: sum.commits, files, add: sum.files.reduce((n, f) => n + f.add, 0), del: sum.files.reduce((n, f) => n + f.del, 0) }), s.id);
+      const r = await api.createPr({ sessionId: s.id, extraRepoId: x.repoId, base, title, body, draft, removeAfterMerge: false, deleteBranchAfterMerge: false, files: sum.files.map((f) => f.path), message: title });
+      toast({ tone: 'ready', title: 'Pull request opened', description: r.url || undefined });
+      if (r.url && app.settings.openPrAfterCreate) void api.openExternal(r.url);
+    } catch (e) { toast({ tone: 'error', title: 'That did not work', description: errText(e) }); } finally { setBusy(false); }
+  };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 10, borderRadius: 'var(--radius-md)', boxShadow: 'inset 0 0 0 1px var(--border)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, font: '500 12px/1.5 var(--font-sans)' }}>
+        <i className="ph ph-git-branch" /><span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{x.repoId}</span>
+        <span style={{ font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{sum ? `${sum.commits.length} ${sum.commits.length === 1 ? 'commit' : 'commits'} · ${files} ${files === 1 ? 'file' : 'files'}` : ''}</span>
+      </div>
+      <BranchTag name={x.branch} />
+      {x.prUrl
+        ? <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>Pull request open. <a href="#" onClick={(e) => { e.preventDefault(); void api.openExternal(x.prUrl!); }}>View on GitHub</a></div>
+        : <>
+          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" />
+          <Checkbox checked={draft} onChange={setDraft} label="Open as draft" />
+          <Button variant="secondary" icon="git-pull-request" fullWidth loading={busy} disabled={!title.trim() || busy || !app.user || !sum || (!sum.commits.length && !files)} onClick={create}>Create pull request into {base}</Button>
+        </>}
+    </div>
+  );
+}
+
 export function Changes({ s }: { s: Session }) {
   if (s.free && !s.free.managed) return (
     <div style={{ flex: 1, display: 'grid', placeItems: 'center' }}>
@@ -392,6 +430,10 @@ function ChangesView({ s }: { s: Session }) {
             {deliver === 'pr' && !openPr ? <Checkbox checked={draft} onChange={setDraft} label="Open as draft" /> : null}
             <Checkbox checked={rm || delBranch} disabled={delBranch} onChange={setRm} label="Remove worktree after merge" description={delBranch ? 'Needed to delete the branch' : s.worktree} />
             <Checkbox checked={delBranch} onChange={setDelBranch} label={<span>Delete the branch after merge <code style={{ font: 'var(--type-data)' }}>{s.branch}</code></span>} description="Here and on GitHub" />
+            {s.extras?.length ? <>
+              <span style={label}>Other repositories</span>
+              {s.extras.map((x) => <ExtraRepoPr key={x.repoId} s={s} x={x} />)}
+            </> : null}
           </div>
         </div>
         <div style={{ flex: 'none', padding: 12, borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 8 }}>

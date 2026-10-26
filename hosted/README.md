@@ -124,10 +124,14 @@ Things to know:
 - `Host` (`src/core/host.ts`) is everything `core.ts` needs from where it runs: Electron in `desktop/main/index.ts`, Node in `hosted/src/host.ts`.
 - Things that act on your own computer (choose a folder, open a link, copy) are done by the browser in `web/bridge.ts`; the server refuses them.
 
+## Notifications
+
+The server sends each notification to connected browsers, which show it when the tab is not focused. No server config is needed, but the browser must allow it: click anywhere in helm once and accept the permission prompt. Browsers only offer notifications on HTTPS (or `localhost`), so serve helm over TLS. There are no Approve/Deny buttons and no badge in the browser.
+
 ## Not safe yet
 
 - The allowed user has a shell. Agents run any command as the server's user, and the terminal tab is a shell on the server.
 - The GitHub token is stored unencrypted in the data volume (mode 0700). There is no keychain.
 - No sandbox, egress control or resource limits. The VM or container is the boundary.
 - A dropped connection can miss transcript events; the UI refetches state on reconnect, but not open transcripts.
-- Desktop notifications, badges and "open in VS Code" do nothing.
+- Badges and "open in VS Code" do nothing.

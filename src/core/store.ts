@@ -3,6 +3,7 @@ import { appendFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } fro
 import { join } from 'node:path';
 import type { AutomationSeen } from '../shared/automations';
 import type { ActivityEvent, AutomatedAgent, AuditEntry, DailyUsage, Lifetime, ModelAlias, PlanUsage, Repo, Session, Settings, TranscriptEvent, User } from '../shared/types';
+import { defaultOutbound } from '../shared/outbound';
 import { dayStart, home, uid, weekStart } from './util';
 
 /** helm's registered GitHub OAuth app. Client IDs are public; the device flow uses no secret. */
@@ -52,6 +53,7 @@ export const defaultSettings = (): Settings => ({
   notifyReady: { desktop: true, sound: false },
   notifyFailed: { desktop: true, sound: true },
   notifyChecks: { desktop: false, sound: false },
+  outbound: defaultOutbound(),
   dnd: true,
   quiet: { enabled: false, from: '22:00', to: '08:00', allowAttention: true },
   notifyRepo: {},
@@ -67,6 +69,9 @@ export const defaultSettings = (): Settings => ({
   shortcuts: {},
   interruptKey: 'esc',
   showOwner: true,
+  freeAgents: true,
+  tutorial: true,
+  tutorialSeen: [],
   uiFont: 'Mona Sans',
   dataFont: 'Monaspace Neon',
   editorFont: 'Monaspace Neon',
@@ -148,6 +153,7 @@ export class Store {
     try {
       const raw = JSON.parse(await readFile(join(this.dir, 'helm.json'), 'utf8'));
       this.data = { ...this.data, ...raw, settings: { ...defaultSettings(), ...raw.settings } };
+      { const o = defaultOutbound(), r = this.data.settings.outbound || o; this.data.settings.outbound = { email: { ...o.email, ...r.email, kinds: { ...o.email.kinds, ...r.email?.kinds } } }; }
       if (!this.data.settings.githubClientId) this.data.settings.githubClientId = defaultSettings().githubClientId;
       // Sessions saved by older versions have no subagents, and kept the agent's conversation id under Claude's name.
       for (const x of this.data.sessions as any[]) { x.subagents ||= []; x.lastAccess ||= x.endedAt ?? x.startedAt; if (x.claudeSessionId && !x.agentSessionId) { x.agentSessionId = x.claudeSessionId; delete x.claudeSessionId; } }

@@ -1,14 +1,14 @@
 import React from 'react';
 import type { ModelAlias, PermMode, Settings as SettingsT } from '@shared/types';
 import { api, platform } from '../api';
-import { backendFor, livePlan, modelOptions, untilReset } from '../lib';
+import { backendFor, livePlan, modelOptions, theme as resolveTheme, untilReset } from '../lib';
 import { CURRENCIES, rateFor } from '@shared/money';
 import { BUNDLED_FONTS, fontStack, SYSTEM_DEFAULT, systemFonts, systemUiFonts, uiStack, UI_BUNDLED_FONTS, dataStack } from '../fonts';
 import { ACCENT_SWATCHES, SCHEMES, STATUS_KEYS, STATUS_LABEL, isHex, schemeVars } from '@shared/schemes';
 import { AutomationsSection } from './Automations';
 import { toast, useApp, useMoney } from '../store';
 import { comboFromEvent, comboKeys, comboProblem, normalizeCombo, SHORTCUT_ACTIONS, shortcutConflict, shortcutOf } from '@shared/shortcuts';
-import { Avatar, Badge, Button, Input, Kbd, Meter, SegmentedControl, Select, Switch, TreeItem, useColumns, useNarrow } from '../ui';
+import { Avatar, Badge, Button, Dialog, Input, Kbd, Meter, SegmentedControl, Select, Switch, TreeItem, useColumns, useNarrow } from '../ui';
 
 const errText = (e: any) => String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '');
 const set = (patch: Partial<SettingsT>) => void api.updateSettings(patch);
@@ -66,6 +66,47 @@ function RepoArtifactsSection({ repos }: { repos: { id: string }[] }) {
 }
 
 /** The companion website: turn it on, link this computer, see who is connected. */
+/** Outbound email: where helm sends notifications that leave the app. The password is held by the host, encrypted, and never shown again. */
+function EmailSection({ st, set, passwordSet }: { st: any; set(p: any): void; passwordSet: boolean }) {
+  const e = st.outbound.email;
+  const put = (patch: any) => set({ outbound: { ...st.outbound, email: { ...e, ...patch } } });
+  const [testing, setTesting] = React.useState(false);
+  const [pw, setPw] = React.useState('');
+  const kinds: ['attention' | 'ready' | 'failed', string][] = [['attention', 'An agent needs approval or an answer'], ['ready', 'A session is ready for review'], ['failed', 'A session failed or hit its budget']];
+  const test = async () => {
+    setTesting(true);
+    try {
+      const problem = await api.testOutbound('email');
+      toast(problem ? { tone: 'error', title: 'Test email failed', description: problem } : { tone: 'ready', title: 'Test email sent', description: `Check ${e.to}` });
+    } catch (err) { toast({ tone: 'error', title: 'Test email failed', description: errText(err) }); }
+    setTesting(false);
+  };
+  return <>
+    <H sub="Send notifications by email, so you hear about them away from this computer. Quiet hours and the per repository settings apply here too.">Email</H>
+    <SettingRow title="Send email notifications"><Switch checked={e.enabled} onChange={(v: boolean) => put({ enabled: v })} /></SettingRow>
+    {kinds.map(([k, label]) => (
+      <SettingRow key={k} title={label}><Switch checked={e.kinds[k]} onChange={(v: boolean) => put({ kinds: { ...e.kinds, [k]: v } })} /></SettingRow>
+    ))}
+    <SettingRow title="Send to" desc="One or more addresses, separated by commas."><Field value={e.to} onCommit={(v: string) => put({ to: v })} placeholder="you@example.com" style={{ width: 280 }} /></SettingRow>
+    <SettingRow title="Sender address" desc="Usually the account you sign in to the mail server with."><Field value={e.from} onCommit={(v: string) => put({ from: v.trim() })} placeholder="helm@example.com" style={{ width: 280 }} /></SettingRow>
+    <SettingRow title="Sender name"><Field value={e.fromName} onCommit={(v: string) => put({ fromName: v })} style={{ width: 280 }} /></SettingRow>
+    <SettingRow title="SMTP server" desc="For Gmail use smtp.gmail.com with an app password.">
+      <Field value={e.host} onCommit={(v: string) => put({ host: v.trim() })} placeholder="smtp.example.com" style={{ width: 200 }} />
+      <Field value={e.port} onCommit={(v: number) => put({ port: v })} parse={(x: string) => (/^\d+$/.test(x.trim()) ? Number(x) : undefined)} style={{ width: 80 }} />
+    </SettingRow>
+    <SettingRow title="Security" desc="TLS is encrypted from the start, usually port 465. STARTTLS upgrades after connecting, usually port 587.">
+      <Select size="sm" value={e.security} onChange={(ev: any) => put({ security: ev.target.value, port: ev.target.value === 'tls' ? 465 : ev.target.value === 'starttls' ? 587 : 25 })} options={[{ value: 'starttls', label: 'STARTTLS' }, { value: 'tls', label: 'TLS' }, { value: 'none', label: 'None (local relay only)' }]} />
+    </SettingRow>
+    <SettingRow title="Username" desc="Leave empty if the server needs no sign-in."><Field value={e.user} onCommit={(v: string) => put({ user: v.trim() })} style={{ width: 280 }} /></SettingRow>
+    <SettingRow title="Password" desc={passwordSet ? 'A password is saved, encrypted on this computer. Enter a new one to replace it.' : 'Stored encrypted on this computer, not in the settings file.'}>
+      <Input type="password" value={pw} placeholder={passwordSet ? '••••••••' : ''} onChange={(ev: any) => setPw(ev.target.value)} style={{ width: 200 }} />
+      <Button size="sm" disabled={!pw} onClick={() => { void api.setEmailPassword(pw); setPw(''); }}>Save</Button>
+      {passwordSet ? <Button size="sm" variant="ghost" onClick={() => void api.setEmailPassword('')}>Clear</Button> : null}
+    </SettingRow>
+    <SettingRow title="Test" desc="Sends a test message with these settings, whether or not email is turned on."><Button size="sm" icon="paper-plane-tilt" disabled={testing} onClick={test}>{testing ? 'Sending…' : 'Send test email'}</Button></SettingRow>
+  </>;
+}
+
 function CompanionSection({ st, set, state }: { st: any; set(p: any): void; state: any }) {
   const label = ({ off: 'Off', linking: 'Waiting for you to sign in to GitHub', connecting: 'Connecting…', connected: 'Connected', error: 'Not connected' } as any)[state.state] || state.state;
   const tone = state.state === 'connected' ? 'var(--status-ready-text, var(--status-ready))' : state.state === 'error' ? 'var(--status-error-text)' : 'var(--text-3)';
@@ -159,7 +200,8 @@ function ShortcutsSection({ st, set }: { st: SettingsT; set(p: Partial<SettingsT
 /** Scheme cards, an accent row, and the status colours tucked behind a disclosure so the page stays short. */
 function ColourRows({ st, set }: { st: SettingsT; set: (p: Partial<SettingsT>) => void }) {
   const [more, setMore] = React.useState(false);
-  const dark = document.documentElement.dataset.theme !== 'light';
+  // From the setting, not the DOM: the attribute is only updated in an effect after this render.
+  const dark = resolveTheme(st.theme) === 'dark';
   const accentNow = st.accentColor || schemeVars({ scheme: st.colorScheme }, dark)['--accent'] || (dark ? '#a78bfa' : '#7655d9');
   const swatch = (c: string, on: boolean, onClick: () => void, label: string) => (
     <button key={c} type="button" aria-label={label} title={label} aria-pressed={on} onClick={onClick} style={{ width: 22, height: 22, borderRadius: '50%', border: 'none', background: c, cursor: 'pointer', boxShadow: on ? '0 0 0 2px var(--bg-app), 0 0 0 4px var(--text-2)' : 'inset 0 0 0 1px var(--border-strong)' }} />
@@ -258,6 +300,7 @@ export function Settings({ section }: { section?: string }) {
   const app = useApp();
   const st = app.settings;
   const [sec, setSec] = React.useState(section || 'account');
+  const [signOut, setSignOut] = React.useState(false);
   const { fmt, sym, to, from, cur } = useMoney();
   const plan = livePlan(app);
   const money0 = { format: (v: number) => sym + String(Math.round(v * 100) / 100), parse: (x: string) => { const n = parseFloat(x.replace(/[^0-9.]/g, '')); return Number.isFinite(n) && n >= 0 ? n : undefined; } };
@@ -290,7 +333,7 @@ export function Settings({ section }: { section?: string }) {
           {sec === 'account' ? <>
             <H sub="helm signs in with GitHub only. Repositories, pull requests and history all come from this account.">Account</H>
             <SettingRow title={<span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Avatar name={app.user?.login || '?'} src={app.user?.avatar || undefined} size={24} />{app.user?.name || app.user?.login} <Badge mono>@{app.user?.login}</Badge></span>} desc="Signed in with GitHub · scopes: repo, read:org, workflow">
-              <Button variant="ghost" onClick={() => { if (confirm('Sign out of GitHub? Your sessions and worktrees stay on this machine.')) void api.signOut(); }}>Sign out</Button>
+              <Button variant="ghost" onClick={() => setSignOut(true)}>Sign out</Button>
             </SettingRow>
             <SettingRow title="Organisations" desc="Repositories from these organisations appear in Add repository.">
               <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>{(app.user?.orgs || []).length ? app.user!.orgs.map((o) => <Badge key={o}>{o}</Badge>) : <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>None</span>}</span>
@@ -353,6 +396,7 @@ export function Settings({ section }: { section?: string }) {
             <SettingRow title="Run tests before marking ready" desc="Asks the agent to run the project's tests (package.json, go.mod, Makefile) before it finishes."><Switch checked={st.runTests} onChange={(v: boolean) => set({ runTests: v })} /></SettingRow>
           </> : null}
           {sec === 'worktrees' ? <>
+            <SettingRow title="Free agents" desc="Lets you start agents that are not tied to a repository, for research, writing and one-off jobs. Turning it off hides the option when starting a session; free agents you already have keep working."><Switch checked={st.freeAgents} onChange={(v: boolean) => set({ freeAgents: v })} /></SettingRow>
             <SettingRow title="Free agents' folders" desc="Where a free agent's scratch folder is made. Agents that are not tied to a repository work in a folder of their own here, with git set up so you can see what changed."><Field value={st.freeRoot} onCommit={(v: string) => set({ freeRoot: v.trim() })} style={{ width: 260 }} /></SettingRow>
             <H sub="Every session gets its own git worktree and branch, so agents never touch your working copy or each other.">Worktrees</H>
             <SettingRow title="Location"><Field value={st.worktreeRoot} onCommit={(v: string) => set({ worktreeRoot: v })} style={{ width: 260 }} /></SettingRow>
@@ -441,6 +485,7 @@ export function Settings({ section }: { section?: string }) {
             <SettingRow title="Still tell me when an agent is blocked" desc="During quiet hours, an approval or question still notifies you.">
               <Switch checked={st.quiet.allowAttention} onChange={(v: boolean) => set({ quiet: { ...st.quiet, allowAttention: v } })} />
             </SettingRow>
+            <EmailSection st={st} set={set} passwordSet={app.outboundSecrets.emailPassword} />
             {app.repos.length ? <>
               <H sub="Per repository. Only things that need you leaves out finished work and failed checks.">Repositories</H>
               {app.repos.map((r) => (
@@ -472,6 +517,10 @@ export function Settings({ section }: { section?: string }) {
             <H>Appearance</H>
             <SettingRow title="Theme"><SegmentedControl value={st.theme} onChange={(v: string) => set({ theme: v as any })} options={[{ value: 'dark', label: 'Dark', icon: 'moon' }, { value: 'light', label: 'Light', icon: 'sun' }, { value: 'system', label: 'System', icon: 'desktop' }]} /></SettingRow>
             <ColourRows st={st} set={set} />
+            <SettingRow title="Tutorial mode" desc="Shows small bubbles pointing out useful areas, one at a time, until you dismiss each.">
+              <Switch checked={st.tutorial} onChange={(v: boolean) => set({ tutorial: v })} />
+              <Button size="sm" icon="arrow-counter-clockwise" onClick={() => set({ tutorial: true, tutorialSeen: [] })}>Show tips again</Button>
+            </SettingRow>
             <SettingRow title="Show organisation in the sidebar" desc="Writes repositories as acme/storefront rather than just storefront. Turn off to save width."><Switch checked={st.showOwner} onChange={(v: boolean) => set({ showOwner: v })} /></SettingRow>
             <FontRow title="Interface font" desc="Labels, titles and prose throughout helm." value={st.uiFont} onChange={(v: string) => set({ uiFont: v })} bundled={UI_BUNDLED_FONTS} system={[SYSTEM_DEFAULT, ...uiSystem]} stack={uiStack} />
             <FontRow title="Data font" desc="Monospaced text in the interface: paths, branches, hashes, counts and costs." value={st.dataFont} onChange={(v: string) => set({ dataFont: v })} bundled={BUNDLED_FONTS} system={monoSystem} stack={dataStack} />
@@ -487,6 +536,8 @@ export function Settings({ section }: { section?: string }) {
           </> : null}
         </div>
       </div>
+      <Dialog open={signOut} width={440} title="Sign out of GitHub?" description="Your sessions and worktrees stay on this machine." onClose={() => setSignOut(false)}
+        footer={<><Button variant="ghost" onClick={() => setSignOut(false)}>Cancel</Button><Button variant="danger" onClick={() => { setSignOut(false); void api.signOut(); }}>Sign out</Button></>} />
     </div>
   );
 }

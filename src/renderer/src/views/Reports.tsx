@@ -1,5 +1,6 @@
 import React from 'react';
 import type { Report, WorktreeUsage } from '@shared/types';
+import { bytesText, durationText, type SystemPoint, type SystemStatus } from '@shared/system';
 import { fmtDuration } from '@shared/reports';
 import { FREE_ID, repoLabel } from '@shared/types';
 import { api } from '../api';
@@ -252,10 +253,13 @@ function Audit({ days }: { days: number }) {
   );
 }
 
+const sectionTitle = (t: string) => <div style={{ ...head, marginTop: 8 }}>{t}</div>;
+
 const gb = (n: number) => (n >= 1e9 ? (n / 1e9).toFixed(2) + ' GB' : n >= 1e6 ? Math.round(n / 1e6) + ' MB' : Math.max(1, Math.round(n / 1e3)) + ' kB');
 
 /** Disk used by session worktrees, with the build output and packages that can be deleted without losing work. */
 function Disk() {
+  // The system panels above show the machine; this part is about what helm's sessions take on it.
   const [rows, setRows] = React.useState<WorktreeUsage[] | null>(null);
   const [busy, setBusy] = React.useState('');
   const load = (refresh = false) => { setRows(null); api.worktreeUsage(refresh).then(setRows).catch((e) => { fail('Could not measure the worktrees')(e); setRows([]); }); };
@@ -277,6 +281,7 @@ function Disk() {
   };
   return (
     <>
+      {sectionTitle('Session worktrees')}
       <Panel>
         <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <Stat label="Worktrees" value={rows ? gb(total) : '…'} detail={rows ? `${rows.length} ${rows.length === 1 ? 'worktree' : 'worktrees'}` : 'measuring…'} />
@@ -314,6 +319,74 @@ function Disk() {
   );
 }
 
+/** A line graph of readings over time, scaled 0..max (or to the largest value when max is not given). */
+function Trend({ points, max, format, color = 'var(--accent)', height = 72 }: { points: { t: number; v: number | null }[]; max?: number; format: (v: number) => string; color?: string; height?: number }) {
+  const [hover, setHover] = React.useState<number | null>(null);
+  const vals = points.map((p) => p.v ?? 0);
+  const top = max ?? (Math.max(...vals, 0) * 1.15 || 1);
+  const W = 600, n = points.length;
+  const x = (i: number) => (n > 1 ? (i / (n - 1)) * W : W);
+  const y = (v: number) => height - 2 - Math.min(1, v / top) * (height - 4);
+  const line = points.map((p, i) => (p.v == null ? null : `${x(i).toFixed(1)},${y(p.v).toFixed(1)}`)).filter(Boolean).join(' ');
+  const h = hover != null ? points[hover] : null;
+  const span = n > 1 ? points[n - 1].t - points[0].t : 0;
+  return (
+    <div>
+      <div style={{ position: 'relative' }} onMouseLeave={() => setHover(null)} onMouseMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); setHover(Math.max(0, Math.min(n - 1, Math.round(((e.clientX - r.left) / r.width) * (n - 1))))); }}>
+        <svg viewBox={`0 0 ${W} ${height}`} preserveAspectRatio="none" style={{ width: '100%', height, display: 'block', background: 'var(--bg-active)', borderRadius: 'var(--radius-sm)' }}>
+          {n > 1 ? <polygon points={`0,${height} ${line} ${W},${height}`} fill={color} opacity={0.15} /> : null}
+          {n > 1 ? <polyline points={line} fill="none" stroke={color} strokeWidth={1.5} vectorEffect="non-scaling-stroke" /> : null}
+          {hover != null && h?.v != null ? <line x1={x(hover)} x2={x(hover)} y1={0} y2={height} stroke="var(--text-3)" strokeWidth={1} vectorEffect="non-scaling-stroke" /> : null}
+        </svg>
+        {h ? <div style={{ position: 'absolute', top: 2, right: 6, ...mono, fontSize: 11, color: 'var(--text-1)' }}>{new Date(h.t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })} · {h.v == null ? '–' : format(h.v)}</div> : null}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, font: '400 10.5px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>
+        <span>{span ? durationText(span / 1000) + ' ago' : ''}</span><span>now</span>
+      </div>
+    </div>
+  );
+}
+
+/** CPU, memory, disk and load of the machine helm runs on: this computer, or the server when hosted. */
+function System() {
+  const [st, setSt] = React.useState<SystemStatus | null>(null);
+  React.useEffect(() => {
+    let live = true;
+    const tick = () => api.systemStatus().then((r) => live && setSt(r)).catch(fail('Could not read the system status'));
+    tick();
+    const t = setInterval(tick, 3000);
+    return () => { live = false; clearInterval(t); };
+  }, []);
+  if (!st) return <div style={{ ...head }}>Reading…</div>;
+  const h: SystemPoint[] = st.history;
+  const memPct = st.memory.total ? st.memory.used / st.memory.total : 0;
+  return (
+    <>
+      <Panel>
+        <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap' }}>
+          <Stat label="CPU" value={st.cpu == null ? '…' : pct(st.cpu)} detail={`${st.cores} ${st.cores === 1 ? 'core' : 'cores'} · load ${st.load.map((l) => l.toFixed(2)).join(' ')}`} tone={st.cpu != null && st.cpu > 0.9 ? 'attention' : undefined} />
+          <Stat label={st.memory.limited ? 'Memory (limit)' : 'Memory'} value={bytesText(st.memory.used)} detail={`of ${bytesText(st.memory.total)} · ${pct(memPct)}`} tone={memPct > 0.9 ? 'attention' : undefined} />
+          <Stat label="helm itself" value={bytesText(st.process.rss)} detail={`${st.process.cpu == null ? '…' : pct(st.process.cpu)} CPU · pid ${st.process.pid}`} />
+          <Stat label="Sessions" value={`${st.sessions.running} running`} detail={`${st.sessions.total} not archived`} />
+          <Stat label="Up" value={durationText(st.uptime)} detail={`${st.hostname} · ${st.platform} ${st.arch}`} />
+        </div>
+      </Panel>
+      <Grid>
+        <Panel title="CPU" icon="cpu"><Trend points={h.map((p) => ({ t: p.t, v: p.cpu }))} max={1} format={pct} /></Panel>
+        <Panel title="Memory" icon="memory"><Trend points={h.map((p) => ({ t: p.t, v: p.mem }))} max={st.memory.total} format={bytesText} /></Panel>
+        <Panel title="Disk space free" icon="hard-drives"><Trend points={h.map((p) => ({ t: p.t, v: p.disk }))} max={st.disks[0]?.total} format={bytesText} color="var(--status-ready)" /></Panel>
+        <Panel title="Load average (1 min)" icon="activity"><Trend points={h.map((p) => ({ t: p.t, v: p.load }))} format={(v) => v.toFixed(2)} /></Panel>
+        <Panel title="helm's own memory" icon="gauge"><Trend points={h.map((p) => ({ t: p.t, v: p.rss }))} format={bytesText} color="var(--text-2)" /></Panel>
+        <Panel title="helm's own CPU" icon="gauge"><Trend points={h.map((p) => ({ t: p.t, v: p.proc }))} max={1} format={pct} color="var(--text-2)" /></Panel>
+      </Grid>
+      <Panel title="Disk space" icon="hard-drives">
+        {st.disks.length ? st.disks.map((d) => <Meter key={d.label} label={d.label} detail={`${bytesText(d.total - d.free)} used · ${bytesText(d.free)} free of ${bytesText(d.total)}`} value={d.total - d.free} max={d.total} style={{ padding: '4px 0' }} />) : empty('No disk information.')}
+      </Panel>
+      <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)', maxWidth: 760 }}>{st.model ? st.model + '. ' : ''}Readings are taken every few seconds while helm runs, and the last hour is kept. {st.memory.limited ? 'Memory is measured against the limit this container was given.' : ''}</span>
+    </>
+  );
+}
+
 const TABS = [
   { value: 'spend', label: 'Spend', icon: 'coins' },
   { value: 'throughput', label: 'Throughput', icon: 'gauge' },
@@ -321,7 +394,7 @@ const TABS = [
   { value: 'quality', label: 'Quality', icon: 'heartbeat' },
   { value: 'digest', label: 'Digest', icon: 'newspaper' },
   { value: 'audit', label: 'Audit', icon: 'list-checks' },
-  { value: 'disk', label: 'Disk', icon: 'hard-drives' }
+  { value: 'system', label: 'System', icon: 'cpu' }
 ];
 
 export function Reports({ tab = 'spend' }: { tab?: string }) {
@@ -352,14 +425,14 @@ export function Reports({ tab = 'spend' }: { tab?: string }) {
         </div>
         <SegmentedControl value={tab} onChange={(v: string) => go({ screen: 'reports', tab: v })} options={TABS} style={{ alignSelf: 'flex-start' }} />
         {err ? <div style={{ color: 'var(--status-error-text)', font: '400 12.5px/1.5 var(--font-sans)' }}>Could not build the report: {err}</div> : null}
-        {!report && !err && tab !== 'disk' && tab !== 'digest' && tab !== 'audit' ? <div style={{ ...head }}>Working it out…</div> : null}
+        {!report && !err && tab !== 'system' && tab !== 'digest' && tab !== 'audit' ? <div style={{ ...head }}>Working it out…</div> : null}
         {report && tab === 'spend' ? <Spend r={report} fmt={fmt} /> : null}
         {report && tab === 'throughput' ? <Throughput r={report} /> : null}
         {report && tab === 'approvals' ? <Approvals r={report} /> : null}
         {report && tab === 'quality' ? <Quality r={report} /> : null}
         {tab === 'digest' ? <Digest days={days} /> : null}
         {tab === 'audit' ? <Audit days={days} /> : null}
-        {tab === 'disk' ? <Disk /> : null}
+        {tab === 'system' || tab === 'disk' ? <><System /><Disk /></> : null}
       </div>
     </div>
   );

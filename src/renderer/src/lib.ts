@@ -25,7 +25,7 @@ export function elapsed(from: number, to?: number): string {
   const m = Math.max(0, Math.floor(((to ?? Date.now()) - from) / 60000));
   if (m < 1) return '<1m';
   if (m < 60) return m + 'm';
-  return Math.floor(m / 60) + 'h ' + (m % 60 ? (m % 60) + 'm' : '').trim();
+  return Math.floor(m / 60) + 'h' + (m % 60 ? ' ' + (m % 60) + 'm' : '');
 }
 
 export function ago(t: number): string {

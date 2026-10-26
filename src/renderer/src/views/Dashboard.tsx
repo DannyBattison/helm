@@ -6,7 +6,7 @@ import { api, platform } from '../api';
 import { isFreeGroup, whereLabel, ago, clock, fmtTokens, lifetimeTokens, laneAxis, laneData, LANE_MIN, livePlan, repoOf, reposWithSessions, runningSubagents, sessionTokens, totals, untilReset } from '../lib';
 import { Cmd } from '../Hl';
 import { go, setUI, useApp, useMoney, toast, useUI } from '../store';
-import { Avatar, Button, DiffStat, Meter, SegmentedControl, Stat, StatusDot, useColumns, useNarrow } from '../ui';
+import { Avatar, Button, DiffStat, Hint, Meter, SegmentedControl, Stat, StatusDot, useColumns, useNarrow } from '../ui';
 import { PlanMeters } from './Shell';
 import { ForecastNotice } from './Review';
 
@@ -20,7 +20,7 @@ export function Lane({ s, now }: { s: Session; now: number }) {
   return (
     <div style={{ position: 'relative', height: 20 }}>
       <div style={{ position: 'absolute', left: 0, right: 0, top: 10, height: 1, background: 'var(--border-subtle)' }} />
-      {segs.map(([a, b, st], i) => <div key={i} style={{ position: 'absolute', top: 6, height: 8, left: lanePct(a), width: lanePct(b - a), borderRadius: 2, background: LANE_COLOR[st], opacity: st === 'working' ? 0.85 : 1 }} />)}
+      {segs.map(([a, b, st], i) => <div key={i} style={{ position: 'absolute', top: 6, height: 8, left: lanePct(a), width: lanePct(b - a), borderRadius: `${i === 0 ? 2 : 0}px ${i === segs.length - 1 ? 2 : 0}px ${i === segs.length - 1 ? 2 : 0}px ${i === 0 ? 2 : 0}px`, background: LANE_COLOR[st], opacity: st === 'working' ? 0.85 : 1 }} />)}
       {marks.map((m, i) => <div key={'m' + i} title="Commit" style={{ position: 'absolute', top: 3, left: lanePct(m), width: 2, height: 14, marginLeft: -1, borderRadius: 1, background: 'var(--text-1)', boxShadow: '0 0 0 1.5px var(--bg-panel)' }} />)}
       <div style={{ position: 'absolute', top: -2, bottom: -2, left: lanePct(104), width: 1, background: 'var(--text-3)' }} />
     </div>
@@ -143,7 +143,7 @@ function FirstRun() {
         <p style={{ margin: 0, font: '400 13px/1.55 var(--font-sans)', color: 'var(--text-2)' }}>
           {none ? 'helm works with GitHub repositories. Clone one from your account, from a URL, or register a clone you already have.' : 'Describe a task and helm gives the agent its own worktree and branch. Your checkout is never touched.'}
         </p>
-        {none ? <div style={{ display: 'flex', gap: 8 }}><Button variant="primary" icon="book-bookmark" onClick={() => setUI({ adding: true })}>Add repository</Button><Button variant="secondary" icon="robot" onClick={() => setUI({ newSession: { repoId: '@free' } })}>Start a free agent</Button></div> : <Button variant="primary" icon="plus" onClick={() => setUI({ newSession: {} })}>New session</Button>}
+        {none ? <div style={{ display: 'flex', gap: 8 }}><Button variant="primary" icon="book-bookmark" onClick={() => setUI({ adding: true })}>Add repository</Button>{app.settings.freeAgents ? <Button variant="secondary" icon="robot" onClick={() => setUI({ newSession: { repoId: '@free' } })}>Start a free agent</Button> : null}</div> : <Button variant="primary" icon="plus" onClick={() => setUI({ newSession: {} })}>New session</Button>}
       </div>
     </div>
   );
@@ -188,7 +188,7 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
           </div>
           <span title={pushes.tip}><Button variant="ghost" icon="cloud-arrow-up" loading={pushes.busy} disabled={pushes.ahead.length === 0} onClick={pushes.push}>{pushes.commits ? `Push all · ${pushes.commits}` : 'Push all'}</Button></span>
           <Button variant="ghost" icon="book-bookmark" onClick={() => setUI({ adding: true })}>Add repository</Button>
-          <Button variant="primary" icon="plus" kbd={narrow ? undefined : platform() === 'darwin' ? '⌘N' : 'Ctrl+N'} onClick={() => setUI({ newSession: {} })}>New session</Button>
+          <Hint id="new-session" title="Start an agent" text="Describe a task and an agent works on it in its own branch, while you do something else."><Button variant="primary" icon="plus" kbd={narrow ? undefined : platform() === 'darwin' ? '⌘N' : 'Ctrl+N'} onClick={() => setUI({ newSession: {} })}>New session</Button></Hint>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: narrow ? 'repeat(2, minmax(0,1fr))' : 'repeat(4, minmax(0,1fr)) minmax(0,1.6fr)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-panel)', boxShadow: 'inset 0 0 0 1px var(--border)' }}>
@@ -222,8 +222,6 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
               {asks.map((s) => <AttentionCard key={s.id + s.ask!.id} s={s} />)}
             </div>
           </section>
-        ) : filter === 'attention' ? (
-          <div style={{ font: '400 13px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Nothing is waiting on you.</div>
         ) : null}
 
         {liveSessions > 0 || totalExt > 0 || archivedTotal > 0 ? (
@@ -261,7 +259,7 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
                   </>}
                   <span style={{ flex: 1 }} />
                   {isFreeGroup(r) ? null : <Button size="sm" variant="ghost" icon="git-commit" onClick={() => go({ screen: 'repo', id: r.id })}>History</Button>}
-                  <Button size="sm" variant="ghost" icon="plus" onClick={() => setUI({ newSession: { repoId: r.id } })}>{isFreeGroup(r) ? 'New free agent' : 'New session'}</Button>
+                  {isFreeGroup(r) && !app.settings.freeAgents ? null : <Button size="sm" variant="ghost" icon="plus" onClick={() => setUI({ newSession: { repoId: r.id } })}>{isFreeGroup(r) ? 'New free agent' : 'New session'}</Button>}
                 </div>
                 {sessions.filter(visible).map((s) => <SessionRow key={s.id} s={s} now={now} tpl={col.template} sub={sub} narrow={narrow} />)}
                 {extShown(r.id).map((x) => <ExternalRow key={x.id} x={x} repoId={r.id} tpl={col.template} sub={sub} narrow={narrow} />)}

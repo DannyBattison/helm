@@ -27,3 +27,4 @@ export { Skeleton } from './Skeleton';
 export { ContextMenu } from './ContextMenu';
 export type { MenuItem } from './ContextMenu';
 export { Lightbox } from './Lightbox';
+export { Hint } from './Hint';

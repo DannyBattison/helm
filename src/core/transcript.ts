@@ -25,8 +25,9 @@ export function convertMessages(msgs: any[], wt: string, withUser = false): Tran
     const raw = m.message?.content;
     const content: any[] = Array.isArray(raw) ? raw : typeof raw === 'string' ? [{ type: 'text', text: raw }] : [];
     if (m.type === 'assistant') {
+      const at = Date.parse(m.timestamp) || undefined;
       for (const b of content) {
-        if (b.type === 'text' && b.text?.trim()) { ev.push({ k: 'agent', text: b.text.trim() }); continue; }
+        if (b.type === 'text' && b.text?.trim()) { ev.push({ k: 'agent', text: b.text.trim(), at }); continue; }
         if (b.type !== 'tool_use') continue;
         const input = b.input || {};
         if (COMMAND_TOOLS.has(b.name)) {

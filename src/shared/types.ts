@@ -1,5 +1,6 @@
 /** Types shared by the main process, preload and renderer. */
 
+import type { SystemStatus } from './system';
 import type { Conflict } from './forecast';
 import type { Issue } from './issues';
 import type { Workflow, WorkflowRun } from './workflows';
@@ -131,6 +132,15 @@ export interface Subagent {
   agentId?: string;
 }
 
+export interface ExtraRepo {
+  repoId: string;
+  branch: string;
+  base: string;
+  worktree: string;
+  prUrl?: string;
+  prAt?: number;
+}
+
 export interface Session {
   id: string;
   /**
@@ -159,6 +169,8 @@ export interface Session {
   branch: string;
   base: string;
   worktree: string;
+  /** More repositories this session works in, each with a worktree and branch of its own. Each can get its own pull request. */
+  extras?: ExtraRepo[];
   /** Files uploaded for this session alone, kept in `dir` outside the worktree. */
   uploads?: { dir: string; files: { name: string; size: number }[] };
   /** Which agent backend runs it. Sessions saved before there were others have none, which means Claude. */
@@ -179,6 +191,8 @@ export interface Session {
   filesTouched: Record<string, { add: number; del: number }>;
   timeline: { t: number; status: Status }[];
   commits: { hash: string; at: number }[];
+  /** When a push for this session last finished, so views showing what is unpushed refresh. */
+  pushedAt?: number;
   ask?: PendingAsk;
   agentSessionId?: string;
   editing?: { file: string; line: number };
@@ -282,7 +296,8 @@ export interface SessionArtifact { name: string; label: string; at: number; dism
 /** The file itself, as sent to the window. */
 export interface Artifact { name: string; mediaType: string; size: number; data: string | null }
 
-export type TranscriptEvent =
+/** `at` is when helm recorded the event. */
+export type TranscriptEvent = { at?: number } & (
   | { k: 'user'; t: number; text: string; from?: string; images?: MessageImage[]; cp?: number }
   | { k: 'subagent'; id: string; description: string; agentType: string; status: Subagent['status']; summary?: string }
   | { k: 'agent'; text: string; list?: string[] }
@@ -292,7 +307,7 @@ export type TranscriptEvent =
   | { k: 'commit'; hash: string; msg: string; t: number }
   | { k: 'permission'; askId: string; cmd: string; summary?: string; tool: string; why: string; pattern?: string; resolved?: 'approved' | 'always' | 'denied' }
   | { k: 'question'; askId: string; questions: AskQuestion[]; answered?: string }
-  | { k: 'note'; tone: 'attention' | 'error' | 'neutral'; text: string };
+  | { k: 'note'; tone: 'attention' | 'error' | 'neutral'; text: string });
 
 export interface ActivityEvent {
   id: string;
@@ -337,6 +352,8 @@ export interface Settings {
   /** Who the agent's commits are credited to: you, with Claude as a co-author, or Claude alone. */
   commitAuthor: 'coauthor' | 'sole';
   worktreeRoot: string;
+  /** Offer free agents (not tied to a repository) when starting a session. Existing ones keep working when off. */
+  freeAgents: boolean;
   /** Where scratch folders for free agents are made. */
   freeRoot: string;
   cloneRoot: string;
@@ -383,6 +400,8 @@ export interface Settings {
   notifyReady: { desktop: boolean; sound: boolean };
   notifyFailed: { desktop: boolean; sound: boolean };
   notifyChecks: { desktop: boolean; sound: boolean };
+  /** Notifications sent out of the app, one entry per channel (email for now). Quiet hours and `notifyRepo` apply to them too. */
+  outbound: import('./outbound').OutboundSettings;
   dnd: boolean;
   /** No desktop notifications between these local times (HH:MM), unless the session is blocked on an approval and `quietAllowAttention` is on. */
   quiet: { enabled: boolean; from: string; to: string; allowAttention: boolean };
@@ -412,6 +431,10 @@ export interface Settings {
   shortcuts: Record<string, string>;
   /** Show the organisation or user before each repository name in the left tree (`acme/` storefront). */
   showOwner: boolean;
+  /** Tutorial mode: bubbles that point out useful areas until each is dismissed. */
+  tutorial: boolean;
+  /** Ids of the tutorial bubbles already dismissed. */
+  tutorialSeen: string[];
   uiFont: string;
   /** Monospaced font for data in the interface: paths, branches, hashes and numbers. */
   dataFont: string;
@@ -506,6 +529,8 @@ export interface AppState {
   /** Counts every event logged, so a page can tell when to read the log again. */
   activitySeq: number;
   settings: Settings;
+  /** Outbound channel secrets are never sent to the UI; this says whether they are set. */
+  outboundSecrets: { emailPassword: boolean };
   /** Automated agents, global and per repository. */
   automations: AutomatedAgent[];
   /** Spend per repo id since the start of the current week (Monday). */
@@ -731,6 +756,8 @@ export interface NewSessionInput {
   model: ModelAlias;
   budget: number;
   permMode: PermMode;
+  /** Further repositories to give the agent a worktree in, besides `repoId`. Each starts from its default branch. */
+  extraRepos?: string[];
   /** For a free agent: a folder of yours to work in, instead of a new scratch folder. */
   folder?: string;
   /** Wait until this session has been merged before starting, so the new one begins from the merged base. */
@@ -759,6 +786,8 @@ export const MAX_UPLOAD_TOTAL = 12 * 1024 * 1024;
 
 export interface CreatePrInput {
   sessionId: string;
+  /** Open the pull request for this additional repository of the session instead of its main one. */
+  extraRepoId?: string;
   base: string;
   title: string;
   body: string;
@@ -862,6 +891,10 @@ export interface HelmApi {
   getState(): Promise<AppState>;
   /** Forgets this computer's link to the companion server. Turning the companion on again links it afresh. */
   companionUnlink(): Promise<void>;
+  /** Stores (or with an empty string clears) the SMTP password for outbound email, encrypted by the host. */
+  setEmailPassword(password: string): Promise<void>;
+  /** Sends a test message through a channel with its current settings. Resolves to an error message, or null when it went out. */
+  testOutbound(channel: import('./outbound').ChannelId): Promise<string | null>;
   /** The window was unresponsive for `ms`. Written to diagnostics.log, with the page it was on. */
   reportStall(ms: number, where: string): Promise<void>;
   /** The log of everything helm and its agents did, newest first. `before` is a timestamp to page back from. */
@@ -966,6 +999,8 @@ export interface HelmApi {
   fileBlame(sessionId: string, path: string): Promise<{ line: number; hash: string; who: string }[]>;
   changedFiles(sessionId: string): Promise<{ path: string; status: string }[]>;
   changes(sessionId: string): Promise<ChangesSummary>;
+  /** The same for one of the session's additional repositories. */
+  extraChanges(sessionId: string, repoId: string): Promise<ChangesSummary>;
   fileDiff(sessionId: string, path: string): Promise<DiffHunk[]>;
   createPr(input: CreatePrInput): Promise<{ url: string | null }>;
   /** Merges an open pull request on GitHub, optionally deleting its branch there. The session (if helm started it) is settled straight away. */
@@ -1042,6 +1077,8 @@ export interface HelmApi {
   cleanWorktree(sessionId: string): Promise<number>;
   /** Removes a finished session's worktree (the branch and the conversation stay). Refused with uncommitted or unpushed work. */
   dropWorktree(sessionId: string): Promise<void>;
+  /** CPU, memory, disk and load of the machine helm runs on (the server, when hosted), and of helm itself. CPU use is measured between calls, so the first has none. */
+  systemStatus(): Promise<SystemStatus>;
   checkForUpdates(): Promise<UpdateStatus>;
   installUpdate(): Promise<void>;
   /** Saves a support bundle: versions, settings, session states and the recent log, with private text left out and secrets masked. */
@@ -1098,5 +1135,7 @@ export interface HelmEvents {
   termExit: { id: string };
   /** A file for the user to keep. The hosted server sends it to the browser, which downloads it. */
   download: { name: string; text: string };
+  /** A desktop notification for a browser to show, when the host has no desktop of its own. */
+  notify: { kind: 'attention' | 'ready' | 'failed'; title: string; body: string; silent: boolean; sessionId: string };
   navigate: { screen: string; id?: string; tab?: string; file?: string; line?: number };
 }
