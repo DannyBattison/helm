@@ -4,6 +4,18 @@ import { freeRepo, FREE_ID, type AgentCapabilities, type AppState, type BackendI
 export const backendFor = (app: AppState, id?: string): BackendInfo | undefined => app.backends?.find((b) => b.id === id) ?? app.backends?.[0];
 /** Choices for a model picker, from whichever backend the session or setting uses. */
 export const modelOptions = (app: AppState, id?: string) => (backendFor(app, id)?.models ?? []).map((m) => ({ value: m.id, label: m.label }));
+/** Every model of every agent that is ready to use (signed in, installed), as one list. The value is `agent/model`. */
+export const modelChoices = (app: AppState) => {
+  const ready = (app.backends || []).filter((b) => b.ready);
+  return ready.flatMap((b) => b.models.map((m) => ({ value: `${b.id}/${m.id}`, label: ready.length > 1 ? `${b.label} · ${m.label}` : m.label })));
+};
+export const splitChoice = (v: string) => { const i = v.indexOf('/'); return { backend: v.slice(0, i), model: v.slice(i + 1) }; };
+/** The default agent and model from Settings, or the first thing that can be used when that agent is not ready. */
+export const defaultChoice = (app: AppState) => {
+  const want = `${app.settings.defaultBackend}/${app.settings.defaultModel}`;
+  const all = modelChoices(app);
+  return all.some((c) => c.value === want) ? want : all[0]?.value ?? want;
+};
 /** Whether the session's backend supports something. True until the backends have loaded, so controls don't flicker away. */
 export const can = (app: AppState, s: { backend?: string }, what: keyof AgentCapabilities) => backendFor(app, s.backend)?.capabilities[what] ?? true;
 
@@ -127,10 +139,21 @@ export function untilReset(resetsAtSec: number): string {
 }
 
 /** Plan windows that have not reset yet. A window past its reset time reads as unknown, not as the old number. */
-export function livePlan(app: AppState) {
+export function livePlan(app: AppState, backend?: string) {
   const ok = (w?: { util: number; resetsAt: number }) => (w && w.resetsAt * 1000 > Date.now() ? w : undefined);
-  return { fiveHour: ok(app.plan.fiveHour), weekly: ok(app.plan.weekly) };
+  const id = backend ?? backendFor(app, app.settings.defaultBackend)?.id ?? 'claude';
+  const plan = app.plans?.[id] ?? (id === 'claude' ? app.plan : undefined);
+  return { fiveHour: ok(plan?.fiveHour), weekly: ok(plan?.weekly) };
 }
+
+/** How an agent's usage is paid for: the setting for Claude, what the account reports for any other. */
+export const billingOf = (app: AppState, backend?: string): 'subscription' | 'api' => {
+  const b = backendFor(app, backend ?? app.settings.defaultBackend);
+  return !b || b.id === 'claude' ? app.settings.billing : b.login?.billing ?? 'subscription';
+};
+
+/** The agents whose plan limits are worth showing: ready to use, with windows, and paid for by a subscription. */
+export const planBackends = (app: AppState) => (app.backends || []).filter((b) => b.ready && b.capabilities.planUsage && billingOf(app, b.id) === 'subscription');
 
 /** The subagents to list: archived ones (handed back with nothing to review) only when asked for. */
 export const subagentTree = (s: Session, withArchived = false) => {

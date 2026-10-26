@@ -17,6 +17,8 @@ export interface AutomatedAgent {
   scope: string;
   trigger: AutomationTrigger;
   enabled: boolean;
+  /** Which agent runs it. Unset means the default one in Settings. */
+  backend?: string;
   model: string;
   permMode: 'ask' | 'edits' | 'plan' | 'all';
   /** Spend limit for each session it starts. */

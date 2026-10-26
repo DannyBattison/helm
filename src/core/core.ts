@@ -224,7 +224,7 @@ const automations = new Automations(store, {
   listPulls: (id) => GH.listPulls(id),
   listIssues: (id) => GH.listIssues(id),
   start: async (repoId, base, task, a) => {
-    await sessions.create({ repoId, base, task, model: a.model, budget: a.budget, permMode: a.permMode, automation: { id: a.id, name: a.name } });
+    await sessions.create({ repoId, base, task, backend: a.backend, model: a.model, budget: a.budget, permMode: a.permMode, automation: { id: a.id, name: a.name } });
   },
   automatedBranches: (repoId) => new Set(store.data.sessions.filter((s) => s.repoId === repoId && s.automation).map((s) => s.branch)),
   repoName: (id) => repoName(id),

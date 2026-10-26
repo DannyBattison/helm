@@ -156,7 +156,7 @@ export class BackendRegistry {
     return Promise.all(this.list.map(async (b) => {
       const login = logins[b.id];
       const version = await b.version().catch(() => null);
-      return { id: b.id, label: b.label, models: b.models, capabilities: b.capabilities, version, canSignIn: !!b.auth, login, ready: (!b.auth || !!login?.loggedIn) && (!!b.bundled || version !== null) };
+      return { id: b.id, label: b.label, models: b.models, capabilities: b.capabilities, version, installed: !!b.bundled || version !== null, canSignIn: !!b.auth, login, ready: (!b.auth || !!login?.loggedIn) && (!!b.bundled || version !== null) };
     }));
   }
 }

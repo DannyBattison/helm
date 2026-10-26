@@ -2,7 +2,7 @@ import React from 'react';
 import type { Checkpoint, Conflict, Effort, ModelAlias, Session } from '@shared/types';
 import { sessionTitle } from '@shared/types';
 import { api } from '../api';
-import { ago, fmtTokens, modelOptions, relTime } from '../lib';
+import { ago, fmtTokens, modelChoices, relTime } from '../lib';
 import { go, setUI, toast, useApp, useMoney } from '../store';
 import { Badge, Button, Dialog, Select, StatusDot } from '../ui';
 
@@ -195,23 +195,23 @@ export function Compare({ group }: { group: string }) {
 }
 
 // ------------------------------------------------------------------ variants for a compare run
-export interface Variant { model: ModelAlias; effort: Effort | 'default' }
+export interface Variant { /** `agent/model` */ choice: string; effort: Effort | 'default' }
 
-export function VariantEditor({ backend, variants, onChange }: { backend?: string; variants: Variant[]; onChange(v: Variant[]): void }) {
+export function VariantEditor({ variants, onChange }: { variants: Variant[]; onChange(v: Variant[]): void }) {
   const app = useApp();
-  const models = modelOptions(app, backend);
+  const models = modelChoices(app);
   const set = (i: number, patch: Partial<Variant>) => onChange(variants.map((v, k) => (k === i ? { ...v, ...patch } : v)));
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       {variants.map((v, i) => (
         <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           <span style={{ font: '500 11px/1.5 var(--font-mono)', color: 'var(--text-3)', width: 14 }}>{i + 1}</span>
-          <Select value={v.model} onChange={(e: any) => set(i, { model: e.target.value })} options={models} style={{ flex: 1 }} />
+          <Select value={v.choice} onChange={(e: any) => set(i, { choice: e.target.value })} options={models} style={{ flex: 1 }} />
           <Select value={v.effort} onChange={(e: any) => set(i, { effort: e.target.value })} options={EFFORT_OPTIONS} style={{ flex: 1 }} />
           <Button size="sm" variant="ghost" icon="x" disabled={variants.length <= 2} onClick={() => onChange(variants.filter((_, k) => k !== i))} />
         </div>
       ))}
-      {variants.length < 4 ? <Button size="sm" variant="ghost" icon="plus" style={{ alignSelf: 'flex-start' }} onClick={() => onChange([...variants, { model: models[0]?.value ?? '', effort: 'default' }])}>Add a run</Button> : null}
+      {variants.length < 4 ? <Button size="sm" variant="ghost" icon="plus" style={{ alignSelf: 'flex-start' }} onClick={() => onChange([...variants, { choice: models[0]?.value ?? '', effort: 'default' }])}>Add a run</Button> : null}
     </div>
   );
 }

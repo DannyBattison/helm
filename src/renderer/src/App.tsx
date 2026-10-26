@@ -147,8 +147,8 @@ export function App() {
     body = <Dashboard key={route.filter || 'all'} filter={route.filter} />;
   }
   const inCode = route.screen === 'session' && route.tab === 'code';
-  // On a server where Claude Code is not signed in yet, that comes first: the overlay covers the app and the app behind it is switched off.
-  const needsClaude = !!app.agentLogin && !app.agentLogin.loggedIn;
+  // On a server where no agent is signed in yet, that comes first: the overlay covers the app and the app behind it is switched off.
+  const needsClaude = app.agentLoginRequired && !!app.backends.length && !app.backends.some((b) => b.canSignIn && b.login?.loggedIn);
 
   return (
     <div style={{ position: 'relative', height: '100%', minWidth: 320, display: 'flex', flexDirection: 'column' }}>

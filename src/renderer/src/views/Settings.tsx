@@ -1,13 +1,14 @@
 import React from 'react';
 import type { ModelAlias, PermMode, Settings as SettingsT } from '@shared/types';
 import { api, platform } from '../api';
-import { backendFor, livePlan, modelOptions, theme as resolveTheme, untilReset } from '../lib';
+import { defaultChoice, livePlan, modelChoices, splitChoice, theme as resolveTheme, untilReset } from '../lib';
 import { CURRENCIES, rateFor } from '@shared/money';
 import { BUNDLED_FONTS, fontStack, SYSTEM_DEFAULT, systemFonts, systemUiFonts, uiStack, UI_BUNDLED_FONTS, dataStack } from '../fonts';
 import { ACCENT_SWATCHES, SCHEMES, STATUS_KEYS, STATUS_LABEL, isHex, schemeVars } from '@shared/schemes';
 import { AutomationsSection } from './Automations';
 import { toast, useApp, useMoney } from '../store';
 import { comboFromEvent, comboKeys, comboProblem, normalizeCombo, SHORTCUT_ACTIONS, shortcutConflict, shortcutOf } from '@shared/shortcuts';
+import { AgentSignInDialog } from './AgentSignIn';
 import { Avatar, Badge, Button, Dialog, Input, Kbd, Meter, SegmentedControl, Select, Switch, TreeItem, useColumns, useNarrow } from '../ui';
 
 const errText = (e: any) => String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '');
@@ -294,6 +295,38 @@ function FontRow({ title, desc, value, onChange, bundled, system, stack }: { tit
   );
 }
 
+/** One agent's accounts and command-line tool. Signing out is here, and so is signing in to one that was not chosen first. */
+function AgentAccount({ b }: { b: import('@shared/types').BackendInfo }) {
+  const app = useApp();
+  const st = app.settings;
+  const [signing, setSigning] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const l = b.login;
+  const fromEnv = !!l?.loggedIn && /key|token/.test(l.method);
+  const pathKey = b.id === 'claude' ? 'claudePath' : b.id === 'codex' ? 'codexPath' : '';
+  const who = l?.loggedIn
+    ? fromEnv ? `Using the ${l.method} set in this machine's environment.` : `Signed in${l.method === 'chatgpt' ? ' with ChatGPT' : ' with your subscription'}${l.email ? ` as ${l.email}` : ''}${l.plan ? ` (${l.plan})` : ''}.`
+    : l?.error ? `Not signed in. ${l.error}` : 'Not signed in. This agent cannot be used until you sign in.';
+  return (
+    <>
+      <div style={{ margin: '14px 0 2px', font: '600 13px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>{b.label}</div>
+      {pathKey ? (
+        <SettingRow title="Command-line tool" desc={(st as any)[pathKey] ? 'Custom path' : b.id === 'claude' ? 'Uses the Claude Code bundled with helm unless a path is set.' : `Uses \`${b.id}\` from the PATH unless a path is set.`}>
+          <Field value={(st as any)[pathKey]} onCommit={(v: string) => set({ [pathKey]: v.trim() } as any)} placeholder={`Path to ${b.id} (optional)`} style={{ width: 260 }} />
+          {b.version ? <Badge tone="ready" dot>{b.version}</Badge> : b.installed ? <Badge>bundled</Badge> : <Badge tone="error">not found</Badge>}
+        </SettingRow>
+      ) : null}
+      {b.canSignIn ? (
+        <SettingRow title="Account" desc={who}>
+          {l?.loggedIn && !fromEnv ? <Button size="sm" variant="ghost" loading={busy} onClick={async () => { setBusy(true); try { await api.agentLogout(b.id); } finally { setBusy(false); } }}>Sign out</Button> : null}
+          {!l?.loggedIn ? <Button size="sm" variant="secondary" disabled={!b.installed} onClick={() => setSigning(true)}>Sign in</Button> : null}
+        </SettingRow>
+      ) : null}
+      {signing ? <AgentSignInDialog backendId={b.id} onClose={() => setSigning(false)} /> : null}
+    </>
+  );
+}
+
 export function Settings({ section }: { section?: string }) {
   const narrow = useNarrow();
   const hosted = !!window.helmBridge.hosted;
@@ -345,20 +378,9 @@ export function Settings({ section }: { section?: string }) {
             </SettingRow>
           </> : null}
           {sec === 'agents' ? <>
-            <H sub="Defaults for new sessions. Each session can override them.">Claude Code</H>
-            <SettingRow title="CLI" desc={st.claudePath ? 'Custom path' : 'Uses the Claude Code bundled with helm unless a path is set.'}>
-              <Field value={st.claudePath} onCommit={(v: string) => set({ claudePath: v.trim() })} placeholder="Path to claude (optional)" style={{ width: 260 }} />
-              {(() => { const v = app.backends.find((b) => b.id === 'claude')?.version; return v ? <Badge tone="ready" dot>{v}</Badge> : <Badge>bundled</Badge>; })()}
-            </SettingRow>
-            {app.agentLogin ? (
-              <SettingRow title="Claude account" desc={app.agentLogin.loggedIn
-                ? (/key|token/.test(app.agentLogin.method) ? `Using the ${app.agentLogin.method} set in this server's environment.` : `Signed in with your Claude subscription${app.agentLogin.email ? ` as ${app.agentLogin.email}` : ''}${app.agentLogin.plan ? ` (${app.agentLogin.plan})` : ''}.`)
-                : 'Not signed in. Agents cannot run until you sign in.'}>
-                {app.agentLogin.loggedIn && !/key|token/.test(app.agentLogin.method) ? <Button size="sm" variant="ghost" onClick={() => void api.agentLogout(app.agentLogin!.backend)}>Sign out</Button> : null}
-              </SettingRow>
-            ) : null}
-            {app.backends.length > 1 ? <SettingRow title="Default agent" desc="Which agent new sessions use. Each session can override it."><Select value={st.defaultBackend} onChange={(e: any) => set({ defaultBackend: e.target.value, defaultModel: backendFor(app, e.target.value)?.models[0]?.id ?? st.defaultModel })} options={app.backends.map((b) => ({ value: b.id, label: b.label }))} /></SettingRow> : null}
-            <SettingRow title="Default model"><Select value={st.defaultModel} onChange={(e: any) => set({ defaultModel: e.target.value as ModelAlias })} options={modelOptions(app, st.defaultBackend)} /></SettingRow>
+            <H sub="Who is signed in to each agent, where its command-line tool is, and the defaults for new sessions.">Agents</H>
+            {app.backends.map((b) => <AgentAccount key={b.id} b={b} />)}
+            <SettingRow title="Default model" desc="New sessions start with this. Models of every agent you are signed in to are listed."><Select value={defaultChoice(app)} onChange={(e: any) => { const c = splitChoice(e.target.value); set({ defaultBackend: c.backend, defaultModel: c.model }); }} options={modelChoices(app)} /></SettingRow>
             <SettingRow title="Permission mode" desc={st.permMode === 'all' ? 'Agents run every command and edit every file without asking. The worktree keeps them off your checkout, but they can still reach the network and files outside it. Pre-approved patterns and approvals no longer matter.' : 'What an agent can do without asking you first.'}><Select value={st.permMode} onChange={(e: any) => set({ permMode: e.target.value as PermMode })} options={PERM_OPTIONS} /></SettingRow>
             <SettingRow title="Always allowed commands" desc="Comma separated patterns. * matches anything. Added to when you choose Always allow.">
               <Field value={st.alwaysAllow} format={(v: string[]) => v.join(', ')} parse={(s: string) => s.split(',').map((x) => x.trim()).filter(Boolean)} onCommit={(v: string[]) => set({ alwaysAllow: v })} style={{ width: 260 }} />

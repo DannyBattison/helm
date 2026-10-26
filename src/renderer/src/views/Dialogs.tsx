@@ -2,10 +2,11 @@ import React from 'react';
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_FILES, MAX_UPLOAD_TOTAL, type BaseOption, type GhRepo, type MergeMethod, type ModelAlias, type PermMode, type PullRequest, type SessionDeleteInfo } from '@shared/types';
 import { api, platform } from '../api';
 import glyph from '../assets/helm-glyph-violet.svg';
-import { backendFor, modelOptions, tilde } from '../lib';
+import { billingOf, defaultChoice, modelChoices, splitChoice, tilde } from '../lib';
 import { getUI, go, haltAll, resumeAll, setUI, toast, useApp, useMoney } from '../store';
-import { Badge, Button, Checkbox, Dialog, IconButton, Input, Kbd, Select, Tabs, useNarrow } from '../ui';
+import { Badge, Button, Checkbox, Dialog, IconButton, Input, Kbd, SegmentedControl, Select, Tabs, useNarrow } from '../ui';
 import { PERM_OPTIONS } from './Settings';
+import { AgentSignInPanel } from './AgentSignIn';
 import { useShortcutKeys } from '../shortcuts';
 import { AttachmentChips, IMAGE_TYPES, readAttachments, type Draft } from './attach';
 import { VariantEditor, type Variant } from './Review';
@@ -94,66 +95,31 @@ export function SignIn() {
 }
 
 
-// ------------------------------------------------------------------ sign in to Claude (hosted server)
+// ------------------------------------------------------------------ sign in to an agent (hosted server)
 /**
- * Shown over everything, and the app behind it switched off, when the server's Claude Code is not signed in: on a server nobody can run
- * `claude` in front of it, so signing in is the first thing to do. Done when Claude Code reports that it is signed in.
+ * Shown over everything, and the app behind it switched off, when none of the server's agents is signed in: on a server nobody can run
+ * `claude` or `codex` in front of it, so signing in is the first thing to do. One is enough; the other can be signed in under Settings.
  */
 export function AgentLoginGate() {
   const app = useApp();
-  const [step, setStep] = React.useState(0);
-  const [url, setUrl] = React.useState('');
-  const [code, setCode] = React.useState('');
-  const [busy, setBusy] = React.useState(false);
-  const [err, setErr] = React.useState(app.agentLogin?.error || '');
-  const backend = app.agentLogin?.backend || '';
-  const label = app.agentLogin?.label || 'your agent';
-
-  const start = async () => {
-    setErr(''); setBusy(true);
-    try {
-      const r = await api.agentLoginStart(backend);
-      setUrl(r.url); setStep(1);
-      void api.openExternal(r.url);
-    } catch (e) { setErr(errText(e)); } finally { setBusy(false); }
-  };
-  const submit = async () => {
-    setErr(''); setBusy(true);
-    try { await api.agentLoginCode(backend, code); }
-    catch (e) { setErr(errText(e)); setStep(0); setCode(''); }
-    finally { setBusy(false); }
-  };
-  const startOver = () => { void api.agentLoginCancel(backend); setStep(0); setCode(''); setErr(''); };
-  const text: React.CSSProperties = { margin: 0, font: '400 13px/1.55 var(--font-sans)', color: 'var(--text-2)' };
-
+  const options = app.backends.filter((b) => b.canSignIn);
+  const first = options.find((b) => b.installed && b.id === app.settings.defaultBackend) ?? options.find((b) => b.installed) ?? options[0];
+  const [pick, setPick] = React.useState(first?.id || '');
+  const backend = options.find((b) => b.id === pick) ?? first;
+  if (!backend) return null;
   return (
-    <div role="dialog" aria-modal="true" aria-label={`Sign in to ${label}`} style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'grid', placeItems: 'center', padding: 24, background: 'color-mix(in srgb, var(--bg-app) 86%, transparent)', backdropFilter: 'blur(6px)' }}>
+    <div role="dialog" aria-modal="true" aria-label="Sign in to start" style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'grid', placeItems: 'center', padding: 24, background: 'color-mix(in srgb, var(--bg-app) 86%, transparent)', backdropFilter: 'blur(6px)' }}>
       <div style={{ width: 420, maxWidth: '100%', display: 'flex', flexDirection: 'column', gap: 18, padding: 28, borderRadius: 'var(--radius-lg)', background: 'var(--bg-panel)', boxShadow: 'inset 0 0 0 1px var(--border), 0 20px 60px rgba(0,0,0,.45)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <img src={glyph} width="30" height="30" alt="" />
           <span style={{ font: '600 20px/1.5 var(--font-mono)', letterSpacing: '-0.02em', position: 'relative', top: '0.14em' }}>helm</span>
         </div>
-        {step === 0 ? <>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <h1 style={{ margin: 0, font: '600 18px/1.5 var(--font-sans)' }}>Sign in to {label} to start</h1>
-            <p style={text}>helm runs {label} on this server, and it has to be signed in to your account before agents can do anything. It uses your subscription.</p>
-          </div>
-          <Button size="lg" variant="primary" fullWidth loading={busy} onClick={start}>Sign in with {label}</Button>
-          {err ? <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--status-error-text)' }}>{err}</span> : null}
-          <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Use your own account, on a server only you use: Anthropic's terms limit sharing a subscription login with other people or apps.</span>
-        </> : <>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <h1 style={{ margin: 0, font: '600 18px/1.5 var(--font-sans)' }}>Approve it on {label}, then paste the code</h1>
-            <p style={text}>We opened {label} in a new tab. Approve the sign-in there, and it shows a code. Paste it here to finish. If the tab did not open, use the button below.</p>
-          </div>
-          <Button variant="secondary" fullWidth iconRight="arrow-square-out" onClick={() => api.openExternal(url)}>Open {label} again</Button>
-          <Input mono autoFocus value={code} onChange={(e: any) => setCode(e.target.value)} onKeyDown={(e: any) => { if (e.key === 'Enter' && code.trim() && !busy) void submit(); }} placeholder="Paste the code here" />
-          <div style={{ display: 'flex', gap: 8 }}>
-            <Button variant="primary" style={{ flex: 1 }} loading={busy} disabled={!code.trim()} onClick={submit}>Continue</Button>
-            <Button variant="ghost" onClick={startOver}>Start over</Button>
-          </div>
-          {err ? <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--status-error-text)' }}>{err}</span> : null}
-        </>}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <h1 style={{ margin: 0, font: '600 18px/1.5 var(--font-sans)' }}>Sign in to start</h1>
+          <p style={{ margin: 0, font: '400 13px/1.55 var(--font-sans)', color: 'var(--text-2)' }}>helm runs coding agents on this server, and one of them has to be signed in to your account before they can do anything. It uses your subscription. You can sign in to the other later, under Settings.</p>
+        </div>
+        {options.length > 1 ? <SegmentedControl value={backend.id} onChange={setPick} options={options.map((b) => ({ value: b.id, label: b.label }))} /> : null}
+        <AgentSignInPanel key={backend.id} backend={backend} />
       </div>
     </div>
   );
@@ -282,7 +248,6 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
   const app = useApp();
   const narrow = useNarrow();
   const { sym, to, from } = useMoney();
-  const sub = app.settings.billing === 'subscription';
   const [repo, setRepo] = React.useState(repoId || app.repos[0]?.id || '@free');
   const r = app.repos.find((x) => x.id === repo);
   const free = repo === '@free';
@@ -304,8 +269,9 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
     el.style.height = Math.min(el.scrollHeight, 280) + 'px';
   }, [task]);
   const [after, setAfter] = React.useState('');
-  const [backend, setBackend] = React.useState(app.settings.defaultBackend);
-  const [model, setModel] = React.useState<ModelAlias>(app.settings.defaultModel);
+  const [choice, setChoice] = React.useState(() => defaultChoice(app));
+  const { backend, model } = splitChoice(choice);
+  const sub = billingOf(app, backend) === 'subscription';
   const [perm, setPerm] = React.useState<PermMode>(app.settings.permMode);
   const [budget, setBudget] = React.useState(String(Math.round(to(app.settings.sessionBudget) * 100) / 100));
   const [busy, setBusy] = React.useState(false);
@@ -316,7 +282,7 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
   const others = app.repos.filter((x) => x.id !== repo);
   const extraRepos = free ? [] : more.filter((id) => id !== repo && others.some((x) => x.id === id));
   const [uploads, setUploads] = React.useState<Upload[]>([]);
-  const [variants, setVariants] = React.useState<Variant[]>(() => { const m = backendFor(app, app.settings.defaultBackend)?.models || []; return [{ model: m[0]?.id ?? app.settings.defaultModel, effort: 'default' }, { model: m[1]?.id ?? m[0]?.id ?? app.settings.defaultModel, effort: 'default' }]; });
+  const [variants, setVariants] = React.useState<Variant[]>(() => { const c = modelChoices(app); const d = defaultChoice(app); return [{ choice: d, effort: 'default' }, { choice: c.find((x) => x.value !== d)?.value ?? d, effort: 'default' }]; });
   React.useEffect(() => {
     if (!repo) return;
     if (repo === '@free') { setBases([]); setDirty(0); return; }
@@ -350,7 +316,7 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
     try {
       const input = { files: uploads.length ? uploads.map(({ name, data }) => ({ name, data })) : undefined, repoId: repo, base: free ? '' : base, folder: free && folder ? folder : undefined, task: task.trim(), images: images.length ? images.map(({ mediaType, data, name }) => ({ mediaType, data, name })) : undefined, backend, model, budget: sub ? 0 : from(parseFloat(budget)) || app.settings.sessionBudget, permMode: perm, after: after || undefined, source: initial?.source, extraRepos: extraRepos.length ? extraRepos : undefined };
       if (compare && !free) {
-        const ids = await api.createGroup(input, variants.map((v) => ({ model: v.model, effort: v.effort === 'default' ? undefined : v.effort })));
+        const ids = await api.createGroup(input, variants.map((v) => ({ ...splitChoice(v.choice), effort: v.effort === 'default' ? undefined : v.effort })));
         const group = getUI().app?.sessions.find((x) => x.id === ids[0])?.group;
         onClose();
         go(group ? { screen: 'compare', group } : { screen: 'overview' });
@@ -406,8 +372,7 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
           </div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: narrow ? 'minmax(0,1fr)' : sub ? '1fr 1fr' : '1fr 1fr 110px', gap: 8, ...(compare ? { opacity: 0.5 } : null) }}>
-          {app.backends.length > 1 ? <Select disabled={compare} value={backend} onChange={(e: any) => { setBackend(e.target.value); setModel(backendFor(app, e.target.value)?.models[0]?.id ?? model); }} options={app.backends.map((b) => ({ value: b.id, label: b.label }))} /> : null}
-          <Select disabled={compare} value={model} onChange={(e: any) => setModel(e.target.value)} options={modelOptions(app, backend)} />
+          <Select disabled={compare} value={choice} onChange={(e: any) => setChoice(e.target.value)} options={modelChoices(app)} />
           <Select value={perm} onChange={(e: any) => setPerm(e.target.value)} options={PERM_OPTIONS} />
           {sub ? null : <Input mono value={sym + budget} onChange={(e: any) => setBudget(e.target.value.replace(/[^0-9.]/g, ''))} />}
         </div>
@@ -426,7 +391,7 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
           </div>
         ) : null}
         {free ? null : <Checkbox checked={compare} onChange={setCompare} label="Compare several runs" description="Start the same task more than once, with different models or effort, and keep the best result." />}
-        {compare && !free ? <VariantEditor backend={backend} variants={variants} onChange={setVariants} /> : null}
+        {compare && !free ? <VariantEditor variants={variants} onChange={setVariants} /> : null}
         {(() => {
           const here = bases.find((b) => b.ref === base);
           const hidden = bases.find((b) => b.local && b.ahead > 0 && 'origin/' + b.ref === base);

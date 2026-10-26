@@ -402,13 +402,13 @@ export class SessionManager {
       { conversation: (wt) => store.fork({ sourceId: externalId, sourceDir: dir, destDir: wt, title: `${info.title || info.summary || 'Session'} (in helm)` }) });
   }
 
-  async createGroup(input: NewSessionInput, variants: { model: ModelAlias; effort?: Effort }[]): Promise<string[]> {
+  async createGroup(input: NewSessionInput, variants: { backend?: string; model: ModelAlias; effort?: Effort }[]): Promise<string[]> {
     if (variants.length < 2) throw new Error('Pick at least two variants to compare.');
     if (input.repoId === FREE_ID) throw new Error('Comparing runs needs a repository.');
     const group = uid();
     const ids: string[] = [];
     // One after another: each session's name is made unique against the ones that exist.
-    for (const v of variants.slice(0, 6)) ids.push(await this.create({ ...input, model: v.model }, { group, effort: v.effort }));
+    for (const v of variants.slice(0, 6)) ids.push(await this.create({ ...input, backend: v.backend ?? input.backend, model: v.model }, { group, effort: v.effort }));
     return ids;
   }
 

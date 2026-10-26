@@ -4,7 +4,7 @@ import { api, platform } from '../api';
 import { commandSteps } from '@shared/commandSummary';
 import { Cmd, Hl } from '../Hl';
 import { highlightBlock, langFromPath, langFromTag } from '../highlight';
-import { can, clock, elapsed, fmtTokens, modelOptions, prettyModel, runningSubagents, STATUS_LABEL, subagentTree, tilde } from '../lib';
+import { billingOf, can, clock, elapsed, fmtTokens, modelOptions, prettyModel, runningSubagents, STATUS_LABEL, subagentTree, tilde } from '../lib';
 import { go, loadTranscript, setUI, toast, useApp, useMoney, useTranscript } from '../store';
 import { Avatar, Badge, BranchTag, Button, CopyBox, DiffStat, Grip, IconButton, Lightbox, Meter, Select, StatusDot, Tabs, Tooltip, usePaneWidth } from '../ui';
 import { Changes } from './Changes';
@@ -28,7 +28,7 @@ const stepsTip = (cmd: string, summary?: string) => { const steps = commandSteps
 function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string): void }) {
   const { fmt } = useMoney();
   const app = useApp();
-  const sub = app.settings.billing === 'subscription';
+  const sub = billingOf(app, s.backend) === 'subscription';
   const running = s.status === 'working' || s.status === 'attention';
   const push = usePush(s.repoId, s.id);
   return (
@@ -512,7 +512,7 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
 function UsagePanel({ s }: { s: S }) {
   const app = useApp();
   const { fmt } = useMoney();
-  const sub = app.settings.billing === 'subscription';
+  const sub = billingOf(app, s.backend) === 'subscription';
   const [width, grip, resetWidth] = usePaneWidth('usage-panel', 300, 240, 560, -1);
   const limit = s.maxSubagents ?? app.settings.maxSubagentsSession;
   const running = runningSubagents(s);

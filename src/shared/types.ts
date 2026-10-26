@@ -46,6 +46,8 @@ export interface BackendInfo {
   capabilities: AgentCapabilities;
   /** The installed command-line version, or null when it uses the copy bundled with helm or none was found. */
   version: string | null;
+  /** Its command-line tool was found (or it ships with helm). */
+  installed: boolean;
   /** True when helm can sign this agent in and out (an account to show in Settings). */
   canSignIn: boolean;
   /** Who is signed in, when known. Absent when the agent has no account or it could not be checked. */
@@ -1071,7 +1073,7 @@ export interface HelmApi {
   /** Carries on a session started outside helm, in its own worktree, from a copy of its conversation. */
   continueExternal(repoId: string, externalId: string, task: string): Promise<string>;
   /** The same task started in several sessions, one per variant, to compare. */
-  createGroup(input: NewSessionInput, variants: { model: ModelAlias; effort?: Effort }[]): Promise<string[]>;
+  createGroup(input: NewSessionInput, variants: { backend?: string; model: ModelAlias; effort?: Effort }[]): Promise<string[]>;
   /** Keeps one session of a group and archives the rest. */
   keepFromGroup(group: string, keepId: string): Promise<void>;
   revertHunk(sessionId: string, path: string, hunk: DiffHunk): Promise<void>;
