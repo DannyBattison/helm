@@ -25,6 +25,8 @@ export function createHost(send: Host['send'], allowLogin?: Host['allowLogin']):
     openPath: unavailable('Opening a folder'),
     copyText: unavailable('Copying'),
     appInfo: () => ({ version: 'hosted', packaged: true }),
+    // Notifications are shown by the browser (see web/bridge.ts), which knows whether the tab is in view.
+    notify: ({ kind, title, body, silent, sessionId }) => send('notify', { kind, title, body, silent, sessionId }),
     // A report or diagnostics bundle goes to the browser, which downloads it.
     async saveFile(name, text) { send('download', { name, text }); return name; }
   };
