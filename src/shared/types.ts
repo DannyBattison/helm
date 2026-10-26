@@ -78,6 +78,10 @@ export interface Subagent {
   tokens: number;
   summary?: string;
   background?: boolean;
+  /** It edited a file or committed (or a subagent under it did), so there is something for the owner to review. */
+  changed?: boolean;
+  /** Handed back with nothing to review: left out of the subagent list unless asked for. */
+  archived?: boolean;
   /** Claude Code's id for the subagent, used to read its transcript. */
   agentId?: string;
 }

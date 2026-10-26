@@ -22,6 +22,9 @@ export interface Hooks {
   claudePath(): string | undefined;
 }
 
+/** Added to the system prompt: a subagent reports to the agent that started it, which keeps going. */
+const HAND_BACK = 'A subagent hands its result back to you when it finishes: end its task with a clear final report, and when you receive a subagent\'s result, carry on from it (use it, start the next step or summarise it for the user) rather than stopping.';
+
 /** Input stream for a streaming-mode query. */
 const sdkMode = (m: PermMode) => (m === 'plan' ? 'plan' : m === 'edits' ? 'acceptEdits' : m === 'all' ? 'bypassPermissions' : 'default') as 'plan' | 'acceptEdits' | 'bypassPermissions' | 'default';
 
@@ -517,7 +520,7 @@ export class SessionManager {
           : 'It is one of the user\'s own folders, and you are working in it directly with nothing to undo your changes, so be careful with anything destructive. Do not push or open pull requests unless asked.',
         'Stay in this directory unless the user asks you to work elsewhere. If you need a decision from the user, ask with the AskUserQuestion tool instead of guessing.',
         art,
-        `Subagents: at most ${this.sessionLimit(s)} may run at once in this session. Start independent work in parallel only within that limit.`
+        `Subagents: at most ${this.sessionLimit(s)} may run at once in this session. Start independent work in parallel only within that limit. ${HAND_BACK}`
       ].join('\n');
     }
     return [
@@ -531,7 +534,7 @@ export class SessionManager {
         : 'Do not push and do not open pull requests; the user does that from helm after reviewing your changes.',
       'If you need a decision from the user, ask with the AskUserQuestion tool instead of guessing.',
       art,
-      `Subagents: at most ${this.sessionLimit(s)} may run at once in this session and ${this.repoLimit(s)} across the repository. Start independent work in parallel only within those limits.`,
+      `Subagents: at most ${this.sessionLimit(s)} may run at once in this session and ${this.repoLimit(s)} across the repository. Start independent work in parallel only within those limits. ${HAND_BACK}`,
       st.runTests ? 'Before you finish, run the project\'s tests (from package.json, go.mod, Makefile or equivalent) when they exist, and state the result.' : ''
     ].filter(Boolean).join('\n');
   }
@@ -622,6 +625,7 @@ export class SessionManager {
     const parent: string | null = m.parent_tool_use_id || null;
     const sub = parent ? s.subagents.find((x) => x.id === parent) : undefined;
     if (parent && !sub) return;
+    if (!parent) this.resumeWorking(s);
     const tkey = sub ? `${s.id}~${sub.id}` : s.id;
     const u = m.message?.usage;
     if (u) {
@@ -675,11 +679,18 @@ export class SessionManager {
   private async finishSubagent(s: Session, rt: Runtime, a: Subagent, status: Subagent['status']) {
     a.status = status;
     a.endedAt = Date.now();
+    // Handed back with nothing for the owner to review: the parent has what it needs, so tidy the subagent away.
+    if (status === 'done' && !a.changed) a.archived = true;
     rt.admitted.delete(a.id);
     await this.syncSubagent(s, a);
     await this.patchSubagent(rt, a);
     this.scheduleStats(s, rt);
     this.touch();
+  }
+
+  /** A subagent (and the ones above it) changed files, so it is not archived when it hands back. */
+  private markChanged(s: Session, sub?: Subagent) {
+    for (let a = sub; a && !a.changed; a = a.parentId ? s.subagents.find((x) => x.id === a!.parentId) : undefined) a.changed = true;
   }
 
   private subSyncAt = new Map<string, number>();
@@ -801,6 +812,14 @@ export class SessionManager {
     if (!a || a.status !== 'working') return;
     if (m.summary) a.summary = trunc(String(m.summary).trim(), 600);
     await this.finishSubagent(s, rt, a, m.status === 'completed' ? 'done' : m.status === 'stopped' ? 'stopped' : 'failed');
+    // The result goes back to the parent, which continues in a new turn even if its last one had ended.
+    if (m.status === 'completed' || m.status === 'failed') this.resumeWorking(s, `Continuing with the result of ${a.description}`);
+  }
+
+  /** The agent is producing output again after a result (a subagent handed back and woke it): show the session as working, not finished. */
+  private resumeWorking(s: Session, step?: string) {
+    if (s.ask || s.archivedAt || s.mergedAt || (s.status !== 'idle' && s.status !== 'ready')) return;
+    this.setStatus(s, 'working', step ?? 'Continuing');
   }
 
   private async onToolUse(s: Session, rt: Runtime, b: any, tkey: string, sub?: Subagent) {
@@ -822,6 +841,7 @@ export class SessionManager {
     }
     if (EDIT_TOOLS.has(name)) {
       const file = rel(wt, String(input.file_path || input.notebook_path || ''));
+      this.markChanged(s, sub);
       this.activity(s, 'edit', (sub ? `${sub.description}: ` : '') + `${name === 'Write' ? 'wrote' : 'edited'} ${file}`, { detail: file });
       const lines: [string, string][] = [];
       let add = 0, del = 0;
@@ -949,6 +969,7 @@ export class SessionManager {
     if (!m) return;
     const now = Date.now();
     s.commits.push({ hash: m[1], at: now });
+    this.markChanged(s, s.subagents.find((x) => tkey === `${s.id}~${x.id}`));
     s.stuck = undefined;
     s.fileEdits = undefined;
     await this.push(tkey, { k: 'commit', hash: m[1], msg: m[2], t: now });
@@ -1019,6 +1040,12 @@ export class SessionManager {
     }
     s.error = undefined;
     s.editing = undefined;
+    // Background subagents are still running: their notifications wake the agent, which carries on, so the session is not finished.
+    const waiting = s.subagents.filter((a) => a.status === 'working' && a.background);
+    if (waiting.length) {
+      this.setStatus(s, 'working', `Waiting for ${waiting.length === 1 ? 'subagent: ' + waiting[0].description : waiting.length + ' subagents'}`);
+      return;
+    }
     // A free agent has nothing to review or merge: it is simply done.
     if (!s.free && (s.files > 0 || s.commits.length > 0)) {
       this.setStatus(s, 'ready', `${s.files} ${s.files === 1 ? 'file' : 'files'} changed · ready for review`);
