@@ -24,7 +24,6 @@ function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string
   const app = useApp();
   const sub = app.settings.billing === 'subscription';
   const running = s.status === 'working' || s.status === 'attention';
-  const deliverMerge = useApp().settings.deliver === 'merge';
   const push = usePush(s.repoId, s.id);
   return (
     <div style={{ flex: 'none', padding: '14px 20px 0', display: 'flex', flexDirection: 'column', gap: 12, borderBottom: '1px solid var(--border)' }}>
@@ -55,9 +54,7 @@ function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string
         {s.claudeSessionId && !s.worktreeGone && !s.free ? <IconButton icon="git-fork" label="Fork this session" onClick={() => setUI({ forking: { sessionId: s.id, index: null, text: '' } })} /> : null}
         <Button variant="secondary" icon="arrow-square-out" onClick={() => guard(api.openInEditor(s.id))}>Open in editor</Button>
         {s.free ? <Button variant="secondary" icon="git-diff" disabled={!s.free.managed} title={s.free.managed ? undefined : 'Changes are tracked only in folders helm made'} onClick={() => setTab('changes')}>Changes</Button> : <>
-        {s.mergedAt ? <Badge tone="ready">Merged into {s.mergedInto}</Badge> : s.prUrl ? <><Button variant="ghost" icon="git-pull-request" onClick={() => api.openExternal(s.prUrl!)}>View pull request</Button>{prNumber(s.prUrl) ? <Button variant="primary" icon="git-merge" onClick={() => setUI({ mergingPr: { repoId: s.repoId, number: prNumber(s.prUrl)!, sessionId: s.id } })}>Merge pull request</Button> : null}</>
-          : s.status === 'ready' ? <Button variant="primary" icon={deliverMerge ? 'git-merge' : 'git-pull-request'} onClick={() => setTab('changes')}>{deliverMerge ? 'Merge changes' : 'Create pull request'}</Button>
-          : <Button variant="secondary" icon="git-diff" onClick={() => setTab('changes')}>Review changes</Button>}
+        {s.mergedAt ? <Badge tone="ready">Merged into {s.mergedInto}</Badge> : null}
         </>}
       </div>
       <Tabs value={tab} onChange={setTab} style={{ borderBottom: 'none', padding: 0 }} tabs={[
@@ -332,7 +329,6 @@ function TranscriptItemView({ m, s, index, onDeny }: { m: TranscriptEvent; s: S;
 /** Re-renders only when its event changes, or the pending request it may be showing does. */
 export const TranscriptItem = React.memo(TranscriptItemView, (a, b) => a.m === b.m && a.index === b.index && a.s?.worktreeGone === b.s?.worktreeGone && a.s?.ask?.id === b.s?.ask?.id && a.s?.ask?.orphaned === b.s?.ask?.orphaned);
 
-const prNumber = (url?: string) => { const m = /\/pull\/(\d+)/.exec(url || ''); return m ? +m[1] : null; };
 const gone: React.CSSProperties = { font: '400 13px/1.5 var(--font-sans)', color: 'var(--text-3)', textAlign: 'center', display: 'grid', placeItems: 'center' };
 
 // Drafts and sent messages are kept per session for as long as helm is open, so switching away never loses what you were typing

@@ -180,6 +180,8 @@ function ChangesView({ s }: { s: Session }) {
   const [rm, setRm] = React.useState(s.removeAfterMerge);
   const [delBranch, setDelBranch] = React.useState(s.deleteBranchAfterMerge ?? s.removeAfterMerge);
   const [deliver, setDeliver] = React.useState<'pr' | 'merge'>(app.settings.deliver);
+  const prNum = s.prUrl && !s.mergedAt ? +(/\/pull\/(\d+)/.exec(s.prUrl)?.[1] || 0) || null : null;
+  const openPr = deliver === 'pr' && !!prNum;
   const [armed, setArmed] = React.useState(false);
   React.useEffect(() => setArmed(false), [deliver, base, title]);
   const [busy, setBusy] = React.useState('');
@@ -379,15 +381,15 @@ function ChangesView({ s }: { s: Session }) {
               <SegmentedControl value={deliver} onChange={(v: string) => setDeliver(v as any)} options={[{ value: 'pr', label: 'Pull request' }, { value: 'merge', label: 'Merge directly' }]} />
             </div>
             {s.mergedAt ? <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>Merged into <b>{s.mergedInto}</b> {relTime(s.mergedAt)}. Merging again pushes anything new since.</div> : null}
-            {deliver === 'pr' && s.prUrl ? <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}><Button size="sm" variant="secondary" icon="chats" style={{ marginBottom: 8 }} onClick={() => void api.sendPrFeedback(s.id).then((n) => toast({ tone: n ? 'ready' : 'neutral', title: n ? `Sent ${n} review ${n === 1 ? 'comment' : 'comments'} to the agent` : 'No new review comments' })).catch((e) => toast({ tone: 'error', title: 'Could not read the review comments', description: errText(e) }))}>Send new review comments to the agent</Button><br />A pull request is open for this branch. <a href="#" onClick={(e) => { e.preventDefault(); void api.openExternal(s.prUrl!); }}>View on GitHub</a>{/\/pull\/(\d+)/.test(s.prUrl) ? <>, or <a href="#" onClick={(e) => { e.preventDefault(); setUI({ mergingPr: { repoId: s.repoId, number: +/\/pull\/(\d+)/.exec(s.prUrl!)![1], sessionId: s.id } }); }}>merge it here</a></> : null}. Creating another pushes new commits to the same branch.</div> : null}
+            {openPr ? <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}><Button size="sm" variant="secondary" icon="chats" style={{ marginBottom: 8 }} onClick={() => void api.sendPrFeedback(s.id).then((n) => toast({ tone: n ? 'ready' : 'neutral', title: n ? `Sent ${n} review ${n === 1 ? 'comment' : 'comments'} to the agent` : 'No new review comments' })).catch((e) => toast({ tone: 'error', title: 'Could not read the review comments', description: errText(e) }))}>Send new review comments to the agent</Button><br />Pull request #{prNum} is open for this branch. <a href="#" onClick={(e) => { e.preventDefault(); void api.openExternal(s.prUrl!); }}>View on GitHub</a>. Commits pushed to <b>{s.branch}</b> join it.</div> : null}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, font: '400 12px/1 var(--font-sans)', color: 'var(--text-3)' }}>
               <Select size="sm" icon="git-branch" mono value={base} onChange={(e) => setBase(e.target.value)} options={[...new Set([base, ...branches])]} /><i className="ph ph-arrow-left" style={{ fontSize: 12 }} /><BranchTag name={s.branch} />
             </div>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={deliver === 'pr' ? 'Title' : 'Commit message for uncommitted files'} />
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={deliver === 'pr' && !openPr ? 'Title' : 'Commit message for uncommitted files'} />
             {deliver === 'merge' ? <div style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>No pull request and no review: the branch is brought up to date with <b>{base}</b> (merging it in if needed), then pushed onto <b>{base}</b> on GitHub. If <b>{base}</b> is protected, GitHub refuses it.</div> : null}
-            {deliver === 'pr' ? <textarea rows={8} value={body} onChange={(e) => { bodyEdited.current = true; setBody(e.target.value); }}
+            {deliver === 'pr' && !openPr ? <textarea rows={8} value={body} onChange={(e) => { bodyEdited.current = true; setBody(e.target.value); }}
               style={{ resize: 'vertical', border: 'none', outline: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border)', color: 'var(--text-1)', font: '400 12px/1.55 var(--font-mono)', padding: '8px 10px' }} /> : null}
-            {deliver === 'pr' ? <Checkbox checked={draft} onChange={setDraft} label="Open as draft" /> : null}
+            {deliver === 'pr' && !openPr ? <Checkbox checked={draft} onChange={setDraft} label="Open as draft" /> : null}
             <Checkbox checked={rm || delBranch} disabled={delBranch} onChange={setRm} label="Remove worktree after merge" description={delBranch ? 'Needed to delete the branch' : s.worktree} />
             <Checkbox checked={delBranch} onChange={setDelBranch} label={<span>Delete the branch after merge <code style={{ font: 'var(--type-data)' }}>{s.branch}</code></span>} description="Here and on GitHub" />
           </div>
@@ -399,7 +401,9 @@ function ChangesView({ s }: { s: Session }) {
               {totalHunks && doneHunks < totalHunks ? <span>{totalHunks - doneHunks} {totalHunks - doneHunks === 1 ? 'hunk' : 'hunks'} not yet accepted.</span> : null}
             </div>
           ) : null}
-          {deliver === 'pr'
+          {openPr
+            ? <Button variant="primary" icon="git-merge" fullWidth disabled={!!busy} onClick={() => setUI({ mergingPr: { repoId: s.repoId, number: prNum!, sessionId: s.id } })}>Merge pull request #{prNum}</Button>
+            : deliver === 'pr'
             ? <Button variant="primary" icon="git-pull-request" kbd={MOD() + '↵'} fullWidth loading={busy === 'pr'} disabled={!title.trim() || !!busy || !app.user} onClick={createPr}>Create pull request</Button>
             : <Button variant={armed ? 'danger' : 'primary'} icon="git-merge" fullWidth loading={busy === 'merge'} disabled={!!busy || (!sum?.commits.length && filesToStage.length === 0)} onClick={() => (armed ? merge() : setArmed(true))}>{armed ? `Push to ${base} on GitHub. Click again to confirm` : `Merge into ${base}`}</Button>}
           <div style={{ display: 'flex', gap: 8 }}>
