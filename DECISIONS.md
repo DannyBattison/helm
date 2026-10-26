@@ -555,3 +555,7 @@ Why: user request.
 ## D-134 · 2026-10-26 · Code blocks in the conversation wrap long lines
 Fenced code blocks in messages and the edit diffs in the transcript used `white-space: pre` and scrolled sideways, which cut long lines off on a narrow screen. They now wrap (`pre-wrap`, breaking anywhere when a word is too long). The diff grid's second column became `minmax(0, 1fr)` so it can shrink. Not run in the app.
 Why: user request.
+
+## D-135 · 2026-10-26 · Auto push: helm pushes after every commit, and it is a setting (on by default)
+"Push after every commit" only asked the agent to push, which it could forget. The setting is now `autoPush` ("Auto push" in Settings → Git, replacing `pushOnCommit`), on by default. When on, helm itself runs `git push -u origin <branch>` right after it sees the agent commit (one push at a time per session) and after a commit from the Changes panel (`commitOnly`, also for a repository's own checkout). The agent is told not to push, since helm does. A failed push is written to the activity log and retried at the next commit; it never blocks the commit. Free agents have no remote and are skipped. Because the branch is on GitHub from the first commit, the rename-after-Claude-names-it step now leaves it alone (it already skipped pushed branches). The old stored `pushOnCommit` value is ignored. Not run in the app; `tsc` is not installed in the worktree.
+Why: user request.

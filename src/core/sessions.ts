@@ -535,8 +535,8 @@ export class SessionManager {
       st.commitAuthor === 'sole'
         ? `End every commit message with a blank line and this trailer: "Helm-Session: ${s.id}". Do not add any Co-authored-by trailer. The commits are authored by Claude alone.`
         : `End every commit message with a blank line and this trailer: "Co-authored-by: helm session ${s.id} <noreply@helm.app>".`,
-      st.pushOnCommit
-        ? `Push after every commit: run \`git push -u origin ${s.branch}\` right after each \`git commit\`. Do not open pull requests; the user does that from helm.`
+      st.autoPush && !s.free
+        ? 'Do not push and do not open pull requests. helm pushes your branch to GitHub after each commit, and the user opens the pull request from helm.'
         : 'Do not push and do not open pull requests; the user does that from helm after reviewing your changes.',
       'If you need a decision from the user, ask with the AskUserQuestion tool instead of guessing.',
       art,
@@ -980,7 +980,24 @@ export class SessionManager {
     s.fileEdits = undefined;
     await this.push(tkey, { k: 'commit', hash: m[1], msg: m[2], t: now });
     this.activity(s, 'commit', `committed ${m[1]} “${trunc(m[2], 70)}”`);
+    if (this.store.data.settings.autoPush) void this.autoPush(s);
     this.touch();
+  }
+
+  /** Pushes the session's branch to GitHub, one push at a time per session so quick commits do not race. A failure is shown in the activity log and tried again at the next commit. */
+  private pushing = new Map<string, Promise<void>>();
+  autoPush(s: Session): Promise<void> {
+    if (s.free || !s.branch || s.worktreeGone) return Promise.resolve();
+    const run = (this.pushing.get(s.id) ?? Promise.resolve()).then(async () => {
+      try {
+        await G.git(s.worktree, 'push', '-u', 'origin', s.branch);
+        this.activity(s, 'push', `pushed ${s.branch}`);
+      } catch (e: any) {
+        this.activity(s, 'push', `push of ${s.branch} failed: ${trunc(String(e?.message || e).split('\n').find((l) => l.trim()) || 'unknown error', 120)}`, { ok: false });
+      }
+    });
+    this.pushing.set(s.id, run);
+    return run;
   }
 
   private async locateEdit(s: Session, input: any) {
@@ -1418,8 +1435,8 @@ export class SessionManager {
     const st = this.store.data.settings;
     if (s.free || s.branchNamed || !s.branch || !s.branch.startsWith(st.branchPrefix)) return;
     s.branchNamed = true;
-    // The agent is told the branch name when it must push, and a pushed branch may already have a pull request.
-    if (st.pushOnCommit || s.prUrl) return;
+    // A pushed branch may already have a pull request; the check below leaves one that is on GitHub alone.
+    if (s.prUrl) return;
     const repo = this.repoOf(s);
     if (await G.gitOk(repo.localPath, 'rev-parse', '--verify', '--quiet', 'refs/remotes/origin/' + s.branch)) return;
     const base = st.branchPrefix + slug(title);

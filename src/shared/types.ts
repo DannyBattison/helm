@@ -266,8 +266,8 @@ export interface Settings {
   permMode: PermMode;
   alwaysAllow: string[];
   runTests: boolean;
-  /** Tell the agent to push its branch after every commit. */
-  pushOnCommit: boolean;
+  /** Push the branch to GitHub right after every commit, the agent's or one made from the Changes panel. */
+  autoPush: boolean;
   /** Who the agent's commits are credited to: you, with Claude as a co-author, or Claude alone. */
   commitAuthor: 'coauthor' | 'sole';
   worktreeRoot: string;

@@ -468,6 +468,17 @@ export const api: HelmApi = {
     store.log({ kind: 'commit', who: me(), human: true, what: `committed ${files.length} ${files.length === 1 ? 'file' : 'files'}: ${message.split('\n')[0].slice(0, 80)}`, repo: w.sessionId ? repoName(sessions.get(w.sessionId)?.repoId || '') : '', sessionId: w.sessionId, detail: files.join('\n') });
     const s = w.sessionId ? sessions.get(w.sessionId) : undefined;
     if (s) await sessions.refreshStats(s);
+    if (store.data.settings.autoPush) {
+      if (s) await sessions.autoPush(s);
+      else {
+        // The repository's own checkout: push whatever branch is checked out, if any.
+        const branch = (await G.git(w.worktree, 'symbolic-ref', '--short', '-q', 'HEAD').catch(() => '')).trim();
+        if (branch) {
+          const ok = await G.git(w.worktree, 'push', '-u', 'origin', branch).then(() => true, () => false);
+          store.log({ kind: 'push', who: me(), human: true, what: ok ? `pushed ${branch}` : `push of ${branch} failed`, repo: repoName(id.slice(5)), ok });
+        }
+      }
+    }
   },
   pushStatus(repoId) {
     // The window asks from several places on a timer. Share one answer instead of running git for each ask.
