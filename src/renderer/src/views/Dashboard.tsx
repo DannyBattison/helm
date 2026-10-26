@@ -6,7 +6,7 @@ import { api, platform } from '../api';
 import { isFreeGroup, whereLabel, ago, clock, fmtTokens, lifetimeTokens, laneAxis, laneData, LANE_MIN, livePlan, repoOf, reposWithSessions, runningSubagents, sessionTokens, totals, untilReset } from '../lib';
 import { Cmd } from '../Hl';
 import { go, setUI, useApp, useMoney, toast, useUI } from '../store';
-import { Avatar, Button, DiffStat, Meter, SegmentedControl, Stat, StatusDot, useColumns, useNarrow } from '../ui';
+import { Avatar, Button, DiffStat, Hint, Meter, SegmentedControl, Stat, StatusDot, useColumns, useNarrow } from '../ui';
 import { PlanMeters } from './Shell';
 import { ForecastNotice } from './Review';
 
@@ -188,7 +188,7 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
           </div>
           <span title={pushes.tip}><Button variant="ghost" icon="cloud-arrow-up" loading={pushes.busy} disabled={pushes.ahead.length === 0} onClick={pushes.push}>{pushes.commits ? `Push all · ${pushes.commits}` : 'Push all'}</Button></span>
           <Button variant="ghost" icon="book-bookmark" onClick={() => setUI({ adding: true })}>Add repository</Button>
-          <Button variant="primary" icon="plus" kbd={narrow ? undefined : platform() === 'darwin' ? '⌘N' : 'Ctrl+N'} onClick={() => setUI({ newSession: {} })}>New session</Button>
+          <Hint id="new-session" title="Start an agent" text="Describe a task and an agent works on it in its own branch, while you do something else."><Button variant="primary" icon="plus" kbd={narrow ? undefined : platform() === 'darwin' ? '⌘N' : 'Ctrl+N'} onClick={() => setUI({ newSession: {} })}>New session</Button></Hint>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: narrow ? 'repeat(2, minmax(0,1fr))' : 'repeat(4, minmax(0,1fr)) minmax(0,1.6fr)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-panel)', boxShadow: 'inset 0 0 0 1px var(--border)' }}>

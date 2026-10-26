@@ -66,6 +66,8 @@ export const defaultSettings = (): Settings => ({
   shortcuts: {},
   interruptKey: 'esc',
   showOwner: true,
+  tutorial: true,
+  tutorialSeen: [],
   uiFont: 'Mona Sans',
   dataFont: 'Monaspace Neon',
   editorFont: 'Monaspace Neon',

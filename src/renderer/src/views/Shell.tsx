@@ -9,7 +9,7 @@ import glyph from '../assets/helm-glyph-violet.svg';
 import { ago, elapsed, fmtTokens, isFreeGroup, lifetimeTokens, livePlan, reposWithSessions, runningSubagents, subagentTree, totals, untilReset } from '../lib';
 import { getUI, go, haltAll, refreshExternals, setUI, toast, useApp, useMoney, useUI, useTranscript, type Route } from '../store';
 import { useShortcutKeys } from '../shortcuts';
-import { Avatar, Badge, Breadcrumbs, ContextMenu, Grip, IconButton, Kbd, Meter, TreeItem, useNarrow, usePaneWidth, type MenuItem } from '../ui';
+import { Avatar, Badge, Breadcrumbs, ContextMenu, Grip, Hint, IconButton, Kbd, Meter, TreeItem, useNarrow, usePaneWidth, type MenuItem } from '../ui';
 
 const mac = () => platform() === 'darwin';
 
@@ -152,7 +152,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
         <TreeItem icon="pulse" label="Activity" selected={route.screen === 'activity'} onClick={() => go({ screen: 'activity' })} />
         <TreeItem icon="chart-line-up" label="Reports" selected={route.screen === 'reports'} onClick={() => go({ screen: 'reports' })} />
         <TreeItem icon="archive" label="Archive" selected={route.screen === 'archive'} onClick={() => go({ screen: 'archive' })} trailing={archivedCount ? <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{archivedCount}</span> : null} />
-        <SectionLabel action={<><IconButton icon="hand-palm" label={working ? `Interrupt all agents (${working} working)` : 'Interrupt all agents: none are working'} size="sm" disabled={!working} onClick={() => void haltAll()} style={working ? { color: 'var(--status-error-text)' } : undefined} /><IconButton icon="archive" label={showArchived ? 'Hide archived sessions' : 'Show archived sessions'} size="sm" active={showArchived} onClick={toggleArchived} /><IconButton icon="plus" label="Add repository" size="sm" onClick={() => setUI({ adding: true })} /></>}>Repositories</SectionLabel>
+        <SectionLabel action={<><IconButton icon="hand-palm" label={working ? `Interrupt all agents (${working} working)` : 'Interrupt all agents: none are working'} size="sm" disabled={!working} onClick={() => void haltAll()} style={working ? { color: 'var(--status-error-text)' } : undefined} /><IconButton icon="archive" label={showArchived ? 'Hide archived sessions' : 'Show archived sessions'} size="sm" active={showArchived} onClick={toggleArchived} /><Hint id="add-repo" side="right" title="Add a repository" text="Start here: pick a GitHub repository for agents to work in."><IconButton icon="plus" label="Add repository" size="sm" onClick={() => setUI({ adding: true })} /></Hint></>}>Repositories</SectionLabel>
         {app.repos.length === 0 ? <div style={{ padding: '4px 10px 6px', font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>No repositories yet. Use + to add one from GitHub.</div> : null}
         {reposWithSessions(app, showArchived).map(({ repo: r, sessions }) => {
           const open = !closed[r.id];
@@ -229,14 +229,14 @@ export function TitleBar({ crumbs, theme, setTheme }: { crumbs: any[]; theme: 'd
     <div className="drag" style={{ height: 'var(--titlebar-h)', flex: 'none', display: 'flex', alignItems: 'center', gap: narrow ? 6 : 12, padding: '0 ' + (windowControls() === 'right' ? 150 : 10) + 'px 0 ' + (narrow ? 8 : 16) + 'px', borderBottom: '1px solid var(--border)', background: 'var(--bg-app)' }}>
       {narrow ? <IconButton size="lg" icon="list" label="Menu" onClick={() => setUI({ drawer: !getUI().drawer })} /> : null}
       <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', padding: '3px 0' }}><Breadcrumbs items={crumbs || []} compact={narrow} style={narrow ? { font: '500 17px/1.5 var(--font-sans)' } : undefined} /></div>
-      {narrow ? <IconButton size="lg" icon="magnifying-glass" label="Search" onClick={() => setUI({ palette: true })} /> : <button type="button" onClick={() => setUI({ palette: true })} style={{ width: 340, height: 26, flex: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '0 6px 0 10px', border: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border)', color: 'var(--text-3)', font: '400 12px/1.5 var(--font-sans)', cursor: 'pointer' }}>
+      {narrow ? <IconButton size="lg" icon="magnifying-glass" label="Search" onClick={() => setUI({ palette: true })} /> : <Hint id="search" title="Search anything" text="Jump to any session or repository, and run commands, from here." style={{ flex: "none" }}><button type="button" onClick={() => setUI({ palette: true })} style={{ width: 340, height: 26, flex: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '0 6px 0 10px', border: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border)', color: 'var(--text-3)', font: '400 12px/1.5 var(--font-sans)', cursor: 'pointer' }}>
         <i className="ph ph-magnifying-glass" style={{ fontSize: 13 }} />
         <span style={{ flex: 1, textAlign: 'left' }}>Search sessions and repositories</span>
         <Kbd keys={searchKeys} />
-      </button>}
+      </button></Hint>}
       <div style={{ flex: narrow ? 'none' : 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 2 }}>
         {working > 0 ? <IconButton size={narrow ? 'lg' : 'md'} icon="hand-palm" label={`Interrupt all agents (${working} working)`} onClick={() => void haltAll()} style={{ color: 'var(--status-error-text)' }} /> : null}
-        <IconButton size={narrow ? 'lg' : 'md'} icon="bell" label="Inbox" badge={need > 0} onClick={() => go({ screen: 'inbox' })} />
+        <Hint id="inbox" title="Your inbox" text="Approvals, questions and finished work that need you collect here."><IconButton size={narrow ? 'lg' : 'md'} icon="bell" label="Inbox" badge={need > 0} onClick={() => go({ screen: 'inbox' })} /></Hint>
         {narrow ? null : <>
           <IconButton icon={theme === 'dark' ? 'sun' : 'moon'} label="Toggle theme" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
           <span style={{ width: 1, height: 16, background: 'var(--border)', margin: '0 6px' }} />

@@ -372,6 +372,10 @@ export interface Settings {
   shortcuts: Record<string, string>;
   /** Show the organisation or user before each repository name in the left tree (`acme/` storefront). */
   showOwner: boolean;
+  /** Tutorial mode: bubbles that point out useful areas until each is dismissed. */
+  tutorial: boolean;
+  /** Ids of the tutorial bubbles already dismissed. */
+  tutorialSeen: string[];
   uiFont: string;
   /** Monospaced font for data in the interface: paths, branches, hashes and numbers. */
   dataFont: string;
