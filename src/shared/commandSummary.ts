@@ -81,7 +81,7 @@ function describe(part: string, bodies: string[]): string | null {
   if (loop) return `Loop over ${clip(loop[1].trim().replace(/\s+/g, ' '), 40)}`;
   // `do cmd`, `then cmd`, `if cmd`, `while cmd`, `{ cmd`: describe the command after the keyword.
   while (/^(do|then|else|elif|if|while|until|!|\{|\()\s+/.test(rest)) rest = rest.replace(/^(do|then|else|elif|if|while|until|!|\{|\()\s+/, '');
-  if (/^(do|then|else|fi|done|for|while|if|until|case)$/.test(rest)) return null;
+  if (/^(do|then|else|fi|done|for|while|if|until|case|true|false|:)$/.test(rest)) return null;
   if (/^(\[\[?|test)\s/.test(rest)) return null;
   return describeCommand(rest, bodies);
 }
