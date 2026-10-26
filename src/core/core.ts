@@ -27,6 +27,7 @@ import { shellOptions, Terminals } from './terminal';
 import { expandHome, home, run } from './util';
 import { CURRENCIES, currencyForRegion, fmtMoney } from '../shared/money';
 import { notifyDecision } from '../shared/notify';
+import { dispatchOutbound, emailPasswordSet, loadOutboundSecrets, saveEmailPassword, testOutbound } from './outbound';
 import { auditText } from '../shared/redact';
 import { prepareInputs } from '../shared/workflows';
 import { searchEvents, type SearchResults } from '../shared/search';
@@ -89,6 +90,7 @@ function buildState(): AppState {
     activitySeq: store.logSeq,
     companion: companion.state,
     settings: store.data.settings,
+    outboundSecrets: { emailPassword: emailPasswordSet() },
     automations: store.data.automations,
     weekSpend: store.weekSpend(),
     lifetime: store.data.totals,
@@ -159,6 +161,7 @@ const sessions = new SessionManager(store, {
   notify(kind, title, body, sessionId) {
     const st = store.data.settings;
     const repoId = sessions.get(sessionId)?.repoId || '';
+    dispatchOutbound(st, { kind, title, body, sessionId, repoId });
     const d = notifyDecision(st, kind, repoId);
     if (!d.show) return;
     const ask = kind === 'attention' ? sessions.get(sessionId)?.ask : undefined;
@@ -306,6 +309,8 @@ const repoName = (id: string) => store.data.repos.find((r) => r.id === id)?.name
 export const api: HelmApi = {
   async getState() { return buildState(); },
   activityLog: (opts) => store.readLog(opts?.before, opts?.limit),
+  async setEmailPassword(password) { await saveEmailPassword(password); emitState(); },
+  testOutbound: (channel) => testOutbound(store.data.settings, channel),
   async companionUnlink() { if (host.companion !== false) await companion.unlink(); },
   async reportStall(ms, where) { diag(`window stalled ${ms} ms on ${where}`); },
   async updateSettings(patch: Partial<Settings>) {
@@ -1074,6 +1079,7 @@ export async function start(h: Host) {
   if (host.companion !== false) void companion.loadKey().then(() => companion.apply());
   GH.setSignInGuard(host.allowLogin ?? null);
   GH.watchAuth(() => G.setGitToken(GH.getToken()), () => { G.setGitToken(null); store.data.user = null; store.save(); emitState(); logLine('warn', 'GitHub rejected the sign-in and it could not be renewed; signed out'); });
+  await loadOutboundSecrets(host);
   await GH.loadToken(host);
   await GH.ensureFresh();
   // A server's list can change between runs: a token that belongs to someone no longer on it is dropped, not honoured.

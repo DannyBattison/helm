@@ -362,6 +362,8 @@ export interface Settings {
   notifyReady: { desktop: boolean; sound: boolean };
   notifyFailed: { desktop: boolean; sound: boolean };
   notifyChecks: { desktop: boolean; sound: boolean };
+  /** Notifications sent out of the app, one entry per channel (email for now). Quiet hours and `notifyRepo` apply to them too. */
+  outbound: import('./outbound').OutboundSettings;
   dnd: boolean;
   /** No desktop notifications between these local times (HH:MM), unless the session is blocked on an approval and `quietAllowAttention` is on. */
   quiet: { enabled: boolean; from: string; to: string; allowAttention: boolean };
@@ -489,6 +491,8 @@ export interface AppState {
   /** Counts every event logged, so a page can tell when to read the log again. */
   activitySeq: number;
   settings: Settings;
+  /** Outbound channel secrets are never sent to the UI; this says whether they are set. */
+  outboundSecrets: { emailPassword: boolean };
   /** Automated agents, global and per repository. */
   automations: AutomatedAgent[];
   /** Spend per repo id since the start of the current week (Monday). */
@@ -847,6 +851,10 @@ export interface HelmApi {
   getState(): Promise<AppState>;
   /** Forgets this computer's link to the companion server. Turning the companion on again links it afresh. */
   companionUnlink(): Promise<void>;
+  /** Stores (or with an empty string clears) the SMTP password for outbound email, encrypted by the host. */
+  setEmailPassword(password: string): Promise<void>;
+  /** Sends a test message through a channel with its current settings. Resolves to an error message, or null when it went out. */
+  testOutbound(channel: import('./outbound').ChannelId): Promise<string | null>;
   /** The window was unresponsive for `ms`. Written to diagnostics.log, with the page it was on. */
   reportStall(ms: number, where: string): Promise<void>;
   /** The log of everything helm and its agents did, newest first. `before` is a timestamp to page back from. */
