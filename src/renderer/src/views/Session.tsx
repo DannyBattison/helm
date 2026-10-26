@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Session as S, TranscriptEvent, ModelAlias, PermMode, Effort, MessageImage, Artifact } from '@shared/types';
 import { api, platform } from '../api';
+import { commandSteps } from '@shared/commandSummary';
 import { Cmd, Hl } from '../Hl';
 import { highlightBlock, langFromPath, langFromTag } from '../highlight';
 import { clock, elapsed, fmtTokens, prettyModel, runningSubagents, STATUS_LABEL, subagentTree, tilde } from '../lib';
@@ -20,6 +21,9 @@ const MOD = () => (platform() === 'darwin' ? '⌘' : 'Ctrl+');
 
 const label: React.CSSProperties = { font: '500 10.5px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' };
 const box: React.CSSProperties = { borderRadius: 'var(--radius-md)', background: 'var(--bg-panel)', boxShadow: 'inset 0 0 0 1px var(--border)', overflow: 'hidden' };
+
+/** Tooltip over a command's summary: each step on its own line when there is more than one (the header may only name three). */
+const stepsTip = (cmd: string, summary?: string) => { const steps = commandSteps(cmd); return steps.length > 1 ? steps.map((x, i) => `${i + 1}. ${x}`).join('\n') : summary; };
 
 function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string): void }) {
   const { fmt } = useMoney();
@@ -190,7 +194,7 @@ function BashRow({ m, box }: { m: Extract<TranscriptEvent, { k: 'bash' }>; box: 
     <div style={{ marginLeft: 44, marginRight: 12, ...box }}>
       <div onClick={long ? () => { if (!window.getSelection()?.toString()) setOpen(!open); } : undefined} style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 30, padding: '0 10px', background: 'var(--bg-editor)', cursor: long ? 'pointer' : undefined }}>
         <i className="ph ph-terminal" style={{ fontSize: 13, color: 'var(--text-3)' }} />
-        {m.summary ? <span style={{ font: '500 12px/1.5 var(--font-sans)', color: 'var(--text-1)', flex: 'none', maxWidth: '45%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.summary}</span> : null}
+        {m.summary ? <span style={{ font: '500 12px/1.5 var(--font-sans)', color: 'var(--text-1)', flex: 'none', maxWidth: '45%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={stepsTip(m.cmd, m.summary)}>{m.summary}</span> : null}
         <span className="selectable" style={{ font: '400 12px/1.5 var(--font-mono)', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><span style={{ color: 'var(--text-3)' }}>$ </span><Hl text={m.cmd.split('\n')[0]} lang="bash" />{m.cmd.includes('\n') ? <span style={{ color: 'var(--text-3)' }}> …</span> : null}</span>
         {m.done ? <span style={{ font: '400 12px/1.5 var(--font-mono)', color: m.ok ? 'var(--diff-add-fg)' : 'var(--diff-del-fg)', maxWidth: 260, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{result.split('\n')[0]}</span>
           : <i className="ph ph-circle-notch" style={{ fontSize: 13, color: 'var(--status-working-text)', animation: 'helm-spin .9s linear infinite' }} />}
@@ -301,7 +305,7 @@ function TranscriptItemView({ m, s, index, onDeny }: { m: TranscriptEvent; s: S;
     const isCmd = m.tool === 'Bash' || m.tool === 'PowerShell';
     return (
       <div style={{ marginLeft: 44, marginRight: 12, borderRadius: 'var(--radius-md)', background: 'var(--status-attention-bg)', boxShadow: 'inset 0 0 0 1px var(--status-attention)', padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, font: '600 13px/1.5 var(--font-sans)', color: 'var(--status-attention-text)' }}><i className="ph-fill ph-shield-warning" style={{ fontSize: 15 }} />{isCmd ? <>{m.summary || 'Run a command'}<span style={{ fontWeight: 400, color: 'var(--text-2)' }}> · needs your permission</span></> : m.tool === 'ExitPlanMode' ? 'Plan ready for approval' : 'Permission needed'}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, font: '600 13px/1.5 var(--font-sans)', color: 'var(--status-attention-text)' }}><i className="ph-fill ph-shield-warning" style={{ fontSize: 15 }} />{isCmd ? <><span title={stepsTip(m.cmd, m.summary)}>{m.summary || 'Run a command'}</span><span style={{ fontWeight: 400, color: 'var(--text-2)' }}> · needs your permission</span></> : m.tool === 'ExitPlanMode' ? 'Plan ready for approval' : 'Permission needed'}</div>
         <CopyBox text={m.cmd}>        <code className="selectable" style={{ font: 'var(--type-code)', padding: '6px 10px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-editor)', color: 'var(--text-1)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{isCmd ? <><span style={{ color: 'var(--text-3)' }}>$ </span><Cmd text={m.cmd} /></> : m.cmd}</code></CopyBox>
         <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>{m.why}</div>
         {restarted ? <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>helm was restarted while this waited. Approving starts the session again and has the agent run it.</div> : null}

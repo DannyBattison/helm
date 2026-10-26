@@ -7,16 +7,21 @@
 export function commandSummary(cmd: string, description?: unknown): string {
   const given = typeof description === 'string' ? description.trim().replace(/\s+/g, ' ') : '';
   if (given) return given.length > 90 ? given.slice(0, 89) + '…' : given;
+  const steps = commandSteps(cmd);
+  const shown = steps.slice(0, 3);
+  const rest = steps.length - shown.length;
+  return shown.join(', ') + (rest > 0 ? ` and ${rest} more` : '');
+}
+
+/** Every step of a command, described, for the tooltip over a summary that ends in "and N more". */
+export function commandSteps(cmd: string): string[] {
   const { text, bodies } = stripHeredocs(cmd);
   // Each real command in the chain, past `cd dir &&` and env assignments, is described and the first few are listed.
   const parts = splitChain(text).filter((p) => !p.piped && p.text && !/^cd(\s|$)/.test(p.text) && !/^(set|export|true|:)(\s|$)/.test(p.text));
   const all = (parts.length ? parts.map((p) => p.text) : [text]).map((p) => describe(p, bodies));
   // Loop and test plumbing says nothing on its own, so it is only named when nothing else is left.
   const real = all.filter((d) => d !== null) as string[];
-  const steps = (real.length ? real : all.filter((d): d is string => d !== undefined).map((d) => d ?? 'Run a command')).filter((d, i, a) => d !== a[i - 1]);
-  const shown = steps.slice(0, 3);
-  const rest = steps.length - shown.length;
-  return shown.join(', ') + (rest > 0 ? ` and ${rest} more` : '');
+  return (real.length ? real : all.filter((d): d is string => d !== undefined).map((d) => d ?? 'Run a command')).filter((d, i, a) => d !== a[i - 1]);
 }
 
 /** Takes the bodies of `<<TAG` heredocs out of the command, so their lines are not read as commands. */
