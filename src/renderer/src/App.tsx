@@ -34,6 +34,9 @@ export function App() {
   const mergingPr = useUI((u) => u.mergingPr);
   const removingRepo = useUI((u) => u.removingRepo);
   const term = useUI((u) => u.term);
+  // Once opened the drawer stays mounted (hidden) so shells and tabs survive closing it and moving around.
+  const termUsed = React.useRef(false);
+  if (term) termUsed.current = true;
   const toasts = useUI((u) => u.toasts);
   const drawer = useUI((u) => u.drawer);
   const narrow = useNarrow();
@@ -138,7 +141,7 @@ export function App() {
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg-app)' }}>
           <TitleBar crumbs={crumbs} theme={theme} setTheme={toggleTheme as any} />
           {body}
-          {term && !inCode ? <TerminalDrawer sessionId={route.screen === 'session' ? route.id : null} themeKey={theme} onClose={() => setUI({ term: false })} /> : null}
+          {termUsed.current ? <TerminalDrawer visible={term && !inCode} sessionId={route.screen === 'session' ? route.id : route.screen === 'repo' ? 'repo:' + route.id : null} themeKey={theme} onClose={() => setUI({ term: false })} /> : null}
         </div>
       </div>
       <StatusBar />

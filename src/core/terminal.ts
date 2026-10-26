@@ -104,6 +104,18 @@ export class Terminals {
         return id;
       } catch (e: any) { why = `: could not start ${sh.label} (${String(e?.message || e)})`; }
     }
+    // No native module: `script` gives a real pseudo-terminal (line editing, Tab completion, history, full-screen programs).
+    const script = win ? null : find(['script'], ['/usr/bin', '/bin']);
+    if (script && !/powershell|pwsh/i.test(sh.cmd)) {
+      const mac = process.platform === 'darwin';
+      const quoted = [sh.cmd, ...sh.args(dir)].map((a) => `'${a.replace(/'/g, `'\\''`)}'`).join(' ');
+      const child = spawn(script, mac ? ['-q', '/dev/null', sh.cmd, ...sh.args(dir)] : ['-qfc', `stty cols ${cols} rows ${rows}; exec ${quoted}`, '/dev/null'], { cwd: dir, env });
+      child.stdout.on('data', (d) => this.onData(id, d.toString()));
+      child.stderr.on('data', (d) => this.onData(id, d.toString()));
+      child.on('exit', () => { this.terms.delete(id); this.onExit(id); });
+      this.terms.set(id, { write: (d) => { try { child.stdin.write(d); } catch { /* exited */ } }, resize: () => undefined, kill: () => child.kill() });
+      return id;
+    }
     const ps = /powershell|pwsh/i.test(sh.cmd);
     const child: ChildProcessWithoutNullStreams = spawn(sh.cmd, ps ? ['-NoLogo'] : ['-i'], { cwd: dir, env });
     this.onData(id, `\x1b[2mNo pseudo-terminal available${why}. Using a plain shell.\x1b[0m\r\n`);
