@@ -1,7 +1,7 @@
 # helm
 
 [![CI](https://github.com/DannyBattison/helm/actions/workflows/ci.yml/badge.svg)](https://github.com/DannyBattison/helm/actions/workflows/ci.yml)
-[![Coverage](https://codecov.io/gh/DannyBattison/helm/branch/main/graph/badge.svg)](https://codecov.io/gh/DannyBattison/helm)
+[![codecov](https://codecov.io/gh/DannyBattison/helm/graph/badge.svg?token=XHW1TVGY1K)](https://codecov.io/gh/DannyBattison/helm)
 [![Buy me a coffee](https://img.shields.io/badge/buy%20me%20a%20coffee-%E2%98%95-yellow)](https://buymeacoffee.com/dannybattison)
 
 Supervise many Claude Code sessions across many GitHub repositories, from one window. Available as a desktop app or in your browser.
