@@ -30,6 +30,7 @@ import { prepareInputs } from '../shared/workflows';
 import { searchEvents, type SearchResults } from '../shared/search';
 import { sessionTitle } from '../shared/types';
 import { feedbackTask, issueTask, pullNumber } from '../shared/issues';
+import { prBody, prSummary, prTitle, replaceSummary } from '../shared/prText';
 import { auditCsv, buildReport, digestMarkdown, sessionsCsv, spendCsv, type ReportInput } from '../shared/reports';
 
 let host: Host;
@@ -523,6 +524,7 @@ export const api: HelmApi = {
         if (t.dirty) uncommitted++;
         await G.git(cwd, 'push', '-u', 'origin', t.branch);
         pushed.push(key);
+        if (t.kind === 'session') void syncPr(sess(t.id));
         store.log({ kind: 'push', who: me(), human: true, what: `pushed ${t.branch} (${t.ahead} ${t.ahead === 1 ? 'commit' : 'commits'})`, repo: repoName(t.repoId), sessionId: t.kind === 'session' ? t.id : undefined });
       } catch (e: any) {
         const error = String(e?.message || e).split('\n').slice(-2).join(' ').trim();
@@ -542,7 +544,7 @@ export const api: HelmApi = {
     await GH.ensureFresh();
     await G.git(s.worktree, 'push', '-u', 'origin', s.branch);
     store.log({ kind: 'push', who: me(), human: true, what: `pushed ${s.branch}`, repo: repo.name, sessionId: s.id });
-    const url = await GH.createPull(repo.id, { head: s.branch, base: input.base, title: input.title, body: input.body, draft: input.draft });
+    const url = await GH.createPull(repo.id, { head: s.branch, base: input.base, title: prTitle(input.title, 200), body: input.body, draft: input.draft });
     s.prUrl = url;
     s.prAt = Date.now();
     s.removeAfterMerge = input.removeAfterMerge;
@@ -933,6 +935,24 @@ async function pushTargets(repoId?: string): Promise<import('../shared/types').P
   return out;
 }
 
+// ------------------------------------------------------------------ pull request description upkeep
+const prSynced = new Map<string, string>();
+/** Keeps the helm-written summary in a session's open pull request in step with its branch, so commits pushed later show up in the description. A description the user rewrote (no helm block) is left alone. */
+async function syncPr(s: { id: string; repoId: string; worktree: string; base: string; task: string; source?: { kind: string; number: number }; prUrl?: string; mergedAt?: number; worktreeGone?: boolean }) {
+  const n = pullNumber(s.prUrl);
+  if (!n || s.mergedAt || s.worktreeGone) return;
+  try {
+    const sum = await G.changes(s.worktree, s.base);
+    const sig = sum.commits.map((c) => c.hash).join(',');
+    if (prSynced.get(s.id) === sig) return;
+    const summary = prSummary({ task: s.task, commits: sum.commits, issue: s.source?.kind === 'issue' ? s.source.number : undefined, files: sum.files.length, add: sum.files.reduce((a, f) => a + f.add, 0), del: sum.files.reduce((a, f) => a + f.del, 0) });
+    const body = await GH.getPullBody(s.repoId, n);
+    const next = replaceSummary(body, summary);
+    if (next !== null && next !== body) await GH.updatePullBody(s.repoId, n, next);
+    prSynced.set(s.id, sig);
+  } catch { /* offline; tried again at the next push or poll */ }
+}
+
 // ------------------------------------------------------------------ merged PR cleanup
 const mergingHere = new Set<string>();
 async function pollMerges() {
@@ -944,6 +964,7 @@ async function pollMerges() {
       const prs = await GH.listPulls(repoId);
       for (const s of list) {
         const pr = prs.find((p) => p.url === s.prUrl);
+        if (pr?.state === 'open') await syncPr(s);
         if (pr?.state === 'merged') {
           const delBranch = s.deleteBranchAfterMerge ?? s.removeAfterMerge;
           await sessions.finishMerged(s.id, { into: pr.base }, { worktree: s.removeAfterMerge || delBranch, branch: delBranch });
