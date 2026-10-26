@@ -1,7 +1,7 @@
 import React from 'react';
 import type { ModelAlias, PermMode, Settings as SettingsT } from '@shared/types';
 import { api, platform } from '../api';
-import { livePlan, untilReset } from '../lib';
+import { livePlan, theme as resolveTheme, untilReset } from '../lib';
 import { CURRENCIES, rateFor } from '@shared/money';
 import { BUNDLED_FONTS, fontStack, SYSTEM_DEFAULT, systemFonts, systemUiFonts, uiStack, UI_BUNDLED_FONTS, dataStack } from '../fonts';
 import { ACCENT_SWATCHES, SCHEMES, STATUS_KEYS, STATUS_LABEL, isHex, schemeVars } from '@shared/schemes';
@@ -160,7 +160,8 @@ function ShortcutsSection({ st, set }: { st: SettingsT; set(p: Partial<SettingsT
 /** Scheme cards, an accent row, and the status colours tucked behind a disclosure so the page stays short. */
 function ColourRows({ st, set }: { st: SettingsT; set: (p: Partial<SettingsT>) => void }) {
   const [more, setMore] = React.useState(false);
-  const dark = document.documentElement.dataset.theme !== 'light';
+  // From the setting, not the DOM: the attribute is only updated in an effect after this render.
+  const dark = resolveTheme(st.theme) === 'dark';
   const accentNow = st.accentColor || schemeVars({ scheme: st.colorScheme }, dark)['--accent'] || (dark ? '#a78bfa' : '#7655d9');
   const swatch = (c: string, on: boolean, onClick: () => void, label: string) => (
     <button key={c} type="button" aria-label={label} title={label} aria-pressed={on} onClick={onClick} style={{ width: 22, height: 22, borderRadius: '50%', border: 'none', background: c, cursor: 'pointer', boxShadow: on ? '0 0 0 2px var(--bg-app), 0 0 0 4px var(--text-2)' : 'inset 0 0 0 1px var(--border-strong)' }} />
@@ -353,6 +354,7 @@ export function Settings({ section }: { section?: string }) {
             <SettingRow title="Run tests before marking ready" desc="Asks the agent to run the project's tests (package.json, go.mod, Makefile) before it finishes."><Switch checked={st.runTests} onChange={(v: boolean) => set({ runTests: v })} /></SettingRow>
           </> : null}
           {sec === 'worktrees' ? <>
+            <SettingRow title="Free agents" desc="Lets you start agents that are not tied to a repository, for research, writing and one-off jobs. Turning it off hides the option when starting a session; free agents you already have keep working."><Switch checked={st.freeAgents} onChange={(v: boolean) => set({ freeAgents: v })} /></SettingRow>
             <SettingRow title="Free agents' folders" desc="Where a free agent's scratch folder is made. Agents that are not tied to a repository work in a folder of their own here, with git set up so you can see what changed."><Field value={st.freeRoot} onCommit={(v: string) => set({ freeRoot: v.trim() })} style={{ width: 260 }} /></SettingRow>
             <H sub="Every session gets its own git worktree and branch, so agents never touch your working copy or each other.">Worktrees</H>
             <SettingRow title="Location"><Field value={st.worktreeRoot} onCommit={(v: string) => set({ worktreeRoot: v })} style={{ width: 260 }} /></SettingRow>

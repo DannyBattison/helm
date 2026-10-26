@@ -356,16 +356,17 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
     } catch (e) { setErr(errText(e)); } finally { setBusy(false); }
   };
   const mod = mac() ? '⌘' : 'Ctrl+';
+  const enterSends = useApp().settings.sendKey === 'enter';
   return (
     <Dialog width={560} title={free ? 'New free agent' : 'New session'} description={free ? 'An agent that is not tied to a repository, for research, writing, scripts and one-off jobs. It works in a folder of its own.' : 'The agent works in its own git worktree on a new branch. Your checkout is not touched.'} onClose={onClose}
       footer={<>
         <span style={{ flex: narrow ? '1 1 100%' : 1, font: '400 12px/1.5 var(--font-sans)', color: err ? 'var(--status-error-text)' : 'var(--text-3)' }}>{err || (free ? (folder ? 'Works directly in your folder' : 'A new scratch folder, with git') : r ? `Branch ${app.settings.branchPrefix}<name> from ${base}` : '')}</span>
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" icon="play" kbd={narrow ? undefined : mod + '↵'} loading={busy} disabled={!task.trim() || !repo} onClick={start}>{compare && !free ? `Start ${variants.length} runs` : after ? 'Queue session' : 'Start session'}</Button>
+        <Button variant="primary" icon="play" kbd={narrow ? undefined : enterSends ? '↵' : mod + '↵'} loading={busy} disabled={!task.trim() || !repo} onClick={start}>{compare && !free ? `Start ${variants.length} runs` : after ? 'Queue session' : 'Start session'}</Button>
       </>}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div style={{ display: 'flex', flexDirection: narrow ? 'column' : 'row', gap: 8 }}>
-          <Select value={repo} onChange={(e: any) => { setRepo(e.target.value); if (e.target.value === '@free') setCompare(false); }} options={[{ value: '@free', label: 'No repository (free agent)' }, ...app.repos.map((x) => ({ value: x.id, label: x.id }))]} style={{ flex: narrow ? 'none' : 1, minWidth: 0 }} icon={free ? 'robot' : 'book-bookmark'} />
+          <Select value={repo} onChange={(e: any) => { setRepo(e.target.value); if (e.target.value === '@free') setCompare(false); }} options={[...(app.settings.freeAgents || free || !app.repos.length ? [{ value: '@free', label: 'No repository (free agent)' }] : []), ...app.repos.map((x) => ({ value: x.id, label: x.id }))]} style={{ flex: narrow ? 'none' : 1, minWidth: 0 }} icon={free ? 'robot' : 'book-bookmark'} />
           {free ? <Button variant="secondary" icon="folder-open" onClick={() => void api.chooseFolder().then((f) => f && setFolder(f))}>{folder ? 'Change folder…' : 'Use my own folder…'}</Button>
             : <Select value={base} onChange={(e: any) => setBase(e.target.value)} options={bases.length ? bases.map((b) => ({ value: b.ref, label: b.label })) : [base]} mono icon="git-branch" />}
         </div>
@@ -390,7 +391,7 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
           ) : null}
           <textarea ref={taRef} autoFocus={!narrow} rows={narrow ? 3 : 4} value={task} onChange={(e) => setTask(e.target.value)} placeholder="What should the agent do? Be specific about the outcome, and mention files or checks that matter. You can paste or drop images."
             onPaste={(e) => { const f = [...e.clipboardData.files].filter((x) => x.type.startsWith('image/')); if (f.length) { e.preventDefault(); void addImages(f); } }}
-            onKeyDown={(e) => { if (e.key === 'Enter' && (mac() ? e.metaKey : e.ctrlKey) && task.trim()) void start(); }}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing && (enterSends ? !e.shiftKey : mac() ? e.metaKey : e.ctrlKey) && task.trim()) { e.preventDefault(); void start(); } }}
             style={{ display: 'block', width: '100%', boxSizing: 'border-box', resize: 'none', border: 'none', outline: 'none', boxShadow: 'none', background: 'transparent', color: 'var(--text-1)', font: '400 13px/1.5 var(--font-sans)', padding: '10px 12px 4px', maxHeight: 280 }} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px 6px 8px' }}>
             <input ref={picker} type="file" multiple hidden onChange={(e) => { void addFiles([...(e.target.files || [])]); e.target.value = ''; }} />
@@ -624,7 +625,7 @@ export function Palette({ onClose, toggleTheme }: { onClose(): void; toggleTheme
     { key: 'a-new', label: 'New session', icon: 'plus', hint: newKeys.join(mac() ? '' : '+'), run: () => setUI({ newSession: {} }) },
     { key: 'a-halt', label: 'Interrupt all agents', icon: 'pause', hint: haltKeys.join(mac() ? '' : '+'), run: () => void haltAll() },
     { key: 'a-resume', label: 'Resume all agents', icon: 'play', hint: resumeKeys.join(mac() ? '' : '+'), run: () => void resumeAll() },
-    { key: 'a-free', label: 'New free agent (no repository)', icon: 'robot', run: () => setUI({ newSession: { repoId: '@free' } }) },
+    ...(app.settings.freeAgents ? [{ key: 'a-free', label: 'New free agent (no repository)', icon: 'robot', run: () => setUI({ newSession: { repoId: '@free' } }) }] : []),
     { key: 'a-add', label: 'Add repository', icon: 'book-bookmark', run: () => setUI({ adding: true }) },
     { key: 'a-theme', label: 'Toggle theme', icon: 'sun', run: toggleTheme },
     ...app.sessions.map((s) => ({ key: 's-' + s.id, label: s.id, hint: s.task, icon: 'robot', run: () => go({ screen: 'session', id: s.id, tab: s.status === 'ready' ? 'changes' : 'conversation' }) })),

@@ -9,11 +9,21 @@ export function Hint({ id, side = 'bottom', children, title, text, style }: { id
   const seen = useUI((u) => u.app?.settings.tutorialSeen || []);
   const done = () => void api.updateSettings({ tutorialSeen: [...seen, id] });
   const skip = () => void api.updateSettings({ tutorial: false });
+  const anchor = React.useRef<HTMLSpanElement>(null);
+  const [box, setBox] = React.useState<DOMRect | null>(null);
+  // The bubble is fixed to the window so a scrolling or clipped parent (the sidebar) cannot hide it.
+  React.useLayoutEffect(() => {
+    if (!on) return;
+    const measure = () => setBox(anchor.current?.getBoundingClientRect() ?? null);
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [on]);
   return (
-    <span className="no-drag" style={{ position: 'relative', display: 'inline-flex', ...style }}>
+    <span ref={anchor} className="no-drag" style={{ position: 'relative', display: 'inline-flex', ...style }}>
       {children}
-      {on ? (
-        <div role="status" className="no-drag" style={{ position: 'absolute', zIndex: 50, width: 240, ...(side === 'right' ? { left: 'calc(100% + 10px)', top: 0 } : { top: 'calc(100% + 10px)', right: 0 }), padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6, borderRadius: 'var(--radius-lg)', background: 'var(--accent)', color: '#fff', boxShadow: 'var(--shadow-dialog)', font: '400 12px/1.5 var(--font-sans)', textAlign: 'left', cursor: 'default', animation: 'helm-fade-in var(--dur-slow) var(--ease-out)' }}>
+      {on && box ? (
+        <div role="status" className="no-drag" style={{ position: 'fixed', zIndex: 50, width: 240, ...(side === 'right' ? { left: box.right + 10, top: box.top } : { top: box.bottom + 10, right: Math.max(8, window.innerWidth - box.right) }), padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6, borderRadius: 'var(--radius-lg)', background: 'var(--accent)', color: '#fff', boxShadow: 'var(--shadow-dialog)', font: '400 12px/1.5 var(--font-sans)', textAlign: 'left', cursor: 'default', animation: 'helm-fade-in var(--dur-slow) var(--ease-out)' }}>
           <span aria-hidden style={{ position: 'absolute', width: 10, height: 10, background: 'var(--accent)', transform: 'rotate(45deg)', ...(side === 'right' ? { left: -4, top: 12 } : { top: -4, right: 16 }) }} />
           <strong style={{ font: '600 12px/1.4 var(--font-sans)' }}>{title}</strong>
           <span>{text}</span>

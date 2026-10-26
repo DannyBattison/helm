@@ -155,7 +155,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
         <TreeItem icon="pulse" label="Activity" selected={route.screen === 'activity'} onClick={() => go({ screen: 'activity' })} />
         <TreeItem icon="chart-line-up" label="Reports" selected={route.screen === 'reports'} onClick={() => go({ screen: 'reports' })} />
         <TreeItem icon="archive" label="Archive" selected={route.screen === 'archive'} onClick={() => go({ screen: 'archive' })} trailing={archivedCount ? <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{archivedCount}</span> : null} />
-        <SectionLabel action={<><IconButton icon="play" label={paused ? `Continue all agents (${paused} interrupted)` : 'Continue all agents: none were interrupted'} size="sm" disabled={!paused} hoverColor="var(--status-ready-text)" onClick={() => void resumeAll()} /><IconButton icon="pause" label={working ? `Interrupt all agents (${working} working)` : 'Interrupt all agents: none are working'} size="sm" disabled={!working} hoverColor="var(--status-error-text)" onClick={() => void haltAll()} /><IconButton icon="archive" label={showArchived ? 'Hide archived sessions' : 'Show archived sessions'} size="sm" active={showArchived} onClick={toggleArchived} /><Hint id="add-repo" side="right" title="Add a repository" text="Start here: pick a GitHub repository for agents to work in."><IconButton icon="plus" label="Add repository" size="sm" onClick={() => setUI({ adding: true })} /></Hint></>}>Repositories</SectionLabel>
+        <SectionLabel action={<><IconButton icon="archive" label={showArchived ? 'Hide archived sessions' : 'Show archived sessions'} size="sm" active={showArchived} onClick={toggleArchived} /><Hint id="add-repo" side="right" title="Add a repository" text="Start here: pick a GitHub repository for agents to work in."><IconButton icon="plus" label="Add repository" size="sm" onClick={() => setUI({ adding: true })} /></Hint></>}>Repositories</SectionLabel>
         {app.repos.length === 0 ? <div style={{ padding: '4px 10px 6px', font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>No repositories yet. Use + to add one from GitHub.</div> : null}
         {reposWithSessions(app, showArchived).map(({ repo: r, sessions }) => {
           const open = !closed[r.id];
@@ -165,7 +165,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
               <TreeItem icon={isFreeGroup(r) ? 'robot' : 'book-bookmark'} expandable={sessions.length > 0} expanded={open}
                 label={isFreeGroup(r) ? <span title="Agents that are not tied to a repository">Free agents</span> : <span>{app.settings.showOwner ? <span style={{ color: 'var(--text-3)' }}>{r.owner}/</span> : null}{r.name}</span>}
                 selected={!isFreeGroup(r) && route.screen === 'repo' && route.id === r.id} meta={sessions.length || null}
-                trailing={isFreeGroup(r) ? <IconButton icon="plus" label="New free agent" size="sm" onClick={(e: any) => { e.stopPropagation(); setUI({ newSession: { repoId: '@free' } }); }} /> : lifetimeTokens(app.lifetime[r.id]) ? <span title={`${lifetimeTokens(app.lifetime[r.id]).toLocaleString()} tokens used in ${r.name} over its lifetime, including deleted sessions`} style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)', flex: 'none', marginLeft: 6 }}>{fmtTokens(lifetimeTokens(app.lifetime[r.id]))}</span> : null}
+                trailing={isFreeGroup(r) ? (app.settings.freeAgents ? <IconButton icon="plus" label="New free agent" size="sm" onClick={(e: any) => { e.stopPropagation(); setUI({ newSession: { repoId: '@free' } }); }} /> : null) : lifetimeTokens(app.lifetime[r.id]) ? <span title={`${lifetimeTokens(app.lifetime[r.id]).toLocaleString()} tokens used in ${r.name} over its lifetime, including deleted sessions`} style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)', flex: 'none', marginLeft: 6 }}>{fmtTokens(lifetimeTokens(app.lifetime[r.id]))}</span> : null}
                 onClick={() => { if (isFreeGroup(r) || (route.screen === 'repo' && route.id === r.id)) setClosed({ ...closed, [r.id]: open }); else go({ screen: 'repo', id: r.id }); }} />
               </div>
               {open ? sessions.map((s) => {
@@ -239,8 +239,12 @@ export function TitleBar({ crumbs, theme, setTheme }: { crumbs: any[]; theme: 'd
         <Kbd keys={searchKeys} />
       </button></Hint>}
       <div style={{ flex: narrow ? 'none' : 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 2 }}>
-        {paused > 0 ? <IconButton size={narrow ? 'lg' : 'md'} icon="play" label={`Continue all agents (${paused} interrupted)`} hoverColor="var(--status-ready-text)" onClick={() => void resumeAll()} /> : null}
-        {working > 0 ? <IconButton size={narrow ? 'lg' : 'md'} icon="pause" label={`Interrupt all agents (${working} working)`} hoverColor="var(--status-error-text)" onClick={() => void haltAll()} /> : null}
+        <Hint id="play-pause" title="Pause and continue everything" text="Interrupt every working agent in one go, then continue them all when you are ready.">
+          <span style={{ display: 'inline-flex', gap: 2 }}>
+            <IconButton size={narrow ? 'lg' : 'md'} icon="play" label={paused ? `Continue all agents (${paused} interrupted)` : 'Continue all agents: none were interrupted'} disabled={!paused} hoverColor="var(--status-ready-text)" onClick={() => void resumeAll()} />
+            <IconButton size={narrow ? 'lg' : 'md'} icon="pause" label={working ? `Interrupt all agents (${working} working)` : 'Interrupt all agents: none are working'} disabled={!working} hoverColor="var(--status-error-text)" onClick={() => void haltAll()} />
+          </span>
+        </Hint>
         <Hint id="inbox" title="Your inbox" text="Approvals, questions and finished work that need you collect here."><IconButton size={narrow ? 'lg' : 'md'} icon="bell" label="Inbox" badge={need > 0} onClick={() => go({ screen: 'inbox' })} /></Hint>
         {narrow ? null : <>
           <IconButton icon={theme === 'dark' ? 'sun' : 'moon'} label="Toggle theme" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />

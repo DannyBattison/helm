@@ -66,6 +66,7 @@ export const defaultSettings = (): Settings => ({
   shortcuts: {},
   interruptKey: 'esc',
   showOwner: true,
+  freeAgents: true,
   tutorial: true,
   tutorialSeen: [],
   uiFont: 'Mona Sans',
