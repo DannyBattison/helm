@@ -1,4 +1,4 @@
-import { readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Host } from './host';
 import type { Comment, Issue } from '../shared/issues';
@@ -11,6 +11,7 @@ let token: string | null = null;
 let pending: { deviceCode: string; interval: number; expiresAt: number; clientId: string } | null = null;
 
 let vault: Pick<Host, 'dataDir' | 'encrypt' | 'decrypt'> = { dataDir: '' };
+let ghDir = '';
 const tokenFile = () => join(vault.dataDir, 'auth.bin');
 export const getToken = () => token;
 
@@ -26,8 +27,9 @@ let onSignedOut: (() => void) | null = null;
 /** `change` runs whenever the token is replaced; `signedOut` when GitHub has rejected it and it cannot be renewed. */
 export function watchAuth(change: () => void, signedOut: () => void) { onChange = change; onSignedOut = signedOut; }
 
-export async function loadToken(h: Pick<Host, 'dataDir' | 'encrypt' | 'decrypt'>): Promise<string | null> {
+export async function loadToken(h: Pick<Host, 'dataDir' | 'encrypt' | 'decrypt' | 'ghConfigDir'>): Promise<string | null> {
   vault = h;
+  ghDir = h.ghConfigDir || '';
   try {
     const buf = await readFile(tokenFile());
     const raw = vault.decrypt ? vault.decrypt(buf) : buf.toString('utf8');
@@ -35,7 +37,24 @@ export async function loadToken(h: Pick<Host, 'dataDir' | 'encrypt' | 'decrypt'>
     auth = raw.startsWith('{') ? JSON.parse(raw) as Auth : { token: raw };
     token = auth.token;
   } catch { token = null; auth = null; }
+  await syncGh();
   return token;
+}
+
+const GH_MARK = '# Written by helm. Delete this line to keep your own edits.\n';
+/** Keeps the GitHub CLI's `hosts.yml` in step with the sign-in. A file helm did not write is never touched. */
+async function syncGh() {
+  if (!ghDir) return;
+  const file = join(ghDir, 'hosts.yml');
+  try {
+    const current = await readFile(file, 'utf8').catch(() => '');
+    if (current && !current.startsWith(GH_MARK)) return;
+    if (!token) { await rm(file, { force: true }); return; }
+    await mkdir(ghDir, { recursive: true, mode: 0o700 });
+    const tmp = file + '.tmp';
+    await writeFile(tmp, `${GH_MARK}github.com:\n    oauth_token: ${JSON.stringify(token)}\n    git_protocol: https\n`, { mode: 0o600 });
+    await rename(tmp, file);
+  } catch (e: any) { logLine('warn', 'could not update the GitHub CLI sign-in: ' + String(e?.message || e)); }
 }
 
 async function saveAuth(a: Auth) {
@@ -43,6 +62,7 @@ async function saveAuth(a: Auth) {
   token = a.token;
   const raw = JSON.stringify(a);
   await writeFile(tokenFile(), vault.encrypt ? vault.encrypt(raw) : Buffer.from(raw));
+  await syncGh();
   onChange?.();
 }
 
@@ -50,6 +70,7 @@ export async function clearToken() {
   token = null;
   auth = null;
   await rm(tokenFile(), { force: true });
+  await syncGh();
 }
 
 const EARLY = 60_000;

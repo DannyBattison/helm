@@ -54,6 +54,12 @@ export interface Host {
    * signing in the first thing you do, before anything else works. The desktop app leaves this out: it uses the Claude Code you already have.
    */
   requireClaudeLogin?: boolean;
+  /**
+   * Where the GitHub CLI keeps its config. A host that sets it gets the sign-in written there (as `hosts.yml`) and removed again on sign-out,
+   * so `gh` and git's `gh auth git-credential` helper in agents and the terminal use whatever token helm holds now, renewals included.
+   * The desktop app leaves this out: its user has their own credentials.
+   */
+  ghConfigDir?: string;
   /** Set to false where linking a companion server is not offered (the hosted server: D-101). The desktop app leaves it out. */
   companion?: false;
   /** Things that happen on the user's own computer, which a hosted server has no access to. */
