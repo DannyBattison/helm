@@ -192,3 +192,9 @@ textarea {
   .drag .helm-tap-icon { min-width: 44px !important; min-height: 44px !important; }
   .drag .helm-tap-icon > i { font-size: 22px !important; }
 }
+
+/* Single-line text cut with an ellipsis sits in a box that clips what overhangs it, so a tight inline line-height shaves the bottom off p, y and g.
+   The inline `font` shorthand sets that line-height, so only !important beats it. 1.5 matches --type-label. */
+[style*='text-overflow: ellipsis'] {
+  line-height: 1.5 !important;
+}

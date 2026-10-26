@@ -226,7 +226,7 @@ export function TitleBar({ crumbs, theme, setTheme }: { crumbs: any[]; theme: 'd
   return (
     <div className="drag" style={{ height: 'var(--titlebar-h)', flex: 'none', display: 'flex', alignItems: 'center', gap: narrow ? 6 : 12, padding: '0 ' + (windowControls() === 'right' ? 150 : 10) + 'px 0 ' + (narrow ? 8 : 16) + 'px', borderBottom: '1px solid var(--border)', background: 'var(--bg-app)' }}>
       {narrow ? <IconButton size="lg" icon="list" label="Menu" onClick={() => setUI({ drawer: !getUI().drawer })} /> : null}
-      <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}><Breadcrumbs items={crumbs || []} compact={narrow} style={narrow ? { font: '500 16px/1.3 var(--font-sans)' } : undefined} /></div>
+      <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', padding: '3px 0' }}><Breadcrumbs items={crumbs || []} compact={narrow} style={narrow ? { font: '500 16px/1.5 var(--font-sans)' } : undefined} /></div>
       {narrow ? <IconButton size="lg" icon="magnifying-glass" label="Search" onClick={() => setUI({ palette: true })} /> : <button type="button" onClick={() => setUI({ palette: true })} style={{ width: 340, height: 26, flex: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '0 6px 0 10px', border: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border)', color: 'var(--text-3)', font: '400 12px/1 var(--font-sans)', cursor: 'pointer' }}>
         <i className="ph ph-magnifying-glass" style={{ fontSize: 13 }} />
         <span style={{ flex: 1, textAlign: 'left' }}>Search sessions and repositories</span>
@@ -255,7 +255,7 @@ export function StatusBar() {
   const tok = t.tokens >= 1e6 ? (t.tokens / 1e6).toFixed(2) + 'M' : t.tokens >= 1e3 ? Math.round(t.tokens / 1e3) + 'k' : String(t.tokens);
   // A phone has room for the three counts and today's tokens; the terminal needs a keyboard and the Claude version can wait for Settings.
   if (narrow) return (
-    <div style={{ height: 'var(--statusbar-h)', flex: 'none', display: 'flex', alignItems: 'center', padding: '0 4px', borderTop: '1px solid var(--border)', background: 'var(--bg-sidebar)', font: '400 11px/1 var(--font-mono)', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+    <div style={{ height: 'var(--statusbar-h)', flex: 'none', display: 'flex', alignItems: 'center', padding: '0 4px', borderTop: '1px solid var(--border)', background: 'var(--bg-sidebar)', font: '400 11px/1.5 var(--font-mono)', overflow: 'hidden', whiteSpace: 'nowrap' }}>
       <span style={item} title="Working">{dot('working')}{t.working}</span>
       <span style={item} title="Need you">{dot('attention')}{t.attention}</span>
       <span style={item} title="Ready for review">{dot('ready')}{t.ready}</span>

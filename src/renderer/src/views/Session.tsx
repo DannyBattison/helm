@@ -41,7 +41,7 @@ function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string
             {s.queued ? <Badge icon="hourglass">Queued</Badge> : null}
             {s.stuck ? <Tooltip content={s.stuck}><Badge tone="attention" icon="warning">Looks stuck</Badge></Tooltip> : null}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, font: '400 11.5px/1 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden' }}>
             {s.free ? <span title={s.worktree} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><i className="ph ph-folder" />{tilde(s.worktree, app.home)}</span> : <BranchTag worktree base={s.base.replace(/^origin\//, '')} name={s.branch} />}
             <span>{prettyModel(s)}</span><span>·</span><span>started {clock(s.startedAt)}</span><span>·</span><span>{fmtTokens(s.tokens.input + s.tokens.output + s.tokens.cacheRead)} tokens</span>{sub ? null : <><span>·</span><span>{fmt(s.cost)}</span></>}
           </div>
