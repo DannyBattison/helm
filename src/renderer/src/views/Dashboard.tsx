@@ -222,8 +222,6 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
               {asks.map((s) => <AttentionCard key={s.id + s.ask!.id} s={s} />)}
             </div>
           </section>
-        ) : filter === 'attention' ? (
-          <div style={{ font: '400 13px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Nothing is waiting on you.</div>
         ) : null}
 
         {liveSessions > 0 || totalExt > 0 || archivedTotal > 0 ? (
