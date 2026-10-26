@@ -103,19 +103,20 @@ textarea {
   }
 }
 
-/* Touch screens: rows and buttons big enough for a finger. */
+/* Touch screens: targets of at least 40px (44px for rows and tabs), with room between neighbours. */
 @media (pointer: coarse) {
-  .helm-tap-row {
-    min-height: 40px !important;
-    height: auto !important;
-  }
-  .helm-tap-icon {
-    min-width: 36px !important;
-    min-height: 36px !important;
-  }
-  .helm-tap-btn {
-    min-height: 34px !important;
-  }
+  :root { --titlebar-h: 48px; }
+  .helm-tap-row { min-height: 44px !important; height: auto !important; }
+  .helm-tap-icon { min-width: 40px !important; min-height: 40px !important; }
+  .helm-tap-btn { min-height: 40px !important; padding-left: 14px !important; padding-right: 14px !important; }
+  .helm-tap-field { min-height: 40px !important; height: auto !important; }
+  .helm-tap-tabs { height: auto !important; gap: 4px !important; }
+  .helm-tap-tabs > [role='tab'] { min-height: 44px; padding-left: 12px !important; padding-right: 12px !important; }
+  .helm-tap-seg > button { min-height: 36px !important; height: auto !important; padding: 0 14px !important; }
+  .helm-tap-check, .helm-tap-switch { zoom: 1.4; }
+  .helm-tap-label { min-height: 40px; align-items: center !important; }
+  /* A small glyph inside a tap target (a tab's close): the padding grows the hit area, the margin keeps the layout. */
+  .helm-tap-x { padding: 12px !important; margin: -12px -12px -12px -4px !important; }
 }
 
 /* Syntax colours for code outside the editor: the same tokens the Monaco themes use. */

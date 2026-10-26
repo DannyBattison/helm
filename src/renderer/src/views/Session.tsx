@@ -311,7 +311,7 @@ function TranscriptItemView({ m, s, index, onDeny }: { m: TranscriptEvent; s: S;
         {m.answered ? <div style={{ font: '400 12px/1.4 var(--font-sans)', color: 'var(--text-2)' }}>Answered: <b style={{ fontWeight: 500, color: 'var(--text-1)' }}>{m.answered}</b></div> : <>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {(q?.options || []).map((o) => (
-              <button key={o.label} type="button" onClick={() => guard(api.resolveAsk(s.id, m.askId, { answers: { [q.question]: o.label } }))}
+              <button key={o.label} type="button" className="helm-tap-row" onClick={() => guard(api.resolveAsk(s.id, m.askId, { answers: { [q.question]: o.label } }))}
                 style={{ textAlign: 'left', padding: '7px 10px', border: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-raised)', boxShadow: 'inset 0 0 0 1px var(--border-strong)', color: 'var(--text-1)', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <span style={{ font: '500 13px/1.2 var(--font-sans)' }}>{o.label}</span>
                 {o.description ? <span style={{ font: '400 12px/1.4 var(--font-sans)', color: 'var(--text-3)' }}>{o.description}</span> : null}

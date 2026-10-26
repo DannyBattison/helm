@@ -6,7 +6,7 @@ export function SegmentedControl({ options = [], value, defaultValue, size = 'md
   const cur = value ?? inner;
   const h = size === 'sm' ? 22 : 26;
   return (
-    <div role="tablist" className="helm-hscroll" style={{ display: 'inline-flex', maxWidth: '100%', flex: '0 1 auto', minWidth: 0, padding: 2, gap: 2, borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border)', ...style }}>
+    <div role="tablist" className="helm-hscroll helm-tap-seg" style={{ display: 'inline-flex', maxWidth: '100%', flex: '0 1 auto', minWidth: 0, padding: 2, gap: 2, borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border)', ...style }}>
       {norm.map(o => {
         const on = o.value === cur;
         return (

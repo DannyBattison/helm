@@ -12,7 +12,7 @@ export function Toast({ tone = 'neutral', title, description, actions, onClose, 
         {description ? <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>{description}</div> : null}
         {actions ? <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>{actions}</div> : null}
       </div>
-      {onClose ? <button type="button" aria-label="Dismiss" onClick={onClose} style={{ width: 20, height: 20, border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 0 }}><i className="ph ph-x" style={{ fontSize: 13 }} /></button> : null}
+      {onClose ? <button type="button" className="helm-tap-icon" aria-label="Dismiss" onClick={onClose} style={{ width: 20, height: 20, border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 0 }}><i className="ph ph-x" style={{ fontSize: 13 }} /></button> : null}
     </div>
   );
 }
