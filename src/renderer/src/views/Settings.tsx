@@ -1,7 +1,7 @@
 import React from 'react';
 import type { ModelAlias, PermMode, Settings as SettingsT } from '@shared/types';
 import { api, platform } from '../api';
-import { livePlan, untilReset } from '../lib';
+import { livePlan, theme as resolveTheme, untilReset } from '../lib';
 import { CURRENCIES, rateFor } from '@shared/money';
 import { BUNDLED_FONTS, fontStack, SYSTEM_DEFAULT, systemFonts, systemUiFonts, uiStack, UI_BUNDLED_FONTS, dataStack } from '../fonts';
 import { ACCENT_SWATCHES, SCHEMES, STATUS_KEYS, STATUS_LABEL, isHex, schemeVars } from '@shared/schemes';
@@ -160,7 +160,8 @@ function ShortcutsSection({ st, set }: { st: SettingsT; set(p: Partial<SettingsT
 /** Scheme cards, an accent row, and the status colours tucked behind a disclosure so the page stays short. */
 function ColourRows({ st, set }: { st: SettingsT; set: (p: Partial<SettingsT>) => void }) {
   const [more, setMore] = React.useState(false);
-  const dark = document.documentElement.dataset.theme !== 'light';
+  // From the setting, not the DOM: the attribute is only updated in an effect after this render.
+  const dark = resolveTheme(st.theme) === 'dark';
   const accentNow = st.accentColor || schemeVars({ scheme: st.colorScheme }, dark)['--accent'] || (dark ? '#a78bfa' : '#7655d9');
   const swatch = (c: string, on: boolean, onClick: () => void, label: string) => (
     <button key={c} type="button" aria-label={label} title={label} aria-pressed={on} onClick={onClick} style={{ width: 22, height: 22, borderRadius: '50%', border: 'none', background: c, cursor: 'pointer', boxShadow: on ? '0 0 0 2px var(--bg-app), 0 0 0 4px var(--text-2)' : 'inset 0 0 0 1px var(--border-strong)' }} />
