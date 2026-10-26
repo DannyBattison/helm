@@ -2,6 +2,7 @@ import React from 'react';
 import { api, platform } from './api';
 import { dataStack, fontStack, uiStack } from './fonts';
 import { theme as resolveTheme } from './lib';
+import { schemeVars } from '@shared/schemes';
 import { dismissToast, getUI, go, haltAll, init, resumeAll, setUI, useUI } from './store';
 import { Button, Toast, useNarrow } from './ui';
 import { isShortcut } from './shortcuts';
@@ -52,6 +53,15 @@ export function App() {
   const pref = app?.settings.theme || 'dark';
   const theme = React.useMemo(() => resolveTheme(pref), [pref, sysDark]);
   React.useEffect(() => { document.documentElement.dataset.theme = theme; }, [theme]);
+  const look = app?.settings;
+  const lookKey = look ? JSON.stringify([look.colorScheme, look.accentColor, look.statusColors]) : '';
+  React.useEffect(() => {
+    if (!look) return;
+    const vars = schemeVars({ scheme: look.colorScheme, accent: look.accentColor, status: look.statusColors }, theme === 'dark');
+    const st = document.documentElement.style;
+    for (const k of Object.keys(vars)) st.setProperty(k, vars[k]);
+    return () => { for (const k of Object.keys(vars)) st.removeProperty(k); };
+  }, [lookKey, theme]);
   const codeFont = app?.settings.editorFont, uiFont = app?.settings.uiFont, dataFont = app?.settings.dataFont;
   React.useEffect(() => { if (codeFont) document.documentElement.style.setProperty('--font-code', fontStack(codeFont)); }, [codeFont]);
   React.useEffect(() => { if (uiFont) document.documentElement.style.setProperty('--font-sans', uiStack(uiFont)); }, [uiFont]);

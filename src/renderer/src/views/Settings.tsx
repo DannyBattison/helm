@@ -4,6 +4,7 @@ import { api, platform } from '../api';
 import { livePlan, untilReset } from '../lib';
 import { CURRENCIES, rateFor } from '@shared/money';
 import { BUNDLED_FONTS, fontStack, SYSTEM_DEFAULT, systemFonts, systemUiFonts, uiStack, UI_BUNDLED_FONTS, dataStack } from '../fonts';
+import { ACCENT_SWATCHES, SCHEMES, STATUS_KEYS, STATUS_LABEL, isHex, schemeVars } from '@shared/schemes';
 import { AutomationsSection } from './Automations';
 import { toast, useApp, useMoney } from '../store';
 import { comboFromEvent, comboKeys, comboProblem, normalizeCombo, SHORTCUT_ACTIONS, shortcutConflict, shortcutOf } from '@shared/shortcuts';
@@ -153,6 +154,60 @@ function ShortcutsSection({ st, set }: { st: SettingsT; set(p: Partial<SettingsT
     <SettingRow title="Reset all" desc="Puts every shortcut back to its default.">
       <Button size="sm" disabled={!changed} onClick={() => { set({ shortcuts: {} }); setEditing(null); setMsg(null); }}>Reset all shortcuts</Button>
     </SettingRow>
+  </>;
+}
+
+/** Scheme cards, an accent row, and the status colours tucked behind a disclosure so the page stays short. */
+function ColourRows({ st, set }: { st: SettingsT; set: (p: Partial<SettingsT>) => void }) {
+  const [more, setMore] = React.useState(false);
+  const dark = document.documentElement.dataset.theme !== 'light';
+  const accentNow = st.accentColor || schemeVars({ scheme: st.colorScheme }, dark)['--accent'] || (dark ? '#a78bfa' : '#7655d9');
+  const swatch = (c: string, on: boolean, onClick: () => void, label: string) => (
+    <button key={c} type="button" aria-label={label} title={label} aria-pressed={on} onClick={onClick} style={{ width: 22, height: 22, borderRadius: '50%', border: 'none', background: c, cursor: 'pointer', boxShadow: on ? '0 0 0 2px var(--bg-app), 0 0 0 4px var(--text-2)' : 'inset 0 0 0 1px var(--border-strong)' }} />
+  );
+  const custom = (value: string, onPick: (c: string) => void, label: string) => <input type="color" aria-label={label} title={label} value={isHex(value) ? value : '#888888'} onChange={(e) => onPick(e.target.value)} style={{ width: 28, height: 24, padding: 0, border: 'none', background: 'none', cursor: 'pointer' }} />;
+  const changed = st.colorScheme !== 'helm' || st.accentColor || Object.keys(st.statusColors || {}).length;
+  return <>
+    <SettingRow title="Colour scheme" desc="Tints the backgrounds and sets the accent. Works with the light and dark themes.">
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-end', maxWidth: 360 }}>
+        {SCHEMES.map((sc) => {
+          const v = schemeVars({ scheme: sc.id }, dark), on = st.colorScheme === sc.id;
+          return (
+            <button key={sc.id} type="button" onClick={() => set({ colorScheme: sc.id })} aria-pressed={on} style={{ width: 104, padding: 6, display: 'flex', flexDirection: 'column', gap: 6, border: 'none', borderRadius: 'var(--radius-md)', background: v['--bg-app'] || 'var(--bg-app)', cursor: 'pointer', color: 'var(--text-1)', font: '500 12px/1.4 var(--font-sans)', boxShadow: on ? '0 0 0 2px var(--accent)' : 'inset 0 0 0 1px var(--border-strong)' }}>
+              <span style={{ display: 'flex', gap: 4, height: 14 }}>
+                <span style={{ flex: 1, borderRadius: 3, background: v['--bg-raised'] || 'var(--bg-raised)', boxShadow: `inset 0 0 0 1px ${v['--border'] || 'var(--border)'}` }} />
+                <span style={{ width: 22, borderRadius: 3, background: v['--accent'] || (dark ? sc.dark : sc.light) }} />
+              </span>
+              <span style={{ textAlign: 'left' }}>{sc.name}</span>
+            </button>
+          );
+        })}
+      </div>
+    </SettingRow>
+    <SettingRow title="Accent colour" desc="Buttons, links, selection and focus. Leave it on the scheme's own, or pick another.">
+      {swatch(accentNow, !st.accentColor, () => set({ accentColor: '' }), 'Scheme default')}
+      {ACCENT_SWATCHES.map((c) => swatch(c, st.accentColor.toLowerCase() === c, () => set({ accentColor: c }), c))}
+      {custom(accentNow, (c) => set({ accentColor: c }), 'Custom accent colour')}
+    </SettingRow>
+    <div style={{ borderTop: '1px solid var(--border-subtle)', padding: '10px 0' }}>
+      <button type="button" onClick={() => setMore(!more)} aria-expanded={more} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: 0, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-2)', font: '500 12px/1.5 var(--font-sans)' }}>
+        <i className={'ph ph-caret-' + (more ? 'down' : 'right')} />More colours
+      </button>
+      {more ? <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+        {STATUS_KEYS.map((k) => {
+          const cur = st.statusColors?.[k];
+          const base = schemeVars({}, dark)[`--status-${k}`] || getComputedStyle(document.documentElement).getPropertyValue(`--status-${k}`).trim();
+          return (
+            <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 10, font: '400 12px/1.5 var(--font-sans)' }}>
+              <span style={{ flex: 1 }}>{STATUS_LABEL[k]}</span>
+              {cur ? <Button onClick={() => { const n = { ...st.statusColors }; delete n[k]; set({ statusColors: n }); }}>Reset</Button> : null}
+              {custom(cur || (isHex(base) ? base : '#888888'), (c) => set({ statusColors: { ...st.statusColors, [k]: c } }), STATUS_LABEL[k] + ' colour')}
+            </div>
+          );
+        })}
+      </div> : null}
+    </div>
+    {changed ? <div style={{ paddingBottom: 10 }}><Button icon="arrow-counter-clockwise" onClick={() => set({ colorScheme: 'helm', accentColor: '', statusColors: {} })}>Reset colours</Button></div> : null}
   </>;
 }
 
@@ -416,6 +471,7 @@ export function Settings({ section }: { section?: string }) {
           {sec === 'appearance' ? <>
             <H>Appearance</H>
             <SettingRow title="Theme"><SegmentedControl value={st.theme} onChange={(v: string) => set({ theme: v as any })} options={[{ value: 'dark', label: 'Dark', icon: 'moon' }, { value: 'light', label: 'Light', icon: 'sun' }, { value: 'system', label: 'System', icon: 'desktop' }]} /></SettingRow>
+            <ColourRows st={st} set={set} />
             <SettingRow title="Show organisation in the sidebar" desc="Writes repositories as acme/storefront rather than just storefront. Turn off to save width."><Switch checked={st.showOwner} onChange={(v: boolean) => set({ showOwner: v })} /></SettingRow>
             <FontRow title="Interface font" desc="Labels, titles and prose throughout helm." value={st.uiFont} onChange={(v: string) => set({ uiFont: v })} bundled={UI_BUNDLED_FONTS} system={[SYSTEM_DEFAULT, ...uiSystem]} stack={uiStack} />
             <FontRow title="Data font" desc="Monospaced text in the interface: paths, branches, hashes, counts and costs." value={st.dataFont} onChange={(v: string) => set({ dataFont: v })} bundled={BUNDLED_FONTS} system={monoSystem} stack={dataStack} />
