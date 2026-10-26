@@ -39,6 +39,13 @@ export interface Repo {
   maxSubagents?: number;
 }
 
+/** An artifact (an uploaded file) of a repository: copied into every session's worktree, never committed. */
+export interface RepoArtifact {
+  name: string;
+  size: number;
+  modified: number;
+}
+
 export interface AskQuestion {
   question: string;
   header?: string;
@@ -837,6 +844,10 @@ export interface HelmApi {
   /** Re-reads a subagent's transcript from Claude Code's session file. */
   refreshSubagent(sessionId: string, subId: string): Promise<void>;
   setRepoMaxSubagents(repoId: string, max: number | null): Promise<void>;
+  /** Files uploaded to a repository, copied into every session's worktree (new and resumed) and kept out of git. */
+  listRepoArtifacts(repoId: string): Promise<RepoArtifact[]>;
+  addRepoArtifact(repoId: string, name: string, base64: string): Promise<void>;
+  removeRepoArtifact(repoId: string, name: string): Promise<void>;
   resolveAsk(sessionId: string, askId: string, answer: { decision: 'approve' | 'always' | 'deny'; text?: string } | { answers: Record<string, string> } | { addBudget: number }): Promise<void>;
   getTranscript(sessionId: string): Promise<TranscriptEvent[]>;
   /** A file the agent made for the user (`artifact:` links in its replies), or null if it no longer exists. */

@@ -11,6 +11,7 @@ import { Companion } from './companion';
 import { installLogging, logFile, logLine, recentLog } from './log';
 import { cleanHeavy, dirSize, reclaimableBytes } from './disk';
 import { readArtifact } from './artifacts';
+import { addRepoArtifact, listRepoArtifacts, removeRepoArtifact, setRepoArtifactDir } from './repoartifacts';
 import { diagnostics } from '../shared/diagnostics';
 import { memoryHealth, memoryReads, STALE_DAYS, type MemoryFile, type MemoryUsage } from '../shared/memoryhealth';
 import type { Host } from './host';
@@ -382,6 +383,9 @@ export const api: HelmApi = {
   resolveAsk: (id, askId, answer) => sessions.resolveAsk(id, askId, answer),
   getTranscript: (id) => store.transcript(id),
   getArtifact: (id, name) => readArtifact(id, name),
+  listRepoArtifacts: (id) => listRepoArtifacts(repos.must(id).id),
+  addRepoArtifact: (id, name, data) => addRepoArtifact(repos.must(id).id, name, data),
+  removeRepoArtifact: (id, name) => removeRepoArtifact(repos.must(id).id, name),
 
   async workspaceInfo(id) {
     const w = ws(id);
@@ -969,6 +973,7 @@ export async function start(h: Host) {
   sessions.autoArchive();
   setInterval(() => sessions.autoArchive(), 3600_000);
   repos.setCacheDir(join(host.dataDir, 'history-cache'));
+  setRepoArtifactDir(join(host.dataDir, 'repo-artifacts'));
   void refreshPlan(true);
   setInterval(() => void refreshPlan(), 5 * 60_000);
   setInterval(refreshRates, 6 * 3600_000);
