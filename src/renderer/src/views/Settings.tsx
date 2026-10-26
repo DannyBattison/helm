@@ -472,6 +472,10 @@ export function Settings({ section }: { section?: string }) {
             <H>Appearance</H>
             <SettingRow title="Theme"><SegmentedControl value={st.theme} onChange={(v: string) => set({ theme: v as any })} options={[{ value: 'dark', label: 'Dark', icon: 'moon' }, { value: 'light', label: 'Light', icon: 'sun' }, { value: 'system', label: 'System', icon: 'desktop' }]} /></SettingRow>
             <ColourRows st={st} set={set} />
+            <SettingRow title="Tutorial mode" desc="Shows small bubbles pointing out useful areas, one at a time, until you dismiss each.">
+              <Switch checked={st.tutorial} onChange={(v: boolean) => set({ tutorial: v })} />
+              <Button size="sm" icon="arrow-counter-clockwise" onClick={() => set({ tutorial: true, tutorialSeen: [] })}>Show tips again</Button>
+            </SettingRow>
             <SettingRow title="Show organisation in the sidebar" desc="Writes repositories as acme/storefront rather than just storefront. Turn off to save width."><Switch checked={st.showOwner} onChange={(v: boolean) => set({ showOwner: v })} /></SettingRow>
             <FontRow title="Interface font" desc="Labels, titles and prose throughout helm." value={st.uiFont} onChange={(v: string) => set({ uiFont: v })} bundled={UI_BUNDLED_FONTS} system={[SYSTEM_DEFAULT, ...uiSystem]} stack={uiStack} />
             <FontRow title="Data font" desc="Monospaced text in the interface: paths, branches, hashes, counts and costs." value={st.dataFont} onChange={(v: string) => set({ dataFont: v })} bundled={BUNDLED_FONTS} system={monoSystem} stack={dataStack} />
