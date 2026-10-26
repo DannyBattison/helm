@@ -8,7 +8,7 @@ import { queueBlock, queueOrder } from '../shared/queue';
 import { stuckReason } from '../shared/stuck';
 import { REVIEW_SCHEMA, parseReview, reviewPrompt } from '../shared/selfreview';
 import { commandSummary } from '../shared/commandSummary';
-import { FREE_ID, freeRepo, sessionTitle, MAX_UPLOAD_BYTES, MAX_UPLOAD_FILES, MAX_UPLOAD_TOTAL, type ActivityEvent, type Checkpoint, type Effort, type MessageImage, type ModelAlias, type NewSessionInput, type PendingAsk, type PermMode, type Session, type Status, type Subagent, type TranscriptEvent } from '../shared/types';
+import { FREE_ID, freeRepo, sessionTitle, MAX_UPLOAD_BYTES, MAX_UPLOAD_FILES, MAX_UPLOAD_TOTAL, type ActivityEvent, type Checkpoint, type Effort, type ExtraRepo, type Repo, type MessageImage, type ModelAlias, type NewSessionInput, type PendingAsk, type PermMode, type Session, type Status, type Subagent, type TranscriptEvent } from '../shared/types';
 import { artifactDir, dropArtifacts, ensureArtifactDir } from './artifacts';
 import * as G from './git';
 import { supplyRepoArtifacts } from './repoartifacts';
@@ -218,6 +218,7 @@ export class SessionManager {
     const uploads = await this.saveUploads(id, input.files);
     let branch = '', wt = '', remoteBase = '';
     let claudeSessionId: string | undefined;
+    const extras: ExtraRepo[] = [];
     if (free) {
       // A folder of its own: one helm makes (with local git, so changes and checkpoints work), or one of yours, left as it is.
       if (input.folder) {
@@ -239,8 +240,19 @@ export class SessionManager {
       if (extra.seed) await seedFromCheckpoint(wt, extra.seed);
       await this.copyUntracked(repo!.localPath, wt, st.copyFiles);
       await supplyRepoArtifacts(repo!.id, wt, true);
-      try { claudeSessionId = await extra.claude?.(wt); }
-      catch (e) { await G.removeWorktree(repo!.localPath, wt, branch); throw e; }
+      try {
+        for (const rid of new Set(input.extraRepos || [])) {
+          if (rid === repo!.id) continue;
+          const er = this.store.data.repos.find((r) => r.id === rid);
+          if (!er) throw new Error('Repository not found: ' + rid);
+          extras.push(await this.addExtra(er, id, branch));
+        }
+        claudeSessionId = await extra.claude?.(wt);
+      } catch (e) {
+        await G.removeWorktree(repo!.localPath, wt, branch);
+        for (const x of extras) await G.removeWorktree(this.store.data.repos.find((r) => r.id === x.repoId)!.localPath, x.worktree, x.branch);
+        throw e;
+      }
     }
 
     const now = Date.now();
@@ -248,7 +260,7 @@ export class SessionManager {
       id, repoId: free ? FREE_ID : repo!.id, free: free ? { managed: !input.folder } : undefined, status: 'working', task: input.task, step: 'Starting', branch, base: remoteBase, worktree: wt,
       model: input.model, permMode: input.permMode, startedAt: now, tokens: { input: 0, output: 0, cacheRead: 0 }, cost: 0, budget: input.budget,
       lastAccess: now, ctx: 0, add: 0, del: 0, files: 0, filesTouched: {}, timeline: [{ t: now, status: 'working' }], commits: [], removeAfterMerge: st.removeAfterMerge, deleteBranchAfterMerge: st.deleteBranchAfterMerge, subagents: [],
-      uploads, claudeSessionId, effort: extra.effort, parentId: extra.parentId, group: extra.group, source: extra.source
+      extras: extras.length ? extras : undefined, uploads, claudeSessionId, effort: extra.effort, parentId: extra.parentId, group: extra.group, source: extra.source
     };
     s.source ??= input.source;
     s.automation = input.automation;
@@ -268,6 +280,17 @@ export class SessionManager {
     this.touch();
     await this.start(s, input.task, pics);
     return id;
+  }
+
+  /** A worktree in another repository for a multi-repo session, on a branch of its own off that repository's default branch. */
+  private async addExtra(repo: Repo, id: string, branch: string): Promise<ExtraRepo> {
+    const wt = join(expandHome(this.store.data.settings.worktreeRoot), repo.name, id);
+    await G.git(repo.localPath, 'fetch', 'origin', '--prune').catch(() => undefined);
+    const base = (await G.gitOk(repo.localPath, 'rev-parse', '--verify', '--quiet', 'origin/' + repo.defaultBranch)) ? 'origin/' + repo.defaultBranch : repo.defaultBranch;
+    await G.addWorktree(repo.localPath, wt, branch, base);
+    await this.copyUntracked(repo.localPath, wt, this.store.data.settings.copyFiles);
+    await supplyRepoArtifacts(repo.id, wt, true);
+    return { repoId: repo.id, branch, base, worktree: wt };
   }
 
   // ---------------------------------------------------------------- queue
@@ -572,8 +595,10 @@ export class SessionManager {
         `Subagents: at most ${this.sessionLimit(s)} may run at once in this session. Start independent work in parallel only within that limit. ${HAND_BACK}`
       ].join('\n');
     }
+    const others = (s.extras || []).map((x) => `- ${x.repoId}: ${x.worktree} (branch ${x.branch}, based on ${x.base})`);
     return [
       `You are running inside helm, working in an isolated git worktree on branch ${s.branch} (based on ${s.base}). Stay inside this directory.`,
+      others.length ? `This session spans more than one repository. Besides this one (${s.repoId}), you have a worktree in each of these, which you may read and edit and commit in (use git -C <path>):\n${others.join('\n')}\nCommit in each repository whose files you changed; each one gets its own pull request.` : '',
       'Commit as you go: make a commit each time a coherent piece of work is done and working, rather than one big commit at the end. Keep commits small with clear messages.',
       st.commitAuthor === 'sole'
         ? `End every commit message with a blank line and this trailer: "Helm-Session: ${s.id}". Do not add any Co-authored-by trailer. The commits are authored by Claude alone.`
@@ -595,6 +620,7 @@ export class SessionManager {
     const artifacts = await ensureArtifactDir(s.id);
     // A worktree made before a file was uploaded gets it when the agent next starts. Files already there are left as the agent has them.
     if (!s.free) await supplyRepoArtifacts(s.repoId, s.worktree, false);
+    for (const x of s.extras || []) await supplyRepoArtifacts(x.repoId, x.worktree, false);
     const rt: Runtime = { q: null as any, queue, abort, asks: new Map(), turnCost: 0, baseCost: s.cost, interrupted: false, budgetPaused: false, toolStart: new Map(), fails: new Map(), lastTools: new Map(), subEvent: new Map(), admitted: new Set() };
     const options: any = {
       cwd: s.worktree,
@@ -605,7 +631,7 @@ export class SessionManager {
       allowDangerouslySkipPermissions: true,
       abortController: abort,
       settingSources: ['user', 'project', 'local'],
-      ...(s.uploads ? { additionalDirectories: [s.uploads.dir] } : {}),
+      ...(s.uploads || s.extras?.length ? { additionalDirectories: [...(s.uploads ? [s.uploads.dir] : []), ...(s.extras || []).map((x) => x.worktree)] } : {}),
       systemPrompt: { type: 'preset', preset: 'claude_code', append: this.systemAppend(s, artifacts) },
       canUseTool: (tool: string, input: Record<string, unknown>, o: any) => this.canUse(s, rt, tool, input, o),
       hooks: { PreToolUse: [{ matcher: 'Agent|Task', hooks: [async (input: any) => this.checkSubagentLimit(s, rt, input)] }] },
@@ -1048,12 +1074,22 @@ export class SessionManager {
     this.pushing.set(id, run);
     return run;
   }
+  /** Commits on an extra repository's branch beyond where it started. */
+  async extraAhead(x: ExtraRepo): Promise<number> {
+    return +(await G.git(x.worktree, 'rev-list', '--count', `${x.base}..HEAD`).catch(() => '0')).trim() || 0;
+  }
   autoPush(s: Session): Promise<void> {
     if (s.free || !s.branch || s.worktreeGone) return Promise.resolve();
     return this.serialPush(s.id, async () => {
       try {
         await G.git(s.worktree, 'push', '-u', 'origin', s.branch);
         this.activity(s, 'push', `pushed ${s.branch}`);
+        for (const x of s.extras || []) {
+          // A repository the agent has not committed in has nothing to push, and would get an empty branch on GitHub.
+          if (!(await this.extraAhead(x))) continue;
+          await G.git(x.worktree, 'push', '-u', 'origin', x.branch);
+          this.activity(s, 'push', `pushed ${x.repoId} ${x.branch}`);
+        }
       } catch (e: any) {
         this.activity(s, 'push', `push of ${s.branch} failed: ${trunc(String(e?.message || e).split('\n').find((l) => l.trim()) || 'unknown error', 120)}`, { ok: false });
       }
@@ -1239,7 +1275,7 @@ export class SessionManager {
     }
     if (EDIT_TOOLS.has(tool)) {
       const p = String(input.file_path || input.notebook_path || '');
-      if (!p || inside(s.worktree, p) || inside(artifactDir(s.id), p)) return { behavior: 'allow', updatedInput: input };
+      if (!p || inside(s.worktree, p) || (s.extras || []).some((x) => inside(x.worktree, p)) || inside(artifactDir(s.id), p)) return { behavior: 'allow', updatedInput: input };
       const ask: PendingAsk = { id: uid(), type: 'approve', at: Date.now(), tool, command: p, head: 'Wants to edit a file outside its worktree', note: 'This path is outside the session worktree.' };
       await this.push(s.id, { k: 'permission', askId: ask.id, cmd: p, tool, why: ask.note });
       return this.waitAsk(s, rt, ask, 'tool', input, tool);
@@ -1600,6 +1636,7 @@ export class SessionManager {
     await this.stop(id);
     if (opts.worktree || opts.branch) {
       await G.removeWorktree(this.repoOf(s).localPath, s.worktree, opts.branch ? s.branch : undefined).catch(() => undefined);
+      await this.removeExtras(s, opts.branch);
       s.worktreeGone = true;
     }
     s.mergedInto = merged.into;
@@ -1607,6 +1644,13 @@ export class SessionManager {
     this.activity(s, 'worktree', `cleaned up after the merge${opts.branch ? ': worktree and branch removed' : opts.worktree ? ': worktree removed' : ''}`, { who: 'helm', human: true });
     if (record === 'archive') { s.archivedAt = Date.now(); s.archivedAuto = undefined; this.dismissAllArtifacts(s); }
     this.touch();
+  }
+
+  private async removeExtras(s: Session, branch: boolean) {
+    for (const x of s.extras || []) {
+      const r = this.store.data.repos.find((r) => r.id === x.repoId);
+      if (r) await G.removeWorktree(r.localPath, x.worktree, branch ? x.branch : undefined).catch(() => undefined);
+    }
   }
 
   async remove(id: string, opts: { worktree: boolean; branch: boolean }) {
@@ -1618,7 +1662,10 @@ export class SessionManager {
       // Only a scratch folder helm made is deleted, and only if asked.
       if (opts.worktree && s.free.managed) await rm(s.worktree, { recursive: true, force: true }).catch(() => undefined);
     } else {
-      if (opts.worktree || opts.branch) await G.removeWorktree(this.repoOf(s).localPath, s.worktree, opts.branch ? s.branch : undefined);
+      if (opts.worktree || opts.branch) {
+        await G.removeWorktree(this.repoOf(s).localPath, s.worktree, opts.branch ? s.branch : undefined);
+        await this.removeExtras(s, opts.branch);
+      }
       await dropCheckpoints(this.repoOf(s).localPath, id).catch(() => undefined);
     }
     this.store.data.sessions = this.store.data.sessions.filter((x) => x.id !== id);

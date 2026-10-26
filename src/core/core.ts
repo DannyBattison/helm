@@ -517,6 +517,11 @@ export const api: HelmApi = {
   },
   async changedFiles(id) { return G.dirtyFiles(ws(id).worktree); },
   async changes(id) { const s = sess(id); return G.changes(s.worktree, s.base); },
+  async extraChanges(id, repoId) {
+    const x = sess(id).extras?.find((e) => e.repoId === repoId);
+    if (!x) throw new Error('This session has no worktree in ' + repoId);
+    return G.changes(x.worktree, x.base);
+  },
   async fileDiff(id, path) { const s = sess(id); return G.fileDiff(s.worktree, s.base, path); },
 
   async commitOnly(id, files, message) {
@@ -575,17 +580,24 @@ export const api: HelmApi = {
   async createPr(input) {
     const s = sess(input.sessionId);
     if (s.free) throw new Error('A free agent has no repository to open a pull request in.');
-    const repo = repos.must(s.repoId);
-    if (input.files.length) await commitFiles(s.worktree, input.files, input.message || input.title);
+    const extra = input.extraRepoId ? s.extras?.find((x) => x.repoId === input.extraRepoId) : undefined;
+    if (input.extraRepoId && !extra) throw new Error('This session has no worktree in ' + input.extraRepoId);
+    const repo = repos.must(extra ? extra.repoId : s.repoId);
+    const wt = extra ? extra.worktree : s.worktree;
+    const branch = extra ? extra.branch : s.branch;
+    if (input.files.length) await commitFiles(wt, input.files, input.message || input.title);
     await GH.ensureFresh();
-    await G.git(s.worktree, 'push', '-u', 'origin', s.branch);
-    store.log({ kind: 'push', who: me(), human: true, what: `pushed ${s.branch}`, repo: repo.name, sessionId: s.id });
-    const url = await GH.createPull(repo.id, { head: s.branch, base: input.base, title: prTitle(input.title, 200), body: input.body, draft: input.draft });
-    s.prUrl = url;
-    s.prAt = Date.now();
-    s.removeAfterMerge = input.removeAfterMerge;
-    s.deleteBranchAfterMerge = input.deleteBranchAfterMerge;
-    store.log({ kind: 'pr', who: me(), human: true, what: `opened a pull request for ${s.branch}`, repo: repo.name, sessionId: s.id });
+    await G.git(wt, 'push', '-u', 'origin', branch);
+    store.log({ kind: 'push', who: me(), human: true, what: `pushed ${branch}`, repo: repo.name, sessionId: s.id });
+    const url = await GH.createPull(repo.id, { head: branch, base: input.base, title: prTitle(input.title, 200), body: input.body, draft: input.draft });
+    if (extra) { extra.prUrl = url; extra.prAt = Date.now(); }
+    else {
+      s.prUrl = url;
+      s.prAt = Date.now();
+      s.removeAfterMerge = input.removeAfterMerge;
+      s.deleteBranchAfterMerge = input.deleteBranchAfterMerge;
+    }
+    store.log({ kind: 'pr', who: me(), human: true, what: `opened a pull request for ${branch}`, repo: repo.name, sessionId: s.id });
     store.save();
     emitState();
     return { url };

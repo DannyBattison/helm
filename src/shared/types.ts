@@ -98,6 +98,15 @@ export interface Subagent {
   agentId?: string;
 }
 
+export interface ExtraRepo {
+  repoId: string;
+  branch: string;
+  base: string;
+  worktree: string;
+  prUrl?: string;
+  prAt?: number;
+}
+
 export interface Session {
   id: string;
   /**
@@ -126,6 +135,8 @@ export interface Session {
   branch: string;
   base: string;
   worktree: string;
+  /** More repositories this session works in, each with a worktree and branch of its own. Each can get its own pull request. */
+  extras?: ExtraRepo[];
   /** Files uploaded for this session alone, kept in `dir` outside the worktree. */
   uploads?: { dir: string; files: { name: string; size: number }[] };
   model: ModelAlias;
@@ -701,6 +712,8 @@ export interface NewSessionInput {
   model: ModelAlias;
   budget: number;
   permMode: PermMode;
+  /** Further repositories to give the agent a worktree in, besides `repoId`. Each starts from its default branch. */
+  extraRepos?: string[];
   /** For a free agent: a folder of yours to work in, instead of a new scratch folder. */
   folder?: string;
   /** Wait until this session has been merged before starting, so the new one begins from the merged base. */
@@ -729,6 +742,8 @@ export const MAX_UPLOAD_TOTAL = 12 * 1024 * 1024;
 
 export interface CreatePrInput {
   sessionId: string;
+  /** Open the pull request for this additional repository of the session instead of its main one. */
+  extraRepoId?: string;
   base: string;
   title: string;
   body: string;
@@ -936,6 +951,8 @@ export interface HelmApi {
   fileBlame(sessionId: string, path: string): Promise<{ line: number; hash: string; who: string }[]>;
   changedFiles(sessionId: string): Promise<{ path: string; status: string }[]>;
   changes(sessionId: string): Promise<ChangesSummary>;
+  /** The same for one of the session's additional repositories. */
+  extraChanges(sessionId: string, repoId: string): Promise<ChangesSummary>;
   fileDiff(sessionId: string, path: string): Promise<DiffHunk[]>;
   createPr(input: CreatePrInput): Promise<{ url: string | null }>;
   /** Merges an open pull request on GitHub, optionally deleting its branch there. The session (if helm started it) is settled straight away. */
