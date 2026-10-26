@@ -125,6 +125,8 @@ export interface Session {
   branch: string;
   base: string;
   worktree: string;
+  /** Files uploaded for this session alone, kept in `dir` outside the worktree. */
+  uploads?: { dir: string; files: { name: string; size: number }[] };
   model: ModelAlias;
   modelName?: string;
   permMode: PermMode;
@@ -701,7 +703,19 @@ export interface NewSessionInput {
   automation?: Session['automation'];
   /** Start from this effort level instead of the default. */
   effort?: Effort;
+  /** Files of any type for this agent alone. They are saved outside the worktree and only this session can read them. */
+  files?: SessionFileUpload[];
 }
+
+export interface SessionFileUpload {
+  name: string;
+  /** The file's bytes, base64 encoded. */
+  data: string;
+}
+
+export const MAX_UPLOAD_FILES = 10;
+export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+export const MAX_UPLOAD_TOTAL = 12 * 1024 * 1024;
 
 export interface CreatePrInput {
   sessionId: string;

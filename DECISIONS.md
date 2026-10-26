@@ -652,3 +652,7 @@ Why: user request.
 ## D-158 · 2026-10-26 · Command previews describe the first three steps of a chain
 `commandSummary` no longer appends "and more" to a chained command. It describes each step (past `cd`, `set` and `export`), drops repeats, lists up to three joined by commas ("Install dependencies, Run the build script, Run the tests"), and adds "and N more" only for the rest. The agent's own description still wins when given.
 Why: user request; almost every command is chained, so "and more" was on every preview.
+
+## D-159 · 2026-10-26 · A new session can be given files of any type for that agent alone
+The New session dialog has Attach files (or drop them on the task box): any file type, up to 10 files, 10 MB each and 12 MB together (the hosted socket limit is 16 MB and the files travel as base64). The core saves them in `<data dir>/uploads/<session id>/`, outside the worktree so they are never committed or seen by other sessions, adds that folder to the agent's readable folders (`additionalDirectories`) on every start, and tells the agent their names and location in its system prompt. File names are reduced to a bare name and made unique. The folder is deleted with the session. Images attached in the dialog still go in the first message as before; any other file is saved as described here.
+Why: user request.
