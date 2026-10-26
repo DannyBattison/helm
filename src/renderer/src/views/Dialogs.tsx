@@ -309,6 +309,9 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
   const [err, setErr] = React.useState('');
   const [compare, setCompare] = React.useState(false);
   const [folder, setFolder] = React.useState('');
+  const [more, setMore] = React.useState<string[]>([]);
+  const others = app.repos.filter((x) => x.id !== repo);
+  const extraRepos = free ? [] : more.filter((id) => id !== repo && others.some((x) => x.id === id));
   const [uploads, setUploads] = React.useState<Upload[]>([]);
   const [variants, setVariants] = React.useState<Variant[]>([{ model: 'sonnet', effort: 'default' }, { model: 'opus', effort: 'default' }]);
   React.useEffect(() => {
@@ -342,7 +345,7 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
   const start = async () => {
     setBusy(true); setErr('');
     try {
-      const input = { files: uploads.length ? uploads.map(({ name, data }) => ({ name, data })) : undefined, repoId: repo, base: free ? '' : base, folder: free && folder ? folder : undefined, task: task.trim(), images: images.length ? images.map(({ mediaType, data, name }) => ({ mediaType, data, name })) : undefined, model, budget: sub ? 0 : from(parseFloat(budget)) || app.settings.sessionBudget, permMode: perm, after: after || undefined, source: initial?.source };
+      const input = { files: uploads.length ? uploads.map(({ name, data }) => ({ name, data })) : undefined, repoId: repo, base: free ? '' : base, folder: free && folder ? folder : undefined, task: task.trim(), images: images.length ? images.map(({ mediaType, data, name }) => ({ mediaType, data, name })) : undefined, model, budget: sub ? 0 : from(parseFloat(budget)) || app.settings.sessionBudget, permMode: perm, after: after || undefined, source: initial?.source, extraRepos: extraRepos.length ? extraRepos : undefined };
       if (compare && !free) {
         const ids = await api.createGroup(input, variants.map((v) => ({ model: v.model, effort: v.effort === 'default' ? undefined : v.effort })));
         const group = getUI().app?.sessions.find((x) => x.id === ids[0])?.group;
@@ -408,6 +411,15 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
         {!compare && !free ? (
           <Select value={after} onChange={(e: any) => setAfter(e.target.value)} icon="hourglass"
             options={[{ value: '', label: app.settings.maxRunning ? `Start now, or when one of ${app.settings.maxRunning} slots is free` : 'Start right away' }, ...app.sessions.filter((x) => x.repoId === repo && !x.mergedAt && !x.archivedAt).map((x) => ({ value: x.id, label: 'After “' + (x.customTitle || x.title || x.task).slice(0, 48) + '” is merged' }))]} />
+        ) : null}
+        {!free && !compare && others.length ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <span style={{ font: '500 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>Also work in</span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px' }}>
+              {others.map((x) => <Checkbox key={x.id} checked={extraRepos.includes(x.id)} onChange={(on: boolean) => setMore((c) => on ? [...c, x.id] : c.filter((i) => i !== x.id))} label={x.id} />)}
+            </div>
+            {extraRepos.length ? <span style={{ font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>The agent gets a worktree in each, from its default branch, and each can have its own pull request.</span> : null}
+          </div>
         ) : null}
         {free ? null : <Checkbox checked={compare} onChange={setCompare} label="Compare several runs" description="Start the same task more than once, with different models or effort, and keep the best result." />}
         {compare && !free ? <VariantEditor variants={variants} onChange={setVariants} /> : null}

@@ -1,0 +1,3 @@
+## 2026-10-26 · Multi-repo sessions use extra worktrees on the same branch name
+
+A session keeps its primary repository and may list further ones (`Session.extras`). Each extra gets a worktree under the worktree root and a branch with the same name as the primary, cut from that repository's default branch. The extra worktrees are added to the agent's directories and prompt, auto-pushed once they have commits, and each gets its own pull request from the Changes tab (`createPr` with `extraRepoId`). Merge-directly, diffs and review stay primary-only, to keep the first version small. Cleanup removes the extras with the primary.
