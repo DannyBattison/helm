@@ -163,7 +163,7 @@ function Rich({ text, sessionId }: { text: string; sessionId?: string }) {
   let fenceTag = '';
   const codeBlock = (lines: string[], tag: string, key: number) => {
     const hb = highlightBlock(lines.join('\n'), langFromTag(tag));
-    const st: React.CSSProperties = { margin: 0, padding: '8px 10px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-editor)', boxShadow: 'inset 0 0 0 1px var(--border-subtle)', font: 'var(--type-data)', overflow: 'auto' };
+    const st: React.CSSProperties = { margin: 0, padding: '8px 10px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-editor)', boxShadow: 'inset 0 0 0 1px var(--border-subtle)', font: 'var(--type-data)', overflow: 'auto', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' };
     const text = lines.join('\n');
     return <CopyBox key={key} text={text}>{hb ? <pre className="selectable" style={st} dangerouslySetInnerHTML={{ __html: hb.html }} /> : <pre className="selectable" style={st}>{text}</pre>}</CopyBox>;
   };
@@ -239,9 +239,9 @@ function TranscriptItemView({ m, s, index, onDeny }: { m: TranscriptEvent; s: S;
         <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><FileLink session={s} path={m.file} style={{ font: '400 12px/1 var(--font-mono)' }} /></span>
         <DiffStat additions={m.add} deletions={m.del} />
       </div>
-      <pre className="selectable" style={{ margin: 0, padding: '4px 0', background: 'var(--bg-editor)', font: '400 12px/1.65 var(--font-mono)', overflow: 'auto' }}>
+      <pre className="selectable" style={{ margin: 0, padding: '4px 0', background: 'var(--bg-editor)', font: '400 12px/1.65 var(--font-mono)', overflow: 'auto', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
         {m.lines.map(([t, l], i) => (
-          <div key={i} style={{ display: 'grid', gridTemplateColumns: '24px 1fr', background: t === '+' ? 'var(--diff-add-bg)' : t === '-' ? 'var(--diff-del-bg)' : 'transparent', color: t === ' ' ? 'var(--text-2)' : 'var(--text-1)' }}>
+          <div key={i} style={{ display: 'grid', gridTemplateColumns: '24px minmax(0, 1fr)', background: t === '+' ? 'var(--diff-add-bg)' : t === '-' ? 'var(--diff-del-bg)' : 'transparent', color: t === ' ' ? 'var(--text-2)' : 'var(--text-1)' }}>
             <span style={{ textAlign: 'center', color: t === '+' ? 'var(--diff-add-fg)' : t === '-' ? 'var(--diff-del-fg)' : 'var(--text-3)' }}>{t === '-' ? '−' : t}</span><Hl text={l} lang={langFromPath(m.file)} pad="  " />
           </div>
         ))}
