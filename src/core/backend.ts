@@ -112,8 +112,9 @@ export interface ConversationStore {
 /** Signing the user in to the agent, where the app has to do that itself. */
 export interface BackendAuth {
   status(): Promise<AgentLogin>;
-  startLogin(): Promise<{ url: string }>;
-  submitCode(code: string): Promise<AgentLogin>;
+  /** `code` is shown to the user to enter at `url`; `needsCode` means they must instead paste a code back with `submitCode`. Either way, `status` turns to signed in when done. */
+  startLogin(): Promise<{ url: string; code?: string; needsCode: boolean }>;
+  submitCode?(code: string): Promise<AgentLogin>;
   cancel(): void;
   logout(): Promise<AgentLogin>;
 }
@@ -124,7 +125,12 @@ export interface PlanProbe { billing: 'subscription' | 'api'; fiveHour?: PlanWin
 export interface AgentBackend {
   readonly id: string;
   readonly label: string;
+  /** Ships with helm, so a missing command-line tool does not make it unavailable. */
+  readonly bundled?: boolean;
+  /** The models it offers. May change after `refresh`. */
   readonly models: ModelInfo[];
+  /** Re-reads what changes while helm runs (the model list, say). */
+  refresh?(): Promise<void>;
   readonly capabilities: AgentCapabilities;
   /** The version of the agent's command-line tool, from `path` when given. Null when it is not there. */
   version(path?: string): Promise<string | null>;
@@ -145,7 +151,12 @@ export class BackendRegistry {
   /** The named backend, or the first one when the name is empty or unknown (an older session has none). */
   get(id?: string): AgentBackend { return this.list.find((b) => b.id === id) ?? this.list[0]; }
   model(backend: string | undefined, model: string): ModelInfo { const b = this.get(backend); return b.models.find((m) => m.id === model) ?? b.models[0]; }
-  async info(): Promise<BackendInfo[]> {
-    return Promise.all(this.list.map(async (b) => ({ id: b.id, label: b.label, models: b.models, capabilities: b.capabilities, version: await b.version().catch(() => null), needsLogin: !!b.auth })));
+  /** Each backend as the interface sees it. `logins` is what was last read from `auth.status`. */
+  async info(logins: Record<string, AgentLogin | undefined> = {}): Promise<BackendInfo[]> {
+    return Promise.all(this.list.map(async (b) => {
+      const login = logins[b.id];
+      const version = await b.version().catch(() => null);
+      return { id: b.id, label: b.label, models: b.models, capabilities: b.capabilities, version, canSignIn: !!b.auth, login, ready: (!b.auth || !!login?.loggedIn) && (!!b.bundled || version !== null) };
+    }));
   }
 }

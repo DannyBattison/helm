@@ -7,6 +7,7 @@ import type { AppState, AgentLogin, ExternalTranscript, HelmApi, HelmEvents, Set
 import type { SystemStatus } from '../shared/system';
 import { BackendRegistry } from './backend';
 import { ClaudeBackend } from './claudeBackend';
+import { CodexBackend } from './codexBackend';
 import * as G from './git';
 import * as GH from './github';
 import { Companion } from './companion';
@@ -83,7 +84,7 @@ let stateTimer: NodeJS.Timeout | null = null;
 function buildState(): AppState {
   return {
     ready: true,
-    ...(host.requireAgentLogin && agentLogin ? { agentLogin } : {}),
+    agentLoginRequired: !!host.requireAgentLogin,
     user: store.data.user,
     repos: store.data.repos,
     sessions: store.data.sessions,
@@ -100,29 +101,43 @@ function buildState(): AppState {
     update: host.updates?.status() ?? { state: 'dev' },
     backends,
     plan: store.data.plan,
+    plans: store.data.plans,
     rates: store.data.fx.rates,
     platform: process.platform,
     home
   };
 }
-let agentLogin: (AgentLogin & { backend: string; label: string }) | undefined;
-/** The backend whose login the app has to handle itself, if any. */
-const loginBackend = () => registry.all().find((b) => b.auth);
-/** Asks the agent who is signed in and tells the UI if that changed. Only where the app has to sign it in itself. */
-async function refreshAgentLogin(): Promise<AgentLogin | undefined> {
-  const b = loginBackend();
-  if (!host.requireAgentLogin || !b?.auth) return undefined;
-  const s = { ...(await b.auth.status()), backend: b.id, label: b.label };
-  if (JSON.stringify(s) !== JSON.stringify(agentLogin)) { agentLogin = s; emitState(); }
-  return s;
-}
+/** Who each agent is signed in as, as last read. */
+let logins: Record<string, AgentLogin | undefined> = {};
 const authOf = (id: string) => {
   const a = registry.get(id).auth;
   if (!a) throw new Error('That agent does not need to be signed in.');
   return a;
 };
-/** Re-reads each backend's installed version for the interface. */
-async function refreshBackends() { backends = await registry.info(); emitState(); }
+/** Reads who each agent is signed in as, and what models and versions it has, and tells the UI if anything changed. */
+async function refreshBackends() {
+  await Promise.all(registry.all().map(async (b) => {
+    if (b.auth) {
+      const l = await b.auth.status().catch((e): AgentLogin => ({ loggedIn: false, method: 'none', error: String(e?.message || e) }));
+      logins[b.id] = l;
+      if (l.billing && b.id !== 'claude') sessions.setBilling(b.id, l.billing);
+    }
+    // Only once signed in: a model list is no use before that, and asking starts the agent's process.
+    if (!b.auth || logins[b.id]?.loggedIn) await b.refresh?.();
+  }));
+  const next = await registry.info(logins);
+  if (JSON.stringify(next) !== JSON.stringify(backends)) { backends = next; emitState(); }
+}
+/** For a sign-in that finishes in the browser with no code to paste back: look until it is done. */
+const watching = new Map<string, NodeJS.Timeout>();
+function watchLogin(id: string) {
+  clearInterval(watching.get(id));
+  const t0 = Date.now();
+  const timer = setInterval(() => {
+    void refreshBackends().then(() => { if (logins[id]?.loggedIn || Date.now() - t0 > 10 * 60_000) { clearInterval(timer); watching.delete(id); void refreshPlan(true); } });
+  }, 3000);
+  watching.set(id, timer);
+}
 
 let lastBadge = -1;
 export function emitState() {
@@ -167,7 +182,8 @@ const registry = new BackendRegistry([
   new ClaudeBackend({
     sdk: () => store.data.settings.claudePath || host.sdkClaudePath(),
     cli: () => store.data.settings.claudePath || host.cliClaudePath()
-  })
+  }),
+  new CodexBackend({ cli: () => store.data.settings.codexPath || undefined })
 ]);
 const sessions = new SessionManager(store, {
   emitState,
@@ -329,7 +345,7 @@ export const api: HelmApi = {
     if (('companionEnabled' in patch || 'companionUrl' in patch) && host.companion !== false) companion.apply();
     host.settingsChanged?.(patch);
     if ('planPause5h' in patch || 'planPauseWeek' in patch || 'billing' in patch) void sessions.enforcePlan();
-    if ('claudePath' in patch) await refreshBackends();
+    if ('claudePath' in patch || 'codexPath' in patch) await refreshBackends();
     store.save();
     emitState();
   },
@@ -351,16 +367,29 @@ export const api: HelmApi = {
     emitState();
     return u;
   },
-  async agentLoginStart(backend) { return authOf(backend).startLogin(); },
+  async agentLoginStart(backend) {
+    const r = await authOf(backend).startLogin();
+    if (!r.needsCode) watchLogin(backend);
+    return r;
+  },
   async agentLoginCode(backend, code) {
-    await authOf(backend).submitCode(String(code));
-    return (await refreshAgentLogin())!;
+    const a = authOf(backend);
+    if (!a.submitCode) throw new Error('This agent does not take a code.');
+    const l = await a.submitCode(String(code));
+    await refreshBackends();
+  setInterval(() => void refreshBackends(), 5 * 60_000).unref?.();
+    void refreshPlan(true);
+    return l;
   },
-  async agentLoginCancel(backend) { authOf(backend).cancel(); },
+  async agentLoginCancel(backend) { clearInterval(watching.get(backend)); watching.delete(backend); authOf(backend).cancel(); },
   async agentLogout(backend) {
-    await authOf(backend).logout();
-    return (await refreshAgentLogin())!;
+    const l = await authOf(backend).logout();
+    store.planOf(backend).fiveHour = undefined;
+    store.planOf(backend).weekly = undefined;
+    await refreshBackends();
+    return l;
   },
+  async refreshAgentLogins() { await refreshBackends(); },
 
   async signOut() {
     GH.cancelDeviceFlow();
@@ -936,17 +965,20 @@ let lastPlanProbe = 0;
  */
 export async function refreshPlan(force = false) {
   const st = store.data.settings;
-  if (st.billingDetected && st.billing !== 'subscription') return;
   if (!force && Date.now() - lastPlanProbe < 60_000) return;
   lastPlanProbe = Date.now();
-  const b = registry.all().find((x) => x.planUsage);
-  const u = await b?.planUsage?.(home);
-  if (!u) return;
-  if (!st.billingDetected) { st.billing = u.billing; st.billingDetected = true; }
-  const plan = store.data.plan;
-  plan.fiveHour = u.fiveHour ?? plan.fiveHour;
-  plan.weekly = u.weekly ?? plan.weekly;
-  if (u.fiveHour || u.weekly) plan.at = Date.now();
+  for (const b of registry.all()) {
+    if (!b.planUsage || (b.auth && !logins[b.id]?.loggedIn)) continue;
+    if (b.id === 'claude' && st.billingDetected && st.billing !== 'subscription') continue;
+    const u = await b.planUsage(home);
+    if (!u) continue;
+    if (b.id === 'claude' && !st.billingDetected) { st.billing = u.billing; st.billingDetected = true; }
+    if (b.id !== 'claude') sessions.setBilling(b.id, u.billing);
+    const plan = store.planOf(b.id);
+    plan.fiveHour = u.fiveHour ?? plan.fiveHour;
+    plan.weekly = u.weekly ?? plan.weekly;
+    if (u.fiveHour || u.weekly) plan.at = Date.now();
+  }
   store.save();
   emitState();
   void sessions.enforcePlan();
@@ -1089,7 +1121,6 @@ export async function start(h: Host) {
   if (!GH.getToken() && !process.env.HELM_DEV_SEED) store.data.user = null;
   await refreshBackends();
   host.setTheme?.(store.data.settings.theme);
-  if (host.requireAgentLogin) { void refreshAgentLogin(); setInterval(() => void refreshAgentLogin(), 5 * 60_000); }
   // Sampled all the time, so the System graphs already have a past when the tab is opened.
   void sampleSystem();
   setInterval(() => void sampleSystem(), 5000).unref?.();

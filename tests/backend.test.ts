@@ -21,7 +21,7 @@ describe('BackendRegistry', () => {
   });
   it('describes every backend for the interface', async () => {
     const info = await r.info();
-    expect(info.map((b) => [b.id, b.version, b.needsLogin])).toEqual([['claude', '1.0', false], ['other', '1.0', false]]);
+    expect(info.map((b) => [b.id, b.version, b.canSignIn])).toEqual([['claude', '1.0', false], ['other', '1.0', false]]);
   });
 });
 

@@ -2,12 +2,12 @@ import { forkSession, getSessionInfo, getSessionMessages, getSubagentMessages, l
 import { copyFile, mkdir, readdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import type { AgentBackend, AgentBlock, AgentCapabilities, AgentEvent, AgentHandle, AgentStartOptions, ConversationInfo, ConversationStore, PlanProbe, PlanWindow, ReviewOutcome, ReviewRequest } from './backend';
+import type { AgentBackend, BackendAuth, AgentBlock, AgentCapabilities, AgentEvent, AgentHandle, AgentStartOptions, ConversationInfo, ConversationStore, PlanProbe, PlanWindow, ReviewOutcome, ReviewRequest } from './backend';
 import { ClaudeAuth } from './claudeAuth';
 import { fileExists } from './git';
 import { convertMessages } from './transcript';
 import { run } from './util';
-import type { Effort, MessageImage, ModelInfo, PermMode } from '../shared/types';
+import type { AgentLogin, Effort, MessageImage, ModelInfo, PermMode } from '../shared/types';
 
 
 const sdkMode = (m: PermMode) => (m === 'plan' ? 'plan' : m === 'edits' ? 'acceptEdits' : m === 'all' ? 'bypassPermissions' : 'default') as 'plan' | 'acceptEdits' | 'bypassPermissions' | 'default';
@@ -114,9 +114,19 @@ export interface ClaudePaths {
 export class ClaudeBackend implements AgentBackend {
   readonly id = 'claude';
   readonly label = 'Claude Code';
+  readonly bundled = true;
   readonly models = MODELS;
   readonly capabilities: AgentCapabilities = { subagents: true, planMode: true, effort: true, fork: true, cost: true, planUsage: true };
-  readonly auth = new ClaudeAuth(() => this.paths.cli() || 'claude');
+  private login = new ClaudeAuth(() => this.paths.cli() || 'claude');
+  /** A key in the environment, or none, is paid per token; a Claude login is a subscription. */
+  private billed = (l: AgentLogin): AgentLogin => (l.loggedIn ? { ...l, billing: /api key/.test(l.method) ? 'api' : 'subscription' } : l);
+  readonly auth: BackendAuth = {
+    status: async () => this.billed(await this.login.status()),
+    startLogin: async () => ({ ...(await this.login.startLogin()), needsCode: true }),
+    submitCode: async (code) => this.billed(await this.login.submitCode(code)),
+    cancel: () => this.login.cancel(),
+    logout: async () => this.billed(await this.login.logout())
+  };
 
   constructor(private paths: ClaudePaths) {}
 

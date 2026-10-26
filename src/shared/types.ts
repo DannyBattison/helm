@@ -46,8 +46,12 @@ export interface BackendInfo {
   capabilities: AgentCapabilities;
   /** The installed command-line version, or null when it uses the copy bundled with helm or none was found. */
   version: string | null;
-  /** True when the app has to sign this agent in itself (the hosted server). */
-  needsLogin: boolean;
+  /** True when helm can sign this agent in and out (an account to show in Settings). */
+  canSignIn: boolean;
+  /** Who is signed in, when known. Absent when the agent has no account or it could not be checked. */
+  login?: AgentLogin;
+  /** Models of this agent can be started: it is signed in, or has no account to sign in to. */
+  ready: boolean;
 }
 export type ThemePref = 'dark' | 'light' | 'system';
 
@@ -340,6 +344,8 @@ export interface Settings {
   githubClientId: string;
   /** Path to the Claude Code executable. */
   claudePath: string;
+  /** Path to the Codex executable; empty finds `codex` on the PATH. */
+  codexPath: string;
   defaultBackend: string;
   defaultModel: ModelAlias;
   permMode: PermMode;
@@ -476,11 +482,13 @@ export interface Lifetime {
   cost: number;
 }
 
-/** Whether Claude Code is signed in on a machine where the app has to do that itself (the hosted server). */
+/** Whether an agent is signed in, and to what. */
 export interface AgentLogin {
   loggedIn: boolean;
-  /** `none`, the account's login (`claude.ai`), `api key` or `subscription token`. */
+  /** `none`, the account's login (`claude.ai`, `chatgpt`), `api key` or `subscription token`. */
   method: string;
+  /** How usage is paid for: a subscription's plan limits, or per token. Absent when unknown. */
+  billing?: 'subscription' | 'api';
   email?: string;
   plan?: string;
   /** Why it could not be checked, when it could not. */
@@ -519,8 +527,8 @@ export interface WorktreeUsage {
 
 export interface AppState {
   ready: boolean;
-  /** Set only where the app signs Claude Code in itself (the hosted server); absent on the desktop. */
-  agentLogin?: AgentLogin & { backend: string; label: string };
+  /** True where nobody is at the machine to sign an agent in (the hosted server), so helm asks for a sign-in before anything else. */
+  agentLoginRequired: boolean;
   user: User | null;
   repos: Repo[];
   sessions: Session[];
@@ -542,6 +550,9 @@ export interface AppState {
   forecast: Conflict[];
   update: UpdateStatus;
   backends: BackendInfo[];
+  /** Plan usage windows per backend id. */
+  plans: Record<string, PlanUsage>;
+  /** Claude's, kept for the parts that predate other agents. */
   plan: PlanUsage;
   companion: CompanionState;
   /** USD to other currencies. */
@@ -1031,12 +1042,15 @@ export interface HelmApi {
   openRepoInEditor(repoId: string): Promise<void>;
   /** The version of a backend's command-line tool at this path, or null when it is not there. */
   checkAgent(backend: string, path: string): Promise<string | null>;
-  /** Starts signing Claude Code in with a Claude subscription: returns the address to open. */
-  agentLoginStart(backend: string): Promise<{ url: string }>;
-  /** Gives the code shown after approving, and returns where Claude Code stands. Rejects with the reason when it did not sign in. */
+  /** Starts signing an agent in with its subscription: returns the address to open, and a code to enter there when the agent gives one. */
+  agentLoginStart(backend: string): Promise<{ url: string; code?: string; needsCode: boolean }>;
+  /** For an agent whose sign-in ends with a code pasted back (Claude): gives it, and returns where the agent stands. Rejects with the reason when it did not sign in. */
   agentLoginCode(backend: string, code: string): Promise<AgentLogin>;
   agentLoginCancel(backend: string): Promise<void>;
+  /** Signs an agent out of its account. */
   agentLogout(backend: string): Promise<AgentLogin>;
+  /** Checks again who each agent is signed in as. */
+  refreshAgentLogins(): Promise<void>;
 
   termOpen(sessionId: string | null, cols: number, rows: number): Promise<string>;
   termWrite(id: string, data: string): Promise<void>;

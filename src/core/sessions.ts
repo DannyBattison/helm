@@ -82,7 +82,9 @@ export class SessionManager {
   /** True while helm is quitting: ending the agents must not rewrite what the sessions were doing. */
   private quitting = false;
   /** Plan windows the user chose to continue past, keyed to the window's reset time so it lapses on reset. */
-  private planOverride: Partial<Record<'fiveHour' | 'weekly', number>> = {};
+  private planOverride: Record<string, number> = {};
+  /** How each backend other than Claude is paid for, as its sign-in reports it. Claude's is `settings.billing`. */
+  private billings: Record<string, 'subscription' | 'api'> = {};
   private registry: BackendRegistry;
   constructor(private store: Store, private hooks: Hooks, registry?: BackendRegistry) {
     this.registry = registry ?? new BackendRegistry([new ClaudeBackend({ sdk: () => this.store.data.settings.claudePath || this.hooks.claudePath(), cli: () => this.store.data.settings.claudePath || undefined })]);
@@ -100,7 +102,9 @@ export class SessionManager {
 
   get sessions() { return this.store.data.sessions; }
   private usd = (v: number, whole = false) => fmtMoney(v, this.store.data.settings.currency, this.store.data.fx.rates, { whole });
-  private get billing() { return this.store.data.settings.billing; }
+  /** Subscription limits or per-token cost: the user's setting for Claude, what the account reports for any other agent. */
+  private billingOf(backend: string): 'subscription' | 'api' { return backend === 'claude' ? this.store.data.settings.billing : this.billings[backend] ?? 'subscription'; }
+  setBilling(backend: string, b: 'subscription' | 'api') { this.billings[backend] = b; }
   get = (id: string) => this.sessions.find((s) => s.id === id);
   /** The session's repository. A free agent gets a stand-in whose folder is its own, so git commands there run in its folder. */
   repoOf = (s: Session) => (s.free ? freeRepo(s.worktree) : this.store.data.repos.find((r) => r.id === s.repoId)!);
@@ -570,7 +574,8 @@ export class SessionManager {
         {
           const st = this.store.data.settings;
           // A Claude login reports no API key; an API key means tokens are paid for.
-          if (!st.billingDetected && ev.billing) { st.billing = ev.billing; st.billingDetected = true; }
+          if (this.backendOf(s).id !== 'claude') { if (ev.billing) this.billings[this.backendOf(s).id] = ev.billing; }
+          else if (!st.billingDetected && ev.billing) { st.billing = ev.billing; st.billingDetected = true; }
         }
         this.touch();
         return;
@@ -581,7 +586,7 @@ export class SessionManager {
       }
       case 'subagent_progress': return this.onTaskProgress(s, ev);
       case 'subagent_done': return this.onTaskDone(s, rt, ev);
-      case 'plan_usage': return this.onPlanUsage(ev);
+      case 'plan_usage': return this.onPlanUsage(s, ev);
       case 'assistant': return this.onAssistant(s, rt, ev);
       case 'tool_results': return this.onToolResults(s, rt, ev.results);
       case 'result': return this.onResult(s, rt, ev);
@@ -1002,8 +1007,8 @@ export class SessionManager {
   }
 
   // ---------------------------------------------------------------- budget
-  private onPlanUsage(m: Extract<AgentEvent, { t: 'plan_usage' }>) {
-    const plan = this.store.data.plan;
+  private onPlanUsage(s: Session, m: Extract<AgentEvent, { t: 'plan_usage' }>) {
+    const plan = this.store.planOf(this.backendOf(s).id);
     if (m.fiveHour) plan.fiveHour = m.fiveHour;
     if (m.weekly) plan.weekly = m.weekly;
     plan.at = Date.now();
@@ -1011,36 +1016,38 @@ export class SessionManager {
     void this.enforcePlan();
   }
 
-  /** Pauses running sessions when a subscription window passes the percentage the user set. */
+  /** Pauses running sessions when a subscription window passes the percentage the user set. Each agent has windows of its own. */
   async enforcePlan() {
     const st = this.store.data.settings;
-    if (st.billing !== 'subscription') return;
-    const plan = this.store.data.plan;
-    const checks: ['fiveHour' | 'weekly', number, string][] = [['fiveHour', st.planPause5h, '5-hour'], ['weekly', st.planPauseWeek, 'weekly']];
-    for (const [key, limit, name] of checks) {
-      const w = plan[key];
-      if (!limit || !w || w.resetsAt * 1000 < Date.now() || w.util * 100 < limit || (this.planOverride[key] ?? 0) >= w.resetsAt) continue;
-      for (const [id, rt] of this.rt) {
-        const s = this.get(id);
-        if (!s || s.status !== 'working' || s.ask || rt.budgetPaused) continue;
-        const mins = Math.max(1, Math.round((w.resetsAt * 1000 - Date.now()) / 60000));
-        const resets = mins >= 90 ? `${Math.round(mins / 60)}h` : `${mins}m`;
-        const ask: PendingAsk = { id: uid(), type: 'budget', scope: 'plan', at: Date.now(), head: `Paused at ${Math.round(w.util * 100)}% of your ${name} plan usage`, note: `You set a limit of ${limit}%. The window resets in ${resets}. Continuing may use up the rest of your plan.` };
-        rt.budgetPaused = true;
-        rt.asks.set(ask.id, { ask, scope: 'plan', planKey: key, resolve: () => undefined });
-        s.ask = ask;
-        this.activity(s, 'budget', `paused at ${Math.round(w.util * 100)}% of the ${name} plan usage`);
-        this.setStatus(s, 'attention', ask.head);
-        this.hooks.notify('attention', `${s.id} is paused`, ask.head, s.id);
-        rt.interrupted = true;
-        await rt.agent.interrupt();
+    for (const be of this.registry.all()) {
+      if (!be.capabilities.planUsage || this.billingOf(be.id) !== 'subscription') continue;
+      const plan = this.store.planOf(be.id);
+      const checks: ['fiveHour' | 'weekly', number, string][] = [['fiveHour', st.planPause5h, '5-hour'], ['weekly', st.planPauseWeek, 'weekly']];
+      for (const [key, limit, name] of checks) {
+        const w = plan[key];
+        if (!limit || !w || w.resetsAt * 1000 < Date.now() || w.util * 100 < limit || (this.planOverride[be.id + ':' + key] ?? 0) >= w.resetsAt) continue;
+        for (const [id, rt] of this.rt) {
+          const s = this.get(id);
+          if (!s || this.backendOf(s).id !== be.id || s.status !== 'working' || s.ask || rt.budgetPaused) continue;
+          const mins = Math.max(1, Math.round((w.resetsAt * 1000 - Date.now()) / 60000));
+          const resets = mins >= 90 ? `${Math.round(mins / 60)}h` : `${mins}m`;
+          const ask: PendingAsk = { id: uid(), type: 'budget', scope: 'plan', at: Date.now(), head: `Paused at ${Math.round(w.util * 100)}% of your ${be.label} ${name} plan usage`, note: `You set a limit of ${limit}%. The window resets in ${resets}. Continuing may use up the rest of your plan.` };
+          rt.budgetPaused = true;
+          rt.asks.set(ask.id, { ask, scope: 'plan', planKey: key, resolve: () => undefined });
+          s.ask = ask;
+          this.activity(s, 'budget', `paused at ${Math.round(w.util * 100)}% of the ${be.label} ${name} plan usage`);
+          this.setStatus(s, 'attention', ask.head);
+          this.hooks.notify('attention', `${s.id} is paused`, ask.head, s.id);
+          rt.interrupted = true;
+          await rt.agent.interrupt();
+        }
+        break;
       }
-      return;
     }
   }
 
   private async checkBudget(s: Session, rt: Runtime) {
-    if (this.billing !== 'api') {
+    if (this.billingOf(this.backendOf(s).id) !== 'api') {
       await this.enforcePlan();
       return;
     }
@@ -1145,8 +1152,8 @@ export class SessionManager {
 
     if (w.ask.type === 'budget') {
       if (w.scope === 'plan' && w.planKey) {
-        const win = this.store.data.plan[w.planKey];
-        this.planOverride[w.planKey] = win?.resetsAt ?? Math.floor(Date.now() / 1000) + 3600;
+        const win = this.store.planOf(this.backendOf(s).id)[w.planKey];
+        this.planOverride[this.backendOf(s).id + ':' + w.planKey] = win?.resetsAt ?? Math.floor(Date.now() / 1000) + 3600;
         rt.budgetPaused = false;
         this.setStatus(s, 'working', 'Resuming');
         rt.agent.send('You were paused at a plan usage limit the user set, and they chose to continue. Continue where you left off.');
@@ -1215,9 +1222,9 @@ export class SessionManager {
     let message: string;
     if (ask.type === 'budget') {
       if (ask.scope === 'plan') {
-        const p = this.store.data.plan;
-        if (p.fiveHour) this.planOverride.fiveHour = p.fiveHour.resetsAt;
-        if (p.weekly) this.planOverride.weekly = p.weekly.resetsAt;
+        const bid = this.backendOf(s).id, p = this.store.planOf(bid);
+        if (p.fiveHour) this.planOverride[bid + ':fiveHour'] = p.fiveHour.resetsAt;
+        if (p.weekly) this.planOverride[bid + ':weekly'] = p.weekly.resetsAt;
         message = 'You were paused at a plan usage limit the user set, and they chose to continue. Continue where you left off.';
       } else {
         const add = Number(answer.addBudget) || 5; // USD
