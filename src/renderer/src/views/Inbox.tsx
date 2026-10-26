@@ -118,7 +118,7 @@ export function Inbox() {
             <span style={{ font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{s.free ? 'Free agent' : s.repoId} · {s.free ? s.worktree : s.branch} · waiting {ago(cur.since)}</span>
 
             {cur.kind === 'approve' && a ? <>
-              <div style={{ font: '600 14px/1.5 var(--font-sans)' }}>{a.head}</div>
+              <div style={{ font: '600 14px/1.5 var(--font-sans)' }}>{a.summary || a.head}</div>
               {a.command ? <pre className="selectable" style={{ margin: 0, padding: '10px 12px', borderRadius: 'var(--radius-md)', background: 'var(--bg-editor)', boxShadow: 'inset 0 0 0 1px var(--border)', font: '400 12.5px/1.55 var(--font-mono)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{a.command}</pre> : null}
               {a.note ? <div style={{ font: '400 12.5px/1.55 var(--font-sans)', color: 'var(--text-2)', whiteSpace: 'pre-wrap' }}>{a.note}</div> : null}
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -152,7 +152,7 @@ export function Inbox() {
             </> : null}
 
             {cur.kind === 'budget' && a ? <>
-              <div style={{ font: '600 14px/1.5 var(--font-sans)' }}>{a.head}</div>
+              <div style={{ font: '600 14px/1.5 var(--font-sans)' }}>{a.summary || a.head}</div>
               {a.scope === 'plan' ? <PlanMeters /> : <Meter value={s.cost} max={s.budget} label="Session budget" detail={fmt(s.cost) + ' / ' + fmt(s.budget)} />}
               {a.note ? <div style={{ font: '400 12.5px/1.55 var(--font-sans)', color: 'var(--text-2)' }}>{a.note}</div> : null}
               <div><Button variant="primary" kbd="a" onClick={() => void act(cur, { do: 'continue' })}>{a.scope === 'plan' ? 'Continue anyway' : `Add ${sym}5 and resume`}</Button></div>

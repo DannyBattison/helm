@@ -190,11 +190,12 @@ function Rich({ text, sessionId }: { text: string; sessionId?: string }) {
 function BashRow({ m, box }: { m: Extract<TranscriptEvent, { k: 'bash' }>; box: React.CSSProperties }) {
   const [open, setOpen] = React.useState(false);
   const result = m.ok && m.out === '✓' ? '✓ done' : m.out;
-  const long = m.cmd.length > 80 || m.cmd.includes('\n') || result.length > 40 || result.includes('\n');
+  const long = m.cmd.length > (m.summary ? 40 : 80) || m.cmd.includes('\n') || result.length > 40 || result.includes('\n');
   return (
     <div style={{ marginLeft: 44, marginRight: 12, ...box }}>
       <div onClick={long ? () => { if (!window.getSelection()?.toString()) setOpen(!open); } : undefined} style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 30, padding: '0 10px', background: 'var(--bg-editor)', cursor: long ? 'pointer' : undefined }}>
         <i className="ph ph-terminal" style={{ fontSize: 13, color: 'var(--text-3)' }} />
+        {m.summary ? <span style={{ font: '500 12px/1.5 var(--font-sans)', color: 'var(--text-1)', flex: 'none', maxWidth: '45%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.summary}</span> : null}
         <span className="selectable" style={{ font: '400 12px/1.5 var(--font-mono)', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><span style={{ color: 'var(--text-3)' }}>$ </span><Hl text={m.cmd.split('\n')[0]} lang="bash" />{m.cmd.includes('\n') ? <span style={{ color: 'var(--text-3)' }}> …</span> : null}</span>
         {m.done ? <span style={{ font: '400 12px/1.5 var(--font-mono)', color: m.ok ? 'var(--diff-add-fg)' : 'var(--diff-del-fg)', maxWidth: 260, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{result.split('\n')[0]}</span>
           : <i className="ph ph-circle-notch" style={{ fontSize: 13, color: 'var(--status-working-text)', animation: 'helm-spin .9s linear infinite' }} />}
@@ -305,7 +306,7 @@ function TranscriptItemView({ m, s, index, onDeny }: { m: TranscriptEvent; s: S;
     const isCmd = m.tool === 'Bash' || m.tool === 'PowerShell';
     return (
       <div style={{ marginLeft: 44, marginRight: 12, borderRadius: 'var(--radius-md)', background: 'var(--status-attention-bg)', boxShadow: 'inset 0 0 0 1px var(--status-attention)', padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, font: '600 13px/1.5 var(--font-sans)', color: 'var(--status-attention-text)' }}><i className="ph-fill ph-shield-warning" style={{ fontSize: 15 }} />{isCmd ? 'Permission needed to run a command' : m.tool === 'ExitPlanMode' ? 'Plan ready for approval' : 'Permission needed'}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, font: '600 13px/1.5 var(--font-sans)', color: 'var(--status-attention-text)' }}><i className="ph-fill ph-shield-warning" style={{ fontSize: 15 }} />{isCmd ? <>{m.summary || 'Run a command'}<span style={{ fontWeight: 400, color: 'var(--text-2)' }}> · needs your permission</span></> : m.tool === 'ExitPlanMode' ? 'Plan ready for approval' : 'Permission needed'}</div>
         <CopyBox text={m.cmd}>        <code className="selectable" style={{ font: 'var(--type-code)', padding: '6px 10px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-editor)', color: 'var(--text-1)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{isCmd ? <><span style={{ color: 'var(--text-3)' }}>$ </span><Cmd text={m.cmd} /></> : m.cmd}</code></CopyBox>
         <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>{m.why}</div>
         {restarted ? <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>helm was restarted while this waited. Approving starts the session again and has the agent run it.</div> : null}

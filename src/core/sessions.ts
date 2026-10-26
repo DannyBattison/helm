@@ -7,6 +7,7 @@ import { auditText } from '../shared/redact';
 import { queueBlock, queueOrder } from '../shared/queue';
 import { stuckReason } from '../shared/stuck';
 import { REVIEW_SCHEMA, parseReview, reviewPrompt } from '../shared/selfreview';
+import { commandSummary } from '../shared/commandSummary';
 import { FREE_ID, freeRepo, sessionTitle, type ActivityEvent, type Checkpoint, type Effort, type MessageImage, type ModelAlias, type NewSessionInput, type PendingAsk, type PermMode, type Session, type Status, type Subagent, type TranscriptEvent } from '../shared/types';
 import { artifactDir, dropArtifacts, ensureArtifactDir } from './artifacts';
 import * as G from './git';
@@ -765,7 +766,7 @@ export class SessionManager {
           if (b.type !== 'tool_use') continue;
           const input = b.input || {};
           if (COMMAND_TOOLS.has(b.name)) {
-            pending.set(b.id, { kind: 'bash', idx: ev.push({ k: 'bash', id: b.id, cmd: String(input.command || ''), out: '', ok: true, meta: '', done: false }) - 1 });
+            pending.set(b.id, { kind: 'bash', idx: ev.push({ k: 'bash', id: b.id, cmd: String(input.command || ''), summary: commandSummary(String(input.command || ''), input.description), out: '', ok: true, meta: '', done: false }) - 1 });
           } else if (EDIT_TOOLS.has(b.name)) {
             const file = rel(wt, String(input.file_path || input.notebook_path || ''));
             const lines: [string, string][] = [];
@@ -844,7 +845,7 @@ export class SessionManager {
       const cmd = String(input.command || '');
       const gitKind = /(^|&&|;|\|\|)\s*git\s+(?:-C\s+\S+\s+)?push\b/.test(cmd) ? 'push' : /(^|&&|;|\|\|)\s*git\s+(?:-C\s+\S+\s+)?(fetch|pull|merge|rebase|checkout|switch|branch|reset|stash|tag|clone|worktree|cherry-pick|revert)\b/.test(cmd) ? 'git' : 'bash';
       this.activity(s, gitKind, (sub ? `${sub.description}: ` : '') + 'ran ' + trunc(cmd.replace(/\s+/g, ' '), 110), { detail: cmd });
-      const idx = await this.push(tkey, { k: 'bash', id: b.id, cmd, out: '', ok: true, meta: '', done: false });
+      const idx = await this.push(tkey, { k: 'bash', id: b.id, cmd, summary: commandSummary(cmd, input.description), out: '', ok: true, meta: '', done: false });
       rt.toolStart.set(b.id, { t: Date.now(), idx, kind: 'bash', input, tkey, name });
       s.step = (sub ? `${sub.description}: ` : '') + 'Running ' + trunc(cmd, 80);
       return;
@@ -1176,8 +1177,9 @@ export class SessionManager {
       if (plain && SAFE_CMD.test(cmd.trim())) return { behavior: 'allow', updatedInput: input };
       if (plain && st.alwaysAllow.some((p) => globMatch(p, cmd))) return { behavior: 'allow', updatedInput: input };
       const pattern = commandPattern(cmd);
-      const ask: PendingAsk = { id: uid(), type: 'approve', at: Date.now(), tool, command: cmd, pattern, head: 'Wants to run a command', note: o?.decisionReason || o?.description || `Runs inside ${s.worktree}. Your checkout is untouched.` };
-      await this.push(s.id, { k: 'permission', askId: ask.id, cmd, tool, why: ask.note, pattern });
+      const summary = commandSummary(cmd, input.description);
+      const ask: PendingAsk = { id: uid(), type: 'approve', at: Date.now(), tool, command: cmd, summary, pattern, head: 'Wants to run a command', note: o?.decisionReason || `Runs inside ${s.worktree}. Your checkout is untouched.` };
+      await this.push(s.id, { k: 'permission', askId: ask.id, cmd, summary, tool, why: ask.note, pattern });
       return this.waitAsk(s, rt, ask, 'tool', input, tool);
     }
     if (EDIT_TOOLS.has(tool)) {

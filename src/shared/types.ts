@@ -53,6 +53,8 @@ export interface PendingAsk {
   head: string;
   note: string;
   tool?: string;
+  /** A few words on what the command does, for approvals of commands. */
+  summary?: string;
   /** Bash command, for approvals of commands. */
   command?: string;
   /** Pattern offered by "Always allow", e.g. `pnpm test *`. */
@@ -232,9 +234,9 @@ export type TranscriptEvent =
   | { k: 'agent'; text: string; list?: string[] }
   | { k: 'tools'; items: [string, string, string][] }
   | { k: 'edit'; file: string; add: number; del: number; lines: [string, string][] }
-  | { k: 'bash'; id: string; cmd: string; out: string; ok: boolean; meta: string; done: boolean }
+  | { k: 'bash'; id: string; cmd: string; summary?: string; out: string; ok: boolean; meta: string; done: boolean }
   | { k: 'commit'; hash: string; msg: string; t: number }
-  | { k: 'permission'; askId: string; cmd: string; tool: string; why: string; pattern?: string; resolved?: 'approved' | 'always' | 'denied' }
+  | { k: 'permission'; askId: string; cmd: string; summary?: string; tool: string; why: string; pattern?: string; resolved?: 'approved' | 'always' | 'denied' }
   | { k: 'question'; askId: string; questions: AskQuestion[]; answered?: string }
   | { k: 'note'; tone: 'attention' | 'error' | 'neutral'; text: string };
 
