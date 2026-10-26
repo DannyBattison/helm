@@ -139,7 +139,7 @@ export function Inbox() {
                   {qq.header ? <span style={{ font: '500 10.5px/1 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>{qq.header}</span> : null}
                   <div style={{ font: '600 14px/1.4 var(--font-sans)' }}>{qq.question}</div>
                   {qq.options.map((o, oi) => (
-                    <button key={o.label} type="button" disabled={(a.questions?.length ?? 0) !== 1} onClick={() => void act(cur, { do: 'answer', option: oi })} className="helm-row-hover"
+                    <button key={o.label} type="button" disabled={(a.questions?.length ?? 0) !== 1} onClick={() => void act(cur, { do: 'answer', option: oi })} className="helm-row-hover helm-tap-row"
                       style={{ textAlign: 'left', display: 'flex', gap: 10, alignItems: 'flex-start', padding: '9px 12px', borderRadius: 'var(--radius-md)', border: 'none', cursor: (a.questions?.length ?? 0) === 1 ? 'pointer' : 'default', background: 'var(--bg-panel)', boxShadow: 'inset 0 0 0 1px var(--border)', color: 'var(--text-1)' }}>
                       <Kbd keys={String(oi + 1)} />
                       <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}><span style={{ font: '500 13px/1.3 var(--font-sans)' }}>{o.label}</span>{o.description ? <span style={{ font: '400 12px/1.4 var(--font-sans)', color: 'var(--text-3)' }}>{o.description}</span> : null}</span>

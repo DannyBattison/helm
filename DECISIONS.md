@@ -516,3 +516,7 @@ Why: user request, to ensure subagents hand back to their parent and the parent 
 ## D-124 · 2026-10-25 · A subagent that hands back with nothing to review is archived
 When a subagent finishes successfully and neither it nor a subagent under it edited a file or committed (`Subagent.changed`), it is marked `archived`: left out of the sidebar tree and the session's subagent list (a "Show N archived" button brings them back) and its card in the conversation drops the summary, though the transcript still opens. Failed and stopped subagents are not archived, and neither are ones that changed something, since the owner may want to look at those. Edits made through Bash are not seen, only the edit tools and `git commit`.
 Why: user request.
+
+## D-125 · 2026-10-26 · Touch screens also get larger checkboxes and switches, a taller title bar and a bigger tab close
+On top of D-117, under `pointer: coarse` checkboxes and switches are drawn 1.4× larger inside a 40px row (`helm-tap-check`, `helm-tap-switch`, `helm-tap-label`), the title bar grows to 48px so the 44px icon buttons fit, tabs get 44px hit areas with a gap, and a tab's close glyph gets a larger tap area without moving the layout (`helm-tap-x`). The toast dismiss, the Code search's match-case toggle and the answer-option buttons in the chat and Inbox pick up the same `helm-tap-*` classes. Desktop sizes are unchanged. Merged with main's D-117, which sized the rest; this was done from reading the components, without screenshots.
+Why: user request; many controls were too small to hit reliably on a phone.

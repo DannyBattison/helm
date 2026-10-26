@@ -21,7 +21,7 @@ export function Tabs({ tabs = [], value, defaultValue, onChange, onClose, closab
             {t.label}
             {t.count != null ? <span style={{ font: '400 11px/1 var(--font-mono)', color: 'var(--text-3)' }}>{t.count}</span> : null}
             {t.dirty ? <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--text-2)' }} /> : null}
-            {closable ? <i className="ph ph-x" onClick={e => { e.stopPropagation(); onClose && onClose(t.value); }} style={{ fontSize: 12, color: 'var(--text-3)', marginLeft: 2, opacity: on ? 1 : 0.6, cursor: 'pointer' }} /> : null}
+            {closable ? <i className="ph ph-x helm-tap-x" onClick={e => { e.stopPropagation(); onClose && onClose(t.value); }} style={{ fontSize: 12, color: 'var(--text-3)', marginLeft: 2, opacity: on ? 1 : 0.6, cursor: 'pointer' }} /> : null}
           </div>
         );
       })}

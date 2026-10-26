@@ -90,7 +90,7 @@ function SearchPanel({ ws, open }: { ws: string; open(path: string, line: number
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <div style={{ padding: '0 8px 8px', display: 'flex', gap: 6, alignItems: 'center' }}>
         <Input autoFocus mono icon="magnifying-glass" size="sm" placeholder="Search in files" value={q} onChange={(e: any) => setQ(e.target.value)} style={{ flex: 1 }} />
-        <button type="button" title="Match case" onClick={() => setMatchCase(!matchCase)} style={{ width: 24, height: 24, border: 'none', borderRadius: 'var(--radius-md)', background: matchCase ? 'var(--bg-selected)' : 'transparent', color: matchCase ? 'var(--accent-text)' : 'var(--text-3)', cursor: 'pointer', font: '600 11px/1 var(--font-mono)' }}>Aa</button>
+        <button type="button" className="helm-tap-icon" title="Match case" onClick={() => setMatchCase(!matchCase)} style={{ width: 24, height: 24, border: 'none', borderRadius: 'var(--radius-md)', background: matchCase ? 'var(--bg-selected)' : 'transparent', color: matchCase ? 'var(--accent-text)' : 'var(--text-3)', cursor: 'pointer', font: '600 11px/1 var(--font-mono)' }}>Aa</button>
       </div>
       <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '0 4px 8px' }}>
         {hits && hits.length === 0 ? <div style={{ padding: '8px 10px', font: '400 12px/1.4 var(--font-sans)', color: 'var(--text-3)' }}>No results.</div> : null}
