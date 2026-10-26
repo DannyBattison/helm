@@ -13,7 +13,41 @@ export type { Workflow, WorkflowRun, Report, Conflict, Issue, SearchResults, Hea
 export type Status = 'working' | 'attention' | 'ready' | 'idle' | 'error';
 /** ask: approve commands; edits: edits go through, commands ask; plan: plan only; all: nothing asks. */
 export type PermMode = 'ask' | 'edits' | 'plan' | 'all';
-export type ModelAlias = 'sonnet' | 'opus' | 'haiku';
+/** A model's id as its backend knows it ('sonnet', 'gpt-5', …). Which ones exist comes from `AppState.backends`. */
+export type ModelAlias = string;
+
+/** A model an agent backend offers. */
+export interface ModelInfo {
+  id: string;
+  label: string;
+  /** USD per million tokens, input and output. Only used for running estimates between the agent's own cost reports. */
+  price: [number, number];
+}
+
+/** What a backend can do. The interface hides the controls for what it cannot. */
+export interface AgentCapabilities {
+  subagents: boolean;
+  planMode: boolean;
+  effort: boolean;
+  /** Conversations can be copied and continued in a new worktree. */
+  fork: boolean;
+  /** Reports dollar cost itself, so budgets can be enforced. */
+  cost: boolean;
+  /** Reports subscription plan usage windows. */
+  planUsage: boolean;
+}
+
+/** An agent backend as the interface sees it. */
+export interface BackendInfo {
+  id: string;
+  label: string;
+  models: ModelInfo[];
+  capabilities: AgentCapabilities;
+  /** The installed command-line version, or null when it uses the copy bundled with helm or none was found. */
+  version: string | null;
+  /** True when the app has to sign this agent in itself (the hosted server). */
+  needsLogin: boolean;
+}
 export type ThemePref = 'dark' | 'light' | 'system';
 
 /** The repository id every free agent carries. It is not a real repository: free agents are not bound to one. */
@@ -127,6 +161,8 @@ export interface Session {
   worktree: string;
   /** Files uploaded for this session alone, kept in `dir` outside the worktree. */
   uploads?: { dir: string; files: { name: string; size: number }[] };
+  /** Which agent backend runs it. Sessions saved before there were others have none, which means Claude. */
+  backend?: string;
   model: ModelAlias;
   modelName?: string;
   permMode: PermMode;
@@ -144,7 +180,7 @@ export interface Session {
   timeline: { t: number; status: Status }[];
   commits: { hash: string; at: number }[];
   ask?: PendingAsk;
-  claudeSessionId?: string;
+  agentSessionId?: string;
   editing?: { file: string; line: number };
   error?: string;
   prUrl?: string;
@@ -287,7 +323,9 @@ export interface Settings {
   /** Status colours (#rrggbb) over the defaults, by key: working, attention, ready, error. */
   statusColors: Record<string, string>;
   githubClientId: string;
+  /** Path to the Claude Code executable. */
   claudePath: string;
+  defaultBackend: string;
   defaultModel: ModelAlias;
   permMode: PermMode;
   alwaysAllow: string[];
@@ -416,7 +454,7 @@ export interface Lifetime {
 }
 
 /** Whether Claude Code is signed in on a machine where the app has to do that itself (the hosted server). */
-export interface ClaudeLogin {
+export interface AgentLogin {
   loggedIn: boolean;
   /** `none`, the account's login (`claude.ai`), `api key` or `subscription token`. */
   method: string;
@@ -459,7 +497,7 @@ export interface WorktreeUsage {
 export interface AppState {
   ready: boolean;
   /** Set only where the app signs Claude Code in itself (the hosted server); absent on the desktop. */
-  claudeLogin?: ClaudeLogin;
+  agentLogin?: AgentLogin & { backend: string; label: string };
   user: User | null;
   repos: Repo[];
   sessions: Session[];
@@ -478,7 +516,7 @@ export interface AppState {
   /** Live sessions that would conflict with each other or with their base. */
   forecast: Conflict[];
   update: UpdateStatus;
-  claudeVersion: string | null;
+  backends: BackendInfo[];
   plan: PlanUsage;
   companion: CompanionState;
   /** USD to other currencies. */
@@ -688,6 +726,8 @@ export interface NewSessionInput {
   repoId: string;
   base: string;
   task: string;
+  /** Which agent backend to use. Unset means the default one in Settings. */
+  backend?: string;
   model: ModelAlias;
   budget: number;
   permMode: PermMode;
@@ -954,13 +994,14 @@ export interface HelmApi {
   openFolder(path: string): Promise<void>;
   /** Opens the repository in the editor chosen in Settings. With helm as the editor it opens the Code tab instead. */
   openRepoInEditor(repoId: string): Promise<void>;
-  checkClaude(path: string): Promise<string | null>;
+  /** The version of a backend's command-line tool at this path, or null when it is not there. */
+  checkAgent(backend: string, path: string): Promise<string | null>;
   /** Starts signing Claude Code in with a Claude subscription: returns the address to open. */
-  claudeLoginStart(): Promise<{ url: string }>;
+  agentLoginStart(backend: string): Promise<{ url: string }>;
   /** Gives the code shown after approving, and returns where Claude Code stands. Rejects with the reason when it did not sign in. */
-  claudeLoginCode(code: string): Promise<ClaudeLogin>;
-  claudeLoginCancel(): Promise<void>;
-  claudeLogout(): Promise<ClaudeLogin>;
+  agentLoginCode(backend: string, code: string): Promise<AgentLogin>;
+  agentLoginCancel(backend: string): Promise<void>;
+  agentLogout(backend: string): Promise<AgentLogin>;
 
   termOpen(sessionId: string | null, cols: number, rows: number): Promise<string>;
   termWrite(id: string, data: string): Promise<void>;

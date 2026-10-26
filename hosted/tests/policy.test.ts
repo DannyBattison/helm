@@ -17,7 +17,7 @@ describe('the state a signed-out page is shown', () => {
   const real: any = {
     ready: true, user: { login: 'danny' }, repos: [{ id: 'a/b', localPath: '/home/helm/code/b' }], sessions: [{ id: 's', task: 'secret work' }], activity: [{ what: 'x' }],
     weekSpend: { 'a/b': 3 }, lifetime: { 'a/b': { input: 1 } }, tokensToday: 99, plan: { at: 1, fiveHour: { util: 0.5, resetsAt: 1 } }, home: '/home/helm',
-    claudeVersion: '2.1.309', rates: { USD: 1 }, platform: 'linux',
+    backends: [], rates: { USD: 1 }, platform: 'linux',
     settings: { theme: 'dark', uiFont: 'Mona Sans', githubClientId: 'abc', claudePath: '/opt/claude', worktreeRoot: '/home/helm/.helm/worktrees', cloneRoot: '/home/helm/code', copyFiles: '.env', alwaysAllow: ['git *'], companionUrl: 'https://x' }
   };
   const safe: any = signedOutState(real);

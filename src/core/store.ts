@@ -15,6 +15,7 @@ export const defaultSettings = (): Settings => ({
   statusColors: {},
   githubClientId: process.env.HELM_GITHUB_CLIENT_ID || DEFAULT_GITHUB_CLIENT_ID,
   claudePath: '',
+  defaultBackend: 'claude',
   defaultModel: 'sonnet',
   permMode: 'ask',
   alwaysAllow: [],
@@ -148,8 +149,8 @@ export class Store {
       const raw = JSON.parse(await readFile(join(this.dir, 'helm.json'), 'utf8'));
       this.data = { ...this.data, ...raw, settings: { ...defaultSettings(), ...raw.settings } };
       if (!this.data.settings.githubClientId) this.data.settings.githubClientId = defaultSettings().githubClientId;
-      // Sessions saved by older versions have no subagents.
-      for (const x of this.data.sessions) { x.subagents ||= []; x.lastAccess ||= x.endedAt ?? x.startedAt; }
+      // Sessions saved by older versions have no subagents, and kept the agent's conversation id under Claude's name.
+      for (const x of this.data.sessions as any[]) { x.subagents ||= []; x.lastAccess ||= x.endedAt ?? x.startedAt; if (x.claudeSessionId && !x.agentSessionId) { x.agentSessionId = x.claudeSessionId; delete x.claudeSessionId; } }
       this.data.extArchive ||= {};
       if (!existsSync(join(this.dir, 'activity.jsonl')) && this.data.activity.length) {
         await writeFile(join(this.dir, 'activity.jsonl'), [...this.data.activity].reverse().map((e) => JSON.stringify(e)).join('\n') + '\n', 'utf8');

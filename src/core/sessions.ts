@@ -1,6 +1,5 @@
-import { forkSession, getSessionInfo, getSessionMessages, getSubagentMessages, renameSession } from '@anthropic-ai/claude-agent-sdk';
-import { copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
-import { homedir, tmpdir } from 'node:os';
+import { copyFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, posix, relative, resolve, win32 } from 'node:path';
 import { fmtMoney } from '../shared/money';
 import { auditText } from '../shared/redact';
@@ -9,7 +8,9 @@ import { stuckReason } from '../shared/stuck';
 import { REVIEW_SCHEMA, parseReview, reviewPrompt } from '../shared/selfreview';
 import { commandSummary } from '../shared/commandSummary';
 import { FREE_ID, freeRepo, sessionTitle, MAX_UPLOAD_BYTES, MAX_UPLOAD_FILES, MAX_UPLOAD_TOTAL, type ActivityEvent, type Checkpoint, type Effort, type MessageImage, type ModelAlias, type NewSessionInput, type PendingAsk, type PermMode, type Session, type Status, type Subagent, type TranscriptEvent } from '../shared/types';
-import { ClaudeBackend, MODEL_ALIAS, type AgentBackend, type AgentBlock, type AgentEvent, type AgentHandle, type AgentToolResult, type ToolDecision } from './backend';
+import { BackendRegistry, type AgentBackend, type AgentBlock, type AgentEvent, type AgentHandle, type AgentToolResult, type ToolDecision } from './backend';
+import { ClaudeBackend } from './claudeBackend';
+import { COMMAND_TOOLS, EDIT_TOOLS, convertMessages, rel, trunc } from './transcript';
 import { artifactDir, dropArtifacts, ensureArtifactDir } from './artifacts';
 import * as G from './git';
 import { supplyRepoArtifacts } from './repoartifacts';
@@ -56,35 +57,18 @@ interface Runtime {
   admitted: Set<string>;
 }
 
-// Rough list prices, USD per million tokens. Only used between result messages; the SDK's total replaces it.
-const PRICE: Record<string, [number, number]> = { opus: [15, 75], sonnet: [3, 15], haiku: [1, 5] };
 
 const SAFE_CMD = /^(ls|dir|pwd|cat|head|tail|wc|echo|which|where|type|tree|file|stat|date|whoami|git (status|diff|log|show|branch|rev-parse|ls-files|blame|remote -v|config --get)|rg|grep|find(?!.*(-delete|-exec)))(\s|$)/;
-const COMMAND_TOOLS = new Set(['Bash', 'PowerShell']);
-const EDIT_TOOLS = new Set(['Edit', 'MultiEdit', 'Write', 'NotebookEdit']);
-
-const isWin = (p: string) => /^[A-Za-z]:[\\/]/.test(p);
-/** A path relative to the worktree, with forward slashes. Windows-style paths are understood on any platform, as session files can come from another machine. */
-const rel = (wt: string, p: string) => {
-  if (!p) return p;
-  const api = isWin(wt) || isWin(p) ? win32 : posix;
-  const r = api.isAbsolute(p) ? api.relative(wt, p) : p;
-  return (r.startsWith('..') ? p : r).split(api.sep).join('/');
-};
 const inside = (wt: string, p: string) => {
   const r = relative(wt, resolve(wt, p));
   return !r.startsWith('..') && !isAbsolute(r);
 };
-const trunc = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').split('-').slice(0, 4).join('-') || 'session';
-
-/** Claude Code files a project's sessions under ~/.claude/projects/<path with every non-alphanumeric turned into a dash>. */
-export const claudeProjectDir = (path: string) => join(homedir(), '.claude', 'projects', resolve(path).replace(/[^a-zA-Z0-9]/g, '-'));
 
 /** Things a new session can start with beyond a task: a copied conversation, a worktree seeded from a checkpoint, where it came from. */
 export interface CreateExtra {
-  /** Runs once the worktree exists. Returns the Claude Code session to resume, or nothing to start a new conversation. */
-  claude?: (worktree: string) => Promise<string | undefined>;
+  /** Runs once the worktree exists. Returns the backend's conversation to resume, or nothing to start a new conversation. */
+  conversation?: (worktree: string) => Promise<string | undefined>;
   /** Start the worktree from this checkpoint commit instead of from the base. */
   seed?: string;
   parentId?: string;
@@ -93,18 +77,26 @@ export interface CreateExtra {
   effort?: Effort;
 }
 
-export { MODEL_ALIAS };
-
 export class SessionManager {
   private rt = new Map<string, Runtime>();
   /** True while helm is quitting: ending the agents must not rewrite what the sessions were doing. */
   private quitting = false;
   /** Plan windows the user chose to continue past, keyed to the window's reset time so it lapses on reset. */
   private planOverride: Partial<Record<'fiveHour' | 'weekly', number>> = {};
-  private backend: AgentBackend;
-  constructor(private store: Store, private hooks: Hooks, backend?: AgentBackend) {
-    this.backend = backend ?? new ClaudeBackend(() => this.store.data.settings.claudePath || this.hooks.claudePath());
+  private registry: BackendRegistry;
+  constructor(private store: Store, private hooks: Hooks, registry?: BackendRegistry) {
+    this.registry = registry ?? new BackendRegistry([new ClaudeBackend({ sdk: () => this.store.data.settings.claudePath || this.hooks.claudePath(), cli: () => this.store.data.settings.claudePath || undefined })]);
   }
+
+  /** Where the session's backend keeps its conversations. Only called for sessions that have one. */
+  private conversationsOf(s: Pick<Session, 'backend'>) {
+    const c = this.backendOf(s).conversations;
+    if (!c) throw new Error('This agent keeps no conversations helm can read.');
+    return c;
+  }
+
+  /** The backend a session runs on. */
+  private backendOf(s: Pick<Session, 'backend'>): AgentBackend { return this.registry.get(s.backend); }
 
   get sessions() { return this.store.data.sessions; }
   private usd = (v: number, whole = false) => fmtMoney(v, this.store.data.settings.currency, this.store.data.fx.rates, { whole });
@@ -176,6 +168,8 @@ export class SessionManager {
   async create(input: NewSessionInput, extra: CreateExtra = {}): Promise<string> {
     this.held = false;
     const free = input.repoId === FREE_ID;
+    const backendId = this.registry.get(input.backend || this.store.data.settings.defaultBackend).id;
+    const modelId = this.registry.model(backendId, input.model).id;
     const repo = free ? undefined : this.store.data.repos.find((r) => r.id === input.repoId);
     if (!free && !repo) throw new Error('Repository not found');
     const st = this.store.data.settings;
@@ -186,7 +180,7 @@ export class SessionManager {
     // First, so a file that is refused stops the session before any worktree is made.
     const uploads = await this.saveUploads(id, input.files);
     let branch = '', wt = '', remoteBase = '';
-    let claudeSessionId: string | undefined;
+    let agentSessionId: string | undefined;
     if (free) {
       // A folder of its own: one helm makes (with local git, so changes and checkpoints work), or one of yours, left as it is.
       if (input.folder) {
@@ -208,16 +202,16 @@ export class SessionManager {
       if (extra.seed) await seedFromCheckpoint(wt, extra.seed);
       await this.copyUntracked(repo!.localPath, wt, st.copyFiles);
       await supplyRepoArtifacts(repo!.id, wt, true);
-      try { claudeSessionId = await extra.claude?.(wt); }
+      try { agentSessionId = await extra.conversation?.(wt); }
       catch (e) { await G.removeWorktree(repo!.localPath, wt, branch); throw e; }
     }
 
     const now = Date.now();
     const s: Session = {
       id, repoId: free ? FREE_ID : repo!.id, free: free ? { managed: !input.folder } : undefined, status: 'working', task: input.task, step: 'Starting', branch, base: remoteBase, worktree: wt,
-      model: input.model, permMode: input.permMode, startedAt: now, tokens: { input: 0, output: 0, cacheRead: 0 }, cost: 0, budget: input.budget,
+      backend: backendId, model: modelId, permMode: input.permMode, startedAt: now, tokens: { input: 0, output: 0, cacheRead: 0 }, cost: 0, budget: input.budget,
       lastAccess: now, ctx: 0, add: 0, del: 0, files: 0, filesTouched: {}, timeline: [{ t: now, status: 'working' }], commits: [], removeAfterMerge: st.removeAfterMerge, deleteBranchAfterMerge: st.deleteBranchAfterMerge, subagents: [],
-      uploads, claudeSessionId, effort: extra.effort, parentId: extra.parentId, group: extra.group, source: extra.source
+      uploads, agentSessionId, effort: extra.effort, parentId: extra.parentId, group: extra.group, source: extra.source
     };
     s.source ??= input.source;
     s.automation = input.automation;
@@ -335,46 +329,6 @@ export class SessionManager {
     this.touch();
   }
 
-  /**
-   * Copies a Claude Code conversation (optionally only up to a message) so a new worktree can resume it. The copy is written to the
-   * project folder of the source, then moved to the folder Claude Code uses for the new worktree.
-   */
-  private async adoptConversation(sourceId: string, sourceDir: string, destWorktree: string, upTo: string | undefined, title: string): Promise<string> {
-    const forked = await forkSession(sourceId, { dir: sourceDir, upToMessageId: upTo, title });
-    const file = forked.sessionId + '.jsonl';
-    let from = join(claudeProjectDir(sourceDir), file);
-    if (!(await G.fileExists(from))) {
-      // The folder name is not always the plain encoding (long paths are shortened), so look for the file.
-      const root = join(homedir(), '.claude', 'projects');
-      from = '';
-      for (const d of await readdir(root).catch(() => [] as string[])) if (await G.fileExists(join(root, d, file))) { from = join(root, d, file); break; }
-    }
-    if (!from) throw new Error('The copy of the conversation was made but could not be found on disk.');
-    const to = join(claudeProjectDir(destWorktree), file);
-    await mkdir(dirname(to), { recursive: true });
-    await copyFile(from, to);
-    return forked.sessionId;
-  }
-
-  /** The uuid of the message just before your n-th identical message, so a fork can stop short of it. null if it is the first message, undefined if it is not found. */
-  private async messageBefore(claudeId: string, dir: string, text: string, occurrence: number): Promise<string | null | undefined> {
-    const msgs = (await getSessionMessages(claudeId, { dir })) as any[];
-    const body = (m: any) => {
-      const c = m.message?.content;
-      if (typeof c === 'string') return c;
-      if (!Array.isArray(c) || c.some((b: any) => b.type === 'tool_result')) return null;
-      return c.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n');
-    };
-    let seen = 0;
-    for (let i = 0; i < msgs.length; i++) {
-      if (msgs[i].type !== 'user' || msgs[i].parent_tool_use_id) continue;
-      const t = body(msgs[i]);
-      if (t == null || t.trim() !== text.trim()) continue;
-      if (++seen === occurrence) return i === 0 ? null : msgs[i - 1].uuid;
-    }
-    return undefined;
-  }
-
   async fork(id: string, index: number | null, task: string): Promise<string> {
     const s = this.get(id);
     if (!s) throw new Error('Session not found');
@@ -386,35 +340,38 @@ export class SessionManager {
     let seed: string | undefined;
     if (ev?.k === 'user' && ev.cp && !s.worktreeGone) seed = (await listCheckpoints(s.worktree, id)).find((c) => c.n === ev.cp)?.commit;
     let upTo: string | null | undefined;
-    if (ev?.k === 'user' && s.claudeSessionId) {
+    if (ev?.k === 'user' && s.agentSessionId) {
       const occurrence = t.slice(0, index! + 1).filter((e) => e.k === 'user' && e.text.trim() === ev.text.trim()).length;
-      upTo = await this.messageBefore(s.claudeSessionId, s.worktree, ev.text, occurrence);
-      if (upTo === undefined) throw new Error('Could not find that message in the Claude Code conversation, so it cannot be forked from there.');
+      upTo = await this.conversationsOf(s).messageBefore(s.agentSessionId, s.worktree, ev.text, occurrence);
+      if (upTo === undefined) throw new Error('Could not find that message in the agent\'s conversation, so it cannot be forked from there.');
     }
-    const claude = s.claudeSessionId && upTo !== null
-      ? (wt: string) => this.adoptConversation(s.claudeSessionId!, s.worktree, wt, upTo ?? undefined, `Fork of ${sessionTitle(s)}`)
+    const conversation = s.agentSessionId && upTo !== null
+      ? (wt: string) => this.conversationsOf(s).fork({ sourceId: s.agentSessionId!, sourceDir: s.worktree, destDir: wt, upToMessageId: upTo ?? undefined, title: `Fork of ${sessionTitle(s)}` })
       : undefined;
-    return this.create({ repoId: s.repoId, base: seed || s.worktreeGone ? s.base : s.branch, task: task.trim(), model: s.model, budget: s.budget, permMode: s.permMode }, { seed, claude, parentId: s.id, effort: s.effort });
+    return this.create({ repoId: s.repoId, base: seed || s.worktreeGone ? s.base : s.branch, task: task.trim(), backend: s.backend, model: s.model, budget: s.budget, permMode: s.permMode }, { seed, conversation, parentId: s.id, effort: s.effort });
   }
 
   async continueExternal(repoId: string, externalId: string, task: string): Promise<string> {
     const repo = this.store.data.repos.find((r) => r.id === repoId);
     if (!repo) throw new Error('Repository not found');
     if (!task.trim()) throw new Error('Say what the session should do next.');
-    const info = await getSessionInfo(externalId);
-    if (!info) throw new Error('That Claude Code session could not be found.');
-    if ((info.fileSize ?? 0) > 300 * 1024 * 1024) throw new Error('That conversation file is over 300 MB, too big to copy. Start a new session and tell it what you were doing.');
+    const st0 = this.store.data.settings;
+    const be = this.registry.get(st0.defaultBackend);
+    const store = this.conversationsOf({ backend: be.id });
+    const info = await store.info(externalId);
+    if (!info) throw new Error('That session could not be found.');
+    if (info.size > 300 * 1024 * 1024) throw new Error('That conversation file is over 300 MB, too big to copy. Start a new session and tell it what you were doing.');
     const dir = info.cwd || repo.localPath;
     const st = this.store.data.settings;
     // Carry on from the branch it was on when that still exists, otherwise from the default branch.
-    const branch = info.gitBranch;
+    const branch = info.branch;
     let base = repo.defaultBranch;
     if (branch && !branch.startsWith(st.branchPrefix)) {
       if (await G.gitOk(repo.localPath, 'rev-parse', '--verify', '--quiet', 'refs/heads/' + branch)) base = branch;
       else if (await G.gitOk(repo.localPath, 'rev-parse', '--verify', '--quiet', 'refs/remotes/origin/' + branch)) base = 'origin/' + branch;
     }
-    return this.create({ repoId, base, task: task.trim(), model: st.defaultModel, budget: st.sessionBudget, permMode: st.permMode },
-      { claude: (wt) => this.adoptConversation(externalId, dir, wt, undefined, `${info.customTitle || info.summary || 'Session'} (in helm)`) });
+    return this.create({ repoId, base, task: task.trim(), backend: be.id, model: st.defaultModel, budget: st.sessionBudget, permMode: st.permMode },
+      { conversation: (wt) => store.fork({ sourceId: externalId, sourceDir: dir, destDir: wt, title: `${info.title || info.summary || 'Session'} (in helm)` }) });
   }
 
   async createGroup(input: NewSessionInput, variants: { model: ModelAlias; effort?: Effort }[]): Promise<string[]> {
@@ -454,7 +411,7 @@ export class SessionManager {
   }
 
   private async runReview(s: Session, head: string) {
-    const { structured, text, cost, failure } = await this.backend.review({ cwd: s.worktree, model: s.model, prompt: reviewPrompt(s.task, s.base), schema: REVIEW_SCHEMA });
+    const { structured, text, cost, failure } = await this.backendOf(s).review({ cwd: s.worktree, model: s.model, prompt: reviewPrompt(s.task, s.base), schema: REVIEW_SCHEMA });
     if (cost) { this.store.addUsage(s.repoId, cost, 0); this.store.addDaily(s.repoId, s.model, { cost }); }
     const parsed = failure ? null : parseReview(structured, text);
     s.review = parsed
@@ -541,10 +498,10 @@ export class SessionManager {
     // A worktree made before a file was uploaded gets it when the agent next starts. Files already there are left as the agent has them.
     if (!s.free) await supplyRepoArtifacts(s.repoId, s.worktree, false);
     const rt: Runtime = { agent: null as any, asks: new Map(), turnCost: 0, baseCost: s.cost, interrupted: false, budgetPaused: false, toolStart: new Map(), fails: new Map(), lastTools: new Map(), subEvent: new Map(), admitted: new Set() };
-    rt.agent = this.backend.start({
+    rt.agent = this.backendOf(s).start({
       cwd: s.worktree, model: s.model, effort: s.effort, permMode: s.permMode,
       systemAppend: this.systemAppend(s, artifacts),
-      resume: s.claudeSessionId,
+      resume: s.agentSessionId,
       extraDirs: s.uploads ? [s.uploads.dir] : undefined,
       env: settings.commitAuthor === 'sole' ? { GIT_AUTHOR_NAME: 'Claude', GIT_AUTHOR_EMAIL: 'noreply@anthropic.com' } : {},
       remoteControl: settings.remoteControl,
@@ -581,7 +538,7 @@ export class SessionManager {
   private async onEvent(s: Session, rt: Runtime, ev: AgentEvent) {
     switch (ev.t) {
       case 'init':
-        s.claudeSessionId = ev.sessionId;
+        s.agentSessionId = ev.sessionId;
         s.modelName = ev.model;
         {
           const st = this.store.data.settings;
@@ -619,7 +576,7 @@ export class SessionManager {
       this.store.addLifetimeTokens(s.repoId, inp, u.output, u.cacheRead);
       if (!sub) s.ctx = inp + u.cacheRead;
       else sub.tokens += inp + u.output;
-      const [pi, po] = PRICE[s.model] || PRICE.sonnet;
+      const [pi, po] = this.registry.model(s.backend, s.model).price;
       const est = (u.input * pi + u.cacheWrite * pi * 1.25 + u.cacheRead * pi * 0.1 + u.output * po) / 1e6;
       rt.turnCost += est;
       this.store.addUsage(s.repoId, est, inp + u.output);
@@ -712,10 +669,9 @@ export class SessionManager {
   }
 
   private async doSyncSubagent(s: Session, a: Subagent) {
-    if (!s.claudeSessionId || !a.agentId) return;
+    if (!s.agentSessionId || !a.agentId) return;
     try {
-      const msgs = await getSubagentMessages(s.claudeSessionId, a.agentId, { dir: s.worktree });
-      const events = this.convertMessages(msgs as any[], s.worktree);
+      const events = await this.conversationsOf(s).subagentTranscript(s.agentSessionId, a.agentId, s.worktree);
       const key = `${s.id}~${a.id}`;
       const t = await this.store.transcript(key);
       const next: TranscriptEvent[] = [...(t[0]?.k === 'user' ? [t[0]] : []), ...events];
@@ -727,70 +683,8 @@ export class SessionManager {
     } catch { /* the session file may not be flushed yet; the next sync will catch up */ }
   }
 
-  convertMessages(msgs: any[], wt: string, withUser = false): TranscriptEvent[] {
-    const ev: TranscriptEvent[] = [];
-    const pending = new Map<string, { kind: 'bash' | 'tool'; idx: number; item?: number }>();
-    let group = -1;
-    for (const m of msgs) {
-      const raw = m.message?.content;
-      const content: any[] = Array.isArray(raw) ? raw : typeof raw === 'string' ? [{ type: 'text', text: raw }] : [];
-      if (m.type === 'assistant') {
-        for (const b of content) {
-          if (b.type === 'text' && b.text?.trim()) { ev.push({ k: 'agent', text: b.text.trim() }); continue; }
-          if (b.type !== 'tool_use') continue;
-          const input = b.input || {};
-          if (COMMAND_TOOLS.has(b.name)) {
-            pending.set(b.id, { kind: 'bash', idx: ev.push({ k: 'bash', id: b.id, cmd: String(input.command || ''), summary: commandSummary(String(input.command || ''), input.description), out: '', ok: true, meta: '', done: false }) - 1 });
-          } else if (EDIT_TOOLS.has(b.name)) {
-            const file = rel(wt, String(input.file_path || input.notebook_path || ''));
-            const lines: [string, string][] = [];
-            let add = 0, del = 0;
-            const edits = b.name === 'MultiEdit' ? input.edits || [] : b.name === 'Edit' ? [input] : [];
-            if (b.name === 'Write') {
-              const all = String(input.content || '').split('\n');
-              add = all.length;
-              for (const l of all.slice(0, 24)) lines.push(['+', l]);
-            } else for (const e of edits) {
-              const o = String(e.old_string || '').split('\n'), n = String(e.new_string || '').split('\n');
-              if (e.old_string) { del += o.length; for (const l of o.slice(0, 12)) lines.push(['-', l]); }
-              if (e.new_string) { add += n.length; for (const l of n.slice(0, 12)) lines.push(['+', l]); }
-            }
-            ev.push({ k: 'edit', file, add, del, lines: lines.slice(0, 40) });
-            group = -1;
-          } else {
-            const target = trunc(String(input.file_path ?? input.pattern ?? input.path ?? input.url ?? input.query ?? input.description ?? input.prompt ?? ''), 140);
-            const item: [string, string, string] = [b.name, rel(wt, target), ''];
-            const last = ev[ev.length - 1];
-            if (last && last.k === 'tools' && group === ev.length - 1) last.items.push(item);
-            else group = ev.push({ k: 'tools', items: [item] }) - 1;
-            pending.set(b.id, { kind: 'tool', idx: group, item: (ev[group] as any).items.length - 1 });
-          }
-        }
-      } else if (m.type === 'user') {
-        if (withUser) {
-          const text = content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
-          if (text && !/^<(local-command|command-|system-reminder|ide_)/.test(text)) ev.push({ k: 'user', t: 0, text });
-        }
-        for (const b of content) {
-          if (b.type !== 'tool_result') continue;
-          const p = pending.get(b.tool_use_id);
-          if (!p) continue;
-          const text = typeof b.content === 'string' ? b.content : (b.content || []).map((c: any) => c.text || '').join('\n');
-          if (p.kind === 'bash') {
-            const cur = ev[p.idx] as Extract<TranscriptEvent, { k: 'bash' }>;
-            const lines = text.split('\n').map((l: string) => l.trim()).filter(Boolean);
-            ev[p.idx] = { ...cur, out: b.is_error ? trunc(lines[lines.length - 1] || 'failed', 70) : lines.length ? trunc(lines[lines.length - 1], 70) : '✓', ok: !b.is_error, done: true };
-          } else {
-            const cur = ev[p.idx] as Extract<TranscriptEvent, { k: 'tools' }>;
-            const it = cur.items[p.item!];
-            const n = text.split('\n').filter(Boolean).length;
-            it[2] = b.is_error ? 'failed' : it[0] === 'Read' ? `${text.split('\n').length} lines` : it[0] === 'Grep' || it[0] === 'Glob' ? `${n} ${n === 1 ? 'match' : 'matches'}` : '';
-          }
-        }
-      }
-    }
-    return ev;
-  }
+  /** Kept for callers that hold a session manager; the conversion itself lives in transcript.ts. */
+  convertMessages(msgs: any[], wt: string, withUser = false): TranscriptEvent[] { return convertMessages(msgs, wt, withUser); }
 
   private async onTaskDone(s: Session, rt: Runtime, m: Extract<AgentEvent, { t: 'subagent_done' }>) {
     const a = s.subagents.find((x) => x.id === m.id);
@@ -1392,9 +1286,9 @@ export class SessionManager {
 
   /** Claude Code names a conversation after its first turns. Pick that up once it exists, unless it is just the first prompt echoed back. */
   private async refreshTitle(s: Session) {
-    if (!s.claudeSessionId) return;
+    if (!s.agentSessionId) return;
     try {
-      const i = await getSessionInfo(s.claudeSessionId, { dir: s.worktree });
+      const i = await this.conversationsOf(s).info(s.agentSessionId, s.worktree);
       const t = i?.summary?.trim();
       if (!t || t === i?.firstPrompt?.trim() || t === s.title) return;
       s.title = t;
@@ -1434,7 +1328,7 @@ export class SessionManager {
     this.activity(s, 'session', title ? `renamed to “${title}”` : 'went back to Claude\'s name', { who: this.me(), human: true });
     this.touch();
     // Keep Claude Code's own name in step, so the same session reads the same in VS Code.
-    if (title && s.claudeSessionId) await renameSession(s.claudeSessionId, title, { dir: s.worktree }).catch(() => undefined);
+    if (title && s.agentSessionId) await this.conversationsOf(s).rename(s.agentSessionId, s.worktree, title).catch(() => undefined);
   }
 
   archive(id: string, archived: boolean) {

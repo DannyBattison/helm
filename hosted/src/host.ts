@@ -14,7 +14,7 @@ export function createHost(send: Host['send'], allowLogin?: Host['allowLogin']):
     locale: process.env.HELM_LOCALE || 'en-US',
     send,
     allowLogin,
-    requireClaudeLogin: true,
+    requireAgentLogin: true,
     ghConfigDir: process.env.GH_CONFIG_DIR || join(homedir(), '.config', 'gh'),
     companion: false,
     // No keychain on a server: the GitHub token sits in dataDir (0700) as plain text. See hosted/README.md.

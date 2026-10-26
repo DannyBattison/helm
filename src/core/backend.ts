@@ -1,5 +1,6 @@
-import { query, type Query, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
-import type { Effort, MessageImage, ModelAlias, PermMode } from '../shared/types';
+import type { AgentCapabilities, AgentLogin, BackendInfo, Effort, MessageImage, ModelAlias, ModelInfo, PermMode, TranscriptEvent } from '../shared/types';
+
+export type { AgentCapabilities, ModelInfo };
 
 /**
  * What helm needs from an agent, whichever one it is. SessionManager talks only to this file's types; everything specific
@@ -73,184 +74,78 @@ export interface AgentHandle {
 export interface ReviewRequest { cwd: string; model: ModelAlias; prompt: string; schema: object }
 export interface ReviewOutcome { structured?: unknown; text: string; cost: number; failure: string }
 
-/** What the interface the UI shows may rely on. A backend that lacks one gets the control hidden. */
-export interface AgentCapabilities {
-  subagents: boolean;
-  planMode: boolean;
-  effort: boolean;
-  fork: boolean;
-  /** Reports dollar cost itself, so budgets can be enforced. */
-  cost: boolean;
+/** A saved conversation, as its backend describes it. */
+export interface ConversationInfo {
+  id: string;
+  /** A name the user gave it. */
+  title?: string;
+  /** A name the agent gave it. */
+  summary?: string;
+  firstPrompt?: string;
+  cwd?: string;
+  branch?: string;
+  size: number;
+  lastModified: number;
+  createdAt?: number;
 }
+
+/** The backend's own record of conversations: what lets a session be renamed, forked, resumed in another worktree, or read back. */
+export interface ConversationStore {
+  info(id: string, dir?: string): Promise<ConversationInfo | null>;
+  rename(id: string, dir: string, title: string): Promise<void>;
+  /** Copies a conversation (optionally only up to a message) so it can be resumed from `destDir`. Resolves to the copy's id. */
+  fork(o: { sourceId: string; sourceDir: string; destDir: string; upToMessageId?: string; title: string }): Promise<string>;
+  /** The id of the message just before the user's n-th identical message. null if it is the first message, undefined if it is not found. */
+  messageBefore(id: string, dir: string, text: string, occurrence: number): Promise<string | null | undefined>;
+  /** What a subagent did, read from the backend's saved files. */
+  subagentTranscript(id: string, agentId: string, dir: string): Promise<TranscriptEvent[]>;
+  /** Conversations from outside helm for a repository. */
+  list(dir: string): Promise<ConversationInfo[]>;
+  /** A whole conversation as transcript events, with the user's messages. */
+  transcript(id: string, dir: string): Promise<TranscriptEvent[]>;
+  /** Changes whenever the conversation does, so a cached transcript can tell it is stale. */
+  signature(id: string): Promise<string>;
+  /** Ids of conversations with a process running right now, or null when it can't be asked. */
+  live(): Promise<Set<string> | null>;
+}
+
+/** Signing the user in to the agent, where the app has to do that itself. */
+export interface BackendAuth {
+  status(): Promise<AgentLogin>;
+  startLogin(): Promise<{ url: string }>;
+  submitCode(code: string): Promise<AgentLogin>;
+  cancel(): void;
+  logout(): Promise<AgentLogin>;
+}
+
+/** Where a subscription plan stands, read without starting a conversation. */
+export interface PlanProbe { billing: 'subscription' | 'api'; fiveHour?: PlanWindow; weekly?: PlanWindow }
 
 export interface AgentBackend {
   readonly id: string;
+  readonly label: string;
+  readonly models: ModelInfo[];
   readonly capabilities: AgentCapabilities;
+  /** The version of the agent's command-line tool, from `path` when given. Null when it is not there. */
+  version(path?: string): Promise<string | null>;
   start(opts: AgentStartOptions): AgentHandle;
   /** One read-only pass over a worktree that answers in the given JSON schema. */
   review(req: ReviewRequest): Promise<ReviewOutcome>;
+  /** Absent when the backend keeps no conversations helm can read. */
+  readonly conversations?: ConversationStore;
+  readonly auth?: BackendAuth;
+  planUsage?(cwd: string): Promise<PlanProbe | null>;
 }
 
-// ---------------------------------------------------------------- Claude
-
-export const MODEL_ALIAS: Record<ModelAlias, string> = { sonnet: 'sonnet', opus: 'opus', haiku: 'haiku' };
-
-const sdkMode = (m: PermMode) => (m === 'plan' ? 'plan' : m === 'edits' ? 'acceptEdits' : m === 'all' ? 'bypassPermissions' : 'default') as 'plan' | 'acceptEdits' | 'bypassPermissions' | 'default';
-
-/** Input stream for a streaming-mode query. */
-class InputQueue implements AsyncIterable<SDKUserMessage> {
-  private items: SDKUserMessage[] = [];
-  private waiters: ((r: IteratorResult<SDKUserMessage>) => void)[] = [];
-  private closed = false;
-  push(text: string, images: MessageImage[] = []) {
-    const content: any = images.length
-      ? [...images.map((i) => ({ type: 'image', source: { type: 'base64', media_type: i.mediaType, data: i.data } })), { type: 'text', text: text || 'See the attached image.' }]
-      : text;
-    const m: SDKUserMessage = { type: 'user', message: { role: 'user', content }, parent_tool_use_id: null };
-    const w = this.waiters.shift();
-    if (w) w({ value: m, done: false });
-    else this.items.push(m);
-  }
-  close() {
-    this.closed = true;
-    for (const w of this.waiters.splice(0)) w({ value: undefined as any, done: true });
-  }
-  [Symbol.asyncIterator](): AsyncIterator<SDKUserMessage> {
-    return {
-      next: () => {
-        const v = this.items.shift();
-        if (v) return Promise.resolve({ value: v, done: false });
-        if (this.closed) return Promise.resolve({ value: undefined as any, done: true });
-        return new Promise((r) => this.waiters.push(r));
-      }
-    };
-  }
-}
-
-const REVIEW_TOOLS = ['Read', 'Grep', 'Glob', 'Bash(git diff:*)', 'Bash(git log:*)', 'Bash(git show:*)', 'Bash(git merge-base:*)', 'Bash(git status:*)', 'Bash(git blame:*)', 'Bash(ls:*)', 'Bash(cat:*)', 'Bash(rg:*)', 'Bash(grep:*)'];
-
-const toolText = (c: any): string => (typeof c === 'string' ? c : (c || []).map((x: any) => x.text || '').join('\n'));
-
-/** Turns one Claude Agent SDK message into the events helm understands. */
-export function claudeEvents(m: any): AgentEvent[] {
-  if (m.type === 'system' && m.subtype === 'init') {
-    return [{ t: 'init', sessionId: m.session_id, model: m.model, billing: m.apiKeySource === 'none' ? 'subscription' : 'api' }];
-  }
-  if (m.type === 'system' && m.subtype === 'task_started' && m.tool_use_id) return [{ t: 'subagent_started', id: m.tool_use_id, agentId: m.task_id }];
-  if (m.type === 'system' && m.subtype === 'task_progress' && m.tool_use_id) {
-    return [{ t: 'subagent_progress', id: m.tool_use_id, tools: m.usage?.tool_uses, tokens: m.usage?.total_tokens, lastTool: m.last_tool_name }];
-  }
-  if (m.type === 'system' && m.subtype === 'task_notification' && m.tool_use_id) {
-    return [{ t: 'subagent_done', id: m.tool_use_id, status: m.status === 'completed' ? 'completed' : m.status === 'stopped' ? 'stopped' : 'failed', summary: m.summary ? String(m.summary) : undefined }];
-  }
-  if (m.type === 'rate_limit_event') {
-    const info = m.rate_limit_info;
-    if (!info) return [];
-    const w = info.unifiedWindows || {};
-    const pick = (key: string, type: string) => w[key] ?? (info.rateLimitType === type ? info : undefined);
-    const win = (x: any): PlanWindow | undefined => (x?.utilization != null && x.resetsAt ? { util: x.utilization, resetsAt: x.resetsAt } : undefined);
-    return [{ t: 'plan_usage', fiveHour: win(pick('five_hour', 'five_hour')), weekly: win(pick('seven_day', 'seven_day')) }];
-  }
-  if (m.type === 'assistant') {
-    const u = m.message?.usage;
-    const blocks: AgentBlock[] = [];
-    for (const b of m.message?.content || []) {
-      if (b.type === 'text' && b.text?.trim()) blocks.push({ type: 'text', text: b.text.trim() });
-      else if (b.type === 'tool_use') blocks.push({ type: 'tool_use', id: b.id, name: b.name, input: b.input || {} });
-    }
-    return [{
-      t: 'assistant', parentId: m.parent_tool_use_id || null, blocks,
-      usage: u ? { input: u.input_tokens || 0, output: u.output_tokens || 0, cacheWrite: u.cache_creation_input_tokens || 0, cacheRead: u.cache_read_input_tokens || 0 } : undefined
-    }];
-  }
-  if (m.type === 'user') {
-    const content = m.message?.content;
-    if (!Array.isArray(content)) return [];
-    const results = content.filter((b: any) => b.type === 'tool_result').map((b: any) => ({ id: b.tool_use_id, text: toolText(b.content), isError: !!b.is_error }));
-    return results.length ? [{ t: 'tool_results', results }] : [];
-  }
-  if (m.type === 'result') {
-    return [{ t: 'result', isError: !!m.is_error, text: m.is_error ? String(m.result || m.subtype || 'The run failed') : String(m.result || ''), costUsd: typeof m.total_cost_usd === 'number' ? m.total_cost_usd : undefined }];
-  }
-  return [];
-}
-
-export class ClaudeBackend implements AgentBackend {
-  readonly id = 'claude';
-  readonly capabilities: AgentCapabilities = { subagents: true, planMode: true, effort: true, fork: true, cost: true };
-
-  /** `exe` gives the path to a Claude Code executable to use instead of the bundled one, when there is one. */
-  constructor(private exe: () => string | undefined) {}
-
-  start(o: AgentStartOptions): AgentHandle {
-    const abort = new AbortController();
-    const queue = new InputQueue();
-    const options: any = {
-      cwd: o.cwd,
-      model: MODEL_ALIAS[o.model],
-      ...(o.effort ? { effort: o.effort } : {}),
-      permissionMode: sdkMode(o.permMode),
-      // Only permission to switch to Allow everything later in the conversation; the mode itself is what is chosen above.
-      allowDangerouslySkipPermissions: true,
-      abortController: abort,
-      settingSources: ['user', 'project', 'local'],
-      ...(o.extraDirs?.length ? { additionalDirectories: o.extraDirs } : {}),
-      systemPrompt: { type: 'preset', preset: 'claude_code', append: o.systemAppend },
-      canUseTool: (tool: string, input: Record<string, unknown>, d: any) => o.canUseTool(tool, input, d),
-      hooks: {
-        PreToolUse: [{
-          matcher: 'Agent|Task',
-          hooks: [async (input: any) => {
-            const reason = await o.admitSubagent(String(input?.tool_use_id || ''));
-            return reason ? { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason + ' Wait for one to finish, or do this work yourself.' } } : {};
-          }]
-        }]
-      },
-      env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'helm', ...o.env }
-    };
-    // Only set when on, so a user's own Claude Code setting is never switched off by helm.
-    if (o.remoteControl) options.settings = { remoteControlAtStartup: true };
-    const exe = this.exe();
-    if (exe) options.pathToClaudeCodeExecutable = exe;
-    if (o.resume) options.resume = o.resume;
-    const q: Query = query({ prompt: queue, options });
-    let closed = false;
-    return {
-      get closed() { return closed; },
-      events: (async function* () { for await (const m of q as AsyncIterable<any>) yield* claudeEvents(m); })(),
-      send: (text, images) => queue.push(text, images),
-      interrupt: () => q.interrupt().catch(() => undefined),
-      setModel: (model) => q.setModel(MODEL_ALIAS[model]).catch(() => undefined),
-      // Applies to the running conversation when Claude Code accepts it; the caller keeps the value for every later start either way.
-      setEffort: (effort) => q.applyFlagSettings({ effortLevel: effort ?? undefined } as any).catch(() => undefined),
-      setPermMode: (mode) => q.setPermissionMode(sdkMode(mode)).catch(() => undefined),
-      close: () => { closed = true; queue.close(); abort.abort(); }
-    };
-  }
-
-  async review(req: ReviewRequest): Promise<ReviewOutcome> {
-    let structured: unknown, text = '', cost = 0, failure = '';
-    let q: Query | undefined;
-    try {
-      const options: any = {
-        cwd: req.cwd, model: MODEL_ALIAS[req.model], maxTurns: 30, permissionMode: 'dontAsk', settingSources: ['user', 'project', 'local'],
-        allowedTools: REVIEW_TOOLS,
-        disallowedTools: ['Edit', 'MultiEdit', 'Write', 'NotebookEdit', 'Agent', 'Task'],
-        outputFormat: { type: 'json_schema', schema: req.schema },
-        env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'helm' }
-      };
-      const exe = this.exe();
-      if (exe) options.pathToClaudeCodeExecutable = exe;
-      q = query({ prompt: req.prompt, options });
-      for await (const m of q as AsyncIterable<any>) {
-        if (m.type !== 'result') continue;
-        structured = m.structured_output;
-        text = String(m.result || '');
-        cost = Number(m.total_cost_usd) || 0;
-        if (m.is_error) failure = text || String(m.subtype || 'The reviewer stopped early');
-      }
-    } catch (e: any) { failure = String(e?.message || e); }
-    finally { try { q?.close(); } catch { /* already closed */ } }
-    return { structured, text, cost, failure };
+/** The backends helm can run. The first is the default when a setting names one that is gone. */
+export class BackendRegistry {
+  constructor(private list: AgentBackend[]) {}
+  all() { return this.list; }
+  has(id: string | undefined) { return !!id && this.list.some((b) => b.id === id); }
+  /** The named backend, or the first one when the name is empty or unknown (an older session has none). */
+  get(id?: string): AgentBackend { return this.list.find((b) => b.id === id) ?? this.list[0]; }
+  model(backend: string | undefined, model: string): ModelInfo { const b = this.get(backend); return b.models.find((m) => m.id === model) ?? b.models[0]; }
+  async info(): Promise<BackendInfo[]> {
+    return Promise.all(this.list.map(async (b) => ({ id: b.id, label: b.label, models: b.models, capabilities: b.capabilities, version: await b.version().catch(() => null), needsLogin: !!b.auth })));
   }
 }

@@ -308,11 +308,11 @@ export function Settings({ section }: { section?: string }) {
               <Field value={st.claudePath} onCommit={(v: string) => set({ claudePath: v.trim() })} placeholder="Path to claude (optional)" style={{ width: 260 }} />
               {app.claudeVersion ? <Badge tone="ready" dot>{app.claudeVersion}</Badge> : <Badge>bundled</Badge>}
             </SettingRow>
-            {app.claudeLogin ? (
-              <SettingRow title="Claude account" desc={app.claudeLogin.loggedIn
-                ? (/key|token/.test(app.claudeLogin.method) ? `Using the ${app.claudeLogin.method} set in this server's environment.` : `Signed in with your Claude subscription${app.claudeLogin.email ? ` as ${app.claudeLogin.email}` : ''}${app.claudeLogin.plan ? ` (${app.claudeLogin.plan})` : ''}.`)
+            {app.agentLogin ? (
+              <SettingRow title="Claude account" desc={app.agentLogin.loggedIn
+                ? (/key|token/.test(app.agentLogin.method) ? `Using the ${app.agentLogin.method} set in this server's environment.` : `Signed in with your Claude subscription${app.agentLogin.email ? ` as ${app.agentLogin.email}` : ''}${app.agentLogin.plan ? ` (${app.agentLogin.plan})` : ''}.`)
                 : 'Not signed in. Agents cannot run until you sign in.'}>
-                {app.claudeLogin.loggedIn && !/key|token/.test(app.claudeLogin.method) ? <Button size="sm" variant="ghost" onClick={() => void api.claudeLogout()}>Sign out</Button> : null}
+                {app.agentLogin.loggedIn && !/key|token/.test(app.agentLogin.method) ? <Button size="sm" variant="ghost" onClick={() => void api.agentLogout()}>Sign out</Button> : null}
               </SettingRow>
             ) : null}
             <SettingRow title="Default model"><Select value={st.defaultModel} onChange={(e: any) => set({ defaultModel: e.target.value as ModelAlias })} options={MODEL_OPTIONS} /></SettingRow>

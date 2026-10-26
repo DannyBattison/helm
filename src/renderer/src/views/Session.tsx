@@ -53,7 +53,7 @@ function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string
         {running ? <Button variant="ghost" icon="stop" onClick={() => guard(api.stopSession(s.id))}>Stop</Button> : null}
         {push.commits && !s.worktreeGone ? <span title={push.tip}><Button variant="secondary" icon="cloud-arrow-up" loading={push.busy} onClick={push.push}>Push · {push.commits}</Button></span> : null}
         {!s.worktreeGone && !(s.free && !s.free.managed) ? <IconButton icon="clock-counter-clockwise" label="Checkpoints" onClick={() => setUI({ checkpointsOf: s.id })} /> : null}
-        {s.claudeSessionId && !s.worktreeGone && !s.free ? <IconButton icon="git-fork" label="Fork this session" onClick={() => setUI({ forking: { sessionId: s.id, index: null, text: '' } })} /> : null}
+        {s.agentSessionId && !s.worktreeGone && !s.free ? <IconButton icon="git-fork" label="Fork this session" onClick={() => setUI({ forking: { sessionId: s.id, index: null, text: '' } })} /> : null}
         <Button variant="secondary" icon="arrow-square-out" onClick={() => guard(api.openInEditor(s.id))}>Open in editor</Button>
         {s.free ? <Button variant="secondary" icon="git-diff" disabled={!s.free.managed} title={s.free.managed ? undefined : 'Changes are tracked only in folders helm made'} onClick={() => setTab('changes')}>Changes</Button> : <>
         {s.mergedAt ? <Badge tone="ready">Merged into {s.mergedInto}</Badge> : null}
@@ -234,7 +234,7 @@ function TranscriptItemView({ m, s, index, onDeny }: { m: TranscriptEvent; s: S;
           <div style={{ position: 'absolute', top: 6, right: 8, display: 'flex', gap: 2, background: 'var(--bg-overlay)', borderRadius: 'var(--radius-sm)', boxShadow: 'var(--shadow-popover)', padding: 2 }}>
             {m.cp && !(s.free && !s.free.managed) ? <Button size="sm" variant="ghost" icon="clock-counter-clockwise" onClick={() => setUI({ restoring: { sessionId: s.id, n: m.cp!, label: 'Before: ' + m.text } })}>Restore</Button> : null}
             {s.free ? null : <Button size="sm" variant="ghost" icon="bookmark-simple" title="Add this to CLAUDE.md so later sessions know it" onClick={() => setUI({ remembering: { repoId: s.repoId, text: m.text } })}>Remember</Button>}
-            {s.claudeSessionId && !s.free ? <Button size="sm" variant="ghost" icon="git-fork" onClick={() => setUI({ forking: { sessionId: s.id, index, text: m.text } })}>Fork</Button> : null}
+            {s.agentSessionId && !s.free ? <Button size="sm" variant="ghost" icon="git-fork" onClick={() => setUI({ forking: { sessionId: s.id, index, text: m.text } })}>Fork</Button> : null}
           </div>
         ) : null}
         {m.images?.length ? <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{m.images.map((im, i) => <img key={i} src={`data:${im.mediaType};base64,${im.data}`} alt={im.name || 'attached image'} title={im.name} style={{ maxWidth: 260, maxHeight: 180, borderRadius: 'var(--radius-md)', boxShadow: 'inset 0 0 0 1px var(--border)', objectFit: 'contain', background: 'var(--bg-editor)' }} />)}</div> : null}

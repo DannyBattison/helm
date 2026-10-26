@@ -99,29 +99,29 @@ export function SignIn() {
  * Shown over everything, and the app behind it switched off, when the server's Claude Code is not signed in: on a server nobody can run
  * `claude` in front of it, so signing in is the first thing to do. Done when Claude Code reports that it is signed in.
  */
-export function ClaudeLoginGate() {
+export function AgentLoginGate() {
   const app = useApp();
   const [step, setStep] = React.useState(0);
   const [url, setUrl] = React.useState('');
   const [code, setCode] = React.useState('');
   const [busy, setBusy] = React.useState(false);
-  const [err, setErr] = React.useState(app.claudeLogin?.error || '');
+  const [err, setErr] = React.useState(app.agentLogin?.error || '');
 
   const start = async () => {
     setErr(''); setBusy(true);
     try {
-      const r = await api.claudeLoginStart();
+      const r = await api.agentLoginStart();
       setUrl(r.url); setStep(1);
       void api.openExternal(r.url);
     } catch (e) { setErr(errText(e)); } finally { setBusy(false); }
   };
   const submit = async () => {
     setErr(''); setBusy(true);
-    try { await api.claudeLoginCode(code); }
+    try { await api.agentLoginCode(code); }
     catch (e) { setErr(errText(e)); setStep(0); setCode(''); }
     finally { setBusy(false); }
   };
-  const startOver = () => { void api.claudeLoginCancel(); setStep(0); setCode(''); setErr(''); };
+  const startOver = () => { void api.agentLoginCancel(); setStep(0); setCode(''); setErr(''); };
   const text: React.CSSProperties = { margin: 0, font: '400 13px/1.55 var(--font-sans)', color: 'var(--text-2)' };
 
   return (

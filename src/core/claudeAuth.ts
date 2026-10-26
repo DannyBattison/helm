@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import type { ClaudeLogin } from '../shared/types';
+import type { AgentLogin } from '../shared/types';
 
 /**
  * Signing in to Claude Code on a machine with no browser of its own: the server runs `claude auth login`, shows you the address it prints,
@@ -35,7 +35,7 @@ export function lastWords(output: string, lines = 2): string {
 
 const FAILED = /invalid|incorrect|expired|denied|failed|error|try again/i;
 
-export function parseStatus(json: string): ClaudeLogin {
+export function parseStatus(json: string): AgentLogin {
   const j = JSON.parse(json);
   return {
     loggedIn: !!j.loggedIn,
@@ -52,7 +52,7 @@ export class ClaudeAuth {
   constructor(private exe: () => string) {}
 
   /** Where the server's Claude Code stands. A key or token in the environment counts as signed in: it is what agents will use. */
-  async status(): Promise<ClaudeLogin> {
+  async status(): Promise<AgentLogin> {
     if (process.env.ANTHROPIC_API_KEY) return { loggedIn: true, method: 'api key' };
     if (process.env.CLAUDE_CODE_OAUTH_TOKEN) return { loggedIn: true, method: 'subscription token' };
     return new Promise((resolve) => {
@@ -89,7 +89,7 @@ export class ClaudeAuth {
   }
 
   /** Gives the code you were shown to the waiting login, and says whether that signed Claude in. */
-  async submitCode(code: string): Promise<ClaudeLogin> {
+  async submitCode(code: string): Promise<AgentLogin> {
     const a = this.attempt;
     if (!a) throw new Error('No sign-in is waiting. Start again.');
     const clean = code.trim();
@@ -127,7 +127,7 @@ export class ClaudeAuth {
     try { a.pty.kill(); } catch { /* already gone */ }
   }
 
-  async logout(): Promise<ClaudeLogin> {
+  async logout(): Promise<AgentLogin> {
     this.cancel();
     await new Promise<void>((resolve) => execFile(this.exe(), ['auth', 'logout'], { timeout: 20_000, env: process.env, windowsHide: true }, () => resolve()));
     return this.status();
