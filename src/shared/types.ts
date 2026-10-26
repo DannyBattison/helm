@@ -103,6 +103,8 @@ export interface Session {
   effort?: Effort;
   /** A short name Claude Code gave the conversation. Shown instead of the id until you rename it. */
   title?: string;
+  /** Set once helm has tried to name the branch after `title`, so it happens only once. */
+  branchNamed?: boolean;
   /** A name you gave it. Wins over `title`. */
   customTitle?: string;
   repoId: string;
