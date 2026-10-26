@@ -496,3 +496,11 @@ Why: user request, to find out why the first attempt was a 401 and the next ones
 ## D-119 · 2026-10-26 · Renew the GitHub token with its refresh token, and sign out when it cannot be renewed
 A revoked token made every GitHub call fail with "Bad credentials" while the app still showed you signed in. `auth.bin` now holds JSON (`token`, and when GitHub supplies them `refreshToken`, `expiresAt`, `refreshExpiresAt`, `clientId`); a file holding a bare token, as before, still loads. The device flow keeps the refresh token GitHub returns when the OAuth app has "Expire user authorization tokens" on; a pasted token has none. A call renews the token first if it expires within a minute, and on a 401 it renews and retries once. A background check every five minutes renews it when under fifteen minutes remain, because git is handed the token through its environment and a push would otherwise fail on an expired one. When GitHub still answers 401 and there is nothing to renew with (a revoked token, a pasted token, a refresh token GitHub refuses), the token file is deleted, the user is signed out, and the error says to sign in again; a pasted token that fails its check on sign-in does neither. Renewal needs no client secret because the token came from the device flow. A token that was revoked, not expired, such as the one that prompted this, cannot be renewed and needs a new sign-in.
 Why: user request.
+
+## D-120 · 2026-10-24 · Setting to show the owner on repositories in the left tree
+The left tree shows repositories by name only; Settings → Appearance → "Show owner on repositories" (`showRepoOwner`, off by default) brings back the `owner/` prefix. Overview, the repository page and Reports still show the full `owner/name`.
+Why: user request.
+
+## D-121 · 2026-10-26 · Main's "Show organisation in the sidebar" replaces the separate owner setting
+While merging main, this branch's `showRepoOwner` (D-120, off by default) turned out to do what main's `showOwner` (on by default, Settings → Appearance → "Show organisation in the sidebar") already does for the left tree. Two switches for one thing would conflict, so `showRepoOwner`, its row in Settings and its default are removed and main's `showOwner` is kept, with its default of showing the owner.
+Why: merging main into this branch.
