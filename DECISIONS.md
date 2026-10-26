@@ -644,3 +644,7 @@ Why: user request; the app icon showed as a white square in places and the wheel
 ## D-156 · 2026-10-26 · Colour schemes: six tints, one accent override, status colours behind a disclosure
 `src/shared/schemes.ts` defines Helm (the stylesheet's own colours), Ocean, Forest, Ember, Rose and Graphite, each just a surface hue and saturation plus an accent per theme; backgrounds, borders and the accent family (hover, press, text, muted, selection, focus ring, text on accent) are derived, so light and dark both work and a new scheme is one line. Settings gains `colorScheme`, `accentColor` (swatches or a custom picker) and `statusColors` (working, attention, ready, error), applied by `App.tsx` as inline CSS variables over the stylesheet. Appearance shows the scheme cards and accent row; the status colours sit under "More colours" and a "Reset colours" button appears only once something is changed. The Monaco editor and terminal keep their own syntax colours and background for now.
 Why: user request; keep the options few so the page is not overwhelming.
+
+## D-157 · 2026-10-26 · Command previews describe the first three steps of a chain
+`commandSummary` no longer appends "and more" to a chained command. It describes each step (past `cd`, `set` and `export`), drops repeats, lists up to three joined by commas ("Install dependencies, Run the build script, Run the tests"), and adds "and N more" only for the rest. The agent's own description still wins when given.
+Why: user request; almost every command is chained, so "and more" was on every preview.
