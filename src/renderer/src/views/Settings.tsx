@@ -8,7 +8,7 @@ import { ACCENT_SWATCHES, SCHEMES, STATUS_KEYS, STATUS_LABEL, isHex, schemeVars 
 import { AutomationsSection } from './Automations';
 import { toast, useApp, useMoney } from '../store';
 import { comboFromEvent, comboKeys, comboProblem, normalizeCombo, SHORTCUT_ACTIONS, shortcutConflict, shortcutOf } from '@shared/shortcuts';
-import { Avatar, Badge, Button, Input, Kbd, Meter, SegmentedControl, Select, Switch, TreeItem, useColumns, useNarrow } from '../ui';
+import { Avatar, Badge, Button, Dialog, Input, Kbd, Meter, SegmentedControl, Select, Switch, TreeItem, useColumns, useNarrow } from '../ui';
 
 const errText = (e: any) => String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '');
 const set = (patch: Partial<SettingsT>) => void api.updateSettings(patch);
@@ -301,6 +301,7 @@ export function Settings({ section }: { section?: string }) {
   const app = useApp();
   const st = app.settings;
   const [sec, setSec] = React.useState(section || 'account');
+  const [signOut, setSignOut] = React.useState(false);
   const { fmt, sym, to, from, cur } = useMoney();
   const plan = livePlan(app);
   const money0 = { format: (v: number) => sym + String(Math.round(v * 100) / 100), parse: (x: string) => { const n = parseFloat(x.replace(/[^0-9.]/g, '')); return Number.isFinite(n) && n >= 0 ? n : undefined; } };
@@ -333,7 +334,7 @@ export function Settings({ section }: { section?: string }) {
           {sec === 'account' ? <>
             <H sub="helm signs in with GitHub only. Repositories, pull requests and history all come from this account.">Account</H>
             <SettingRow title={<span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Avatar name={app.user?.login || '?'} src={app.user?.avatar || undefined} size={24} />{app.user?.name || app.user?.login} <Badge mono>@{app.user?.login}</Badge></span>} desc="Signed in with GitHub · scopes: repo, read:org, workflow">
-              <Button variant="ghost" onClick={() => { if (confirm('Sign out of GitHub? Your sessions and worktrees stay on this machine.')) void api.signOut(); }}>Sign out</Button>
+              <Button variant="ghost" onClick={() => setSignOut(true)}>Sign out</Button>
             </SettingRow>
             <SettingRow title="Organisations" desc="Repositories from these organisations appear in Add repository.">
               <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>{(app.user?.orgs || []).length ? app.user!.orgs.map((o) => <Badge key={o}>{o}</Badge>) : <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>None</span>}</span>
@@ -535,6 +536,8 @@ export function Settings({ section }: { section?: string }) {
           </> : null}
         </div>
       </div>
+      <Dialog open={signOut} width={440} title="Sign out of GitHub?" description="Your sessions and worktrees stay on this machine." onClose={() => setSignOut(false)}
+        footer={<><Button variant="ghost" onClick={() => setSignOut(false)}>Cancel</Button><Button variant="danger" onClick={() => { setSignOut(false); void api.signOut(); }}>Sign out</Button></>} />
     </div>
   );
 }

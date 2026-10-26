@@ -196,6 +196,13 @@ function CommitDetail({ repo, c, files, onOpen }: { repo: R; c: HistoryCommit; f
 
 function Worktrees({ repo, list, reload }: { repo: R; list: WorktreeInfo[] | null; reload(): void }) {
   const app = useApp();
+  const [pending, setPending] = React.useState<WorktreeInfo | null>(null);
+  const [busy, setBusy] = React.useState(false);
+  const remove = async () => {
+    if (!pending) return;
+    setBusy(true);
+    try { await api.removeWorktree(repo.id, pending.path); setPending(null); reload(); } catch (e) { toast({ tone: 'error', title: 'Could not remove worktree', description: errText(e) }); } finally { setBusy(false); }
+  };
   const col = useColumns('worktrees', [{ w: 230, min: 140 }, { w: 1, min: 160, flex: true }, { w: 150, min: 100 }, { w: 100, min: 70 }, { w: 100, min: 70 }, { w: 150, min: 100, fixed: true }]);
   return (
     <div style={{ padding: '0 20px 20px', minWidth: col.minWidth + 40 }}>
@@ -214,14 +221,15 @@ function Worktrees({ repo, list, reload }: { repo: R; list: WorktreeInfo[] | nul
             <span style={{ font: '400 11.5px/1.5 var(--font-mono)', color: w.dirty ? 'var(--status-attention-text)' : 'var(--text-3)' }}>{w.dirty ? w.dirty + (w.dirty === 1 ? ' file' : ' files') : 'clean'}</span>
             <span style={{ display: 'flex', justifyContent: 'flex-end', gap: 4 }}>
               {s ? <Button size="sm" variant="ghost" onClick={() => go({ screen: 'session', id: s.id, tab: 'code' })}>Open</Button> : null}
-              {!w.main && (!s || s.status === 'idle' || s.status === 'ready') ? <Button size="sm" variant="ghost" onClick={async () => {
-                if (!confirm(`Remove the worktree at ${w.path}? Commits on ${w.branch} stay in the repository until the branch is deleted.`)) return;
-                try { await api.removeWorktree(repo.id, w.path); reload(); } catch (e) { toast({ tone: 'error', title: 'Could not remove worktree', description: errText(e) }); }
-              }}>Remove</Button> : null}
+              {!w.main && (!s || s.status === 'idle' || s.status === 'ready') ? <Button size="sm" variant="ghost" onClick={() => setPending(w)}>Remove</Button> : null}
             </span>
           </div>
         );
       })}
+      <Dialog open={!!pending} width={440} title="Remove worktree?" description={pending ? `Commits on ${pending.branch} stay in the repository until the branch is deleted.` : undefined} onClose={() => { if (!busy) setPending(null); }}
+        footer={<><Button variant="ghost" onClick={() => setPending(null)} disabled={busy}>Cancel</Button><Button variant="danger" icon="trash" loading={busy} onClick={remove}>Remove worktree</Button></>}>
+        {pending ? <div style={{ font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-2)', wordBreak: 'break-all' }}>{tilde(pending.path, app.home)}</div> : null}
+      </Dialog>
     </div>
   );
 }
