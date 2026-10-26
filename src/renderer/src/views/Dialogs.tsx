@@ -1,5 +1,5 @@
 import React from 'react';
-import type { BaseOption, GhRepo, MergeMethod, ModelAlias, PermMode, PullRequest, SessionDeleteInfo } from '@shared/types';
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_FILES, MAX_UPLOAD_TOTAL, type BaseOption, type GhRepo, type MergeMethod, type ModelAlias, type PermMode, type PullRequest, type SessionDeleteInfo } from '@shared/types';
 import { api, platform } from '../api';
 import glyph from '../assets/helm-glyph-violet.svg';
 import { tilde } from '../lib';
@@ -248,6 +248,16 @@ export function AddRepo({ onClose }: { onClose(): void }) {
 }
 
 // ------------------------------------------------------------------ new session
+type Upload = { id: number; name: string; size: number; data: string };
+let uploadSeq = 0;
+const readUpload = (f: File): Promise<Upload> => new Promise((resolve, reject) => {
+  const r = new FileReader();
+  r.onerror = () => reject(new Error('Could not read ' + f.name));
+  r.onload = () => { const url = String(r.result); resolve({ id: ++uploadSeq, name: f.name, size: f.size, data: url.slice(url.indexOf(',') + 1) }); };
+  r.readAsDataURL(f);
+});
+const fmtSize = (n: number) => n < 1024 ? n + ' B' : n < 1048576 ? Math.round(n / 1024) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
+
 export function NewSession({ repoId, initial, onClose }: { repoId?: string; initial?: { task?: string; source?: import('@shared/types').Session['source']; base?: string }; onClose(): void }) {
   const app = useApp();
   const { sym, to, from } = useMoney();
@@ -267,6 +277,9 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
   const [err, setErr] = React.useState('');
   const [compare, setCompare] = React.useState(false);
   const [folder, setFolder] = React.useState('');
+  const [uploads, setUploads] = React.useState<Upload[]>([]);
+  const [over, setOver] = React.useState(false);
+  const picker = React.useRef<HTMLInputElement>(null);
   const [variants, setVariants] = React.useState<Variant[]>([{ model: 'sonnet', effort: 'default' }, { model: 'opus', effort: 'default' }]);
   React.useEffect(() => {
     if (!repo) return;
@@ -276,10 +289,23 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
     api.repoBases(repo).then((b) => { setBases(b); const want = initial?.base && b.find((x) => x.ref === initial.base); if (want) setBase(want.ref); else if (initial?.base) setBase(initial.base); else if (b[0]) setBase(b[0].ref); }).catch(() => setBases([]));
     api.workspaceInfo('repo:' + repo).then((i) => setDirty(i.dirty)).catch(() => setDirty(0));
   }, [repo]);
+  const addUploads = async (list: File[]) => {
+    const room = MAX_UPLOAD_FILES - uploads.length;
+    if (list.length > room) toast({ tone: 'neutral', title: `At most ${MAX_UPLOAD_FILES} files per agent` });
+    const big = list.find((f) => f.size > MAX_UPLOAD_BYTES);
+    if (big) toast({ tone: 'neutral', title: 'File too large', description: `${big.name} is over ${MAX_UPLOAD_BYTES / 1048576} MB.` });
+    const take = list.filter((f) => f.size <= MAX_UPLOAD_BYTES).slice(0, Math.max(0, room));
+    try {
+      const read = await Promise.all(take.map(readUpload));
+      const next = [...uploads, ...read];
+      if (next.reduce((n, u) => n + u.size, 0) > MAX_UPLOAD_TOTAL) { toast({ tone: 'neutral', title: 'Too much to upload', description: `Files can add up to ${MAX_UPLOAD_TOTAL / 1048576} MB.` }); return; }
+      setUploads(next);
+    } catch (e) { toast({ tone: 'error', title: 'Could not attach', description: errText(e) }); }
+  };
   const start = async () => {
     setBusy(true); setErr('');
     try {
-      const input = { repoId: repo, base: free ? '' : base, folder: free && folder ? folder : undefined, task: task.trim(), model, budget: sub ? 0 : from(parseFloat(budget)) || app.settings.sessionBudget, permMode: perm, after: after || undefined, source: initial?.source };
+      const input = { files: uploads.length ? uploads.map(({ name, data }) => ({ name, data })) : undefined, repoId: repo, base: free ? '' : base, folder: free && folder ? folder : undefined, task: task.trim(), model, budget: sub ? 0 : from(parseFloat(budget)) || app.settings.sessionBudget, permMode: perm, after: after || undefined, source: initial?.source };
       if (compare && !free) {
         const ids = await api.createGroup(input, variants.map((v) => ({ model: v.model, effort: v.effort === 'default' ? undefined : v.effort })));
         const group = getUI().app?.sessions.find((x) => x.id === ids[0])?.group;
@@ -306,9 +332,26 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
           {free ? <Button variant="secondary" icon="folder-open" onClick={() => void api.chooseFolder().then((f) => f && setFolder(f))}>{folder ? 'Change folder…' : 'Use my own folder…'}</Button>
             : <Select value={base} onChange={(e: any) => setBase(e.target.value)} options={bases.length ? bases.map((b) => ({ value: b.ref, label: b.label })) : [base]} mono icon="git-branch" />}
         </div>
+        <div onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setOver(true); } }} onDragLeave={() => setOver(false)}
+          onDrop={(e) => { if (e.dataTransfer.files.length) { e.preventDefault(); void addUploads([...e.dataTransfer.files]); } setOver(false); }}
+          style={{ display: 'flex', flexDirection: 'column', gap: 8, borderRadius: 'var(--radius-md)', outline: over ? '2px dashed var(--accent)' : 'none', outlineOffset: 2 }}>
         <textarea autoFocus rows={5} value={task} onChange={(e) => setTask(e.target.value)} placeholder="What should the agent do? Be specific about the outcome, and mention files or checks that matter."
           onKeyDown={(e) => { if (e.key === 'Enter' && (mac() ? e.metaKey : e.ctrlKey) && task.trim()) void start(); }}
           style={{ resize: 'vertical', border: 'none', outline: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border-strong)', color: 'var(--text-1)', font: '400 13px/1.55 var(--font-sans)', padding: '10px 12px' }} />
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+          <input ref={picker} type="file" multiple hidden onChange={(e) => { void addUploads([...(e.target.files || [])]); e.target.value = ''; }} />
+          <Button size="sm" variant="ghost" icon="paperclip" onClick={() => picker.current?.click()}>Attach files</Button>
+          {uploads.length ? null : <span style={{ font: '400 12px/1.3 var(--font-sans)', color: 'var(--text-3)' }}>Any type. Only this agent can see them, and they are not added to the repository.</span>}
+          {uploads.map((u) => (
+            <span key={u.id} title={u.name} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: 220, padding: '3px 8px', borderRadius: 'var(--radius-md)', background: 'var(--bg-raised)', boxShadow: 'inset 0 0 0 1px var(--border)', font: '400 12px/1.3 var(--font-sans)' }}>
+              <i className="ph ph-file" style={{ fontSize: 12, color: 'var(--text-3)' }} />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.name}</span>
+              <span style={{ color: 'var(--text-3)' }}>{fmtSize(u.size)}</span>
+              <span role="button" aria-label={'Remove ' + u.name} onClick={() => setUploads((c) => c.filter((x) => x.id !== u.id))} style={{ cursor: 'pointer', color: 'var(--text-3)', display: 'flex' }}><i className="ph ph-x" style={{ fontSize: 11 }} /></span>
+            </span>
+          ))}
+        </div>
+        </div>
         <div style={{ display: 'grid', gridTemplateColumns: sub ? '1fr 1fr' : '1fr 1fr 110px', gap: 8, ...(compare ? { opacity: 0.5 } : null) }}>
           <Select disabled={compare} value={model} onChange={(e: any) => setModel(e.target.value)} options={MODEL_OPTIONS} />
           <Select value={perm} onChange={(e: any) => setPerm(e.target.value)} options={PERM_OPTIONS} />
