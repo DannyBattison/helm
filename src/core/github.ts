@@ -4,6 +4,7 @@ import type { Host } from './host';
 import type { Comment, Issue } from '../shared/issues';
 import { parseDispatch, type Workflow, type WorkflowRun } from '../shared/workflows';
 import type { CheckRun, DeviceCode, GhRepo, PullRequest, User } from '../shared/types';
+import type { Commit } from '../shared/automations';
 import { logLine } from './log';
 
 const SCOPES = 'repo read:org workflow';
@@ -345,6 +346,18 @@ export async function dispatchWorkflow(slug: string, id: number, ref: string, in
 export async function listRuns(slug: string, id: number, limit = 6): Promise<WorkflowRun[]> {
   const r = await gh(`/repos/${slug}/actions/workflows/${id}/runs?per_page=${limit}`);
   return (r.workflow_runs || []).map((x: any): WorkflowRun => ({ id: x.id, number: x.run_number, title: x.display_title || x.name || '', status: x.status, conclusion: x.conclusion, branch: x.head_branch || '', event: x.event, actor: x.triggering_actor?.login || x.actor?.login || '', url: x.html_url, at: x.created_at }));
+}
+
+/** The latest commits on a branch, newest first. */
+export async function listBranchCommits(slug: string, branch: string, limit = 30): Promise<Commit[]> {
+  const r = await gh(`/repos/${slug}/commits?sha=${encodeURIComponent(branch)}&per_page=${limit}`);
+  return (Array.isArray(r) ? r : []).map((x: any): Commit => ({ sha: x.sha, message: x.commit?.message || '', author: x.author?.login || x.commit?.author?.name || '', url: x.html_url }));
+}
+
+/** The repository's most recent finished runs across all workflows, newest first. */
+export async function listFinishedRuns(slug: string, limit = 30): Promise<WorkflowRun[]> {
+  const r = await gh(`/repos/${slug}/actions/runs?status=completed&per_page=${limit}`);
+  return (r.workflow_runs || []).map((x: any): WorkflowRun => ({ id: x.id, number: x.run_number, title: `${x.name || 'workflow'}: ${x.display_title || ''}`.replace(/: $/, ''), status: x.status, conclusion: x.conclusion, branch: x.head_branch || '', event: x.event, actor: x.triggering_actor?.login || x.actor?.login || '', url: x.html_url, at: x.created_at }));
 }
 
 export async function getPullBody(slug: string, number: number): Promise<string> {

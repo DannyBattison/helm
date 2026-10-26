@@ -21,6 +21,18 @@ const label = (text: string, child: React.ReactNode) => (
   </label>
 );
 
+/** A branch choice: a list for one repository, free text when the agent covers every repository. */
+function BranchField({ scope, value, onChange, anyLabel }: { scope: string; value: string; onChange(v: string): void; anyLabel: string }) {
+  const [names, setNames] = React.useState<string[]>([]);
+  React.useEffect(() => {
+    setNames([]);
+    if (scope !== 'global') api.repoBranches(scope).then(setNames).catch(() => undefined);
+  }, [scope]);
+  if (scope === 'global') return <Input mono value={value} onChange={(e: any) => onChange(e.target.value)} placeholder={anyLabel.toLowerCase() + ' (or type a branch name)'} />;
+  const all = value && !names.includes(value) ? [value, ...names] : names;
+  return <Select value={value} onChange={(e: any) => onChange(e.target.value)} options={[{ value: '', label: anyLabel }, ...all.map((n) => ({ value: n, label: n }))]} />;
+}
+
 function Editor({ draft, repos, onClose }: { draft: Draft; repos: { id: string }[]; onClose(): void }) {
   const app = useApp();
   const [d, setD] = React.useState(draft);
@@ -50,11 +62,17 @@ function Editor({ draft, repos, onClose }: { draft: Draft; repos: { id: string }
             {t.every !== 'hour' ? <Input mono value={t.time} onChange={(e: any) => setTrigger({ type: 'schedule', time: e.target.value })} placeholder="09:00" style={{ width: 80 }} /> : null}
             <span style={{ font: '400 12px/1.4 var(--font-sans)', color: 'var(--text-3)' }}>Local time. Runs when helm is open; a missed run starts once when helm next opens.</span>
           </div>
-        ) : <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>helm checks GitHub every minute while it is open. Anything that already exists when you create the agent is ignored.</span>}
+        ) : (
+          <>
+            {t.type !== 'issue' ? label(t.type === 'commit' ? 'Branch to watch' : 'Branch', <BranchField scope={d.scope} value={d.branch || ''} onChange={(v) => set({ branch: v })} anyLabel={t.type === 'commit' ? 'Default branch' : 'Any branch'} />) : null}
+            {t.type === 'pull_request' || t.type === 'merge' ? <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)', marginTop: -6 }}>For pull requests this is the branch they target.</span> : null}
+          <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>helm checks GitHub every minute while it is open. Anything that already exists when you create the agent is ignored.</span>
+          </>
+        )}
         {label('Prompt', <textarea rows={6} value={d.prompt} onChange={(e) => set({ prompt: e.target.value })} spellCheck={false}
           placeholder={t.type === 'schedule' ? 'Look for outdated dependencies and open a pull request that updates them.' : 'Review pull request #{{number}} and leave notes in a REVIEW.md file.'}
           style={{ resize: 'vertical', boxSizing: 'border-box', width: '100%', padding: 10, borderRadius: 'var(--radius-md)', border: 0, outline: 0, boxShadow: 'inset 0 0 0 1px var(--border)', background: 'var(--bg-editor)', color: 'var(--text-1)', font: 'var(--type-data)' }} />)}
-        <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)', marginTop: -6 }}>You can use {'{{repo}}, {{number}}, {{title}}, {{url}} and {{branch}}'}. The trigger is added to the start of the task.</span>
+        <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)', marginTop: -6 }}>You can use {'{{repo}}, {{number}}, {{title}}, {{url}} and {{branch}}'}. For commits, {'{{title}}'} is the latest commit message. The trigger is added to the start of the task.</span>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           {label('Model', <Select value={`${d.backend || app.settings.defaultBackend}/${d.model}`} onChange={(e: any) => set(splitChoice(e.target.value))} options={modelChoices(app)} />)}
           {label('Permissions', <Select value={d.permMode} onChange={(e: any) => set({ permMode: e.target.value })} options={PERMS} />)}
@@ -88,7 +106,7 @@ export function AutomationsSection() {
       <div key={a.id} className="helm-setting" style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '12px 0', borderTop: '1px solid var(--border-subtle)' }}>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
           <span style={{ font: '500 13px/1.3 var(--font-sans)' }}>{a.name}</span>
-          <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>{describeTrigger(a.trigger)} · {a.scope === 'global' ? 'every repository' : a.scope}{a.lastRun ? ' · last ran ' + new Date(a.lastRun).toLocaleString() : ''}</span>
+          <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>{describeTrigger(a.trigger)}{a.branch ? ` on ${a.branch}` : ''} · {a.scope === 'global' ? 'every repository' : a.scope}{a.lastRun ? ' · last ran ' + new Date(a.lastRun).toLocaleString() : ''}</span>
         </div>
         <Button size="sm" variant="ghost" onClick={() => void run(a)}>Run now</Button>
         <Button size="sm" variant="ghost" onClick={() => setEditing({ ...a })}>Edit</Button>

@@ -147,6 +147,30 @@ describe('conflict forecast', () => {
     expect(found).toEqual([expect.objectContaining({ a: 'ua', b: 'ub', kind: 'overlap', files: ['z.ts'] })]);
   });
 
+  it('does not flag two sessions that edit different parts of the same file', async () => {
+    const a = worktree('ga'), b = worktree('gb');
+    writeFileSync(join(a, 'a.txt'), 'ONE\n' + 'x\n'.repeat(0) + 'two\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\n');
+    writeFileSync(join(b, 'a.txt'), 'one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nTEN\n');
+    const touched = { 'a.txt': { add: 1, del: 1 } };
+    const found = await forecastRepo({ ...r, localPath: repo }, [
+      mk('ga', { worktree: a, commits: [], filesTouched: touched }),
+      mk('gb', { worktree: b, commits: [], filesTouched: touched })
+    ]);
+    expect(found).toEqual([]);
+  });
+
+  it('flags uncommitted edits to the same lines', async () => {
+    const a = worktree('ha'), b = worktree('hb');
+    writeFileSync(join(a, 'b.txt'), 'from a\n');
+    writeFileSync(join(b, 'b.txt'), 'from b\n');
+    const touched = { 'b.txt': { add: 1, del: 1 } };
+    const found = await forecastRepo({ ...r, localPath: repo }, [
+      mk('ha', { worktree: a, commits: [], filesTouched: touched }),
+      mk('hb', { worktree: b, commits: [], filesTouched: touched })
+    ]);
+    expect(found).toEqual([expect.objectContaining({ a: 'ha', b: 'hb', kind: 'conflict', files: ['b.txt'] })]);
+  });
+
   it('flags a session whose branch conflicts with a base that has moved', async () => {
     const d = worktree('fd');
     writeFileSync(join(d, 'a.txt'), 'D changes line one\n'); g(d, 'commit', '-q', '-am', 'd');

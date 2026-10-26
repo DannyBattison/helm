@@ -223,6 +223,8 @@ Object.assign(companionOps, {
 const automations = new Automations(store, {
   listPulls: (id) => GH.listPulls(id),
   listIssues: (id) => GH.listIssues(id),
+  listFinishedRuns: (id) => GH.listFinishedRuns(id),
+  listCommits: (id, branch) => GH.listBranchCommits(id, branch),
   start: async (repoId, base, task, a) => {
     await sessions.create({ repoId, base, task, backend: a.backend, model: a.model, budget: a.budget, permMode: a.permMode, automation: { id: a.id, name: a.name } });
   },
@@ -705,6 +707,17 @@ export const api: HelmApi = {
     const text = 'Review comments from the user. Please address each one:\n\n' + comments.map((c) => `- ${c.line ? `${c.file}:${c.line}` : c.file}: ${c.text}`).join('\n');
     await sessions.send(id, text);
   },
+  async resolveConflict(id, against) {
+    const s = sess(id);
+    const target = against.replace(/^origin\//, '');
+    const base = against.startsWith('origin/');
+    const other = base ? undefined : sess(against);
+    const steps = base
+      ? `git fetch origin ${target}\ngit merge origin/${target}`
+      : `git merge ${other!.branch}`;
+    const text = `Your branch would conflict with ${base ? against : `the branch ${other!.branch} (another session's work in progress)`}. Please resolve it now:\n\n1. Commit or set aside your uncommitted work first, so the merge can start.\n2. Run:\n${steps}\n3. Resolve every conflict, keeping the intent of both sides, then run the build and tests.\n4. Commit the merge.\n\nDo not discard either side's changes.`;
+    await sessions.send(s.id, text);
+  },
   async openInEditor(id, path, line) {
     const s = sess(id);
     const kind = store.data.settings.openIn;
@@ -835,7 +848,7 @@ export const api: HelmApi = {
         const id = `${f.blocks}:${f.bfree}`;
         if (seen.has(id)) { disks[disks.length - 1].label += ' and ' + label.toLowerCase(); continue; }
         seen.add(id);
-        disks.push({ label, total: f.blocks * f.bsize, free: f.bavail * f.bsize });
+        disks.push({ label, path, total: f.blocks * f.bsize, free: f.bavail * f.bsize });
       } catch { /* a path that is gone has no disk to report */ }
     }
     const m = process.memoryUsage();
