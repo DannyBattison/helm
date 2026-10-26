@@ -62,7 +62,8 @@ export function App() {
     const onKey = (e: KeyboardEvent) => {
       const m = mac ? e.metaKey : e.ctrlKey;
       if (m && e.key.toLowerCase() === 'k') { e.preventDefault(); setUI({ palette: true }); }
-      else if (m && e.key.toLowerCase() === 'n') { e.preventDefault(); const r = getUI().route; setUI({ newSession: r.screen === 'repo' ? { repoId: r.id } : {} }); }
+      // Browsers reserve Cmd/Ctrl+N for a new window and often never deliver it, so Alt+N also works.
+      else if ((m && e.key.toLowerCase() === 'n') || (e.altKey && !e.ctrlKey && !e.metaKey && e.code === 'KeyN')) { e.preventDefault(); const r = getUI().route; setUI({ newSession: r.screen === 'repo' ? { repoId: r.id } : {} }); }
       else if (e.ctrlKey && e.key === '`') { e.preventDefault(); setUI({ term: !getUI().term }); }
       else if (e.key === 'Escape') setUI({ palette: false, drawer: false });
     };
@@ -130,6 +131,7 @@ export function App() {
         </div>
       </div>
       <StatusBar />
+      {narrow && !newSession && !drawer && !adding ? <button type="button" aria-label="New session" title="New session" onClick={() => { const r = getUI().route; setUI({ newSession: r.screen === 'repo' ? { repoId: r.id } : {} }); }} style={{ position: 'absolute', right: 16, bottom: 'calc(var(--statusbar-h) + 16px + env(safe-area-inset-bottom, 0px))', zIndex: 30, width: 56, height: 56, display: 'grid', placeItems: 'center', border: 'none', borderRadius: '50%', background: 'var(--accent)', color: '#fff', boxShadow: 'var(--shadow-dialog)', cursor: 'pointer' }}><i className="ph ph-plus" style={{ fontSize: 24 }} /></button> : null}
       {adding ? <AddRepo onClose={() => setUI({ adding: false })} /> : null}
       {newSession ? <NewSession repoId={newSession.repoId} initial={newSession} onClose={() => setUI({ newSession: null })} /> : null}
       {removingRepo ? <RemoveRepo key={removingRepo} id={removingRepo} onClose={() => setUI({ removingRepo: null })} /> : null}

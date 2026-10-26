@@ -185,3 +185,10 @@ textarea {
 @media (max-width: 767px) {
   .helm-hide-phone { display: none !important; }
 }
+
+/* Phones: a taller header; the icon buttons in it grow with it. */
+@media (max-width: 767px) {
+  :root { --titlebar-h: 56px; }
+  .drag .helm-tap-icon { min-width: 44px !important; min-height: 44px !important; }
+  .drag .helm-tap-icon > i { font-size: 22px !important; }
+}

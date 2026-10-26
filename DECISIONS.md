@@ -543,3 +543,7 @@ Descenders (p, y, g) were clipped by 1–2px in single-line UI text. `--type-lab
 ## D-131 · 2026-10-26 · The root README is short; coverage comes from a CI workflow and Codecov
 The README is now badges, a link to takethehelm.dev, the feature list, the `docker run` for the hosted image, a short develop section and a Buy Me a Coffee link. The details it dropped (GitHub sign-in, releases and signing, the architecture notes) are in `hosted/README.md`, the code and this file. The coverage badge needs `.github/workflows/ci.yml` (tests with `@vitest/coverage-v8`, uploaded to Codecov) and a `CODECOV_TOKEN` repository secret; it shows "unknown" until the first run. The `docker run` uses `ghcr.io/dannybattison/helm-hosted:latest` from hosted-image.yml.
 Why: user request.
+
+## D-132 · 2026-10-26 · UI tweaks: Alt+N, dialog drag-out, bigger phone header, floating new-session button
+Browsers reserve Cmd/Ctrl+N for a new window and often never deliver it to the page, so Alt+N also opens the new-session dialog (Cmd/Ctrl+N is kept for the desktop app and browsers that pass it on). A dialog's scrim now closes it only when the press began on the scrim as well as the release, so dragging a text selection out of the textarea no longer dismisses it. On phones the header is 56px (was 48 on touch only), its icons are 44px hit areas with larger glyphs, and the breadcrumb is 16px. A floating "+" button at bottom right opens the new-session dialog. Not run in a browser; `tsc` is not installed in the worktree.
+Why: user request.

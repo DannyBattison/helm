@@ -3,6 +3,8 @@ import { useNarrow } from './resize';
 
 export function Dialog({ open = true, title, description, children, footer, width = 520, onClose, inline = false, style }: any) {
   const narrow = useNarrow();
+  // Close only if the press began on the scrim too: a text selection dragged out of a field and released over it must not dismiss the dialog.
+  const pressed = React.useRef(false);
   if (!open) return null;
   const box = (
     <div role="dialog" aria-modal="true" style={{ width, maxWidth: '100%', minWidth: 0, maxHeight: inline ? undefined : narrow ? 'calc(100dvh - 24px)' : 'calc(100vh - 48px)', display: 'flex', flexDirection: 'column', borderRadius: 'var(--radius-xl)', background: 'var(--bg-overlay)', boxShadow: 'var(--shadow-dialog)', animation: 'helm-in var(--dur-slow) var(--ease-out)', ...style }}>
@@ -18,5 +20,5 @@ export function Dialog({ open = true, title, description, children, footer, widt
     </div>
   );
   if (inline) return box;
-  return <div style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', placeItems: 'center', background: 'var(--scrim)', padding: narrow ? 12 : 24 }} onClick={e => { if (e.target === e.currentTarget && onClose) onClose(); }}>{box}</div>;
+  return <div style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', placeItems: 'center', background: 'var(--scrim)', padding: narrow ? 12 : 24 }} onMouseDown={e => { pressed.current = e.target === e.currentTarget; }} onClick={e => { const down = pressed.current; pressed.current = false; if (down && e.target === e.currentTarget && onClose) onClose(); }}>{box}</div>;
 }

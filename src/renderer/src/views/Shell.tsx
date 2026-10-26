@@ -223,15 +223,15 @@ export function TitleBar({ crumbs, theme, setTheme }: { crumbs: any[]; theme: 'd
   const narrow = useNarrow();
   return (
     <div className="drag" style={{ height: 'var(--titlebar-h)', flex: 'none', display: 'flex', alignItems: 'center', gap: narrow ? 6 : 12, padding: '0 ' + (windowControls() === 'right' ? 150 : 10) + 'px 0 ' + (narrow ? 8 : 16) + 'px', borderBottom: '1px solid var(--border)', background: 'var(--bg-app)' }}>
-      {narrow ? <IconButton icon="list" label="Menu" onClick={() => setUI({ drawer: !getUI().drawer })} /> : null}
-      <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}><Breadcrumbs items={crumbs || []} compact={narrow} style={narrow ? { font: '500 13px/1 var(--font-sans)' } : undefined} /></div>
-      {narrow ? <IconButton icon="magnifying-glass" label="Search" onClick={() => setUI({ palette: true })} /> : <button type="button" onClick={() => setUI({ palette: true })} style={{ width: 340, height: 26, flex: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '0 6px 0 10px', border: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border)', color: 'var(--text-3)', font: '400 12px/1 var(--font-sans)', cursor: 'pointer' }}>
+      {narrow ? <IconButton size="lg" icon="list" label="Menu" onClick={() => setUI({ drawer: !getUI().drawer })} /> : null}
+      <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}><Breadcrumbs items={crumbs || []} compact={narrow} style={narrow ? { font: '500 16px/1.3 var(--font-sans)' } : undefined} /></div>
+      {narrow ? <IconButton size="lg" icon="magnifying-glass" label="Search" onClick={() => setUI({ palette: true })} /> : <button type="button" onClick={() => setUI({ palette: true })} style={{ width: 340, height: 26, flex: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '0 6px 0 10px', border: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border)', color: 'var(--text-3)', font: '400 12px/1 var(--font-sans)', cursor: 'pointer' }}>
         <i className="ph ph-magnifying-glass" style={{ fontSize: 13 }} />
         <span style={{ flex: 1, textAlign: 'left' }}>Search sessions and repositories</span>
         <Kbd keys={[mac() ? '⌘' : 'Ctrl', 'K']} />
       </button>}
       <div style={{ flex: narrow ? 'none' : 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 2 }}>
-        <IconButton icon="bell" label="Inbox" badge={need > 0} onClick={() => go({ screen: 'inbox' })} />
+        <IconButton size={narrow ? 'lg' : 'md'} icon="bell" label="Inbox" badge={need > 0} onClick={() => go({ screen: 'inbox' })} />
         {narrow ? null : <>
           <IconButton icon={theme === 'dark' ? 'sun' : 'moon'} label="Toggle theme" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
           <span style={{ width: 1, height: 16, background: 'var(--border)', margin: '0 6px' }} />
