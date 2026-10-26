@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { automationTask, describeTrigger, freshNumbers, lastSlot, scheduleDue, validateAgent } from '../src/shared/automations';
+import { freshCommits, onBranch, runOutcome, automationTask, describeTrigger, freshNumbers, lastSlot, scheduleDue, validateAgent } from '../src/shared/automations';
 import { Automations, type AutomationDeps } from '../src/core/automations';
 import { Store } from '../src/core/store';
 
@@ -49,14 +49,14 @@ describe('events', () => {
 
 describe('runner', () => {
   const pr = (number: number, state: 'open' | 'merged', branch = 'b' + number) => ({ number, title: 'T' + number, branch, base: 'main', state, draft: false, url: 'u' + number, checks: 'none' as const });
-  function setup(prs: () => any[]) {
+  function setup(prs: () => any[], runs: () => any[] = () => [], commits: () => any[] = () => []) {
     const store = new Store();
     store.data.repos = [{ id: 'o/r', name: 'r', defaultBranch: 'main' } as any, { id: 'o/q', name: 'q', defaultBranch: 'dev' } as any];
     store.save = () => undefined;
     const started: { repo: string; base: string; task: string }[] = [];
     let now = at('2026-10-26T10:00:00');
     const deps: AutomationDeps = {
-      listPulls: async () => prs(), listIssues: async () => [], automatedBranches: () => new Set(['bot']),
+      listPulls: async () => prs(), listIssues: async () => [], listFinishedRuns: async () => runs(), listCommits: async () => commits(), automatedBranches: () => new Set(['bot']),
       start: async (repo, base, task) => { started.push({ repo, base, task }); },
       repoName: (id) => id.split('/')[1], defaultBranch: (id) => (id === 'o/q' ? 'dev' : 'main'), changed: () => undefined
     };
@@ -104,5 +104,67 @@ describe('runner', () => {
     expect(() => auto.save({ ...base, name: 'y', scope: 'nope/x', trigger: { type: 'issue' } })).toThrow();
     auto.remove(id);
     expect(auto.agents).toHaveLength(0);
+  });
+
+  it('starts agents when a workflow run fails or succeeds, skipping cancelled and automated runs', async () => {
+    const run = (id: number, conclusion: string, branch = 'feat') => ({ id, number: id, title: 'CI: build', status: 'completed', conclusion, branch, event: 'push', actor: 'a', url: 'u', at: '' });
+    let list = [run(1, 'failure')];
+    const { auto, started } = setup(() => [], () => list);
+    auto.save({ ...base, name: 'fix', scope: 'o/r', trigger: { type: 'workflow_failure' } });
+    auto.save({ ...base, name: 'ship', scope: 'o/r', trigger: { type: 'workflow_success' } });
+    await auto.tick();
+    expect(started).toHaveLength(0);
+    list = [run(5, 'failure', 'bot'), run(4, 'cancelled'), run(3, 'success'), run(2, 'failure'), run(1, 'failure')];
+    await auto.tick();
+    expect(started).toHaveLength(2);
+    expect(started.map((s) => s.task).join('\n')).toContain('failed on feat');
+    expect(started.map((s) => s.task).join('\n')).toContain('succeeded on feat');
+    expect(started[0].base).toBe('origin/feat');
+  });
+
+  it('classifies run conclusions', () => {
+    expect(runOutcome('success')).toBe('workflow_success');
+    expect(runOutcome('timed_out')).toBe('workflow_failure');
+    expect(runOutcome('cancelled')).toBeNull();
+    expect(runOutcome(null)).toBeNull();
+  });
+
+  it('narrows workflow and pull request triggers to a branch', async () => {
+    const run = (id: number, branch: string) => ({ id, number: id, title: 'CI', status: 'completed', conclusion: 'failure', branch, event: 'push', actor: 'a', url: 'u', at: '' });
+    let list = [run(1, 'main')];
+    let prs = [pr(1, 'open')];
+    const { auto, started } = setup(() => prs, () => list);
+    auto.save({ ...base, name: 'rel', scope: 'o/r', branch: 'release', trigger: { type: 'workflow_failure' } });
+    auto.save({ ...base, name: 'pr', scope: 'o/r', branch: 'dev', trigger: { type: 'pull_request' } });
+    await auto.tick();
+    list = [run(3, 'release'), run(2, 'main'), run(1, 'main')];
+    prs = [{ ...pr(3, 'open'), base: 'dev' }, pr(2, 'open'), pr(1, 'open')];
+    await auto.tick();
+    expect(started).toHaveLength(2);
+    expect(started.map((s) => s.task).join('\n')).toContain('failed on release');
+    expect(started.map((s) => s.task).join('\n')).toContain('pull request #3');
+  });
+
+  it('starts an agent once for new commits on the watched branch', async () => {
+    const c = (sha: string) => ({ sha, message: 'm ' + sha + '\n\nbody', author: 'a', url: 'u' });
+    let list = [c('a')];
+    const { auto, started } = setup(() => [], () => [], () => list);
+    auto.save({ ...base, name: 'watch', scope: 'o/q', trigger: { type: 'commit' } });
+    await auto.tick();
+    expect(started).toHaveLength(0);
+    list = [c('d'), c('c'), c('b'), c('a')];
+    await auto.tick();
+    expect(started).toHaveLength(1);
+    expect(started[0]).toMatchObject({ repo: 'o/q', base: 'origin/dev' });
+    expect(started[0].task).toContain('3 commits were pushed to dev: m d');
+    await auto.tick();
+    expect(started).toHaveLength(1);
+  });
+
+  it('helpers', () => {
+    expect(freshCommits(undefined, ['b', 'a']).fresh).toEqual([]);
+    expect(freshCommits(['a'], ['c', 'b', 'a']).fresh).toEqual(['b', 'c']);
+    expect(onBranch({ branch: '' }, 'x')).toBe(true);
+    expect(onBranch({ branch: 'x' }, 'y')).toBe(false);
   });
 });

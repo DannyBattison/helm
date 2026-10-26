@@ -1,5 +1,5 @@
-import type { Issue, PullRequest } from '../shared/types';
-import { applies, automationTask, freshNumbers, scheduleDue, validateAgent, type AutomatedAgent, type AutomationEvent } from '../shared/automations';
+import type { Issue, PullRequest, WorkflowRun } from '../shared/types';
+import { applies, automationTask, freshCommits, type Commit, freshNumbers, onBranch, runOutcome, scheduleDue, validateAgent, type AutomatedAgent, type AutomationEvent } from '../shared/automations';
 import type { Store } from './store';
 import { uid } from './util';
 
@@ -7,6 +7,10 @@ import { uid } from './util';
 export interface AutomationDeps {
   listPulls(repoId: string): Promise<PullRequest[]>;
   listIssues(repoId: string): Promise<Issue[]>;
+  /** The latest commits on a branch, newest first. */
+  listCommits(repoId: string, branch: string): Promise<Commit[]>;
+  /** The most recent finished workflow runs of the repository, newest first. */
+  listFinishedRuns(repoId: string): Promise<WorkflowRun[]>;
   start(repoId: string, base: string, task: string, agent: AutomatedAgent): Promise<void>;
   /** Branches of sessions that automated agents started, so their pull requests do not start more agents. */
   automatedBranches(repoId: string): Set<string>;
@@ -29,7 +33,7 @@ export class Automations {
     if (problem) throw new Error(problem);
     if (input.scope !== 'global' && !this.store.data.repos.some((r) => r.id === input.scope)) throw new Error('Repository not found');
     const old = input.id ? this.agents.find((a) => a.id === input.id) : undefined;
-    const next: AutomatedAgent = { ...input, name: input.name.trim(), prompt: input.prompt.trim(), id: old?.id ?? uid(), createdAt: old?.createdAt ?? this.now(), lastRun: old?.lastRun };
+    const next: AutomatedAgent = { ...input, name: input.name.trim(), branch: input.branch?.trim() || undefined, prompt: input.prompt.trim(), id: old?.id ?? uid(), createdAt: old?.createdAt ?? this.now(), lastRun: old?.lastRun };
     // A changed schedule starts counting from now, so editing it does not fire for a slot that passed earlier.
     if (old && JSON.stringify(old.trigger) !== JSON.stringify(next.trigger)) next.lastRun = this.now();
     if (old) this.agents.splice(this.agents.indexOf(old), 1, next); else this.agents.push(next);
@@ -65,8 +69,11 @@ export class Automations {
     let started = 0;
     for (const repoId of repoIds) {
       try {
-        const base = ev.kind === 'pull_request' && ev.branch ? 'origin/' + ev.branch : ev.base || this.deps.defaultBranch(repoId);
-        await this.deps.start(repoId, base, automationTask(a, ev, this.deps.repoName(repoId)), a);
+        const base = (ev.kind === 'pull_request' || ev.kind === 'commit' || ev.kind.startsWith('workflow_')) && ev.branch ? 'origin/' + ev.branch : ev.base || this.deps.defaultBranch(repoId);
+        const task = automationTask(a, ev, this.deps.repoName(repoId));
+        // A run's branch may have been deleted since: start from the default branch then.
+        try { await this.deps.start(repoId, base, task, a); }
+        catch (e) { if (ev.kind === 'pull_request' || ev.kind === 'schedule' || ev.kind === 'issue' || ev.kind === 'merge') throw e; await this.deps.start(repoId, this.deps.defaultBranch(repoId), task, a); }
         started++;
       } catch (e) {
         this.store.log({ kind: 'start', who: 'helm', what: `automated agent “${a.name}” could not start`, repo: this.deps.repoName(repoId), detail: String((e as Error)?.message || e), ok: false });
@@ -127,10 +134,36 @@ export class Automations {
         seen.issue = r.seen;
         for (const n of r.fresh) { const i = issues.find((x) => x.number === n)!; found.push({ kind: 'issue', number: n, title: i.title, url: i.url }); }
       }
+      if (want.has('workflow_success') || want.has('workflow_failure')) {
+        const runs = (await this.deps.listFinishedRuns(repoId)).filter((r) => runOutcome(r.conclusion));
+        const own = this.deps.automatedBranches(repoId);
+        // One seen list covers both outcomes, so a trigger added later does not replay old runs.
+        const r = freshNumbers(seen.workflow_failure, runs.map((x) => x.id));
+        seen.workflow_failure = r.seen;
+        for (const id of r.fresh) {
+          const x = runs.find((y) => y.id === id)!;
+          if (own.has(x.branch)) continue;
+          found.push({ kind: runOutcome(x.conclusion)!, number: x.number, title: x.title, url: x.url, branch: x.branch });
+        }
+      }
+      if (want.has('commit')) {
+        const own = this.deps.automatedBranches(repoId);
+        const branches = new Set(agents.filter((a) => a.trigger.type === 'commit').map((a) => a.branch?.trim() || this.deps.defaultBranch(repoId)));
+        const bySeen = (seen.commits ||= {});
+        for (const branch of branches) {
+          const list = await this.deps.listCommits(repoId, branch);
+          const r = freshCommits(bySeen[branch], list.map((c) => c.sha));
+          bySeen[branch] = r.seen;
+          // Commits that arrive together are one event, so a push of ten commits starts one session, not ten.
+          if (!r.fresh.length || own.has(branch)) continue;
+          const latest = list.find((c) => c.sha === r.fresh[r.fresh.length - 1])!;
+          found.push({ kind: 'commit', count: r.fresh.length, title: latest.message.split('\n')[0], url: latest.url, branch });
+        }
+      }
     } catch { return; /* offline, or no access: look again next time */ }
     this.store.save();
     for (const ev of found) {
-      for (const a of agents.filter((x) => x.trigger.type === ev.kind)) {
+      for (const a of agents.filter((x) => x.trigger.type === ev.kind && this.watches(x, ev, repoId))) {
         if (this.firedThisPoll(a) >= PER_POLL) continue;
         a.lastRun = this.now();
         await this.fire(a, [repoId], ev);
@@ -138,6 +171,12 @@ export class Automations {
       }
     }
     this.counts.clear();
+  }
+
+  /** Whether an agent's branch setting lets it see an event. Pull requests and merges are matched on the branch they target. */
+  private watches(a: AutomatedAgent, ev: AutomationEvent, repoId: string): boolean {
+    if (ev.kind === 'commit') return (a.branch?.trim() || this.deps.defaultBranch(repoId)) === ev.branch;
+    return onBranch(a, ev.kind === 'pull_request' || ev.kind === 'merge' ? ev.base : ev.branch);
   }
 
   private counts = new Map<string, number>();

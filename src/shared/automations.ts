@@ -6,16 +6,24 @@ export type AutomationTrigger =
   | { type: 'schedule'; every: ScheduleEvery; /** HH:MM local time, for day, weekday and week. */ time: string; /** 0 (Sunday) to 6, for week. */ day: number }
   | { type: 'pull_request' }
   | { type: 'merge' }
-  | { type: 'issue' };
+  | { type: 'issue' }
+  | { type: 'workflow_success' }
+  | { type: 'workflow_failure' }
+  | { type: 'commit' };
 
 export interface AutomatedAgent {
   id: string;
   name: string;
-  /** What the agent is asked to do each time it starts. May use {{repo}}, {{number}}, {{title}}, {{url}} and {{branch}}. */
+  /** What the agent is asked to do each time it starts. May use {{repo}}, {{number}}, {{title}}, {{url}} and {{branch}}; for a workflow run {{number}} is the run number and {{title}} names the workflow. */
   prompt: string;
   /** `global` runs in every repository; otherwise a repository id (`owner/name`). */
   scope: string;
   trigger: AutomationTrigger;
+  /**
+   * Narrows event triggers to one branch: the branch a run or push is on, or the branch a pull request targets. Empty means any
+   * branch, except for `commit`, which then watches the default branch. Ignored by schedules and issues.
+   */
+  branch?: string;
   enabled: boolean;
   model: 'sonnet' | 'opus' | 'haiku';
   permMode: 'ask' | 'edits' | 'plan' | 'all';
@@ -27,25 +35,36 @@ export interface AutomatedAgent {
 }
 
 /** What an event trigger saw on a repository: the numbers already dealt with, per kind. A kind that is missing has not been looked at yet. */
-export type AutomationSeen = Partial<Record<'pull_request' | 'merge' | 'issue', number[]>>;
+export type AutomationSeen = Partial<Record<(typeof EVENT_KINDS)[number], number[]>> & {
+  /** Commit hashes already dealt with, per branch. */
+  commits?: Record<string, string[]>;
+};
+
+/** A commit as the poller needs it. */
+export interface Commit { sha: string; message: string; author: string; url: string }
 
 /** One thing that happened, which starts a session. */
 export interface AutomationEvent {
-  kind: 'pull_request' | 'merge' | 'issue' | 'schedule';
+  kind: (typeof EVENT_KINDS)[number] | 'schedule';
   number?: number;
   title?: string;
   url?: string;
   branch?: string;
   base?: string;
+  /** For `commit`: how many commits arrived together. */
+  count?: number;
 }
 
-export const EVENT_KINDS = ['pull_request', 'merge', 'issue'] as const;
+export const EVENT_KINDS = ['pull_request', 'merge', 'issue', 'workflow_success', 'workflow_failure', 'commit'] as const;
 
 export const TRIGGER_LABELS: Record<AutomationTrigger['type'], string> = {
   schedule: 'On a schedule',
   pull_request: 'When a pull request is opened',
   merge: 'When a pull request is merged',
-  issue: 'When an issue is opened'
+  issue: 'When an issue is opened',
+  workflow_success: 'When a GitHub Actions run succeeds',
+  workflow_failure: 'When a GitHub Actions run fails',
+  commit: 'When commits are pushed to a branch'
 };
 
 export const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -96,9 +115,26 @@ export function freshNumbers(seen: number[] | undefined, current: number[], cap 
   return { fresh, seen: all.length > cap ? all.slice(all.length - cap) : all };
 }
 
+/** Whether an event is on the branch an agent watches. Without a branch set, everything matches. */
+export const onBranch = (a: Pick<AutomatedAgent, 'branch'>, ...branches: (string | undefined)[]) => !a.branch?.trim() || branches.includes(a.branch.trim());
+
+/** Like `freshNumbers` for commit hashes. `current` is newest first; the fresh ones come back oldest first. The first look only records. */
+export function freshCommits(seen: string[] | undefined, current: string[], cap = 200): { fresh: string[]; seen: string[] } {
+  const known = new Set(seen ?? []);
+  const fresh = seen ? current.filter((h) => !known.has(h)).reverse() : [];
+  const all = [...new Set([...current, ...(seen ?? [])])];
+  return { fresh, seen: all.slice(0, cap) };
+}
+
 export const applies = (a: Pick<AutomatedAgent, 'scope'>, repoId: string) => a.scope === 'global' || a.scope === repoId;
 
 const fill = (s: string, vars: Record<string, string>) => s.replace(/\{\{\s*(\w+)\s*\}\}/g, (m, k) => (k in vars ? vars[k] : m));
+
+/** Whether a finished run counts as a success, a failure, or neither (cancelled and skipped runs start nothing). */
+export function runOutcome(conclusion: string | null): 'workflow_success' | 'workflow_failure' | null {
+  if (conclusion === 'success') return 'workflow_success';
+  return conclusion === 'failure' || conclusion === 'timed_out' || conclusion === 'startup_failure' ? 'workflow_failure' : null;
+}
 
 /** The task a session starts with: what set it off, then the agent's prompt. */
 export function automationTask(a: Pick<AutomatedAgent, 'name' | 'prompt' | 'trigger'>, ev: AutomationEvent, repoName: string): string {
@@ -106,17 +142,21 @@ export function automationTask(a: Pick<AutomatedAgent, 'name' | 'prompt' | 'trig
   const what =
     ev.kind === 'pull_request' ? `pull request #${ev.number} was opened: ${ev.title}` :
     ev.kind === 'merge' ? `pull request #${ev.number} was merged: ${ev.title}` :
-    ev.kind === 'issue' ? `issue #${ev.number} was opened: ${ev.title}` : `its schedule (${describeTrigger(a.trigger).toLowerCase()}) came due`;
+    ev.kind === 'issue' ? `issue #${ev.number} was opened: ${ev.title}` :
+    ev.kind === 'commit' ? `${ev.count === 1 ? 'a commit was' : `${ev.count} commits were`} pushed to ${ev.branch}: ${ev.title}` :
+    ev.kind === 'workflow_success' ? `GitHub Actions run ${ev.title} succeeded${ev.branch ? ' on ' + ev.branch : ''}` :
+    ev.kind === 'workflow_failure' ? `GitHub Actions run ${ev.title} failed${ev.branch ? ' on ' + ev.branch : ''}` : `its schedule (${describeTrigger(a.trigger).toLowerCase()}) came due`;
   const head = `Automated agent “${a.name}” in ${repoName}: ${what}.${ev.url ? '\n' + ev.url : ''}`;
   return `${head}\n\n${fill(a.prompt.trim(), vars)}`;
 }
 
 /** A problem with an agent's settings, in words, or null. */
-export function validateAgent(a: Pick<AutomatedAgent, 'name' | 'prompt' | 'scope' | 'trigger' | 'budget'>): string | null {
+export function validateAgent(a: Pick<AutomatedAgent, 'name' | 'prompt' | 'scope' | 'trigger' | 'budget'> & { branch?: string }): string | null {
   if (!a.name.trim()) return 'Give the agent a name.';
   if (!a.prompt.trim()) return 'Say what the agent should do.';
   if (!a.scope) return 'Choose where the agent runs.';
   if (!(a.budget >= 0)) return 'The budget must be a number.';
+  if (a.branch && /\s/.test(a.branch.trim())) return 'A branch name has no spaces.';
   if (a.trigger.type === 'schedule' && a.trigger.every !== 'hour' && !/^\d{1,2}:\d{2}$/.test(a.trigger.time)) return 'Enter the time as HH:MM.';
   return null;
 }

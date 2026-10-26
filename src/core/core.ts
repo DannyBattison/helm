@@ -192,6 +192,8 @@ Object.assign(companionOps, {
 const automations = new Automations(store, {
   listPulls: (id) => GH.listPulls(id),
   listIssues: (id) => GH.listIssues(id),
+  listFinishedRuns: (id) => GH.listFinishedRuns(id),
+  listCommits: (id, branch) => GH.listBranchCommits(id, branch),
   start: async (repoId, base, task, a) => {
     await sessions.create({ repoId, base, task, model: a.model, budget: a.budget, permMode: a.permMode, automation: { id: a.id, name: a.name } });
   },
