@@ -154,7 +154,8 @@ export class BackendRegistry {
   has(id: string | undefined) { return !!id && this.list.some((b) => b.id === id); }
   /** The named backend, or the first one when the name is empty or unknown (an older session has none). */
   get(id?: string): AgentBackend { return this.list.find((b) => b.id === id) ?? this.list[0]; }
-  model(backend: string | undefined, model: string): ModelInfo { const b = this.get(backend); return b.models.find((m) => m.id === model) ?? b.models[0]; }
+  /** The named model of a backend; the backend's first when the name is not one of its models; a free stand-in when it lists none yet. */
+  model(backend: string | undefined, model: string): ModelInfo { const b = this.get(backend); return b.models.find((m) => m.id === model) ?? b.models[0] ?? { id: model, label: model, price: [0, 0] }; }
   /** Each backend as the interface sees it. `logins` is what was last read from `auth.status`. */
   async info(logins: Record<string, AgentLogin | undefined> = {}): Promise<BackendInfo[]> {
     return Promise.all(this.list.map(async (b) => {
