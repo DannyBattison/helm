@@ -142,7 +142,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
     <aside className={drawer ? "helm-drawer" : undefined} style={{ position: 'relative', width: drawer ? '100%' : width, flex: 'none', display: 'flex', flexDirection: 'column', background: 'var(--bg-sidebar)', borderRight: '1px solid var(--border)' }}>
       {drawer ? null : <Grip onMouseDown={grip} onDoubleClick={resetWidth} />}
       <div className="drag" style={{ height: 'var(--titlebar-h)', flex: 'none', display: 'flex', alignItems: 'center', gap: 10, padding: drawer ? '0 6px 0 14px' : '0 14px 0 ' + (windowControls() === 'left' ? 78 : 14) + 'px' }}>
-        <span style={{ marginLeft: drawer ? 0 : 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ marginLeft: drawer ? 0 : 'auto', marginRight: drawer || windowControls() === 'left' ? 0 : 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
           <img src={glyph} width="22" height="22" alt="" />
           <span style={{ font: '600 14px/1.5 var(--font-mono)', letterSpacing: '-0.02em', position: 'relative', top: '0.14em' }}>helm</span>
         </span>
