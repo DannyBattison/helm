@@ -1,5 +1,5 @@
-import type { Issue, PullRequest } from '../shared/types';
-import { applies, automationTask, freshNumbers, scheduleDue, validateAgent, type AutomatedAgent, type AutomationEvent } from '../shared/automations';
+import type { Issue, PullRequest, WorkflowRun } from '../shared/types';
+import { applies, automationTask, freshNumbers, runOutcome, scheduleDue, validateAgent, type AutomatedAgent, type AutomationEvent } from '../shared/automations';
 import type { Store } from './store';
 import { uid } from './util';
 
@@ -7,6 +7,8 @@ import { uid } from './util';
 export interface AutomationDeps {
   listPulls(repoId: string): Promise<PullRequest[]>;
   listIssues(repoId: string): Promise<Issue[]>;
+  /** The most recent finished workflow runs of the repository, newest first. */
+  listFinishedRuns(repoId: string): Promise<WorkflowRun[]>;
   start(repoId: string, base: string, task: string, agent: AutomatedAgent): Promise<void>;
   /** Branches of sessions that automated agents started, so their pull requests do not start more agents. */
   automatedBranches(repoId: string): Set<string>;
@@ -65,8 +67,11 @@ export class Automations {
     let started = 0;
     for (const repoId of repoIds) {
       try {
-        const base = ev.kind === 'pull_request' && ev.branch ? 'origin/' + ev.branch : ev.base || this.deps.defaultBranch(repoId);
-        await this.deps.start(repoId, base, automationTask(a, ev, this.deps.repoName(repoId)), a);
+        const base = (ev.kind === 'pull_request' || ev.kind.startsWith('workflow_')) && ev.branch ? 'origin/' + ev.branch : ev.base || this.deps.defaultBranch(repoId);
+        const task = automationTask(a, ev, this.deps.repoName(repoId));
+        // A run's branch may have been deleted since: start from the default branch then.
+        try { await this.deps.start(repoId, base, task, a); }
+        catch (e) { if (!ev.kind.startsWith('workflow_')) throw e; await this.deps.start(repoId, this.deps.defaultBranch(repoId), task, a); }
         started++;
       } catch (e) {
         this.store.log({ kind: 'start', who: 'helm', what: `automated agent “${a.name}” could not start`, repo: this.deps.repoName(repoId), detail: String((e as Error)?.message || e), ok: false });
@@ -126,6 +131,18 @@ export class Automations {
         const r = freshNumbers(seen.issue, issues.map((i) => i.number));
         seen.issue = r.seen;
         for (const n of r.fresh) { const i = issues.find((x) => x.number === n)!; found.push({ kind: 'issue', number: n, title: i.title, url: i.url }); }
+      }
+      if (want.has('workflow_success') || want.has('workflow_failure')) {
+        const runs = (await this.deps.listFinishedRuns(repoId)).filter((r) => runOutcome(r.conclusion));
+        const own = this.deps.automatedBranches(repoId);
+        // One seen list covers both outcomes, so a trigger added later does not replay old runs.
+        const r = freshNumbers(seen.workflow_failure, runs.map((x) => x.id));
+        seen.workflow_failure = r.seen;
+        for (const id of r.fresh) {
+          const x = runs.find((y) => y.id === id)!;
+          if (own.has(x.branch)) continue;
+          found.push({ kind: runOutcome(x.conclusion)!, number: x.number, title: x.title, url: x.url, branch: x.branch });
+        }
       }
     } catch { return; /* offline, or no access: look again next time */ }
     this.store.save();

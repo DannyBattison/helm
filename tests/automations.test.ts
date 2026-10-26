@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { automationTask, describeTrigger, freshNumbers, lastSlot, scheduleDue, validateAgent } from '../src/shared/automations';
+import { runOutcome, automationTask, describeTrigger, freshNumbers, lastSlot, scheduleDue, validateAgent } from '../src/shared/automations';
 import { Automations, type AutomationDeps } from '../src/core/automations';
 import { Store } from '../src/core/store';
 
@@ -49,14 +49,14 @@ describe('events', () => {
 
 describe('runner', () => {
   const pr = (number: number, state: 'open' | 'merged', branch = 'b' + number) => ({ number, title: 'T' + number, branch, base: 'main', state, draft: false, url: 'u' + number, checks: 'none' as const });
-  function setup(prs: () => any[]) {
+  function setup(prs: () => any[], runs: () => any[] = () => []) {
     const store = new Store();
     store.data.repos = [{ id: 'o/r', name: 'r', defaultBranch: 'main' } as any, { id: 'o/q', name: 'q', defaultBranch: 'dev' } as any];
     store.save = () => undefined;
     const started: { repo: string; base: string; task: string }[] = [];
     let now = at('2026-10-26T10:00:00');
     const deps: AutomationDeps = {
-      listPulls: async () => prs(), listIssues: async () => [], automatedBranches: () => new Set(['bot']),
+      listPulls: async () => prs(), listIssues: async () => [], listFinishedRuns: async () => runs(), automatedBranches: () => new Set(['bot']),
       start: async (repo, base, task) => { started.push({ repo, base, task }); },
       repoName: (id) => id.split('/')[1], defaultBranch: (id) => (id === 'o/q' ? 'dev' : 'main'), changed: () => undefined
     };
@@ -104,5 +104,28 @@ describe('runner', () => {
     expect(() => auto.save({ ...base, name: 'y', scope: 'nope/x', trigger: { type: 'issue' } })).toThrow();
     auto.remove(id);
     expect(auto.agents).toHaveLength(0);
+  });
+
+  it('starts agents when a workflow run fails or succeeds, skipping cancelled and automated runs', async () => {
+    const run = (id: number, conclusion: string, branch = 'feat') => ({ id, number: id, title: 'CI: build', status: 'completed', conclusion, branch, event: 'push', actor: 'a', url: 'u', at: '' });
+    let list = [run(1, 'failure')];
+    const { auto, started } = setup(() => [], () => list);
+    auto.save({ ...base, name: 'fix', scope: 'o/r', trigger: { type: 'workflow_failure' } });
+    auto.save({ ...base, name: 'ship', scope: 'o/r', trigger: { type: 'workflow_success' } });
+    await auto.tick();
+    expect(started).toHaveLength(0);
+    list = [run(5, 'failure', 'bot'), run(4, 'cancelled'), run(3, 'success'), run(2, 'failure'), run(1, 'failure')];
+    await auto.tick();
+    expect(started).toHaveLength(2);
+    expect(started.map((s) => s.task).join('\n')).toContain('failed on feat');
+    expect(started.map((s) => s.task).join('\n')).toContain('succeeded on feat');
+    expect(started[0].base).toBe('origin/feat');
+  });
+
+  it('classifies run conclusions', () => {
+    expect(runOutcome('success')).toBe('workflow_success');
+    expect(runOutcome('timed_out')).toBe('workflow_failure');
+    expect(runOutcome('cancelled')).toBeNull();
+    expect(runOutcome(null)).toBeNull();
   });
 });

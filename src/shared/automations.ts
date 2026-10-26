@@ -6,12 +6,14 @@ export type AutomationTrigger =
   | { type: 'schedule'; every: ScheduleEvery; /** HH:MM local time, for day, weekday and week. */ time: string; /** 0 (Sunday) to 6, for week. */ day: number }
   | { type: 'pull_request' }
   | { type: 'merge' }
-  | { type: 'issue' };
+  | { type: 'issue' }
+  | { type: 'workflow_success' }
+  | { type: 'workflow_failure' };
 
 export interface AutomatedAgent {
   id: string;
   name: string;
-  /** What the agent is asked to do each time it starts. May use {{repo}}, {{number}}, {{title}}, {{url}} and {{branch}}. */
+  /** What the agent is asked to do each time it starts. May use {{repo}}, {{number}}, {{title}}, {{url}} and {{branch}}; for a workflow run {{number}} is the run number and {{title}} names the workflow. */
   prompt: string;
   /** `global` runs in every repository; otherwise a repository id (`owner/name`). */
   scope: string;
@@ -27,11 +29,11 @@ export interface AutomatedAgent {
 }
 
 /** What an event trigger saw on a repository: the numbers already dealt with, per kind. A kind that is missing has not been looked at yet. */
-export type AutomationSeen = Partial<Record<'pull_request' | 'merge' | 'issue', number[]>>;
+export type AutomationSeen = Partial<Record<(typeof EVENT_KINDS)[number], number[]>>;
 
 /** One thing that happened, which starts a session. */
 export interface AutomationEvent {
-  kind: 'pull_request' | 'merge' | 'issue' | 'schedule';
+  kind: (typeof EVENT_KINDS)[number] | 'schedule';
   number?: number;
   title?: string;
   url?: string;
@@ -39,13 +41,15 @@ export interface AutomationEvent {
   base?: string;
 }
 
-export const EVENT_KINDS = ['pull_request', 'merge', 'issue'] as const;
+export const EVENT_KINDS = ['pull_request', 'merge', 'issue', 'workflow_success', 'workflow_failure'] as const;
 
 export const TRIGGER_LABELS: Record<AutomationTrigger['type'], string> = {
   schedule: 'On a schedule',
   pull_request: 'When a pull request is opened',
   merge: 'When a pull request is merged',
-  issue: 'When an issue is opened'
+  issue: 'When an issue is opened',
+  workflow_success: 'When a GitHub Actions run succeeds',
+  workflow_failure: 'When a GitHub Actions run fails'
 };
 
 export const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -100,13 +104,21 @@ export const applies = (a: Pick<AutomatedAgent, 'scope'>, repoId: string) => a.s
 
 const fill = (s: string, vars: Record<string, string>) => s.replace(/\{\{\s*(\w+)\s*\}\}/g, (m, k) => (k in vars ? vars[k] : m));
 
+/** Whether a finished run counts as a success, a failure, or neither (cancelled and skipped runs start nothing). */
+export function runOutcome(conclusion: string | null): 'workflow_success' | 'workflow_failure' | null {
+  if (conclusion === 'success') return 'workflow_success';
+  return conclusion === 'failure' || conclusion === 'timed_out' || conclusion === 'startup_failure' ? 'workflow_failure' : null;
+}
+
 /** The task a session starts with: what set it off, then the agent's prompt. */
 export function automationTask(a: Pick<AutomatedAgent, 'name' | 'prompt' | 'trigger'>, ev: AutomationEvent, repoName: string): string {
   const vars = { repo: repoName, number: ev.number != null ? String(ev.number) : '', title: ev.title ?? '', url: ev.url ?? '', branch: ev.branch ?? '' };
   const what =
     ev.kind === 'pull_request' ? `pull request #${ev.number} was opened: ${ev.title}` :
     ev.kind === 'merge' ? `pull request #${ev.number} was merged: ${ev.title}` :
-    ev.kind === 'issue' ? `issue #${ev.number} was opened: ${ev.title}` : `its schedule (${describeTrigger(a.trigger).toLowerCase()}) came due`;
+    ev.kind === 'issue' ? `issue #${ev.number} was opened: ${ev.title}` :
+    ev.kind === 'workflow_success' ? `GitHub Actions run ${ev.title} succeeded${ev.branch ? ' on ' + ev.branch : ''}` :
+    ev.kind === 'workflow_failure' ? `GitHub Actions run ${ev.title} failed${ev.branch ? ' on ' + ev.branch : ''}` : `its schedule (${describeTrigger(a.trigger).toLowerCase()}) came due`;
   const head = `Automated agent “${a.name}” in ${repoName}: ${what}.${ev.url ? '\n' + ev.url : ''}`;
   return `${head}\n\n${fill(a.prompt.trim(), vars)}`;
 }

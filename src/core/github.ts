@@ -347,6 +347,12 @@ export async function listRuns(slug: string, id: number, limit = 6): Promise<Wor
   return (r.workflow_runs || []).map((x: any): WorkflowRun => ({ id: x.id, number: x.run_number, title: x.display_title || x.name || '', status: x.status, conclusion: x.conclusion, branch: x.head_branch || '', event: x.event, actor: x.triggering_actor?.login || x.actor?.login || '', url: x.html_url, at: x.created_at }));
 }
 
+/** The repository's most recent finished runs across all workflows, newest first. */
+export async function listFinishedRuns(slug: string, limit = 30): Promise<WorkflowRun[]> {
+  const r = await gh(`/repos/${slug}/actions/runs?status=completed&per_page=${limit}`);
+  return (r.workflow_runs || []).map((x: any): WorkflowRun => ({ id: x.id, number: x.run_number, title: `${x.name || 'workflow'}: ${x.display_title || ''}`.replace(/: $/, ''), status: x.status, conclusion: x.conclusion, branch: x.head_branch || '', event: x.event, actor: x.triggering_actor?.login || x.actor?.login || '', url: x.html_url, at: x.created_at }));
+}
+
 export async function getPullBody(slug: string, number: number): Promise<string> {
   const x = await gh(`/repos/${slug}/pulls/${number}`);
   return x.body || '';
