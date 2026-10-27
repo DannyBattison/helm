@@ -214,6 +214,8 @@ export interface Session {
   budget: number;
   /** Context window tokens in use. */
   ctx: number;
+  /** Size of the context window, when the agent says (Claude's is taken as 200k). */
+  ctxMax?: number;
   add: number;
   del: number;
   files: number;

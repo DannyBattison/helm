@@ -4,7 +4,7 @@ import { api, platform } from '../api';
 import { commandSteps } from '@shared/commandSummary';
 import { Cmd, Hl } from '../Hl';
 import { highlightBlock, langFromPath, langFromTag } from '../highlight';
-import { agentName, billingOf, can, clock, elapsed, fmtTokens, modelOptions, prettyModel, runningSubagents, STATUS_LABEL, subagentTree, tilde } from '../lib';
+import { ctxMax, agentName, billingOf, can, clock, elapsed, fmtTokens, modelOptions, prettyModel, runningSubagents, STATUS_LABEL, subagentTree, tilde } from '../lib';
 import { go, loadTranscript, setUI, toast, useApp, useMoney, useTranscript } from '../store';
 import { Avatar, Badge, BranchTag, Button, CopyBox, DiffStat, Grip, IconButton, Lightbox, Meter, Select, StatusDot, Tabs, Tooltip, useNarrow, usePaneWidth } from '../ui';
 import { QuestionForm } from './QuestionForm';
@@ -453,7 +453,7 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
   };
 
   const placeholder = s.ask?.type === 'question' ? 'Type your answer' : s.ask ? 'Tell the agent what to do instead, or approve above' : working ? 'Add guidance while it works' + (interruptKey === 'esc' ? ', or press Esc to interrupt' : interruptKey === 'double-esc' ? ', or press Esc twice to interrupt' : '') : 'Reply to ' + (s.customTitle || s.title || s.id) + '. @ mentions a file, and you can paste or drop images';
-  const ctxPct = Math.round((s.ctx / 200000) * 100);
+  const ctxPct = Math.round((s.ctx / ctxMax(s)) * 100);
   return (
     <div style={{ flex: 'none', padding: '0 20px 16px' }}>
       <div
@@ -492,7 +492,7 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
           <IconButton icon="paperclip" label="Attach an image" size="sm" onClick={() => picker.current?.click()} />
           {narrow ? <div style={{ order: 3, flexBasis: '100%', display: 'flex', gap: 6 }}><Select size="sm" style={{ flex: 1, minWidth: 0 }} value={s.model} onChange={(e: any) => guard(api.setSessionModel(s.id, e.target.value as ModelAlias))} options={modelOptions(app, s.backend)} />{can(app, s, 'effort') ? <Select size="sm" style={{ flex: 1, minWidth: 0 }} value={s.effort || 'default'} onChange={(e: any) => guard(api.setSessionEffort(s.id, e.target.value === 'default' ? null : (e.target.value as Effort)))} options={EFFORTS} /> : null}<Select size="sm" style={{ flex: 1, minWidth: 0 }} value={s.permMode} onChange={(e: any) => guard(api.setSessionPermMode(s.id, e.target.value as PermMode))} options={[{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits' }, ...(can(app, s, 'planMode') ? [{ value: 'plan', label: 'Plan only' }] : []), { value: 'all', label: 'Allow everything' }]} /></div> : <><Select size="sm" value={s.model} onChange={(e: any) => guard(api.setSessionModel(s.id, e.target.value as ModelAlias))} options={modelOptions(app, s.backend)} />{can(app, s, 'effort') ? <Select size="sm" value={s.effort || 'default'} onChange={(e: any) => guard(api.setSessionEffort(s.id, e.target.value === 'default' ? null : (e.target.value as Effort)))} options={EFFORTS} /> : null}<Select size="sm" value={s.permMode} onChange={(e: any) => guard(api.setSessionPermMode(s.id, e.target.value as PermMode))} options={[{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits' }, ...(can(app, s, 'planMode') ? [{ value: 'plan', label: 'Plan only' }] : []), { value: 'all', label: 'Allow everything' }]} /></>}
           <span style={{ flex: 1 }} />
-          {s.ctx ? <span title={`Context window: ${fmtTokens(s.ctx)} of 200k tokens in use`} style={{ font: '400 11.5px/1.5 var(--font-mono)', color: ctxPct >= 75 ? 'var(--status-attention-text)' : 'var(--text-3)', whiteSpace: 'nowrap' }}>{ctxPct}% context</span> : null}
+          {s.ctx ? <span title={`Context window: ${fmtTokens(s.ctx)} of ${fmtTokens(ctxMax(s))} tokens in use`} style={{ font: '400 11.5px/1.5 var(--font-mono)', color: ctxPct >= 75 ? 'var(--status-attention-text)' : 'var(--text-3)', whiteSpace: 'nowrap' }}>{ctxPct}% context</span> : null}
           {working ? <Button size="sm" variant="ghost" kbd={narrow ? undefined : interruptKey === 'esc' ? 'Esc' : interruptKey === 'double-esc' ? 'Esc Esc' : undefined} onClick={() => guard(api.interrupt(s.id))}>Interrupt</Button> : null}
           <Button size="sm" variant="primary" icon="paper-plane-right" kbd={narrow ? undefined : enterSends ? '↵' : MOD() + '↵'} disabled={!text.trim() && !images.length} onClick={send}>Send</Button>
         </div>
@@ -515,7 +515,7 @@ function UsagePanel({ s }: { s: S }) {
       <Grip edge="left" onMouseDown={grip} onDoubleClick={resetWidth} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <span style={label}>Usage</span>
-        <Meter label="Context window" detail={fmtTokens(s.ctx) + ' / 200k'} value={s.ctx} max={200000} warnAt={0.75} />
+        <Meter label="Context window" detail={fmtTokens(s.ctx) + ' / ' + fmtTokens(ctxMax(s))} value={s.ctx} max={ctxMax(s)} warnAt={0.75} />
         {sub ? null : <Meter label="Session budget" detail={fmt(s.cost) + ' / ' + fmt(s.budget, true)} value={s.cost} max={s.budget} warnAt={app.settings.warnAt / 100} />}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 4 }}>
           {n(fmtTokens(s.tokens.input), 'Input')}{n(fmtTokens(s.tokens.output), 'Output')}{n(fmtTokens(s.tokens.cacheRead), 'Cache read')}{sub ? n(String(s.subagents.length), 'Subagents') : n(fmt(s.cost), 'Cost so far')}

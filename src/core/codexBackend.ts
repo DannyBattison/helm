@@ -2,6 +2,9 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import type { AgentBackend, AgentBlock, AgentCapabilities, AgentEvent, AgentHandle, AgentStartOptions, BackendAuth, ConversationInfo, ConversationStore, PlanProbe, PlanWindow, ReviewOutcome, ReviewRequest, ToolDecision } from './backend';
 import type { AgentLogin, Effort, MessageImage, ModelInfo, PermMode, TranscriptEvent } from '../shared/types';
 import { run } from './util';
+import { existsSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { convertMessages } from './transcript';
 
 /**
@@ -17,6 +20,19 @@ export interface CodexPaths {
 }
 
 type Json = any;
+
+/**
+ * Where `codex` is. An app started from a desktop icon does not see the PATH a terminal has, so look where npm, Homebrew and
+ * the usual installers put it as well. A path set in Settings wins.
+ */
+export function findCodex(configured?: string): string {
+  if (configured) return configured;
+  const win = process.platform === 'win32';
+  const name = win ? 'codex.cmd' : 'codex';
+  const dirs = [...(process.env.PATH || '').split(win ? ';' : ':'), '/opt/homebrew/bin', '/usr/local/bin', join(homedir(), '.local/bin'), join(homedir(), '.npm-global/bin'), join(homedir(), '.volta/bin'), join(homedir(), '.bun/bin'), win ? join(process.env.APPDATA || '', 'npm') : ''].filter(Boolean);
+  for (const d of dirs) { const f = join(d, name); if (existsSync(f)) return f; }
+  return name;
+}
 type Notice = { method: string; params: Json };
 
 /** The server process and a request/response layer over it. */
@@ -36,8 +52,8 @@ export class CodexServer {
   onRequest(fn: (method: string, params: Json) => Promise<Json>) { this.requestHandler = fn; }
 
   private start(): Promise<void> {
-    const exe = this.paths.cli() || 'codex';
-    const p = spawn(exe, ['app-server'], { stdio: ['pipe', 'pipe', 'pipe'], env: process.env });
+    const exe = findCodex(this.paths.cli());
+    const p = spawn(exe, ['app-server'], { stdio: ['pipe', 'pipe', 'pipe'], env: process.env, shell: process.platform === 'win32' });
     this.proc = p;
     p.stdout.on('data', (d) => {
       this.buf += d;
@@ -49,6 +65,8 @@ export class CodexServer {
       }
     });
     p.stderr.on('data', () => undefined);
+    // Writing to a process that never started (Codex is not installed) must not take helm down with it.
+    p.stdin.on('error', () => undefined);
     const gone = (why: string) => {
       if (this.proc === p) { this.proc = null; this.ready = null; }
       for (const w of this.pending.values()) w.reject(new Error(why));
@@ -101,6 +119,25 @@ export class CodexServer {
 }
 
 // ---------------------------------------------------------------- mapping
+
+/**
+ * OpenAI's structured output wants every property listed as required and no extras allowed, where helm's schemas leave some
+ * optional. Make each one required, and let a property that was optional also be null.
+ */
+export function strictSchema(schema: any): any {
+  if (Array.isArray(schema)) return schema.map(strictSchema);
+  if (!schema || typeof schema !== 'object') return schema;
+  const out: any = Object.fromEntries(Object.entries(schema).map(([k, v]) => [k, k === 'properties' ? Object.fromEntries(Object.entries(v as any).map(([n, p]) => [n, strictSchema(p)])) : strictSchema(v)]));
+  if (out.type === 'object' && out.properties) {
+    const required = new Set<string>(out.required || []);
+    for (const [n, p] of Object.entries<any>(out.properties)) {
+      if (!required.has(n) && typeof p.type === 'string') out.properties[n] = { ...p, type: [p.type, 'null'] };
+    }
+    out.required = Object.keys(out.properties);
+    out.additionalProperties = false;
+  }
+  return out;
+}
 
 const approvalFor = (m: PermMode) => (m === 'all' ? 'never' : m === 'ask' ? 'untrusted' : 'on-request');
 const sandboxFor = (m: PermMode, roots: string[]) =>
@@ -231,6 +268,8 @@ export class CodexBackend implements AgentBackend {
 
   constructor(private paths: CodexPaths) {
     this.server = new CodexServer(paths);
+    // Don't leave the app server running after helm closes.
+    process.once('exit', () => this.server.stop());
     this.server.onNotice((n) => this.notice(n));
     this.server.onRequest((method, params) => this.serverRequest(method, params));
   }
@@ -269,7 +308,7 @@ export class CodexBackend implements AgentBackend {
 
   async version(path?: string): Promise<string | null> {
     try {
-      const out = await run(path || this.paths.cli() || 'codex', ['--version'], { timeout: 8000 });
+      const out = await run(findCodex(path || this.paths.cli()), ['--version'], { timeout: 8000 });
       return out.trim().split(/\s+/).pop() || null;
     } catch { return null; }
   }
@@ -335,7 +374,7 @@ export class CodexBackend implements AgentBackend {
       const done = new Promise<Json>((resolve) => {
         const off = this.server.onNotice((n) => { if (n.method === 'turn/completed' && n.params?.threadId === threadId) { off(); resolve(n.params.turn); } if (n.method === '_exit') { off(); resolve({ status: 'failed', error: { message: 'Codex stopped' } }); } });
       });
-      await this.server.request('turn/start', { threadId, input: [{ type: 'text', text: req.prompt, text_elements: [] }], outputSchema: req.schema });
+      await this.server.request('turn/start', { threadId, input: [{ type: 'text', text: req.prompt, text_elements: [] }], outputSchema: strictSchema(req.schema) });
       const turn = await done;
       if (turn.status === 'failed') failure = String(turn.error?.message || 'The reviewer failed');
       const msg = [...(turn.items || [])].reverse().find((i: Json) => i.type === 'agentMessage');
@@ -554,7 +593,7 @@ class CodexHandle {
     const u = this.lastUsage?.last;
     if (u) {
       const cached = u.cachedInputTokens ?? 0;
-      this.push({ t: 'assistant', parentId: null, blocks: [], usage: { input: Math.max(0, (u.inputTokens ?? 0) - cached), output: u.outputTokens ?? 0, cacheWrite: u.cacheWriteInputTokens ?? 0, cacheRead: cached } });
+      this.push({ t: 'assistant', parentId: null, blocks: [], usage: { input: Math.max(0, (u.inputTokens ?? 0) - cached), output: u.outputTokens ?? 0, cacheWrite: u.cacheWriteInputTokens ?? 0, cacheRead: cached, contextWindow: this.lastUsage.modelContextWindow ?? undefined } });
     }
     this.turnId = null;
     this.changes.clear();

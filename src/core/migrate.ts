@@ -12,7 +12,7 @@ export const EXPORT_FORMAT = 'helm-export';
 export const EXPORT_VERSION = 1;
 
 /** Settings that describe the machine they were set on, so an import keeps the destination's own. */
-export const MACHINE_SETTINGS: (keyof Settings)[] = ['claudePath', 'worktreeRoot', 'freeRoot', 'cloneRoot', 'terminalShell', 'terminalShellCustom', 'companionEnabled', 'companionUrl', 'githubClientId', 'tray', 'autoUpdate', 'syncEnabled'];
+export const MACHINE_SETTINGS: (keyof Settings)[] = ['claudePath', 'codexPath', 'worktreeRoot', 'freeRoot', 'cloneRoot', 'terminalShell', 'terminalShellCustom', 'companionEnabled', 'companionUrl', 'githubClientId', 'tray', 'autoUpdate', 'syncEnabled'];
 /** State kept as lists of records without an id of their own. */
 const LISTS = ['usage', 'audit', 'daily'] as const;
 /** Folders and files in the data directory that belong in an export. Caches, logs and `*.bin` secrets do not. */

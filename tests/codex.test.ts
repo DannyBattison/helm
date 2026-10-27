@@ -82,7 +82,7 @@ describe('Codex through a stand-in app server', () => {
     expect(results.results[0]).toEqual({ id: 'c1', text: 'ok\n3 passed', isError: false });
     expect(ev.find((e) => e.t === 'plan_usage')).toEqual({ t: 'plan_usage', fiveHour: expect.objectContaining({ util: 0.5 }) });
     const usage = ev.find((e) => e.t === 'assistant' && e.usage) as Extract<AgentEvent, { t: 'assistant' }>;
-    expect(usage.usage).toEqual({ input: 50, output: 20, cacheWrite: 0, cacheRead: 30 });
+    expect(usage.usage).toEqual({ input: 50, output: 20, cacheWrite: 0, cacheRead: 30, contextWindow: 200000 });
     expect(ev[ev.length - 1]).toEqual({ t: 'result', isError: false, text: '' });
     h.close();
   });
@@ -120,5 +120,27 @@ describe('Codex through a stand-in app server', () => {
     expect(await c.fork({ sourceId: 't9', sourceDir: '/w', destDir: '/n', upToMessageId: 'u1', title: 'Fork' })).toBe('forked-u1');
     const events = await c.transcript('t9', '/w');
     expect(events.map((e) => e.k)).toEqual(['user', 'agent', 'user', 'bash']);
+  });
+});
+
+import { findCodex, strictSchema } from '../src/core/codexBackend';
+import { REVIEW_SCHEMA } from '../src/shared/selfreview';
+
+describe('Codex details', () => {
+  it('makes helm\'s review schema strict for structured output', () => {
+    const s = strictSchema(REVIEW_SCHEMA);
+    expect(s.additionalProperties).toBe(false);
+    expect(s.required).toEqual(['summary', 'findings']);
+    const f = s.properties.findings.items;
+    expect(f.additionalProperties).toBe(false);
+    expect(f.required).toEqual(['severity', 'file', 'line', 'text']);
+    expect(f.properties.file.type).toEqual(['string', 'null']);
+    expect(f.properties.line.type).toEqual(['integer', 'null']);
+    expect(f.properties.text.type).toBe('string');
+    // The original is left as it was.
+    expect(REVIEW_SCHEMA.properties.findings.items.required).toEqual(['severity', 'text']);
+  });
+  it('uses the path from Settings as it is', () => {
+    expect(findCodex('/opt/x/codex')).toBe('/opt/x/codex');
   });
 });

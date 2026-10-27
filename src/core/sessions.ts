@@ -613,7 +613,7 @@ export class SessionManager {
       s.tokens.output += u.output;
       s.tokens.cacheRead += u.cacheRead;
       this.store.addLifetimeTokens(s.repoId, inp, u.output, u.cacheRead);
-      if (!sub) s.ctx = inp + u.cacheRead;
+      if (!sub) { s.ctx = inp + u.cacheRead; if (u.contextWindow) s.ctxMax = u.contextWindow; }
       else sub.tokens += inp + u.output;
       const [pi, po] = this.registry.model(s.backend, s.model).price;
       const est = (u.input * pi + u.cacheWrite * pi * 1.25 + u.cacheRead * pi * 0.1 + u.output * po) / 1e6;

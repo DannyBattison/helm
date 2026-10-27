@@ -8,7 +8,7 @@ export type { AgentCapabilities, ModelInfo };
  */
 
 /** Token counts for one model call. `cacheWrite` is input that was written to the prompt cache, billed like input. */
-export interface AgentUsage { input: number; output: number; cacheWrite: number; cacheRead: number }
+export interface AgentUsage { input: number; output: number; cacheWrite: number; cacheRead: number; /** Size of the model's context window, when the agent says. */ contextWindow?: number }
 
 export type AgentBlock =
   | { type: 'text'; text: string }
