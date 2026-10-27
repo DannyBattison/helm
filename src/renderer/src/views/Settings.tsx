@@ -427,7 +427,7 @@ export function Settings({ section }: { section?: string }) {
   const hosted = !!window.helmBridge.hosted;
   const app = useApp();
   const st = app.settings;
-  const [sec, setSec] = React.useState(section || 'account');
+  const [sec, setSec] = React.useState(!section || section === 'account' ? 'github' : section);
   const [signOut, setSignOut] = React.useState(false);
   const { fmt, sym, to, from, cur } = useMoney();
   const plan = livePlan(app);
@@ -443,7 +443,9 @@ export function Settings({ section }: { section?: string }) {
   const subCols = useColumns('subagent-repos', [{ w: 1, min: 160, flex: true }, { w: 170, min: 110, fixed: true }]);
   const pctOptions = [{ value: '0', label: 'Off' }, { value: '50', label: '50%' }, { value: '70', label: '70%' }, { value: '80', label: '80%' }, { value: '90', label: '90%' }];
   const subLimits = (extra: number[]) => [...new Set([0, 1, 2, 3, 4, 6, 8, 12, ...extra])].sort((a, b) => a - b).map((n) => ({ value: String(n), label: n === 0 ? 'Off' : String(n) }));
-  const nav = [['account', 'Account', 'github-logo'], ['agents', 'Agents', 'robot'], ['claude', 'Claude Code', 'sparkle'], ['codex', 'Codex', 'terminal-window'], ['automations', 'Automated agents', 'clock-clockwise'], ['mcp', 'MCP servers', 'plugs-connected'], ['worktrees', 'Worktrees', 'tree-structure'], ['budgets', 'Usage', 'coins'], ...(hosted ? [] : [['companion', 'Companion', 'broadcast']]), ['notifications', 'Notifications', 'bell'], ['appearance', 'Appearance', 'paint-brush'], ['shortcuts', 'Keyboard shortcuts', 'keyboard'], ['transfer', 'Import and export', 'arrows-left-right'], ['sync', 'Sync', 'arrows-clockwise'], ['about', 'About and support', 'info']];
+  const nav: [string, string, string, number?][] = [['github', 'GitHub', 'github-logo', 1], ['claude', 'Claude Code', 'sparkle', 1], ['codex', 'Codex', 'terminal-window', 1], ['agents', 'Agents', 'robot'], ['automations', 'Automated agents', 'clock-clockwise'], ['mcp', 'MCP servers', 'plugs-connected'], ['worktrees', 'Worktrees', 'tree-structure'], ['budgets', 'Usage', 'coins'], ...(hosted ? [] : [['companion', 'Companion', 'broadcast']]), ['notifications', 'Notifications', 'bell'], ['appearance', 'Appearance', 'paint-brush'], ['shortcuts', 'Keyboard shortcuts', 'keyboard'], ['transfer', 'Import and export', 'arrows-left-right'], ['sync', 'Sync', 'arrows-clockwise'], ['about', 'About and support', 'info']];
+  // Accounts is a node of its own with nothing on it: it only holds the three accounts, always shown.
+  const groups: Record<string, string> = { github: 'Accounts' };
   const notif = (key: 'notifyAttention' | 'notifyReady' | 'notifyFailed' | 'notifyChecks', title: string) => (
     <SettingRow title={title}>
       <Switch checked={st[key].desktop} onChange={(v: boolean) => set({ [key]: { ...st[key], desktop: v } })} label="Desktop" />
@@ -458,13 +460,18 @@ export function Settings({ section }: { section?: string }) {
         </nav>
       ) : (
         <nav style={{ width: 200, flex: 'none', padding: '16px 8px', borderRight: '1px solid var(--border)' }}>
-          {nav.map(([k, l, ic]) => <TreeItem key={k} icon={ic} label={l} selected={sec === k} onClick={() => setSec(k)} />)}
+          {nav.map(([k, l, ic, depth]) => (
+            <React.Fragment key={k}>
+              {groups[k] ? <TreeItem icon="user-circle" label={groups[k]} expandable expanded style={{ cursor: 'default' }} /> : null}
+              <TreeItem icon={ic} label={l} depth={depth || 0} selected={sec === k} onClick={() => setSec(k)} />
+            </React.Fragment>
+          ))}
         </nav>
       )}
       <div style={{ flex: 1, minWidth: 0, overflow: 'auto' }}>
         <div style={{ maxWidth: 720, padding: narrow ? '16px 14px 32px' : '24px 32px 40px' }}>
-          {sec === 'account' ? <>
-            <H sub="helm signs in with GitHub only. Repositories, pull requests and history all come from this account.">Account</H>
+          {sec === 'github' ? <>
+            <H sub="helm signs in with GitHub. Repositories, pull requests and history all come from this account. Claude Code and Codex are signed in separately, under Accounts.">GitHub</H>
             <SettingRow title={<span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Avatar name={app.user?.login || '?'} src={app.user?.avatar || undefined} size={24} />{app.user?.name || app.user?.login} <Badge mono>@{app.user?.login}</Badge></span>} desc="Signed in with GitHub · scopes: repo, read:org, workflow">
               <Button variant="ghost" onClick={() => setSignOut(true)}>Sign out</Button>
             </SettingRow>
@@ -472,13 +479,13 @@ export function Settings({ section }: { section?: string }) {
               <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>{(app.user?.orgs || []).length ? app.user!.orgs.map((o) => <Badge key={o}>{o}</Badge>) : <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>None</span>}</span>
               <Button size="sm" iconRight="arrow-square-out" onClick={() => api.openExternal('https://github.com/settings/applications')}>Manage on GitHub</Button>
             </SettingRow>
-            <SettingRow title="Commit identity" desc="Your git user.name and user.email are used for commits and pushes. Who agent commits are credited to is set under Claude Code." />
+            <SettingRow title="Commit identity" desc="Your git user.name and user.email are used for commits and pushes. Who agent commits are credited to is set under Agents." />
             <SettingRow title="GitHub OAuth client ID" desc="Used for sign-in. Create an OAuth app on GitHub with device flow enabled.">
               <Field value={st.githubClientId} onCommit={(v: string) => set({ githubClientId: v.trim() })} style={{ width: 240 }} />
             </SettingRow>
           </> : null}
           {sec === 'agents' ? <>
-            <H sub="Settings for every agent. Accounts, command-line tools and anything specific to one agent are under Claude Code and Codex.">Agents</H>
+            <H sub="Settings for every agent. Each agent's account, command-line tool and anything specific to it are under Accounts, in Claude Code and Codex.">Agents</H>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '4px 0 2px' }}>
               {app.backends.map((b) => <Badge key={b.id} tone={b.ready ? 'ready' : undefined} dot>{b.label}: {b.ready ? 'ready' : !b.installed ? 'not installed' : 'not signed in'}</Badge>)}
             </div>

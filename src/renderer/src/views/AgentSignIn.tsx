@@ -49,7 +49,7 @@ export function AgentSignInPanel({ backend, onDone }: { backend: BackendInfo; on
   const error = err ? <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--status-error-text)' }}>{err}</span> : null;
 
   if (!backend.installed) {
-    return <p style={text}>{backend.label} is not installed on this machine, so it cannot be signed in. Install it, or set its path under Settings → Agents.</p>;
+    return <p style={text}>{backend.label} is not installed on this machine, so it cannot be signed in. Install it, or set its path under Settings → Accounts.</p>;
   }
   if (!step) {
     return <>
