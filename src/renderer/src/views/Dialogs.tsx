@@ -371,6 +371,7 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: narrow ? 'minmax(0,1fr)' : sub ? '1fr 1fr' : '1fr 1fr 110px', gap: 8, ...(compare ? { opacity: 0.5 } : null) }}>
           <Select disabled={compare} value={choice} onChange={(e: any) => setChoice(e.target.value)} options={modelChoices(app)} />
+          {modelChoices(app).length ? null : <span style={{ gridColumn: '1 / -1', font: '400 12px/1.45 var(--font-sans)', color: 'var(--status-error-text)' }}>No agent is ready. Turn one on under Settings → Agents, and set it up under Settings → Accounts.</span>}
           <Select value={perm} onChange={(e: any) => setPerm(e.target.value)} options={PERM_OPTIONS} />
           {sub ? null : <Input mono value={sym + budget} onChange={(e: any) => setBudget(e.target.value.replace(/[^0-9.]/g, ''))} />}
         </div>

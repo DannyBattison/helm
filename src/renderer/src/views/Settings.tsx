@@ -443,7 +443,7 @@ export function Settings({ section }: { section?: string }) {
   const subCols = useColumns('subagent-repos', [{ w: 1, min: 160, flex: true }, { w: 170, min: 110, fixed: true }]);
   const pctOptions = [{ value: '0', label: 'Off' }, { value: '50', label: '50%' }, { value: '70', label: '70%' }, { value: '80', label: '80%' }, { value: '90', label: '90%' }];
   const subLimits = (extra: number[]) => [...new Set([0, 1, 2, 3, 4, 6, 8, 12, ...extra])].sort((a, b) => a - b).map((n) => ({ value: String(n), label: n === 0 ? 'Off' : String(n) }));
-  const nav: [string, string, string, number?][] = [['github', 'GitHub', 'github-logo', 1], ['claude', 'Claude Code', 'sparkle', 1], ['codex', 'Codex', 'terminal-window', 1], ['agents', 'Agents', 'robot'], ['automations', 'Automated agents', 'clock-clockwise'], ['mcp', 'MCP servers', 'plugs-connected'], ['worktrees', 'Worktrees', 'tree-structure'], ['budgets', 'Usage', 'coins'], ...(hosted ? [] : [['companion', 'Companion', 'broadcast']]), ['notifications', 'Notifications', 'bell'], ['appearance', 'Appearance', 'paint-brush'], ['shortcuts', 'Keyboard shortcuts', 'keyboard'], ['transfer', 'Import and export', 'arrows-left-right'], ['sync', 'Sync', 'arrows-clockwise'], ['about', 'About and support', 'info']];
+  const nav = [['github', 'GitHub', 'github-logo', 1], ['claude', 'Claude Code', 'sparkle', 1], ['codex', 'Codex', 'terminal-window', 1], ['agents', 'Agents', 'robot'], ['automations', 'Automated agents', 'clock-clockwise'], ['mcp', 'MCP servers', 'plugs-connected'], ['worktrees', 'Worktrees', 'tree-structure'], ['budgets', 'Usage', 'coins'], ...(hosted ? [] : [['companion', 'Companion', 'broadcast']]), ['notifications', 'Notifications', 'bell'], ['appearance', 'Appearance', 'paint-brush'], ['shortcuts', 'Keyboard shortcuts', 'keyboard'], ['transfer', 'Import and export', 'arrows-left-right'], ['sync', 'Sync', 'arrows-clockwise'], ['about', 'About and support', 'info']] as [string, string, string, number?][];
   // Accounts is a node of its own with nothing on it: it only holds the three accounts, always shown.
   const groups: Record<string, string> = { github: 'Accounts' };
   const notif = (key: 'notifyAttention' | 'notifyReady' | 'notifyFailed' | 'notifyChecks', title: string) => (
@@ -486,9 +486,22 @@ export function Settings({ section }: { section?: string }) {
           </> : null}
           {sec === 'agents' ? <>
             <H sub="Settings for every agent. Each agent's account, command-line tool and anything specific to it are under Accounts, in Claude Code and Codex.">Agents</H>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '4px 0 2px' }}>
-              {app.backends.map((b) => <Badge key={b.id} tone={b.ready ? 'ready' : undefined} dot>{b.label}: {b.ready ? 'ready' : !b.installed ? 'not installed' : 'not signed in'}</Badge>)}
-            </div>
+            {app.backends.map((b) => {
+              const on = (st.enabledAgents || []).includes(b.id);
+              const left = app.backends.filter((x) => (st.enabledAgents || []).includes(x.id)).length;
+              const last = on && left <= 1;
+              return (
+                <SettingRow key={b.id} title={b.label}
+                  desc={b.configured
+                    ? (on ? 'On. Its models are offered when you start a session.' : 'Off. It is left out of the model lists and cannot start new sessions; sessions it already has still work.')
+                    : <>{!b.installed ? 'Not installed on this machine.' : 'Not signed in.'} It cannot be used until it is set up, under <a href="#" onClick={(e) => { e.preventDefault(); setSec(b.id); }} style={{ color: 'var(--accent-text, var(--accent))' }}>Accounts → {b.label}</a>.</>}>
+                  {b.configured ? <Badge tone="ready" dot>ready</Badge> : <Button size="sm" variant="secondary" onClick={() => setSec(b.id)}>{!b.installed ? 'Set up' : 'Sign in'}</Button>}
+                  <span title={last ? 'At least one agent has to stay on.' : undefined}>
+                    <Switch checked={on} disabled={last} onChange={(v: boolean) => set({ enabledAgents: v ? [...(st.enabledAgents || []), b.id] : (st.enabledAgents || []).filter((x) => x !== b.id) })} />
+                  </span>
+                </SettingRow>
+              );
+            })}
             <SettingRow title="Default model" desc="New sessions start with this. Models of every agent you are signed in to are listed."><Select value={defaultChoice(app)} onChange={(e: any) => { const c = splitChoice(e.target.value); set({ defaultBackend: c.backend, defaultModel: c.model }); }} options={modelChoices(app)} /></SettingRow>
             <SettingRow title="Permission mode" desc={st.permMode === 'all' ? 'Agents run every command and edit every file without asking. The worktree keeps them off your checkout, but they can still reach the network and files outside it. Pre-approved patterns and approvals no longer matter.' : 'What an agent can do without asking you first.'}><Select value={st.permMode} onChange={(e: any) => set({ permMode: e.target.value as PermMode })} options={PERM_OPTIONS} /></SettingRow>
             <SettingRow title="Always allowed commands" desc="Comma separated patterns. * matches anything. Added to when you choose Always allow.">

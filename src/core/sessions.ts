@@ -177,6 +177,8 @@ export class SessionManager {
     this.held = false;
     const free = input.repoId === FREE_ID;
     const backendId = this.registry.get(input.backend || this.store.data.settings.defaultBackend).id;
+    const on = this.store.data.settings.enabledAgents;
+    if (on && !on.includes(backendId)) throw new Error(`${this.registry.get(backendId).label} is turned off. Turn it on under Settings → Agents, or pick another agent.`);
     const modelId = this.registry.model(backendId, input.model).id;
     const repo = free ? undefined : this.store.data.repos.find((r) => r.id === input.repoId);
     if (!free && !repo) throw new Error('Repository not found');

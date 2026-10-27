@@ -19,6 +19,7 @@ export const defaultSettings = (): Settings => ({
   githubClientId: process.env.HELM_GITHUB_CLIENT_ID || DEFAULT_GITHUB_CLIENT_ID,
   claudePath: '',
   codexPath: '',
+  enabledAgents: ['claude', 'codex'],
   defaultBackend: 'claude',
   defaultModel: 'sonnet',
   permMode: 'ask',

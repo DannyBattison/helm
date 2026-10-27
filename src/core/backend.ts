@@ -165,11 +165,13 @@ export class BackendRegistry {
    * counts as ready when the check could not be made (an error, as opposed to a clear "not signed in"), so a missing command-line
    * tool does not shut out an agent that works without it.
    */
-  async info(logins: Record<string, AgentLogin | undefined> = {}): Promise<BackendInfo[]> {
+  async info(logins: Record<string, AgentLogin | undefined> = {}, enabledIds?: string[]): Promise<BackendInfo[]> {
     return Promise.all(this.list.map(async (b) => {
       const login = logins[b.id];
       const version = await b.version().catch(() => null);
-      return { id: b.id, label: b.label, shortName: b.shortName, models: b.models, capabilities: b.capabilities, version, installed: !!b.bundled || version !== null, canSignIn: !!b.auth, login, ready: (!b.auth || !!login?.loggedIn || (!!b.bundled && !!login?.error)) && (!!b.bundled || version !== null) };
+      const configured = (!b.auth || !!login?.loggedIn || (!!b.bundled && !!login?.error)) && (!!b.bundled || version !== null);
+      const enabled = !enabledIds || enabledIds.includes(b.id);
+      return { id: b.id, label: b.label, shortName: b.shortName, models: b.models, capabilities: b.capabilities, version, installed: !!b.bundled || version !== null, canSignIn: !!b.auth, login, configured, enabled, ready: configured && enabled };
     }));
   }
 }

@@ -54,7 +54,11 @@ export interface BackendInfo {
   canSignIn: boolean;
   /** Who is signed in, when known. Absent when the agent has no account or it could not be checked. */
   login?: AgentLogin;
-  /** Models of this agent can be started: it is signed in, or has no account to sign in to. */
+  /** Signed in (or has no account) and installed. */
+  configured: boolean;
+  /** Turned on in Settings → Agents. */
+  enabled: boolean;
+  /** Can start sessions now: configured and turned on. */
   ready: boolean;
 }
 export type ThemePref = 'dark' | 'light' | 'system';
@@ -380,6 +384,8 @@ export interface Settings {
   claudePath: string;
   /** Path to the Codex executable; empty finds `codex` on the PATH. */
   codexPath: string;
+  /** Agents turned on, by id. At least one is always on. A turned-off agent is left out of every model list and cannot start new sessions. */
+  enabledAgents: string[];
   defaultBackend: string;
   defaultModel: ModelAlias;
   permMode: PermMode;

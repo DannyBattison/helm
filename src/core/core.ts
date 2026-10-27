@@ -6,6 +6,7 @@ import { join, relative, resolve, isAbsolute } from 'node:path';
 import type { AppState, AgentLogin, ExternalTranscript, HelmApi, HelmEvents, Settings, TranscriptEvent, WorktreeUsage } from '../shared/types';
 import type { SystemStatus } from '../shared/system';
 import { BackendRegistry } from './backend';
+import { defaultAgent, normalizeEnabled } from '../shared/agents';
 import { ClaudeBackend } from './claudeBackend';
 import { CodexBackend } from './codexBackend';
 import * as G from './git';
@@ -129,7 +130,7 @@ async function refreshBackends() {
     // Only once signed in: a model list is no use before that, and asking starts the agent's process.
     if (!b.auth || logins[b.id]?.loggedIn) await b.refresh?.();
   }));
-  const next = await registry.info(logins);
+  const next = await registry.info(logins, store.data.settings.enabledAgents);
   if (JSON.stringify(next) !== JSON.stringify(backends)) { backends = next; emitState(); }
 }
 /** For a sign-in that finishes in the browser with no code to paste back: look until it is done. */
@@ -346,6 +347,7 @@ export const api: HelmApi = {
   async companionUnlink() { if (host.companion !== false) await companion.unlink(); },
   async reportStall(ms, where) { diag(`window stalled ${ms} ms on ${where}`); },
   async updateSettings(patch: Partial<Settings>) {
+    const prevEnabled = store.data.settings.enabledAgents;
     Object.assign(store.data.settings, patch);
     if ('theme' in patch) applyTheme();
     if ('syncEnabled' in patch) syncer.settingsChanged();
@@ -354,7 +356,15 @@ export const api: HelmApi = {
     if (('companionEnabled' in patch || 'companionUrl' in patch) && host.companion !== false) companion.apply();
     host.settingsChanged?.(patch);
     if ('planPause5h' in patch || 'planPauseWeek' in patch || 'billing' in patch) void sessions.enforcePlan();
-    if ('claudePath' in patch || 'codexPath' in patch) await refreshBackends();
+    if ('enabledAgents' in patch) {
+      // At least one agent stays on, and new sessions default to one that is.
+      const known = registry.all().map((b) => b.id);
+      const st = store.data.settings;
+      st.enabledAgents = normalizeEnabled(patch.enabledAgents, known, prevEnabled);
+      const def = defaultAgent(st.defaultBackend, st.enabledAgents, known);
+      if (def !== st.defaultBackend) { st.defaultBackend = def; st.defaultModel = registry.get(def).models[0]?.id ?? st.defaultModel; }
+    }
+    if ('claudePath' in patch || 'codexPath' in patch || 'enabledAgents' in patch) await refreshBackends();
     store.save();
     emitState();
   },
