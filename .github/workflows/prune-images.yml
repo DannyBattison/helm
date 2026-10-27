@@ -1,4 +1,4 @@
-# Prunes stale hosted-image versions from ghcr.io/<owner>/helm-hosted. Manual only: run it from the Actions tab.
+# Prunes stale hosted image versions from ghcr.io/<owner>/helm-hosted. Manual only: run it from the Actions tab.
 #
 # Stale means:
 #   - untagged versions (superseded builds; the action keeps the untagged manifests that multi-arch images still use), and

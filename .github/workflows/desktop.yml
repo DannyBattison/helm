@@ -1,0 +1,56 @@
+# Builds the unsigned desktop installers for macOS, Windows and Linux and uploads them as workflow artifacts
+# (desktop-macos, desktop-windows, desktop-linux). Nothing is published: release.yml calls this and attaches the files to the release.
+# Typecheck and tests are left to ci.yml (the tests are Linux-only). Run it by hand from the Actions tab to get installers for any branch. Artifact storage is limited on a free account, so release
+# runs keep the installers for 1 day (they are on the release by then) and manual runs for 3.
+name: desktop
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Commit to build
+        type: string
+        default: ''
+      version:
+        description: Version to stamp into the app
+        type: string
+        default: ''
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-latest, name: macos }
+          - { os: windows-latest, name: windows }
+          - { os: ubuntu-latest, name: linux }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - if: inputs.version != ''
+        run: npm version ${{ inputs.version }} --no-git-tag-version --allow-same-version
+      - run: npm run build
+      - run: npx electron-builder --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.name }}
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/*.exe
+            release/*.AppImage
+            release/*.blockmap
+            release/latest*.yml
+          if-no-files-found: error
+          retention-days: ${{ inputs.ref != '' && 1 || 3 }}
