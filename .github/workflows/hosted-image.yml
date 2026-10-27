@@ -52,6 +52,8 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - id: repo
+        run: echo "image=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/helm-hosted" >> "$GITHUB_OUTPUT"
       - id: build
         uses: docker/build-push-action@v6
         with:
@@ -62,7 +64,7 @@ jobs:
           labels: |
             org.opencontainers.image.title=helm hosted
             org.opencontainers.image.description=helm in a browser: one user, one Claude login
-          outputs: type=image,name=ghcr.io/${{ github.repository_owner }}/helm-hosted,push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=${{ steps.repo.outputs.image }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=image-${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=image-${{ matrix.name }}
       - run: echo "${{ steps.build.outputs.digest }}" > digest-${{ matrix.name }}

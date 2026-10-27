@@ -1,6 +1,6 @@
 # Builds the unsigned desktop installers for macOS, Windows and Linux and uploads them as workflow artifacts
 # (desktop-macos, desktop-windows, desktop-linux). Nothing is published: release.yml calls this and attaches the files to the release.
-# Run it by hand from the Actions tab to get installers for any branch. Artifact storage is limited on a free account, so release
+# Typecheck and tests are left to ci.yml (they are Linux-only). Run it by hand from the Actions tab to get installers for any branch. Artifact storage is limited on a free account, so release
 # runs keep the installers for 1 day (they are on the release by then) and manual runs for 3.
 name: desktop
 on:
@@ -36,11 +36,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm --prefix hosted ci
       - if: inputs.version != ''
         run: npm version ${{ inputs.version }} --no-git-tag-version --allow-same-version
-      - run: npm run typecheck
-      - run: npm test
       - run: npm run build
       - run: npx electron-builder --publish never
         env:
