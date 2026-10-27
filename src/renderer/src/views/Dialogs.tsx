@@ -1,5 +1,5 @@
 import React from 'react';
-import { MAX_UPLOAD_FILES, type BaseOption, type GhRepo, type MergeMethod, type ModelAlias, type PermMode, type PullRequest, type SessionDeleteInfo } from '@shared/types';
+import { MAX_UPLOAD_FILES, MAX_UPLOAD_TOTAL, type BaseOption, type GhRepo, type MergeMethod, type ModelAlias, type PermMode, type PullRequest, type SessionDeleteInfo } from '@shared/types';
 import { api, platform } from '../api';
 import glyph from '../assets/helm-glyph-violet.svg';
 import { tilde } from '../lib';
@@ -329,6 +329,7 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
     try {
       const read = await Promise.all(take.map(readUpload));
       const next = [...uploads, ...read];
+      if (next.reduce((n, u) => n + u.size, 0) > MAX_UPLOAD_TOTAL) { toast({ tone: 'neutral', title: 'Too much to upload', description: `Files can add up to ${MAX_UPLOAD_TOTAL / 1048576} MB.` }); return; }
       setUploads(next);
     } catch (e) { toast({ tone: 'error', title: 'Could not attach', description: errText(e) }); }
   };

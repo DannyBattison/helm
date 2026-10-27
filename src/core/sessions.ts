@@ -8,7 +8,7 @@ import { queueBlock, queueOrder } from '../shared/queue';
 import { stuckReason } from '../shared/stuck';
 import { REVIEW_SCHEMA, parseReview, reviewPrompt } from '../shared/selfreview';
 import { commandSummary } from '../shared/commandSummary';
-import { FREE_ID, freeRepo, sessionTitle, MAX_UPLOAD_FILES, type ActivityEvent, type Checkpoint, type Effort, type ExtraRepo, type Repo, type MessageImage, type ModelAlias, type NewSessionInput, type PendingAsk, type PermMode, type Session, type Status, type Subagent, type TranscriptEvent } from '../shared/types';
+import { FREE_ID, freeRepo, sessionTitle, MAX_UPLOAD_FILES, MAX_UPLOAD_TOTAL, type ActivityEvent, type Checkpoint, type Effort, type ExtraRepo, type Repo, type MessageImage, type ModelAlias, type NewSessionInput, type PendingAsk, type PermMode, type Session, type Status, type Subagent, type TranscriptEvent } from '../shared/types';
 import { artifactDir, dropArtifacts, ensureArtifactDir } from './artifacts';
 import * as G from './git';
 import { supplyRepoArtifacts } from './repoartifacts';
@@ -558,10 +558,13 @@ export class SessionManager {
     if (files.length > MAX_UPLOAD_FILES) throw new Error(`At most ${MAX_UPLOAD_FILES} files can be uploaded.`);
     const dir = join(this.store.root, 'uploads', id);
     const saved: { name: string; size: number }[] = [];
+    let total = 0;
     try {
       await mkdir(dir, { recursive: true });
       for (const f of files) {
         const buf = Buffer.from(f.data, 'base64');
+        total += buf.length;
+        if (total > MAX_UPLOAD_TOTAL) throw new Error(`The files add up to more than ${MAX_UPLOAD_TOTAL / 1048576} MB.`);
         // A bare file name, never a path, and never one that replaces an earlier file.
         const base = (f.name.split(/[\\/]/).pop() || '').replace(/[\u0000-\u001f]/g, '').trim().replace(/^\.+$/, '') || 'file';
         const dot = base.lastIndexOf('.') > 0 ? base.lastIndexOf('.') : base.length;

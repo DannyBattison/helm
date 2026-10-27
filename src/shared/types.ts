@@ -749,6 +749,8 @@ export interface SessionFileUpload {
 }
 
 export const MAX_UPLOAD_FILES = 10;
+/** Files travel as base64 (4/3 larger) in one socket message, and the hosted socket accepts 512 MB, so 360 MB of files leaves room for the rest. */
+export const MAX_UPLOAD_TOTAL = 360 * 1024 * 1024;
 
 export interface CreatePrInput {
   sessionId: string;
