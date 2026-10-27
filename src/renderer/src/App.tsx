@@ -9,6 +9,7 @@ import { isShortcut } from './shortcuts';
 import { Activity, Dashboard } from './views/Dashboard';
 import { AddRepo, AgentLoginGate, DeleteSession, MergePr, NewSession, Palette, RemoveRepo, RenameSession, SignIn } from './views/Dialogs';
 import { Archive } from './views/Archive';
+import { AddAgentHost } from './views/Panel';
 import { Reports } from './views/Reports';
 import { Inbox } from './views/Inbox';
 import { Compare, CheckpointsDialog, ContinueDialog, ForkDialog, RememberDialog, RestoreDialog } from './views/Review';
@@ -170,6 +171,7 @@ export function App() {
       {removingRepo ? <RemoveRepo key={removingRepo} id={removingRepo} onClose={() => setUI({ removingRepo: null })} /> : null}
       {mergingPr ? <MergePr key={mergingPr.repoId + mergingPr.number} target={mergingPr} onClose={() => setUI({ mergingPr: null })} /> : null}
       {checkpointsOf ? <CheckpointsDialog key={checkpointsOf} id={checkpointsOf} onClose={() => setUI({ checkpointsOf: null })} /> : null}
+      <AddAgentHost />
       {restoring ? <RestoreDialog key={restoring.sessionId + restoring.n} target={restoring} onClose={() => setUI({ restoring: null })} /> : null}
       {forking ? <ForkDialog key={forking.sessionId + forking.index} target={forking} onClose={() => setUI({ forking: null })} /> : null}
       {remembering ? <RememberDialog key={remembering.text} target={remembering} onClose={() => setUI({ remembering: null })} /> : null}

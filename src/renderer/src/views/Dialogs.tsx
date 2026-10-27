@@ -282,6 +282,7 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
   const others = app.repos.filter((x) => x.id !== repo);
   const extraRepos = free ? [] : more.filter((id) => id !== repo && others.some((x) => x.id === id));
   const [uploads, setUploads] = React.useState<Upload[]>([]);
+  const [joiners, setJoiners] = React.useState<string[]>([]);
   const [variants, setVariants] = React.useState<Variant[]>(() => { const c = modelChoices(app); const d = defaultChoice(app); return [{ choice: d, effort: 'default' }, { choice: c.find((x) => x.value !== d)?.value ?? d, effort: 'default' }]; });
   React.useEffect(() => {
     if (!repo) return;
@@ -312,7 +313,7 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
   const start = async () => {
     setBusy(true); setErr('');
     try {
-      const input = { files: uploads.length ? uploads.map(({ name, data }) => ({ name, data })) : undefined, repoId: repo, base: free ? '' : base, folder: free && folder ? folder : undefined, task: task.trim(), images: images.length ? images.map(({ mediaType, data, name }) => ({ mediaType, data, name })) : undefined, backend, model, budget: sub ? 0 : from(parseFloat(budget)) || app.settings.sessionBudget, permMode: perm, after: after || undefined, source: initial?.source, extraRepos: extraRepos.length ? extraRepos : undefined };
+      const input = { files: uploads.length ? uploads.map(({ name, data }) => ({ name, data })) : undefined, repoId: repo, base: free ? '' : base, folder: free && folder ? folder : undefined, task: task.trim(), images: images.length ? images.map(({ mediaType, data, name }) => ({ mediaType, data, name })) : undefined, backend, model, budget: sub ? 0 : from(parseFloat(budget)) || app.settings.sessionBudget, permMode: perm, after: after || undefined, source: initial?.source, extraRepos: extraRepos.length ? extraRepos : undefined, panel: !compare && joiners.length ? joiners.map((c) => splitChoice(c)) : undefined };
       if (compare && !free) {
         const ids = await api.createGroup(input, variants.map((v) => ({ ...splitChoice(v.choice), effort: v.effort === 'default' ? undefined : v.effort })));
         const group = getUI().app?.sessions.find((x) => x.id === ids[0])?.group;
@@ -387,6 +388,13 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
             {extraRepos.length ? <span style={{ font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>The agent gets a worktree in each, from its default branch, and each can have its own pull request.</span> : null}
           </div>
         ) : null}
+        {compare ? null : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <span style={{ font: '500 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>Also ask</span>
+            <Select multiple value={joiners} onChange={(e: any) => setJoiners(e.target.value)} options={modelChoices(app)} placeholder="No other agents" icon="users-three" />
+            {joiners.length ? <span style={{ font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>They read the code and discuss it with the first agent, which is the only one that edits and runs commands. Address one with @name; you can change who edits later.</span> : null}
+          </div>
+        )}
         {free ? null : <Checkbox checked={compare} onChange={setCompare} label="Compare several runs" description="Start the same task more than once, with different models or effort, and keep the best result." />}
         {compare && !free ? <VariantEditor variants={variants} onChange={setVariants} /> : null}
         {(() => {
