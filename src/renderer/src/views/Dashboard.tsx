@@ -286,11 +286,11 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
                 { value: 'external', label: 'External', count: totalExt },
                 { value: 'archived', label: 'Archived', count: archivedTotal }]} />
               <span style={{ flex: 1 }} />
-              <SegmentedControl size="sm" value={layout} onChange={pickLayout} options={[{ value: 'list', label: 'List', icon: 'list' }, { value: 'board', label: 'Board', icon: 'kanban' }]} />
               {narrow || board ? null : [['working', 'Working'], ['attention', 'Waiting on you'], ['ready', 'Ready']].map(([k, l]) => (
                 <span key={k} style={{ display: 'flex', alignItems: 'center', gap: 5, font: '400 11px/1.5 var(--font-sans)', color: 'var(--text-3)' }}><span style={{ width: 12, height: 6, borderRadius: 2, background: LANE_COLOR[k] }} />{l}</span>
               ))}
               {narrow || board ? null : <span style={{ display: 'flex', alignItems: 'center', gap: 5, font: '400 11px/1.5 var(--font-sans)', color: 'var(--text-3)' }}><span style={{ width: 2, height: 10, borderRadius: 1, background: 'var(--text-1)' }} />Commit</span>}
+              <SegmentedControl size="sm" value={layout} onChange={pickLayout} options={[{ value: 'list', label: 'List', icon: 'list' }, { value: 'board', label: 'Board', icon: 'kanban' }]} />
             </div>
             {board ? <Board sessions={app.sessions.filter(visible)} only={filter} /> : <>
             {narrow ? null : <div style={{ display: 'grid', gridTemplateColumns: col.template, gap: 12, alignItems: 'end', padding: '6px 12px', borderTop: '1px solid var(--border)', font: '500 10.5px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>
