@@ -70,3 +70,16 @@ describe('context window', () => {
     expect([200_000, 272_000, 1_000_000, 1_500_000].map(windowLabel)).toEqual(['200k', '272k', '1M', '1.5M']);
   });
 });
+
+describe('registry lookups', () => {
+  const r = new BackendRegistry([fake('claude', ['sonnet']), fake('codex', [])]);
+  it('says whether an agent exists', () => {
+    expect(r.has('codex')).toBe(true);
+    expect(r.has('gemini')).toBe(false);
+    expect(r.has(undefined)).toBe(false);
+    expect(r.all().map((b) => b.id)).toEqual(['claude', 'codex']);
+  });
+  it('gives a stand-in model for an agent that lists none yet', () => {
+    expect(r.model('codex', 'gpt-x')).toEqual({ id: 'gpt-x', label: 'gpt-x', price: [0, 0] });
+  });
+});
