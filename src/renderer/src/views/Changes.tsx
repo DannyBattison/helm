@@ -228,6 +228,9 @@ function ChangesView({ s }: { s: Session }) {
   const [lw, lgrip, lreset] = usePaneWidth('changes-files', 280, 200, 560);
   const [rw, rgrip, rreset] = usePaneWidth('changes-pr', 340, 280, 620, -1);
   const [tick, setTick] = React.useState(0);
+  const [tree, setTreeState] = React.useState(() => { try { return localStorage.getItem('helm-changes-tree') === '1'; } catch { return false; } });
+  const setTree = (v: boolean) => { setTreeState(v); try { localStorage.setItem('helm-changes-tree', v ? '1' : '0'); } catch { /* ignore */ } };
+  const [folded, setFolded] = React.useState<Set<string>>(new Set());
   const [fileHunks, setFileHunks] = React.useState<Record<string, string[]>>({});
   const sig = s.files + ':' + s.add + ':' + s.del + ':' + s.commits.length + ':' + tick;
   const accepted = React.useMemo(() => new Set(s.reviewed || []), [s.reviewed]);
@@ -334,25 +337,56 @@ function ChangesView({ s }: { s: Session }) {
           <span style={{ flex: 1, font: '500 12px/1.5 var(--font-sans)' }} title="Hunks accepted, of all hunks in the change">{sum?.files.length ?? 0} files{totalHunks ? <span style={{ font: '400 11px/1.5 var(--font-mono)', color: doneHunks === totalHunks ? 'var(--status-ready-text)' : 'var(--text-3)', marginLeft: 8, whiteSpace: 'nowrap' }}>✓ {doneHunks}/{totalHunks}</span> : null}</span>
           {totalHunks && doneHunks < totalHunks ? <Button size="sm" variant="ghost" onClick={() => void api.setHunksReviewed(s.id, Object.values(fileHunks).flat(), true)}>Accept all</Button> : null}
           <DiffStat additions={totalAdd} deletions={totalDel} blocks={false} />
+          <IconButton icon={tree ? 'list-bullets' : 'tree-structure'} label={tree ? 'Show as a list' : 'Show as a tree'} size="sm" onClick={() => setTree(!tree)} />
         </div>
         <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '0 4px 8px' }}>
-          {(sum?.files || []).map((f) => {
-            const on = f.path === sel;
-            const parts = f.path.split('/');
-            return (
-              <div key={f.path} onClick={() => setSel(f.path)} style={{ display: 'flex', alignItems: 'center', gap: 8, height: 40, padding: '0 8px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', background: on ? 'var(--bg-selected)' : 'transparent' }}>
-                <span onClick={(e) => e.stopPropagation()}><Checkbox checked={!unchecked.has(f.path)} disabled={!pickable(f.path)} onChange={() => toggle(f.path)} /></span>
-                <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                  <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{parts[parts.length - 1]}</span>
-                  <span style={{ font: '400 10.5px/1.5 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{parts.slice(0, -1).join('/') || '.'}</span>
+          {(() => {
+            const row = (f: NonNullable<typeof sum>['files'][number], depth: number) => {
+              const on = f.path === sel;
+              const parts = f.path.split('/');
+              return (
+                <div key={f.path} onClick={() => setSel(f.path)} style={{ display: 'flex', alignItems: 'center', gap: 8, height: tree ? 28 : 40, padding: '0 8px 0 ' + (8 + depth * 14) + 'px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', background: on ? 'var(--bg-selected)' : 'transparent' }}>
+                  <span onClick={(e) => e.stopPropagation()}><Checkbox checked={!unchecked.has(f.path)} disabled={!pickable(f.path)} onChange={() => toggle(f.path)} /></span>
+                  <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{parts[parts.length - 1]}</span>
+                    {tree ? null : <span style={{ font: '400 10.5px/1.5 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{parts.slice(0, -1).join('/') || '.'}</span>}
+                  </div>
+                  <span style={{ font: '400 10.5px/1.5 var(--font-mono)', color: 'var(--diff-add-fg)' }}>+{f.add}</span>
+                  <span style={{ font: '400 10.5px/1.5 var(--font-mono)', color: 'var(--diff-del-fg)' }}>−{f.del}</span>
+                  {fileHunks[f.path]?.length && fileHunks[f.path].every((h) => accepted.has(h)) ? <i className="ph-fill ph-check-circle" title="All hunks accepted" style={{ fontSize: 12, color: 'var(--status-ready)' }} /> : null}
+                  <span style={{ font: '500 11px/1.5 var(--font-mono)', width: 10, color: sClr[f.status] }}>{f.status}</span>
                 </div>
-                <span style={{ font: '400 10.5px/1.5 var(--font-mono)', color: 'var(--diff-add-fg)' }}>+{f.add}</span>
-                <span style={{ font: '400 10.5px/1.5 var(--font-mono)', color: 'var(--diff-del-fg)' }}>−{f.del}</span>
-                {fileHunks[f.path]?.length && fileHunks[f.path].every((h) => accepted.has(h)) ? <i className="ph-fill ph-check-circle" title="All hunks accepted" style={{ fontSize: 12, color: 'var(--status-ready)' }} /> : null}
-                <span style={{ font: '500 11px/1.5 var(--font-mono)', width: 10, color: sClr[f.status] }}>{f.status}</span>
-              </div>
-            );
-          })}
+              );
+            };
+            const files = sum?.files || [];
+            if (!tree) return files.map((f) => row(f, 0));
+            const out: React.ReactNode[] = [];
+            const walk = (list: typeof files, prefix: string, depth: number) => {
+              const dirs = new Map<string, typeof files>();
+              const here: typeof files = [];
+              for (const f of list) {
+                const rest = f.path.slice(prefix.length);
+                const i = rest.indexOf('/');
+                if (i < 0) here.push(f); else { const d = rest.slice(0, i); dirs.set(d, [...(dirs.get(d) || []), f]); }
+              }
+              for (const [d, fs] of [...dirs].sort((x, y) => x[0].localeCompare(y[0]))) {
+                const path = prefix + d + '/';
+                const open = !folded.has(path);
+                out.push(
+                  <div key={'d:' + path} onClick={() => setFolded((cur) => { const n = new Set(cur); if (n.has(path)) n.delete(path); else n.add(path); return n; })} style={{ display: 'flex', alignItems: 'center', gap: 6, height: 26, padding: '0 8px 0 ' + (8 + depth * 14) + 'px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', color: 'var(--text-2)' }}>
+                    <i className={'ph ph-caret-' + (open ? 'down' : 'right')} style={{ fontSize: 11, width: 12, color: 'var(--text-3)' }} />
+                    <i className="ph ph-folder" style={{ fontSize: 14, color: 'var(--text-3)' }} />
+                    <span style={{ flex: 1, minWidth: 0, font: '400 12px/1.5 var(--font-mono)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d}</span>
+                    <span style={{ font: '400 10.5px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{fs.length}</span>
+                  </div>
+                );
+                if (open) walk(fs, path, depth + 1);
+              }
+              for (const f of here) out.push(row(f, depth));
+            };
+            walk(files, '', 0);
+            return out;
+          })()}
         </div>
       </div>
 
