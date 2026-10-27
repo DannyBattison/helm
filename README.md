@@ -2,13 +2,13 @@
 
 [![CI](https://github.com/DannyBattison/helm/actions/workflows/ci.yml/badge.svg)](https://github.com/DannyBattison/helm/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/DannyBattison/helm/graph/badge.svg?token=XHW1TVGY1K)](https://codecov.io/gh/DannyBattison/helm)
+[![Latest release](https://img.shields.io/github/v/release/DannyBattison/helm?label=release)](https://github.com/DannyBattison/helm/releases/latest)
+[![Release date](https://img.shields.io/github/release-date/DannyBattison/helm?label=released)](https://github.com/DannyBattison/helm/releases/latest)
 [![Buy me a coffee](https://img.shields.io/badge/buy%20me%20a%20coffee-%E2%98%95-yellow)](https://buymeacoffee.com/dannybattison)
 
 Supervise many Claude Code sessions across many GitHub repositories, from one window. Available as a desktop app or in your browser.
 
 **Website and downloads: [takethehelm.dev](https://takethehelm.dev)**
-
-Latest release: none yet
 
 ## Features
 

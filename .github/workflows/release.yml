@@ -1,6 +1,6 @@
-# Manual release: run the workflow from the Actions tab and choose a major or minor bump. The version is worked out
+# Manual release: run the workflow from the Actions tab and choose a major, minor or patch bump. The version is worked out
 # from the latest v* tag (the first release is 0.1.0), tagged, built for macOS, Windows and Linux, and attached to a
-# GitHub release, which is what the app's auto-update reads. Finally the README's latest release date is updated.
+# GitHub release, which is what the app's auto-update reads. The README's release badges read from that release.
 #
 # Signing is optional and driven by repository secrets; without them the installers are built unsigned.
 #   macOS:   CSC_LINK (base64 .p12 of a Developer ID Application certificate), CSC_KEY_PASSWORD,
@@ -13,7 +13,7 @@ on:
       bump:
         description: Version bump
         type: choice
-        options: [minor, major]
+        options: [minor, major, patch]
         default: minor
 permissions:
   contents: write
@@ -32,8 +32,12 @@ jobs:
           if [ -z "$latest" ]; then
             version=0.1.0
           else
-            IFS=. read -r major minor _ <<< "${latest#v}"
-            if [ "${{ inputs.bump }}" = major ]; then version="$((major + 1)).0.0"; else version="$major.$((minor + 1)).0"; fi
+            IFS=. read -r major minor patch <<< "${latest#v}"
+            case "${{ inputs.bump }}" in
+              major) version="$((major + 1)).0.0" ;;
+              minor) version="$major.$((minor + 1)).0" ;;
+              *) version="$major.$minor.$((patch + 1))" ;;
+            esac
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           git tag "v$version"
@@ -67,16 +71,3 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-  readme:
-    needs: [version, build]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.repository.default_branch }}
-      - run: |
-          sed -i -E 's|^(Latest release: ).*$|\1**v${{ needs.version.outputs.version }}**, '"$(date -u +%Y-%m-%d)"'|' README.md
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -am "README: latest release v${{ needs.version.outputs.version }}" || exit 0
-          git push
