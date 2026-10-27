@@ -1,10 +1,10 @@
-# Builds the hosted server's Docker image and publishes it to the GitHub Container Registry, as ghcr.io/<owner>/helm-hosted
-# (the owner is lower-cased for you).
+# Builds the hosted server's Docker image (ghcr.io/<owner>/helm-hosted, owner lower-cased) and pushes it by digest only, with no tags.
+# The digests are uploaded as workflow artifacts (digest-slim, digest-full); whoever calls this decides what to tag them as.
 #
-#   release workflow  -> :0.2.0, :0.2 and :latest (called by release.yml once the tag exists; :latest is always the newest release)
+#   release workflow  -> calls this, then tags the digests :0.2.0, :0.2 and :latest (and the -full ones) once the release exists
 #   run it by hand    -> from the Actions tab, to publish whatever branch you pick (tagged with the branch name)
 #
-# Two variants are built: the slim image (the tags above) and the full one, with LibreOffice, ffmpeg, pandoc, OCR and Playwright/Chromium,
+# Two variants are built: the slim image and the full one, with LibreOffice, ffmpeg, pandoc, OCR and Playwright/Chromium,
 # whose tags end in -full (:latest-full, :0.2.0-full ...).
 #
 # It needs no secrets: the workflow's own token may push to the package of the repository it runs in. The first published image is private;
@@ -14,10 +14,10 @@ name: hosted-image
 on:
   workflow_call:
     inputs:
-      version:
-        description: Release version (without the v) to build from its tag and publish as latest
+      ref:
+        description: Commit to build
         type: string
-        required: true
+        default: ''
   workflow_dispatch:
     inputs:
       platforms:
@@ -32,51 +32,64 @@ concurrency:
   group: hosted-image-${{ github.ref }}
   cancel-in-progress: false
 jobs:
-  image:
+  build:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         include:
-          - include: CORE|SEARCH|NETWORK|EDITING|BROWSING
-            suffix: ''
-          - include: ALL
-            suffix: -full
+          - { name: slim, include: 'CORE|SEARCH|NETWORK|EDITING|BROWSING' }
+          - { name: full, include: ALL }
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.version && format('v{0}', inputs.version) || github.ref }}
+          ref: ${{ inputs.ref || github.sha }}
       - uses: docker/setup-qemu-action@v3
         if: contains(inputs.platforms, 'arm64')
       - uses: docker/setup-buildx-action@v3
-      - name: Sign in to ghcr.io
-        uses: docker/login-action@v3
+      - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - id: meta
-        uses: docker/metadata-action@v5
-        with:
-          flavor: |
-            suffix=${{ matrix.suffix }},onlatest=true
-          images: ghcr.io/${{ github.repository_owner }}/helm-hosted
-          tags: |
-            type=raw,value=latest,enable=${{ inputs.version != '' }}
-            type=semver,pattern={{version}},value=${{ inputs.version }},enable=${{ inputs.version != '' }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ inputs.version }},enable=${{ inputs.version != '' }}
-            type=ref,event=branch,enable=${{ github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main' }}
-          labels: |
-            org.opencontainers.image.title=helm hosted
-            org.opencontainers.image.description=helm in a browser: one user, one Claude login
-      - uses: docker/build-push-action@v6
+      - id: build
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: hosted/Dockerfile
           build-args: INCLUDE=${{ matrix.include }}
           platforms: ${{ inputs.platforms || 'linux/amd64' }}
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=image${{ matrix.suffix }}
-          cache-to: type=gha,mode=max,scope=image${{ matrix.suffix }}
+          labels: |
+            org.opencontainers.image.title=helm hosted
+            org.opencontainers.image.description=helm in a browser: one user, one Claude login
+          outputs: type=image,name=ghcr.io/${{ github.repository_owner }}/helm-hosted,push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=image-${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=image-${{ matrix.name }}
+      - run: echo "${{ steps.build.outputs.digest }}" > digest-${{ matrix.name }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.name }}
+          path: digest-${{ matrix.name }}
+          retention-days: 7
+  # By hand only: name the digests after the branch that was built.
+  tag:
+    if: github.event_name == 'workflow_dispatch'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: digest-*
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - run: |
+          set -euo pipefail
+          image=ghcr.io/$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')/helm-hosted
+          branch=$(echo "$GITHUB_REF_NAME" | tr '/' '-')
+          docker buildx imagetools create -t "$image:$branch" "$image@$(cat digest-slim)"
+          docker buildx imagetools create -t "$image:$branch-full" "$image@$(cat digest-full)"
