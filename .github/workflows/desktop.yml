@@ -36,6 +36,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm --prefix hosted ci
       - if: inputs.version != ''
         run: npm version ${{ inputs.version }} --no-git-tag-version --allow-same-version
       - run: npm run typecheck
