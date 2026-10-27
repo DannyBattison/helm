@@ -1,5 +1,5 @@
 import { constants } from 'node:fs';
-import { appendFile, copyFile, mkdir, open, readdir, readFile, rename, rm, stat } from 'node:fs/promises';
+import { appendFile, copyFile, mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import type { RepoArtifact } from '../shared/types';
 import * as G from './git';
@@ -10,11 +10,13 @@ export const setRepoArtifactDir = (dir: string) => { root = dir; };
 
 /** Uploads in progress are written here, so a half-sent file is never listed or copied into a worktree. */
 const PARTIAL = '.partial';
+/** What each unfinished upload is of (the file's size and date), so an interrupted one is only continued by the same file. */
+const PARTIAL_META = '.partial-meta';
 const folder = (repoId: string) => join(root, repoId.replace(/[^\w.-]/g, '_'));
 
 /** A file name is a single path segment: nothing that can leave the folder. */
 export function validName(name: string): boolean {
-  return !!name && name === name.trim() && name !== '.' && name !== '..' && !/[\\/\0]/.test(name) && name.length <= 200 && name !== '.git' && name !== PARTIAL;
+  return !!name && name === name.trim() && name !== '.' && name !== '..' && !/[\\/\0]/.test(name) && name.length <= 200 && name !== '.git' && name !== PARTIAL && name !== PARTIAL_META;
 }
 
 export async function listRepoArtifacts(repoId: string): Promise<RepoArtifact[]> {
@@ -34,18 +36,31 @@ export async function listRepoArtifacts(repoId: string): Promise<RepoArtifact[]>
  * is held in memory whole. The piece at offset 0 starts the file afresh; later ones must continue exactly where the last ended.
  * The file appears under its name only when `done` is set.
  */
-export async function addRepoArtifactChunk(repoId: string, name: string, offset: number, base64: string, done: boolean): Promise<void> {
+export async function addRepoArtifactChunk(repoId: string, name: string, offset: number, base64: string, done: boolean, fingerprint = ''): Promise<void> {
   if (!root) throw new Error('Uploads are not available yet.');
   if (!validName(name)) throw new Error('That file name is not allowed.');
   const dir = join(folder(repoId), PARTIAL);
   const part = join(dir, name);
   await mkdir(dir, { recursive: true });
   const data = Buffer.from(base64, 'base64');
-  if (offset === 0) await rm(part, { force: true });
+  const meta = join(folder(repoId), PARTIAL_META, name);
+  if (offset === 0) {
+    await rm(part, { force: true });
+    await mkdir(join(meta, '..'), { recursive: true });
+    await writeFile(meta, fingerprint);
+  }
   else if ((await stat(part).catch(() => null))?.size !== offset) throw new Error('The upload got out of step; try again.');
   const fh = await open(part, 'a');
   try { await fh.write(data); } finally { await fh.close(); }
-  if (done) await rename(part, join(folder(repoId), name));
+  if (done) { await rename(part, join(folder(repoId), name)); await rm(meta, { force: true }); }
+}
+
+/** How much of an interrupted upload of this file is already kept, so the client can carry on from there. 0 when there is none or it is of a different file. */
+export async function repoArtifactProgress(repoId: string, name: string, fingerprint: string): Promise<number> {
+  if (!root || !validName(name) || !fingerprint) return 0;
+  const have = await readFile(join(folder(repoId), PARTIAL_META, name), 'utf8').catch(() => null);
+  if (have !== fingerprint) return 0;
+  return (await stat(join(folder(repoId), PARTIAL, name)).catch(() => null))?.size ?? 0;
 }
 
 export const addRepoArtifact = (repoId: string, name: string, base64: string) => addRepoArtifactChunk(repoId, name, 0, base64, true);

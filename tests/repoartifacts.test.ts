@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { addRepoArtifact, addRepoArtifactChunk, listRepoArtifacts, removeRepoArtifact, setRepoArtifactDir, supplyRepoArtifacts, validName } from '../src/core/repoartifacts';
+import { addRepoArtifact, addRepoArtifactChunk, repoArtifactProgress, listRepoArtifacts, removeRepoArtifact, setRepoArtifactDir, supplyRepoArtifacts, validName } from '../src/core/repoartifacts';
 
 const sh = (cwd: string, ...a: string[]) => execFileSync('git', a, { cwd, encoding: 'utf8' });
 
@@ -32,6 +32,16 @@ describe('repo files', () => {
     await addRepoArtifactChunk(repo, 'big.bin', 3, b64('def'), true);
     expect((await listRepoArtifacts(repo)).find((f) => f.name === 'big.bin')?.size).toBe(6);
     await removeRepoArtifact(repo, 'big.bin');
+  });
+
+  it('reports how far an interrupted upload got, only for the same file', async () => {
+    const b64 = (t: string) => Buffer.from(t).toString('base64');
+    await addRepoArtifactChunk(repo, 'r.bin', 0, b64('abcd'), false, '8:1');
+    expect(await repoArtifactProgress(repo, 'r.bin', '8:1')).toBe(4);
+    expect(await repoArtifactProgress(repo, 'r.bin', '8:2')).toBe(0);
+    await addRepoArtifactChunk(repo, 'r.bin', 4, b64('efgh'), true, '8:1');
+    expect(await repoArtifactProgress(repo, 'r.bin', '8:1')).toBe(0);
+    await removeRepoArtifact(repo, 'r.bin');
   });
 
   it('copies into a worktree and keeps them out of git', async () => {

@@ -1,0 +1,3 @@
+## 2026-10-27 · Artifact upload pieces are 16 MB and an interrupted upload resumes
+Pieces grew from 8 to 16 MB: over a remote connection the round trip per piece costs a few percent at that size, while memory use and the cost of a failed piece stay modest. Each upload carries a fingerprint (file size and modified time), kept beside the partial file in `.partial-meta/`; `repoArtifactProgress` returns how many bytes are already held when the fingerprint matches, and the client carries on from there (from the start if the point is not on a 16 MB boundary). Pipelining pieces and binary frames were left out until uploads prove slow.
+Why: user agreed to the advice on piece size and resume.

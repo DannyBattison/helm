@@ -942,7 +942,9 @@ export interface HelmApi {
   listRepoArtifacts(repoId: string): Promise<RepoArtifact[]>;
   addRepoArtifact(repoId: string, name: string, base64: string): Promise<void>;
   /** One piece of a file of any size; the file appears once `done`. Pieces go in order, each at the offset where the last ended. */
-  addRepoArtifactChunk(repoId: string, name: string, offset: number, base64: string, done: boolean): Promise<void>;
+  addRepoArtifactChunk(repoId: string, name: string, offset: number, base64: string, done: boolean, fingerprint?: string): Promise<void>;
+  /** Bytes already kept of an interrupted upload of the same file (same fingerprint), or 0. */
+  repoArtifactProgress(repoId: string, name: string, fingerprint: string): Promise<number>;
   removeRepoArtifact(repoId: string, name: string): Promise<void>;
   /** Creates an automated agent (no `id`), or replaces the one with that id. Returns its id. */
   saveAutomation(agent: Omit<AutomatedAgent, 'id' | 'createdAt' | 'lastRun'> & { id?: string }): Promise<string>;

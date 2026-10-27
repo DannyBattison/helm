@@ -125,13 +125,16 @@ function RepoArtifactsSection({ repos }: { repos: { id: string }[] }) {
   const upload = async (list: FileList | null) => {
     for (const f of Array.from(list || [])) {
       try {
-        // Pieces of 8 MB, so a file of any size is never held whole in the browser or in one message.
-        const PIECE = 8 * 1024 * 1024;
-        for (let at = 0; at === 0 || at < f.size; at += PIECE) {
+        // Pieces of 16 MB, so a file of any size is never held whole in the browser or in one message. An interrupted upload of the same file carries on where it stopped.
+        const PIECE = 16 * 1024 * 1024;
+        const fp = `${f.size}:${f.lastModified}`;
+        const kept = await api.repoArtifactProgress(id, f.name, fp).catch(() => 0);
+        const from = kept < f.size ? kept : 0;
+        for (let at = from % PIECE === 0 ? from : 0; at === 0 || at < f.size; at += PIECE) {
           const bytes = new Uint8Array(await f.slice(at, at + PIECE).arrayBuffer());
           let bin = '';
           for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-          await api.addRepoArtifactChunk(id, f.name, at, btoa(bin), at + PIECE >= f.size);
+          await api.addRepoArtifactChunk(id, f.name, at, btoa(bin), at + PIECE >= f.size, fp);
           setSending(f.size ? `${f.name} ${Math.min(100, Math.round(((at + PIECE) / f.size) * 100))}%` : '');
         }
       } catch (e) { toast({ tone: 'error', title: 'Could not upload artifact ' + f.name, description: errText(e) }); }
