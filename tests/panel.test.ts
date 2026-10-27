@@ -115,16 +115,21 @@ const agentLines = async (id: string) => (await store.transcript(id)).filter((e)
 
 describe('a session with several agents', () => {
   it('has each agent answer in turn, and one that @mentions another brings it in to reply', async () => {
-    script = { a: (_t, i) => (i === 0 ? 'Start with the schema. @beta, agree?' : 'Good.'), b: () => 'Yes, schema first.' };
+    script = { a: (t, i) => (i === 0 || t.includes('again') ? 'Start with the schema. @beta, agree?' : 'Good.'), b: () => 'Yes, schema first.' };
     const id = await start();
     await sm.settled(id);
     const s = sm.get(id)!;
     expect(s.panel).toMatchObject({ owner: 'alpha', members: [{ name: 'beta', backend: 'b' }] });
     const lines = await agentLines(id);
-    // alpha answers the task, beta answers everyone (the task) and then alpha's mention
-    expect(lines.map((l) => [l.from, l.text])).toEqual([['alpha', 'Start with the schema. @beta, agree?'], ['beta', 'Yes, schema first.'], ['beta', 'Yes, schema first.'], ['alpha', 'Good.']]);
+    // Both were asked; beta was already waiting its turn, so alpha's mention does not add a second reply from it.
+    expect(lines.map((l) => [l.from, l.text])).toEqual([['alpha', 'Start with the schema. @beta, agree?'], ['beta', 'Yes, schema first.']]);
     expect(lines[1].re).toMatchObject({ who: 'you' });
-    expect(lines[2].re).toMatchObject({ who: 'alpha', index: 1 });
+    // Asked alone, alpha's mention brings beta in, as a reply to alpha.
+    await sm.send(id, '@alpha again');
+    await sm.settled(id);
+    const more = (await agentLines(id)).slice(2);
+    expect(more.map((l) => l.from)).toEqual(['alpha', 'beta']);
+    expect(more[1].re).toMatchObject({ who: 'alpha' });
     // The reader saw the other's words, and was told it is read-only.
     expect(seats.b[0].got[0]).toContain('[@alpha');
     expect(seats.b[0].opts.permMode).toBe('plan');
