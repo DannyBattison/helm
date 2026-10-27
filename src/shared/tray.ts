@@ -27,7 +27,7 @@ export function trayEntries(sessions: Session[], max = 8): { entries: TrayEntry[
       actions.push({ label: 'Approve once', action: { do: 'approve' } });
       if (a?.pattern) actions.push({ label: `Always allow ${a.pattern}`, action: { do: 'always' } });
       actions.push({ label: 'Deny', action: { do: 'deny' } });
-    } else if (kind === 'question' && a?.questions?.length === 1) {
+    } else if (kind === 'question' && a?.questions?.length === 1 && !a.questions[0].multiSelect) {
       a.questions[0].options.slice(0, 6).forEach((o, i) => actions.push({ label: clip(o.label, 48), action: { do: 'answer', option: i } }));
     } else if (kind === 'budget') actions.push({ label: a?.scope === 'plan' ? 'Continue anyway' : 'Add to the budget and resume', action: { do: 'continue' } });
     else if (kind === 'error') actions.push({ label: 'Resume', action: { do: 'resume' } });

@@ -804,8 +804,8 @@ export interface SessionFileUpload {
 }
 
 export const MAX_UPLOAD_FILES = 10;
-export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
-export const MAX_UPLOAD_TOTAL = 12 * 1024 * 1024;
+/** Files travel as base64 (4/3 larger) in one socket message, and the hosted socket accepts 512 MB, so 360 MB of files leaves room for the rest. */
+export const MAX_UPLOAD_TOTAL = 360 * 1024 * 1024;
 
 export interface CreatePrInput {
   sessionId: string;
@@ -996,6 +996,10 @@ export interface HelmApi {
   /** Files uploaded to a repository, copied into every session's worktree (new and resumed) and kept out of git. */
   listRepoArtifacts(repoId: string): Promise<RepoArtifact[]>;
   addRepoArtifact(repoId: string, name: string, base64: string): Promise<void>;
+  /** One piece of a file of any size; the file appears once `done`. Pieces go in order, each at the offset where the last ended. */
+  addRepoArtifactChunk(repoId: string, name: string, offset: number, base64: string, done: boolean, fingerprint?: string): Promise<void>;
+  /** Bytes already kept of an interrupted upload of the same file (same fingerprint), or 0. */
+  repoArtifactProgress(repoId: string, name: string, fingerprint: string): Promise<number>;
   removeRepoArtifact(repoId: string, name: string): Promise<void>;
   /** Creates an automated agent (no `id`), or replaces the one with that id. Returns its id. */
   saveAutomation(agent: Omit<AutomatedAgent, 'id' | 'createdAt' | 'lastRun'> & { id?: string }): Promise<string>;

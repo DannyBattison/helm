@@ -18,7 +18,7 @@ const set = (patch: Partial<SettingsT>) => void api.updateSettings(patch);
 export const PERM_OPTIONS = [{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits, ask for commands' }, { value: 'plan', label: 'Plan only' }, { value: 'all', label: 'Allow everything' }];
 
 /** Moving helm to another machine or server: everything but sign-ins and passwords, as one file. */
-function TransferSection({ st }: { st: SettingsT }) {
+function TransferSection() {
   const [busy, setBusy] = React.useState(false);
   const file = React.useRef<HTMLInputElement>(null);
   const fail = (title: string) => (e: any) => toast({ tone: 'error', title, description: errText(e) });
@@ -39,7 +39,6 @@ function TransferSection({ st }: { st: SettingsT }) {
       <input ref={file} type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={(e) => void pick(e.target.files?.[0])} />
       <Button icon="upload-simple" disabled={busy} onClick={() => file.current?.click()}>Import…</Button>
     </SettingRow>
-    <SyncSection st={st} />
   </>;
 }
 
@@ -118,6 +117,7 @@ function TerminalShellRow({ st, set }: { st: any; set(p: any): void }) {
 function RepoArtifactsSection({ repos }: { repos: { id: string }[] }) {
   const [repoId, setRepoId] = React.useState(repos[0]?.id || '');
   const [files, setFiles] = React.useState<{ name: string; size: number }[]>([]);
+  const [sending, setSending] = React.useState('');
   const pick = React.useRef<HTMLInputElement>(null);
   const id = repos.some((r) => r.id === repoId) ? repoId : repos[0]?.id || '';
   const load = React.useCallback(() => { if (id) api.listRepoArtifacts(id).then(setFiles).catch(() => setFiles([])); }, [id]);
@@ -125,17 +125,26 @@ function RepoArtifactsSection({ repos }: { repos: { id: string }[] }) {
   const upload = async (list: FileList | null) => {
     for (const f of Array.from(list || [])) {
       try {
-        const bytes = new Uint8Array(await f.arrayBuffer());
-        let bin = '';
-        for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-        await api.addRepoArtifact(id, f.name, btoa(bin));
+        // Pieces of 16 MB, so a file of any size is never held whole in the browser or in one message. An interrupted upload of the same file carries on where it stopped.
+        const PIECE = 16 * 1024 * 1024;
+        const fp = `${f.size}:${f.lastModified}`;
+        const kept = await api.repoArtifactProgress(id, f.name, fp).catch(() => 0);
+        const from = kept < f.size ? kept : 0;
+        for (let at = from % PIECE === 0 ? from : 0; at === 0 || at < f.size; at += PIECE) {
+          const bytes = new Uint8Array(await f.slice(at, at + PIECE).arrayBuffer());
+          let bin = '';
+          for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+          await api.addRepoArtifactChunk(id, f.name, at, btoa(bin), at + PIECE >= f.size, fp);
+          setSending(f.size ? `${f.name} ${Math.min(100, Math.round(((at + PIECE) / f.size) * 100))}%` : '');
+        }
       } catch (e) { toast({ tone: 'error', title: 'Could not upload artifact ' + f.name, description: errText(e) }); }
     }
+    setSending('');
     if (pick.current) pick.current.value = '';
     load();
   };
   return (
-    <SettingRow title="Artifacts" desc="Files copied into every session of a repository, at the top of its worktree, and kept out of commits. Sessions already open get them when the agent next starts. Up to 25 MB each.">
+    <SettingRow title="Artifacts" desc="Files copied into every session of a repository, at the top of its worktree, and kept out of commits. Sessions already open get them when the agent next starts. Any size; large files are sent in pieces and cloned (not duplicated) into each worktree where the filesystem allows it.">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
         <Select size="sm" value={id} onChange={(e: any) => setRepoId(e.target.value)} options={repos.map((r) => ({ value: r.id, label: r.id }))} />
         {files.map((f) => (
@@ -145,7 +154,7 @@ function RepoArtifactsSection({ repos }: { repos: { id: string }[] }) {
           </div>
         ))}
         <input ref={pick} type="file" multiple style={{ display: 'none' }} onChange={(e) => void upload(e.target.files)} />
-        <Button size="sm" icon="upload-simple" onClick={() => pick.current?.click()}>Upload artifacts…</Button>
+        <Button size="sm" icon="upload-simple" disabled={!!sending} onClick={() => pick.current?.click()}>{sending ? 'Uploading ' + sending : 'Upload artifacts…'}</Button>
       </div>
     </SettingRow>
   );
@@ -428,7 +437,7 @@ export function Settings({ section }: { section?: string }) {
   const subCols = useColumns('subagent-repos', [{ w: 1, min: 160, flex: true }, { w: 170, min: 110, fixed: true }]);
   const pctOptions = [{ value: '0', label: 'Off' }, { value: '50', label: '50%' }, { value: '70', label: '70%' }, { value: '80', label: '80%' }, { value: '90', label: '90%' }];
   const subLimits = (extra: number[]) => [...new Set([0, 1, 2, 3, 4, 6, 8, 12, ...extra])].sort((a, b) => a - b).map((n) => ({ value: String(n), label: n === 0 ? 'Off' : String(n) }));
-  const nav = [['account', 'Account', 'github-logo'], ['agents', 'Agents', 'robot'], ['automations', 'Automated agents', 'clock-clockwise'], ['worktrees', 'Worktrees', 'tree-structure'], ['budgets', 'Usage', 'coins'], ...(hosted ? [] : [['companion', 'Companion', 'broadcast']]), ['notifications', 'Notifications', 'bell'], ['appearance', 'Appearance', 'paint-brush'], ['shortcuts', 'Keyboard shortcuts', 'keyboard'], ['transfer', 'Import, export and sync', 'arrows-left-right'], ['about', 'About and support', 'info']];
+  const nav = [['account', 'Account', 'github-logo'], ['agents', 'Agents', 'robot'], ['automations', 'Automated agents', 'clock-clockwise'], ['worktrees', 'Worktrees', 'tree-structure'], ['budgets', 'Usage', 'coins'], ...(hosted ? [] : [['companion', 'Companion', 'broadcast']]), ['notifications', 'Notifications', 'bell'], ['appearance', 'Appearance', 'paint-brush'], ['shortcuts', 'Keyboard shortcuts', 'keyboard'], ['transfer', 'Import and export', 'arrows-left-right'], ['sync', 'Sync', 'arrows-clockwise'], ['about', 'About and support', 'info']];
   const notif = (key: 'notifyAttention' | 'notifyReady' | 'notifyFailed' | 'notifyChecks', title: string) => (
     <SettingRow title={title}>
       <Switch checked={st[key].desktop} onChange={(v: boolean) => set({ [key]: { ...st[key], desktop: v } })} label="Desktop" />
@@ -607,7 +616,8 @@ export function Settings({ section }: { section?: string }) {
             </>}
           </> : null}
           {sec === 'shortcuts' ? <ShortcutsSection st={st} set={set} /> : null}
-          {sec === 'transfer' ? <TransferSection st={st} /> : null}
+          {sec === 'transfer' ? <TransferSection /> : null}
+          {sec === 'sync' ? <SyncSection st={st} /> : null}
           {sec === 'about' ? <>
             <H sub="Updates, and what to send if something goes wrong.">About and support</H>
             {hosted ? null : <>

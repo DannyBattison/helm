@@ -7,7 +7,7 @@ import { queueBlock, queueOrder } from '../shared/queue';
 import { stuckReason } from '../shared/stuck';
 import { REVIEW_SCHEMA, parseReview, reviewPrompt } from '../shared/selfreview';
 import { commandSummary } from '../shared/commandSummary';
-import { FREE_ID, freeRepo, sessionTitle, MAX_UPLOAD_BYTES, MAX_UPLOAD_FILES, MAX_UPLOAD_TOTAL, type ActivityEvent, type Checkpoint, type Effort, type ExtraRepo, type Repo, type MessageImage, type ModelAlias, type NewSessionInput, type PendingAsk, type PermMode, type Session, type Status, type Subagent, type TranscriptEvent } from '../shared/types';
+import { FREE_ID, freeRepo, sessionTitle, MAX_UPLOAD_FILES, MAX_UPLOAD_TOTAL, type ActivityEvent, type Checkpoint, type Effort, type ExtraRepo, type Repo, type MessageImage, type ModelAlias, type NewSessionInput, type PendingAsk, type PermMode, type Session, type Status, type Subagent, type TranscriptEvent } from '../shared/types';
 import { BackendRegistry, type AgentBackend, type AgentBlock, type AgentEvent, type AgentHandle, type AgentToolResult, type ToolDecision } from './backend';
 import { ClaudeBackend } from './claudeBackend';
 import { COMMAND_TOOLS, EDIT_TOOLS, convertMessages, rel, trunc } from './transcript';
@@ -473,7 +473,6 @@ export class SessionManager {
       for (const f of files) {
         const buf = Buffer.from(f.data, 'base64');
         total += buf.length;
-        if (buf.length > MAX_UPLOAD_BYTES) throw new Error(`${f.name} is over ${MAX_UPLOAD_BYTES / 1048576} MB.`);
         if (total > MAX_UPLOAD_TOTAL) throw new Error(`The files add up to more than ${MAX_UPLOAD_TOTAL / 1048576} MB.`);
         // A bare file name, never a path, and never one that replaces an earlier file.
         const base = (f.name.split(/[\\/]/).pop() || '').replace(/[\u0000-\u001f]/g, '').trim().replace(/^\.+$/, '') || 'file';
@@ -1031,6 +1030,8 @@ export class SessionManager {
     const st = this.store.data.settings;
     for (const be of this.registry.all()) {
       if (!be.capabilities.planUsage || this.billingOf(be.id) !== 'subscription') continue;
+      // Claude's wording is the plain one; another agent is named, since its windows are its own.
+      const who = be.id === 'claude' ? '' : be.label + ' ';
       const plan = this.store.planOf(be.id);
       const checks: ['fiveHour' | 'weekly', number, string][] = [['fiveHour', st.planPause5h, '5-hour'], ['weekly', st.planPauseWeek, 'weekly']];
       for (const [key, limit, name] of checks) {
@@ -1041,11 +1042,11 @@ export class SessionManager {
           if (!s || this.backendOf(s).id !== be.id || s.status !== 'working' || s.ask || rt.budgetPaused) continue;
           const mins = Math.max(1, Math.round((w.resetsAt * 1000 - Date.now()) / 60000));
           const resets = mins >= 90 ? `${Math.round(mins / 60)}h` : `${mins}m`;
-          const ask: PendingAsk = { id: uid(), type: 'budget', scope: 'plan', at: Date.now(), head: `Paused at ${Math.round(w.util * 100)}% of your ${be.label} ${name} plan usage`, note: `You set a limit of ${limit}%. The window resets in ${resets}. Continuing may use up the rest of your plan.` };
+          const ask: PendingAsk = { id: uid(), type: 'budget', scope: 'plan', at: Date.now(), head: `Paused at ${Math.round(w.util * 100)}% of your ${who}${name} plan usage`, note: `You set a limit of ${limit}%. The window resets in ${resets}. Continuing may use up the rest of your plan.` };
           rt.budgetPaused = true;
           rt.asks.set(ask.id, { ask, scope: 'plan', planKey: key, resolve: () => undefined });
           s.ask = ask;
-          this.activity(s, 'budget', `paused at ${Math.round(w.util * 100)}% of the ${be.label} ${name} plan usage`);
+          this.activity(s, 'budget', `paused at ${Math.round(w.util * 100)}% of the ${who}${name} plan usage`);
           this.setStatus(s, 'attention', ask.head);
           this.hooks.notify('attention', `${s.id} is paused`, ask.head, s.id);
           rt.interrupted = true;
@@ -1392,7 +1393,7 @@ export class SessionManager {
     if (!s) return;
     title = title.trim().slice(0, 120);
     s.customTitle = title || undefined;
-    this.activity(s, 'session', title ? `renamed to “${title}”` : 'went back to the agent\'s name', { who: this.me(), human: true });
+    this.activity(s, 'session', title ? `renamed to “${title}”` : `went back to ${this.backendOf(s).shortName}'s name`, { who: this.me(), human: true });
     this.touch();
     // Keep Claude Code's own name in step, so the same session reads the same in VS Code.
     if (title && s.agentSessionId) await this.conversationsOf(s).rename(s.agentSessionId, s.worktree, title).catch(() => undefined);

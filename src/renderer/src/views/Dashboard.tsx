@@ -8,6 +8,7 @@ import { Cmd } from '../Hl';
 import { go, setUI, useApp, useMoney, toast, useUI } from '../store';
 import { Avatar, Button, DiffStat, Hint, Meter, SegmentedControl, Stat, StatusDot, useColumns, useNarrow } from '../ui';
 import { PlanMeters } from './Shell';
+import { isQuickQuestion } from './QuestionForm';
 import { ForecastNotice } from './Review';
 
 const lanePct = (m: number) => ((m / LANE_MIN) * 100).toFixed(2) + '%';
@@ -53,7 +54,7 @@ export function AttentionCard({ s }: { s: Session }) {
           <Button size="sm" variant="ghost" onClick={() => resolve({ decision: 'deny' })}>Deny</Button>
         </> : null}
         {a.type === 'question' ? <>
-          {(q?.options || []).slice(0, 3).map((o, i) => <Button key={o.label} size="sm" variant={i === 0 ? 'primary' : 'secondary'} onClick={() => resolve({ answers: { [q!.question]: o.label } })}>{o.label}</Button>)}
+          {(isQuickQuestion(a.questions) ? q?.options || [] : []).slice(0, 3).map((o, i) => <Button key={o.label} size="sm" variant={i === 0 ? 'primary' : 'secondary'} onClick={() => resolve({ answers: { [q!.question]: o.label } })}>{o.label}</Button>)}
           <Button size="sm" variant="ghost" onClick={open}>Reply</Button>
         </> : null}
         {a.type === 'budget' ? <>

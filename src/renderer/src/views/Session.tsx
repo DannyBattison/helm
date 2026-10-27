@@ -7,6 +7,7 @@ import { highlightBlock, langFromPath, langFromTag } from '../highlight';
 import { agentName, billingOf, can, clock, elapsed, fmtTokens, modelOptions, prettyModel, runningSubagents, STATUS_LABEL, subagentTree, tilde } from '../lib';
 import { go, loadTranscript, setUI, toast, useApp, useMoney, useTranscript } from '../store';
 import { Avatar, Badge, BranchTag, Button, CopyBox, DiffStat, Grip, IconButton, Lightbox, Meter, Select, StatusDot, Tabs, Tooltip, useNarrow, usePaneWidth } from '../ui';
+import { QuestionForm } from './QuestionForm';
 import { Changes } from './Changes';
 import { TranscriptList } from './TranscriptList';
 import { usePush } from './push';
@@ -322,18 +323,10 @@ function TranscriptItemView({ m, s, index, onDeny }: { m: TranscriptEvent; s: S;
     if (!m.answered && !live) return expired(q?.question || 'question');
     return (
       <div style={{ marginLeft: 44, marginRight: 12, borderRadius: 'var(--radius-md)', background: 'var(--status-attention-bg)', boxShadow: 'inset 0 0 0 1px var(--status-attention)', padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, font: '600 13px/1.5 var(--font-sans)', color: 'var(--status-attention-text)' }}><i className="ph-fill ph-question" style={{ fontSize: 15 }} />{q?.header || 'Question from the agent'}</div>
-        <div className="selectable" style={{ font: '500 13px/1.45 var(--font-sans)' }}>{q?.question}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, font: '600 13px/1.5 var(--font-sans)', color: 'var(--status-attention-text)' }}><i className="ph-fill ph-question" style={{ fontSize: 15 }} />{m.questions.length === 1 ? q?.header || 'Question from the agent' : `${m.questions.length} questions from the agent`}</div>
+        {m.questions.length === 1 ? <div className="selectable" style={{ font: '500 13px/1.45 var(--font-sans)' }}>{q?.question}</div> : null}
         {m.answered ? <div style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>Answered: <b style={{ fontWeight: 500, color: 'var(--text-1)' }}>{m.answered}</b></div> : <>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {(q?.options || []).map((o) => (
-              <button key={o.label} type="button" className="helm-tap-row" onClick={() => guard(api.resolveAsk(s.id, m.askId, { answers: { [q.question]: o.label } }))}
-                style={{ textAlign: 'left', padding: '7px 10px', border: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-raised)', boxShadow: 'inset 0 0 0 1px var(--border-strong)', color: 'var(--text-1)', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <span style={{ font: '500 13px/1.5 var(--font-sans)' }}>{o.label}</span>
-                {o.description ? <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{o.description}</span> : null}
-              </button>
-            ))}
-          </div>
+          <QuestionForm questions={m.questions} onSubmit={(answers) => guard(api.resolveAsk(s.id, m.askId, { answers }))} />
           <div style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Or type your own answer below.</div>
         </>}
       </div>

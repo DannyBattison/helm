@@ -1,5 +1,5 @@
 import React from 'react';
-import { MAX_UPLOAD_BYTES, MAX_UPLOAD_FILES, MAX_UPLOAD_TOTAL, type BaseOption, type GhRepo, type MergeMethod, type ModelAlias, type PermMode, type PullRequest, type SessionDeleteInfo } from '@shared/types';
+import { MAX_UPLOAD_FILES, MAX_UPLOAD_TOTAL, type BaseOption, type GhRepo, type MergeMethod, type ModelAlias, type PermMode, type PullRequest, type SessionDeleteInfo } from '@shared/types';
 import { api, platform } from '../api';
 import glyph from '../assets/helm-glyph-violet.svg';
 import { agentName, billingOf, defaultChoice, modelChoices, splitChoice, tilde } from '../lib';
@@ -294,9 +294,7 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
   const addUploads = async (list: File[]) => {
     const room = MAX_UPLOAD_FILES - uploads.length;
     if (list.length > room) toast({ tone: 'neutral', title: `At most ${MAX_UPLOAD_FILES} files per agent` });
-    const big = list.find((f) => f.size > MAX_UPLOAD_BYTES);
-    if (big) toast({ tone: 'neutral', title: 'File too large', description: `${big.name} is over ${MAX_UPLOAD_BYTES / 1048576} MB.` });
-    const take = list.filter((f) => f.size <= MAX_UPLOAD_BYTES).slice(0, Math.max(0, room));
+    const take = list.slice(0, Math.max(0, room));
     try {
       const read = await Promise.all(take.map(readUpload));
       const next = [...uploads, ...read];

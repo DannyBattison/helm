@@ -8,7 +8,7 @@ import { Badge, IconButton, StatusDot } from '../ui';
 import { KIND } from './Inbox';
 
 /** The bell in the title bar: a pop-up preview of what is waiting, with a way through to the full inbox. */
-export function InboxPreview({ size }: { size: 'md' | 'lg' }) {
+export function InboxPreview({ size, glow }: { size: 'md' | 'lg'; glow?: boolean }) {
   const app = useApp();
   const items = React.useMemo(() => inbox(app.sessions), [app.sessions]);
   const need = app.sessions.filter((s) => s.status === 'attention').length;
@@ -26,7 +26,7 @@ export function InboxPreview({ size }: { size: 'md' | 'lg' }) {
   const shown = items.slice(0, 6);
   return (
     <span ref={btn} style={{ display: 'inline-flex' }}>
-      <IconButton size={size} icon="bell" label="Inbox" badge={need > 0} active={open} onClick={() => setOpen((o) => !o)} />
+      <IconButton glow={glow} size={size} icon="bell" label="Inbox" badge={need > 0} active={open} onClick={() => setOpen((o) => !o)} />
       {open && box ? createPortal(
         <div ref={pop} role="dialog" aria-label="Inbox preview" className="no-drag" style={{ position: 'fixed', zIndex: 300, top: box.bottom + 6, right: Math.max(8, window.innerWidth - box.right), width: Math.min(340, window.innerWidth - 16), maxHeight: 'min(70vh, 460px)', overflowY: 'auto', padding: 4, borderRadius: 'var(--radius-lg)', background: 'var(--bg-overlay)', boxShadow: 'var(--shadow-popover)', animation: 'helm-in var(--dur) var(--ease-out)' }}>
           {shown.length === 0 ? <div style={{ padding: '14px 10px', font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Nothing needs you right now.</div> : shown.map((it) => (

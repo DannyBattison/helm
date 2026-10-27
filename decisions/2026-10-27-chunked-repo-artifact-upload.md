@@ -1,0 +1,3 @@
+## 2026-10-27 · Repository artifacts upload in 8 MB pieces, with no size limit
+The 25 MB cap on repository artifacts (D-133) is gone. The Settings upload slices the file into 8 MB pieces and sends each with its offset (`addRepoArtifactChunk`); the core appends them to `repo-artifacts/<repo>/.partial/<name>` and renames the file into place on the last piece, so a half-sent file is never listed or copied. Neither side holds the whole file, and no message nears the 512 MB socket limit. Copies into worktrees ask for a copy-on-write clone (`COPYFILE_FICLONE`), which falls back to a full copy on filesystems without reflinks (a 14 GB file then costs 14 GB per worktree). The attach-files-to-a-session limit (360 MB) is unchanged.
+Why: user request, for a 14 GB artifact.

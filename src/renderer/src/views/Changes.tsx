@@ -344,8 +344,10 @@ function ChangesView({ s }: { s: Session }) {
         <div style={{ height: 34, flex: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px' }}>
           <Checkbox checked={allOn} onChange={(on) => setUnchecked(on ? new Set() : new Set((sum?.files || []).filter((f) => pickable(f.path)).map((f) => f.path)))} />
           <span style={{ flex: 1, font: '500 12px/1.5 var(--font-sans)' }} title="Hunks accepted, of all hunks in the change">{sum?.files.length ?? 0} files{totalHunks ? <span style={{ font: '400 11px/1.5 var(--font-mono)', color: doneHunks === totalHunks ? 'var(--status-ready-text)' : 'var(--text-3)', marginLeft: 8, whiteSpace: 'nowrap' }}>✓ {doneHunks}/{totalHunks}</span> : null}</span>
-          {totalHunks && doneHunks < totalHunks ? <Button size="sm" variant="ghost" onClick={() => void api.setHunksReviewed(s.id, Object.values(fileHunks).flat(), true)}>Accept all</Button> : null}
           <DiffStat additions={totalAdd} deletions={totalDel} blocks={false} />
+        </div>
+        <div style={{ height: 30, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, padding: '0 12px' }}>
+          {totalHunks && doneHunks < totalHunks ? <Button size="sm" variant="ghost" onClick={() => void api.setHunksReviewed(s.id, Object.values(fileHunks).flat(), true)}>Accept all</Button> : null}
           <IconButton icon={tree ? 'list-bullets' : 'tree-structure'} label={tree ? 'Show as a list' : 'Show as a tree'} size="sm" onClick={() => setTree(!tree)} />
         </div>
         <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '0 4px 8px' }}>
@@ -357,7 +359,7 @@ function ChangesView({ s }: { s: Session }) {
                 <div key={f.path} onClick={() => setSel(f.path)} style={{ display: 'flex', alignItems: 'center', gap: 8, height: tree ? 28 : 40, padding: '0 8px 0 ' + (8 + depth * 14) + 'px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', background: on ? 'var(--bg-selected)' : 'transparent' }}>
                   <span onClick={(e) => e.stopPropagation()}><Checkbox checked={!unchecked.has(f.path)} disabled={!pickable(f.path)} onChange={() => toggle(f.path)} /></span>
                   <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{parts[parts.length - 1]}</span>
+                    <span style={{ font: '400 12px/1.5 var(--font-mono)', color: sClr[f.status] || 'var(--text-1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{parts[parts.length - 1]}</span>
                     {tree ? null : <span style={{ font: '400 10.5px/1.5 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{parts.slice(0, -1).join('/') || '.'}</span>}
                   </div>
                   <span style={{ font: '400 10.5px/1.5 var(--font-mono)', color: 'var(--diff-add-fg)' }}>+{f.add}</span>

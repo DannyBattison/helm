@@ -101,6 +101,9 @@ RUN case "$(dpkg --print-architecture)" in amd64) A=x64 ;; arm64) A=arm64 ;; *) 
 ARG CODEX_VERSION=0.164.0
 RUN npm install -g "@openai/codex@${CODEX_VERSION}" && npm cache clean --force && codex --version
 
+# tsc, from the TypeScript helm is built with (a root devDependency, so it is in /app/node_modules), on the PATH for agents and the terminal tab.
+RUN test -f /app/node_modules/typescript/bin/tsc && ln -s /app/node_modules/typescript/bin/tsc /usr/local/bin/tsc && tsc --version
+
 # A normal user (created above), not root: the agent runs commands as whoever the server is. Everything it keeps (state, GitHub token,
 # clones, worktrees, Claude Code's and Codex's logins) lives under /home/helm, which is the one volume.
 # Built on Windows the script can arrive with CRLF line endings and no exec bit; fix both.

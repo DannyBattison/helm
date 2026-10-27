@@ -1,23 +1,42 @@
-# Runs the tests with coverage on every push and pull request, and sends the report to Codecov for the README badge.
+# Typecheck and tests (with coverage, sent to Codecov for the README badge) as two parallel jobs.
+# Runs on every push to main and pull request; release.yml calls it too and only publishes if it passes.
 name: ci
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_call:
 permissions:
   contents: read
 jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm --prefix hosted ci
+      - run: npm run typecheck
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
       - run: npx vitest run --coverage --coverage.reporter=lcov --coverage.reporter=text-summary
+      # A release run is not a code change, so it sends no coverage (its caller is a workflow_dispatch).
       - uses: codecov/codecov-action@v5
+        if: github.event_name != 'workflow_dispatch'
         with:
           files: coverage/lcov.info
           token: ${{ secrets.CODECOV_TOKEN }}

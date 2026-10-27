@@ -143,15 +143,15 @@ export function untilReset(resetsAtSec: number): string {
 /** Plan windows that have not reset yet. A window past its reset time reads as unknown, not as the old number. */
 export function livePlan(app: AppState, backend?: string) {
   const ok = (w?: { util: number; resetsAt: number }) => (w && w.resetsAt * 1000 > Date.now() ? w : undefined);
-  const id = backend ?? backendFor(app, app.settings.defaultBackend)?.id ?? 'claude';
+  const id = backend ?? backendFor(app, app.settings?.defaultBackend)?.id ?? 'claude';
   const plan = app.plans?.[id] ?? (id === 'claude' ? app.plan : undefined);
   return { fiveHour: ok(plan?.fiveHour), weekly: ok(plan?.weekly) };
 }
 
 /** How an agent's usage is paid for: the setting for Claude, what the account reports for any other. */
 export const billingOf = (app: AppState, backend?: string): 'subscription' | 'api' => {
-  const b = backendFor(app, backend ?? app.settings.defaultBackend);
-  return !b || b.id === 'claude' ? app.settings.billing : b.login?.billing ?? 'subscription';
+  const b = backendFor(app, backend ?? app.settings?.defaultBackend);
+  return !b || b.id === 'claude' ? app.settings?.billing : b.login?.billing ?? 'subscription';
 };
 
 /** The agents whose plan limits are worth showing: ready to use, with windows, and paid for by a subscription. */

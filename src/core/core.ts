@@ -14,7 +14,7 @@ import { Companion } from './companion';
 import { installLogging, logFile, logLine, recentLog } from './log';
 import { cleanHeavy, dirSize, reclaimableBytes } from './disk';
 import { readArtifact } from './artifacts';
-import { addRepoArtifact, listRepoArtifacts, removeRepoArtifact, setRepoArtifactDir } from './repoartifacts';
+import { addRepoArtifact, addRepoArtifactChunk, repoArtifactProgress, listRepoArtifacts, removeRepoArtifact, setRepoArtifactDir } from './repoartifacts';
 import { cpuTimes, cpuUse, HISTORY_LIMIT, parseLimit, type CpuTimes, type SystemPoint } from '../shared/system';
 import { SyncService } from './sync';
 import { applyImport, buildExport } from './migrate';
@@ -479,6 +479,8 @@ export const api: HelmApi = {
   dismissArtifact: (id, name) => sessions.dismissArtifact(id, name),
   listRepoArtifacts: (id) => listRepoArtifacts(repos.must(id).id),
   addRepoArtifact: (id, name, data) => addRepoArtifact(repos.must(id).id, name, data),
+  addRepoArtifactChunk: (id, name, offset, data, done, fp) => addRepoArtifactChunk(repos.must(id).id, name, offset, data, done, fp),
+  repoArtifactProgress: (id, name, fp) => repoArtifactProgress(repos.must(id).id, name, fp),
   removeRepoArtifact: (id, name) => removeRepoArtifact(repos.must(id).id, name),
   async saveAutomation(a) { return automations.save(a); },
   async deleteAutomation(id) { automations.remove(id); },
@@ -564,7 +566,7 @@ export const api: HelmApi = {
     return res;
   },
   async changedFiles(id) { return G.dirtyFiles(ws(id).worktree); },
-  async changes(id) { const s = sess(id); return G.changes(s.worktree, s.base); },
+  async changes(id) { const s = sess(id); void sessions.refreshStats(s); return G.changes(s.worktree, s.base); },
   async extraChanges(id, repoId) {
     const x = sess(id).extras?.find((e) => e.repoId === repoId);
     if (!x) throw new Error('This session has no worktree in ' + repoId);

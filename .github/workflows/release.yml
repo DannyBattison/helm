@@ -1,39 +1,101 @@
-# Builds installers for macOS, Windows and Linux and attaches them to a GitHub release when a version tag is pushed
-# (git tag v0.2.0 && git push --tags). The same release is what the app's auto-update reads.
-#
-# Signing is optional and driven by repository secrets; without them the installers are built unsigned.
-#   macOS:   CSC_LINK (base64 .p12 of a Developer ID Application certificate), CSC_KEY_PASSWORD,
-#            APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID  (the last three turn on notarization)
-#   Windows: WIN_CSC_LINK (base64 .pfx code-signing certificate), WIN_CSC_KEY_PASSWORD
+# Manual release: run the workflow from the Actions tab and choose a major, minor or patch bump. The version is worked out
+# from the latest v* tag (the first release is 0.1.0). The desktop installers (desktop.yml) and the hosted Docker images
+# (hosted.yml) are built in parallel with the tests and typecheck (ci.yml) and only provide artifacts. When all have succeeded, the publish job tags the
+# commit, creates the GitHub release (which is what the app's auto-update reads) with the installers attached, and tags
+# the images :X.Y.Z, :X.Y and :latest. A failed build leaves no tag, release or image tag behind.
+# The README's release badges read from the release. Installers are unsigned.
 name: release
 on:
-  push:
-    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump
+        type: choice
+        options: [minor, major, patch]
+        default: minor
 permissions:
-  contents: write
+  contents: read
 jobs:
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, windows-latest, ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.next.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
         with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm test
-      - run: npm run release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          fetch-depth: 0
+      - id: next
+        run: |
+          latest=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)
+          if [ -z "$latest" ]; then
+            version=0.1.0
+          else
+            IFS=. read -r major minor patch <<< "${latest#v}"
+            case "${{ inputs.bump }}" in
+              major) version="$((major + 1)).0.0" ;;
+              minor) version="$major.$((minor + 1)).0" ;;
+              *) version="$major.$minor.$((patch + 1))" ;;
+            esac
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+  tests:
+    uses: ./.github/workflows/ci.yml
+  desktop:
+    needs: version
+    uses: ./.github/workflows/desktop.yml
+    with:
+      ref: ${{ github.sha }}
+      version: ${{ needs.version.outputs.version }}
+  hosted:
+    needs: version
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/hosted.yml
+    with:
+      ref: ${{ github.sha }}
+  publish:
+    needs: [version, tests, desktop, hosted]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-*
+          path: installers
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: digest-*
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create the release
+        run: |
+          git tag "v$VERSION"
+          git push origin "v$VERSION"
+          gh release create "v$VERSION" installers/* --repo "$GITHUB_REPOSITORY" \
+            --title "v$VERSION" --generate-notes --latest
+      - name: Tag the images
+        run: |
+          set -euo pipefail
+          image=ghcr.io/$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')/helm-hosted
+          minor=${VERSION%.*}
+          for variant in slim full; do
+            suffix=$([ "$variant" = full ] && echo -full || echo)
+            docker buildx imagetools create \
+              -t "$image:$VERSION$suffix" -t "$image:$minor$suffix" -t "$image:latest$suffix" \
+              "$image@$(cat digest-$variant)"
+          done
