@@ -185,6 +185,8 @@ export interface Session {
   mergedAt?: number;
   /** How hard the model thinks. Unset leaves it to Claude Code's default for the model. */
   effort?: Effort;
+  /** Set once other agents have joined. This session's own agent is then the owner. */
+  panel?: Panel;
   /** A short name Claude Code gave the conversation. Shown instead of the id until you rename it. */
   title?: string;
   /** Set once helm has tried to name the branch after `title`, so it happens only once. */
@@ -336,11 +338,38 @@ export interface SessionArtifact { name: string; label: string; at: number; dism
 /** The file itself, as sent to the window. */
 export interface Artifact { name: string; mediaType: string; size: number; data: string | null }
 
+/** One agent in a session with several. Its handle (`name`) is what people write after an @ to address it. */
+export interface PanelMember {
+  name: string;
+  backend?: string;
+  model: ModelAlias;
+  effort?: Effort;
+  /** The agent's own conversation, so it carries on where it left off. */
+  agentSessionId?: string;
+}
+
+/**
+ * A session with more than one agent. The session's own backend, model, effort and conversation belong to the owner, the one agent
+ * allowed to edit files and run commands; `members` are the others, who can only read. Changing the owner swaps those fields with a member's.
+ */
+export interface Panel {
+  /** The owner's handle. */
+  owner: string;
+  members: PanelMember[];
+  /** How much of the transcript each participant (by handle) has been shown. */
+  seen: Record<string, number>;
+}
+
+/** The message a reply answers: its place in the transcript, who wrote it, and the start of it, so a thread reads without the original loaded. */
+export interface ReplyRef { index: number; who: string; snippet: string }
+
 /** `at` is when helm recorded the event. */
 export type TranscriptEvent = { at?: number } & (
-  | { k: 'user'; t: number; text: string; from?: string; images?: MessageImage[]; cp?: number }
+  /** `to` is who in a panel the message was for (everyone when empty); `re` the message it replies to. */
+  | { k: 'user'; t: number; text: string; from?: string; images?: MessageImage[]; cp?: number; to?: string[]; re?: ReplyRef }
   | { k: 'subagent'; id: string; description: string; agentType: string; status: Subagent['status']; summary?: string }
-  | { k: 'agent'; text: string; list?: string[] }
+  /** In a panel, `from` is the handle of the agent that wrote it and `re` the message it answers. */
+  | { k: 'agent'; text: string; list?: string[]; from?: string; re?: ReplyRef }
   | { k: 'tools'; items: [string, string, string][] }
   | { k: 'edit'; file: string; add: number; del: number; lines: [string, string][] }
   | { k: 'bash'; id: string; cmd: string; summary?: string; out: string; ok: boolean; meta: string; done: boolean }
@@ -387,6 +416,8 @@ export interface Settings {
   /** Agents turned on, by id. At least one is always on. A turned-off agent is left out of every model list and cannot start new sessions. */
   enabledAgents: string[];
   defaultBackend: string;
+  /** Most replies the agents in a session with several may give to one message of yours, counting their answers to each other. -1 for no limit. */
+  panelReplyCap: number;
   defaultModel: ModelAlias;
   permMode: PermMode;
   alwaysAllow: string[];
@@ -823,9 +854,16 @@ export interface NewSessionInput {
   automation?: Session['automation'];
   /** Start from this effort level instead of the default. */
   effort?: Effort;
+  /** Further agents to put in the session beside the first, who read and comment but do not edit. */
+  panel?: PanelAgentInput[];
   /** Files of any type for this agent alone. They are saved outside the worktree and only this session can read them. */
   files?: SessionFileUpload[];
 }
+
+export interface PanelAgentInput { backend?: string; model: ModelAlias; effort?: Effort }
+
+/** Who a message is for and what it answers, when a session has several agents. */
+export interface SendOptions { to?: string[]; re?: ReplyRef }
 
 export interface SessionFileUpload {
   name: string;
@@ -997,7 +1035,12 @@ export interface HelmApi {
   removeWorktree(repoId: string, path: string): Promise<void>;
 
   createSession(input: NewSessionInput): Promise<string>;
-  sendMessage(sessionId: string, text: string, images?: MessageImage[]): Promise<void>;
+  sendMessage(sessionId: string, text: string, images?: MessageImage[], opts?: SendOptions): Promise<void>;
+  /** Brings another agent into a session. It reads and comments but cannot edit or run anything that changes things. */
+  addPanelAgent(sessionId: string, agent: PanelAgentInput): Promise<void>;
+  removePanelAgent(sessionId: string, name: string): Promise<void>;
+  /** Makes this agent the one that edits and runs commands; the previous owner becomes read-only. */
+  setPanelOwner(sessionId: string, name: string): Promise<void>;
   setSessionEffort(sessionId: string, effort: Effort | null): Promise<void>;
   interrupt(sessionId: string): Promise<void>;
   /** The emergency stop: interrupts every working agent at once and holds the queue. Resolves to how many were interrupted. */

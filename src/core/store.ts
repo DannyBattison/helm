@@ -53,6 +53,7 @@ export const defaultSettings = (): Settings => ({
   planPause5h: 0,
   planPauseWeek: 0,
   maxRunning: 0,
+  panelReplyCap: 6,
   notifyAttention: { desktop: true, sound: true },
   notifyReady: { desktop: true, sound: false },
   notifyFailed: { desktop: true, sound: true },

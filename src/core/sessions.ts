@@ -8,9 +8,11 @@ import { queueBlock, queueOrder } from '../shared/queue';
 import { stuckReason } from '../shared/stuck';
 import { REVIEW_SCHEMA, parseReview, reviewPrompt } from '../shared/selfreview';
 import { commandSummary } from '../shared/commandSummary';
-import { FREE_ID, freeRepo, sessionTitle, MAX_UPLOAD_FILES, MAX_UPLOAD_TOTAL, type ActivityEvent, type Checkpoint, type Effort, type ExtraRepo, type Repo, type MessageImage, type ModelAlias, type NewSessionInput, type PendingAsk, type PermMode, type Session, type Status, type Subagent, type TranscriptEvent } from '../shared/types';
-import { BackendRegistry, type AgentBackend, type AgentBlock, type AgentEvent, type AgentHandle, type AgentToolResult, type ToolDecision } from './backend';
+import { handleFor, memberOf, mentionsIn, panelDigest, panelInstructions, participants, replyLimit } from '../shared/panel';
+import { FREE_ID, freeRepo, sessionTitle, MAX_UPLOAD_FILES, MAX_UPLOAD_TOTAL, type ActivityEvent, type Checkpoint, type Effort, type ExtraRepo, type Repo, type MessageImage, type ModelAlias, type NewSessionInput, type Panel, type PanelAgentInput, type PanelMember, type PendingAsk, type PermMode, type ReplyRef, type SendOptions, type Session, type Status, type Subagent, type TranscriptEvent } from '../shared/types';
+import { BackendRegistry, type AgentBackend, type AgentBlock, type AgentEvent, type AgentHandle, type AgentToolResult, type AgentUsage, type ToolDecision } from './backend';
 import { ClaudeBackend } from './claudeBackend';
+import { Advisor } from './advisor';
 import { COMMAND_TOOLS, EDIT_TOOLS, convertMessages, rel, trunc } from './transcript';
 import { artifactDir, dropArtifacts, ensureArtifactDir } from './artifacts';
 import * as G from './git';
@@ -58,7 +60,17 @@ interface Runtime {
   subEvent: Map<string, { tkey: string; idx: number }>;
   /** Subagents the limit hook let start, so a parallel batch is counted one by one. */
   admitted: Set<string>;
+  /** In a session with several agents: the owner's text this turn, where its last piece sits in the transcript, and who is waiting for the turn to end. */
+  turnText: string[];
+  lastText: number;
+  turnWaiters: ((r: { text: string; index: number }) => void)[];
+  /** The message the owner's replies this turn answer. */
+  reply?: ReplyRef;
 }
+
+/** A message of the user's, for the agents of a panel to answer. `at` is its place in the transcript. */
+interface Round { at: number; text: string; images: MessageImage[]; to: string[] }
+const snip = (t: string) => trunc(t.replace(/\s+/g, ' ').trim(), 120);
 
 
 const SAFE_CMD = /^(ls|dir|pwd|cat|head|tail|wc|echo|which|where|type|tree|file|stat|date|whoami|git (status|diff|log|show|branch|rev-parse|ls-files|blame|remote -v|config --get)|rg|grep|find(?!.*(-delete|-exec)))(\s|$)/;
@@ -89,6 +101,12 @@ export class SessionManager {
   /** How each backend other than Claude is paid for, as its sign-in reports it. Claude's is `settings.billing`. */
   private billings: Record<string, 'subscription' | 'api'> = {};
   private registry: BackendRegistry;
+  /** Read-only participants of sessions with several agents, by session and handle. */
+  private advisors = new Map<string, Map<string, Advisor>>();
+  /** Bumped to call off the replies a session's agents are working through. */
+  private epochs = new Map<string, number>();
+  /** Each session's rounds run one after another. */
+  private rounds = new Map<string, Promise<void>>();
   constructor(private store: Store, private hooks: Hooks, registry?: BackendRegistry) {
     this.registry = registry ?? new BackendRegistry([new ClaudeBackend({ sdk: () => this.store.data.settings.claudePath || this.hooks.claudePath(), cli: () => this.store.data.settings.claudePath || undefined })]);
   }
@@ -180,6 +198,7 @@ export class SessionManager {
     const on = this.store.data.settings.enabledAgents;
     if (on && !on.includes(backendId)) throw new Error(`${this.registry.get(backendId).label} is turned off. Turn it on under Settings → Agents, or pick another agent.`);
     const modelId = this.registry.model(backendId, input.model).id;
+    for (const a of input.panel || []) this.panelSeat(a);
     const repo = free ? undefined : this.store.data.repos.find((r) => r.id === input.repoId);
     if (!free && !repo) throw new Error('Repository not found');
     const st = this.store.data.settings;
@@ -236,6 +255,7 @@ export class SessionManager {
       extras: extras.length ? extras : undefined, uploads, agentSessionId, effort: extra.effort, parentId: extra.parentId, group: extra.group, source: extra.source
     };
     s.source ??= input.source;
+    for (const a of input.panel || []) this.join(s, a, 0);
     s.automation = input.automation;
     s.effort ??= input.effort;
     // Wait when another session has to be merged first, or when too many sessions are already working.
@@ -251,7 +271,7 @@ export class SessionManager {
     if (blocked && pics) this.queuedImages.set(id, pics);
     if (blocked) { this.touch(); return id; }
     this.touch();
-    await this.start(s, input.task, pics);
+    await this.kickoff(s, input.task, pics, 0);
     return id;
   }
 
@@ -302,7 +322,13 @@ export class SessionManager {
     this.hooks.emitState();
     const pics = this.queuedImages.get(s.id);
     this.queuedImages.delete(s.id);
-    await this.start(s, s.task, pics);
+    await this.kickoff(s, s.task, pics, 0);
+  }
+
+  /** Begins the session's first turn: its agent alone, or all the agents of a panel answering the task. */
+  private async kickoff(s: Session, task: string, images: MessageImage[] | undefined, at: number) {
+    if (s.panel) void this.queueRound(s, { at, text: task, images: images || [], to: [] });
+    else await this.start(s, task, images);
   }
 
   /** Starts a queued session now, whatever it is waiting for. */
@@ -501,6 +527,10 @@ export class SessionManager {
   }
 
   private systemAppend(s: Session, artifacts: string): string {
+    return [this.baseSystem(s, artifacts), s.panel ? panelInstructions(s.panel, s.panel.owner, this.store.data.settings.panelReplyCap) : ''].filter(Boolean).join('\n');
+  }
+
+  private baseSystem(s: Session, artifacts: string): string {
     const uploaded = s.uploads ? `The user uploaded ${s.uploads.files.length === 1 ? 'a file' : 'files'} for this task alone, in ${s.uploads.dir}: ${s.uploads.files.map((f) => f.name).join(', ')}. Read them from there; they are outside your working directory on purpose, so do not copy them into it unless the task needs that.` : '';
     return [this.baseAppend(s, artifacts), uploaded].filter(Boolean).join('\n');
   }
@@ -541,13 +571,13 @@ export class SessionManager {
     ].filter(Boolean).join('\n');
   }
 
-  private async start(s: Session, first?: string, firstImages: MessageImage[] = []) {
+  private async start(s: Session, first?: string, firstImages: MessageImage[] = [], turn?: { reply?: ReplyRef; done?: (r: { text: string; index: number }) => void }) {
     const settings = this.store.data.settings;
     const artifacts = await ensureArtifactDir(s.id);
     // A worktree made before a file was uploaded gets it when the agent next starts. Files already there are left as the agent has them.
     if (!s.free) await supplyRepoArtifacts(s.repoId, s.worktree, false);
     for (const x of s.extras || []) await supplyRepoArtifacts(x.repoId, x.worktree, false);
-    const rt: Runtime = { agent: null as any, asks: new Map(), turnCost: 0, baseCost: s.cost, startCost: s.cost, interrupted: false, budgetPaused: false, toolStart: new Map(), fails: new Map(), lastTools: new Map(), subEvent: new Map(), admitted: new Set() };
+    const rt: Runtime = { agent: null as any, asks: new Map(), turnCost: 0, baseCost: s.cost, startCost: s.cost, interrupted: false, budgetPaused: false, toolStart: new Map(), fails: new Map(), lastTools: new Map(), subEvent: new Map(), admitted: new Set(), turnText: [], lastText: -1, turnWaiters: turn?.done ? [turn.done] : [], reply: turn?.reply };
     rt.agent = this.backendOf(s).start({
       cwd: s.worktree, model: s.model, effort: s.effort, permMode: s.permMode,
       systemAppend: this.systemAppend(s, artifacts),
@@ -578,6 +608,7 @@ export class SessionManager {
       }
     } finally {
       if (this.rt.get(s.id) === rt) this.rt.delete(s.id);
+      this.endTurn(rt);
       if (this.quitting) return;
       this.stopSubagents(s);
       for (const w of rt.asks.values()) w.resolve({ behavior: 'deny', message: 'Session ended' });
@@ -610,8 +641,16 @@ export class SessionManager {
       case 'plan_usage': return this.onPlanUsage(s, ev);
       case 'assistant': return this.onAssistant(s, rt, ev);
       case 'tool_results': return this.onToolResults(s, rt, ev.results);
-      case 'result': return this.onResult(s, rt, ev);
+      case 'result': { await this.onResult(s, rt, ev); this.endTurn(rt); return; }
     }
+  }
+
+  /** The owner's turn is over: hands whoever is waiting for it what it said. */
+  private endTurn(rt: Runtime) {
+    const r = { text: rt.turnText.join('\n\n').trim(), index: rt.lastText };
+    rt.turnText = [];
+    rt.reply = undefined;
+    for (const w of rt.turnWaiters.splice(0)) w(r);
   }
 
   private async onAssistant(s: Session, rt: Runtime, m: Extract<AgentEvent, { t: 'assistant' }>) {
@@ -638,7 +677,9 @@ export class SessionManager {
     }
     for (const b of m.blocks) {
       if (b.type === 'text') {
-        await this.push(tkey, { k: 'agent', text: b.text });
+        const owned = s.panel && !sub;
+        const at = await this.push(tkey, { k: 'agent', text: b.text, ...(owned ? { from: s.panel!.owner, ...(rt.reply ? { re: rt.reply } : {}) } : {}) });
+        if (!sub) { rt.turnText.push(b.text); rt.lastText = at; }
         this.collectArtifacts(s, b.text);
       } else if (b.type === 'tool_use') {
         await this.onToolUse(s, rt, b, tkey, sub);
@@ -1285,8 +1326,252 @@ export class SessionManager {
     await this.start(s, message);
   }
 
+  // ---------------------------------------------------------------- several agents
+  /** Sends to the owner alone, for helm's own nudges such as "continue", which the other agents have no part in. */
+  ownerOnly(s?: Session): SendOptions { return s?.panel ? { to: [s.panel.owner] } : {}; }
+
+  /** Checks an agent can be put in a session and says which backend and model it will use. */
+  private panelSeat(a: PanelAgentInput) {
+    const be = this.registry.get(a.backend || this.store.data.settings.defaultBackend);
+    const on = this.store.data.settings.enabledAgents;
+    if (on && !on.includes(be.id)) throw new Error(`${be.label} is turned off. Turn it on under Settings → Agents, or pick another agent.`);
+    return { be, model: this.registry.model(be.id, a.model).id };
+  }
+
+  /** Puts another agent in the session, making it a panel if it was not one. `ownerSeen` is how much of the transcript the owner already knows. */
+  private join(s: Session, a: PanelAgentInput, ownerSeen: number): PanelMember {
+    const { be, model } = this.panelSeat(a);
+    if ((s.panel?.members.length ?? 0) >= 5) throw new Error('A session holds up to six agents.');
+    if (!s.panel) {
+      const owner = handleFor(this.backendOf(s).shortName, []);
+      s.panel = { owner, members: [], seen: { [owner]: ownerSeen } };
+    }
+    const m: PanelMember = { name: handleFor(be.shortName, participants(s.panel)), backend: be.id, model, ...(a.effort ? { effort: a.effort } : {}) };
+    s.panel.members.push(m);
+    s.panel.seen[m.name] = 0;
+    return m;
+  }
+
+  /** Whoever speaks next should be started afresh, so its instructions list the agents there are now. Anyone in the middle of a reply is left alone. */
+  private panelChanged(s: Session) {
+    for (const [name, a] of this.advisors.get(s.id) ?? []) if (!a.busy) { a.close(); this.advisors.get(s.id)!.delete(name); }
+    const rt = this.rt.get(s.id);
+    if (rt && s.status !== 'working' && !rt.asks.size) { rt.agent.close(); this.rt.delete(s.id); }
+    this.touch();
+  }
+
+  async addPanelAgent(id: string, a: PanelAgentInput) {
+    const s = this.get(id);
+    if (!s) throw new Error('Session not found');
+    if (s.worktreeGone) throw new Error('This session\'s work was merged and its worktree removed.');
+    const t = await this.store.transcript(id);
+    const fresh = !s.panel;
+    const m = this.join(s, a, t.length);
+    // The conversation so far was the owner's: label it, so the new agent is shown who said what.
+    if (fresh) { for (const ev of t) if (ev.k === 'agent' && !ev.from) ev.from = s.panel!.owner; this.store.saveTranscript(id); }
+    await this.push(id, { k: 'note', tone: 'neutral', text: `@${m.name} joined (${this.registry.get(m.backend).shortName}, read-only). @${s.panel!.owner} edits and runs commands.` });
+    this.activity(s, 'session', `added ${m.name} to the session`, { who: this.me(), human: true });
+    this.panelChanged(s);
+  }
+
+  async removePanelAgent(id: string, name: string) {
+    const s = this.get(id);
+    const m = memberOf(s?.panel, name);
+    if (!s?.panel || !m) throw new Error(name === s?.panel?.owner ? 'The owner cannot be removed. Make another agent the owner first.' : 'That agent is not in this session.');
+    await this.callOffRounds(id);
+    this.advisors.get(id)?.get(name)?.close();
+    this.advisors.get(id)?.delete(name);
+    s.panel.members = s.panel.members.filter((x) => x.name !== name);
+    delete s.panel.seen[name];
+    // Alone again, the session goes back to being an ordinary one.
+    if (!s.panel.members.length) s.panel = undefined;
+    await this.push(id, { k: 'note', tone: 'neutral', text: `@${name} left the session.` });
+    this.panelChanged(s);
+  }
+
+  /** Hands the editing to another agent. The old owner stays as a reader; each keeps its own conversation. */
+  async setPanelOwner(id: string, name: string) {
+    const s = this.get(id);
+    const panel = s?.panel;
+    if (!s || !panel) throw new Error('This session has only one agent.');
+    const m = memberOf(panel, name);
+    if (!m) throw new Error(name === panel.owner ? `@${name} already owns the session.` : 'That agent is not in this session.');
+    if (this.rt.has(id) && s.status === 'working') throw new Error(`@${panel.owner} is working. Interrupt it first, then pick the new owner.`);
+    await this.callOffRounds(id);
+    const rt = this.rt.get(id);
+    if (rt) { for (const w of rt.asks.values()) w.resolve({ behavior: 'deny', message: 'The owner changed' }); rt.agent.close(); this.rt.delete(id); }
+    this.advisors.get(id)?.get(name)?.close();
+    this.advisors.get(id)?.delete(name);
+    const old: PanelMember = { name: panel.owner, backend: s.backend, model: s.model, ...(s.effort ? { effort: s.effort } : {}), ...(s.agentSessionId ? { agentSessionId: s.agentSessionId } : {}) };
+    s.backend = m.backend;
+    s.model = m.model;
+    s.effort = m.effort;
+    s.agentSessionId = m.agentSessionId;
+    s.modelName = undefined;
+    s.ctx = 0;
+    s.ctxMax = undefined;
+    s.ask = undefined;
+    panel.members = panel.members.map((x) => (x.name === name ? old : x));
+    panel.owner = name;
+    await this.push(id, { k: 'note', tone: 'neutral', text: `@${name} now edits and runs commands. @${old.name} is read-only.` });
+    this.activity(s, 'session', `made ${name} the owner`, { who: this.me(), human: true });
+    this.touch();
+  }
+
+  /** Calls off the replies still to come for earlier messages, and cuts short any that is being written. */
+  private async callOffRounds(id: string) {
+    this.epochs.set(id, (this.epochs.get(id) ?? 0) + 1);
+    await Promise.all([...(this.advisors.get(id)?.values() ?? [])].filter((a) => a.busy).map((a) => a.interrupt()));
+  }
+
+  private closeAdvisors(id: string) {
+    for (const a of this.advisors.get(id)?.values() ?? []) a.close();
+    this.advisors.delete(id);
+  }
+
+  /** Resolves once every reply to the messages sent so far has been given. */
+  async settled(id: string) { await this.rounds.get(id); }
+
+  private queueRound(s: Session, job: Round): Promise<void> {
+    const epoch = this.epochs.get(s.id) ?? 0;
+    const run = (this.rounds.get(s.id) ?? Promise.resolve())
+      .then(() => this.runRound(s, job, epoch))
+      .catch(async (e: any) => { await this.push(s.id, { k: 'note', tone: 'error', text: trunc(String(e?.message || e), 300) }).catch(() => undefined); });
+    this.rounds.set(s.id, run);
+    return run;
+  }
+
+  /**
+   * The replies to one message of the user's. Those it is for answer in turn, the owner first (everyone, when it names no one); an
+   * agent that @mentions another in its reply gets that one to answer next. Stops when no one is left to answer or the limit is reached.
+   */
+  private async runRound(s: Session, job: Round, epoch: number) {
+    const live = () => (this.epochs.get(s.id) ?? 0) === epoch && !!s.panel && this.get(s.id) === s;
+    if (!live()) return;
+    const limit = replyLimit(this.store.data.settings.panelReplyCap);
+    const first: ReplyRef = { index: job.at, who: 'you', snippet: snip(job.text) };
+    const queue: { name: string; re: ReplyRef }[] = (job.to.length ? job.to : participants(s.panel!)).map((name) => ({ name, re: first }));
+    let replies = 0;
+    while (queue.length && live()) {
+      if (limit != null && replies >= limit) {
+        const left = queue.map((q) => '@' + q.name).join(', ');
+        await this.push(s.id, { k: 'note', tone: 'neutral', text: `Reply limit reached (${limit} for one message). ${left} did not get to answer. Mention them to carry on, or change the limit in Settings.` });
+        break;
+      }
+      const next = queue.shift()!;
+      if (!participants(s.panel!).includes(next.name)) continue;
+      let reply: { text: string; index: number } | undefined;
+      try { reply = await this.speak(s, next.name, next.re, job); }
+      catch (e: any) { if (live()) await this.push(s.id, { k: 'note', tone: 'error', text: `@${next.name} could not reply: ${trunc(String(e?.message || e), 240)}` }); continue; }
+      if (!reply) continue;
+      replies++;
+      if (!live()) break;
+      const re: ReplyRef = { index: reply.index, who: next.name, snippet: snip(reply.text) };
+      for (const m of mentionsIn(reply.text, participants(s.panel!), next.name)) if (!queue.some((q) => q.name === m)) queue.push({ name: m, re });
+    }
+  }
+
+  /** One participant answers: it is shown what it has missed, and what it says is added to the transcript. Resolves to nothing when it had nothing to answer. */
+  private async speak(s: Session, name: string, re: ReplyRef, job: Round): Promise<{ text: string; index: number } | undefined> {
+    const panel = s.panel!;
+    const t = await this.store.transcript(s.id);
+    const from = panel.seen[name] ?? 0;
+    const digest = panelDigest(t, from, name, panel);
+    panel.seen[name] = t.length;
+    if (!digest) return undefined;
+    const images = job.images.length && from <= job.at ? job.images : [];
+    if (name === panel.owner) {
+      const r = await this.askOwner(s, digest, images, re);
+      return r.text ? r : undefined;
+    }
+    const member = memberOf(panel, name)!;
+    const advisor = this.advisorFor(s, member);
+    const before = { status: s.status, step: s.step };
+    const step = `@${name} is replying`;
+    this.setStatus(s, 'working', step);
+    let text = '';
+    try { text = await advisor.ask(digest, images); }
+    finally { if (s.status === 'working' && s.step === step) this.setStatus(s, before.status, before.step); }
+    if (!text) return undefined;
+    const index = await this.push(s.id, { k: 'agent', text, from: name, re });
+    this.collectArtifacts(s, text);
+    return { text, index };
+  }
+
+  /** Puts a message to the owner and resolves to what it said once its turn is over. */
+  private async askOwner(s: Session, text: string, images: MessageImage[], re: ReplyRef): Promise<{ text: string; index: number }> {
+    s.queued = undefined;
+    s.endedAt = undefined;
+    s.stuck = undefined;
+    s.lastAccess = Date.now();
+    const outgoing = s.agentNote ? `${s.agentNote}\n\n${text}` : text;
+    s.agentNote = undefined;
+    let done!: (r: { text: string; index: number }) => void;
+    const finished = new Promise<{ text: string; index: number }>((r) => (done = r));
+    const rt = this.rt.get(s.id);
+    if (!rt) {
+      this.setStatus(s, 'working', 'Starting');
+      await this.start(s, outgoing, images, { reply: re, done });
+    } else {
+      this.setStatus(s, 'working', 'Reading your message');
+      rt.reply = re;
+      rt.turnText = [];
+      rt.turnWaiters.push(done);
+      rt.agent.send(outgoing, images);
+    }
+    return finished;
+  }
+
+  private advisorFor(s: Session, member: PanelMember): Advisor {
+    let seats = this.advisors.get(s.id);
+    if (!seats) this.advisors.set(s.id, (seats = new Map()));
+    const live = seats.get(member.name);
+    if (live && !live.dead) return live;
+    const name = member.name;
+    const be = this.registry.get(member.backend);
+    const advisor = new Advisor(be, {
+      cwd: s.worktree, model: this.registry.model(member.backend, member.model).id, effort: member.effort,
+      systemAppend: this.advisorAppend(s, name),
+      resume: member.agentSessionId,
+      env: {},
+      extraDirs: [...(s.uploads ? [s.uploads.dir] : []), ...(s.extras || []).map((x) => x.worktree)],
+      subagentLimit: 0
+    }, {
+      onSession: (sid) => { const m = memberOf(s.panel, name); if (m && m.agentSessionId !== sid) { m.agentSessionId = sid; this.store.save(); } },
+      onUsage: (u) => { const m = memberOf(s.panel, name); if (m) this.addAdvisorUsage(s, m, u); }
+    });
+    seats.set(name, advisor);
+    return advisor;
+  }
+
+  private advisorAppend(s: Session, name: string): string {
+    return [
+      `You are a read-only participant in a helm session, looking at the code in ${s.worktree}${s.free ? '' : ` (branch ${s.branch})`}. The task the user gave: ${trunc(s.task, 600)}`,
+      'Nothing you do may change the files. Stay inside this directory unless asked to look elsewhere.',
+      panelInstructions(s.panel!, name, this.store.data.settings.panelReplyCap)
+    ].join('\n');
+  }
+
+  /** What a read-only agent's tokens cost counts toward the session, as the owner's do. */
+  private addAdvisorUsage(s: Session, m: PanelMember, u: AgentUsage) {
+    const inp = u.input + u.cacheWrite;
+    s.tokens.input += inp;
+    s.tokens.output += u.output;
+    s.tokens.cacheRead += u.cacheRead;
+    this.store.addLifetimeTokens(s.repoId, inp, u.output, u.cacheRead);
+    const [pi, po] = this.registry.model(m.backend, m.model).price;
+    const est = (u.input * pi + u.cacheWrite * pi * 1.25 + u.cacheRead * pi * 0.1 + u.output * po) / 1e6;
+    this.store.addUsage(s.repoId, est, inp + u.output);
+    this.store.addDaily(s.repoId, m.model, { cost: est, input: inp, output: u.output, cacheRead: u.cacheRead });
+    s.cost += est;
+    // The owner's running total is kept apart from this; move both so its next report does not take the cost back.
+    const rt = this.rt.get(s.id);
+    if (rt) { rt.baseCost += est; rt.startCost += est; }
+    this.touch();
+  }
+
   // ---------------------------------------------------------------- controls
-  async send(id: string, text: string, images: MessageImage[] = []) {
+  async send(id: string, text: string, images: MessageImage[] = [], opts: SendOptions = {}) {
     this.held = false;
     const s = this.get(id);
     if (!s) throw new Error('Session not found');
@@ -1300,13 +1585,17 @@ export class SessionManager {
     s.archivedAt = undefined;
     s.archivedAuto = undefined;
     const cp = await this.checkpoint(s, 'Before: ' + text);
-    await this.push(id, { k: 'user', t: Date.now(), text, images: images.length ? images : undefined, cp });
+    // In a panel, who the message is for: those picked as the recipient, and anyone @mentioned in it. No one picked means everyone.
+    const names = s.panel ? participants(s.panel) : [];
+    const to = s.panel ? [...new Set([...(opts.to || []).filter((n) => names.includes(n)), ...mentionsIn(text, names)])] : [];
+    const at = await this.push(id, { k: 'user', t: Date.now(), text, images: images.length ? images : undefined, cp, ...(to.length ? { to } : {}), ...(s.panel && opts.re ? { re: opts.re } : {}) });
     if (s.ask && rt) {
       // Replying while it waits counts as answering a question, or as a denial with an explanation.
       const w = [...rt.asks.values()][0];
       if (w?.ask.type === 'question') return this.resolveAsk(id, w.ask.id, { answers: { [w.ask.questions?.[0]?.question || 'answer']: text } });
       if (w?.ask.type === 'approve') return this.resolveAsk(id, w.ask.id, { decision: 'deny', text });
     }
+    if (s.panel) { void this.queueRound(s, { at, text, images, to }); return; }
     s.endedAt = undefined;
     s.stuck = undefined;
     const outgoing = s.agentNote ? `${s.agentNote}\n\n${text}` : text;
@@ -1323,6 +1612,7 @@ export class SessionManager {
   async interrupt(id: string) {
     const rt = this.rt.get(id);
     const s = this.get(id);
+    if (s?.panel) await this.callOffRounds(id);
     if (!rt || !s) return;
     rt.interrupted = true;
     await rt.agent.interrupt();
@@ -1332,6 +1622,8 @@ export class SessionManager {
     const rt = this.rt.get(id);
     const s = this.get(id);
     if (!s) return;
+    this.epochs.set(id, (this.epochs.get(id) ?? 0) + 1);
+    this.closeAdvisors(id);
     if (rt) {
       this.activity(s, 'session', 'stopped the session', { who: this.me(), human: true });
       for (const w of rt.asks.values()) w.resolve({ behavior: 'deny', message: 'Session stopped', interrupt: true });
@@ -1573,6 +1865,7 @@ export class SessionManager {
   /** helm is quitting: end the agent processes but leave each session as it was, so a pending approval survives to the next launch. */
   shutdown() {
     this.quitting = true;
+    for (const id of [...this.advisors.keys()]) this.closeAdvisors(id);
     for (const rt of this.rt.values()) rt.agent.close();
     this.rt.clear();
   }
@@ -1590,7 +1883,7 @@ export class SessionManager {
       if (!s || s.worktreeGone || s.archivedAt || s.mergedAt || s.status !== 'idle' || this.rt.has(id)) continue;
       try {
         this.activity(s, 'session', 'resumed automatically after helm was closed');
-        await this.send(id, 'helm was closed while you were working and has been reopened. Continue where you left off.');
+        await this.send(id, 'helm was closed while you were working and has been reopened. Continue where you left off.', [], this.ownerOnly(s));
       } catch (e: any) {
         this.activity(s, 'error', 'could not resume: ' + trunc(String(e?.message || e), 100), { ok: false });
       }
@@ -1644,7 +1937,7 @@ export class SessionManager {
       .filter((s) => s.status === 'idle' && !s.queued && !s.archivedAt && !s.mergedAt && !s.worktreeGone && !this.rt.has(s.id) && /^(Paused|Stopped when helm closed)/.test(s.step))
       .map((s) => s.id);
     for (const id of ids) {
-      try { await this.send(id, 'Continue where you left off.'); }
+      try { await this.send(id, 'Continue where you left off.', [], this.ownerOnly(this.get(id))); }
       catch (e: any) { const s = this.get(id); if (s) this.activity(s, 'error', 'could not resume: ' + trunc(String(e?.message || e), 100), { ok: false }); }
     }
     this.touch();
