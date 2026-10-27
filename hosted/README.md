@@ -77,7 +77,7 @@ This is the only login to helm itself. After GitHub says who you are, the server
 
 ## Updating
 
-The image is published to `ghcr.io/dannybattison/helm-hosted`: `latest` follows main, and each `v*` tag gets its own version. To update by hand, pull and recreate the container; the volume keeps your data.
+The image is published to `ghcr.io/dannybattison/helm-hosted`: `latest` is the newest release, each release also gets its own version tag (`0.2.0`, `0.2`), and `main` is the unreleased tip. To update by hand, pull and recreate the container; the volume keeps your data.
 
 To do it automatically, save this as `~/helm-update.sh` and `chmod +x` it. It pulls, compares the running container's image with the newest one, and recreates the container only if they differ:
 
