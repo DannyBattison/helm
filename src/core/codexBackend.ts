@@ -110,6 +110,13 @@ const sandboxFor = (m: PermMode, roots: string[]) =>
 /** Codex names its effort levels itself; helm's highest is Codex's `xhigh`. */
 const effortFor = (e?: Effort) => (e === 'max' ? 'xhigh' : e);
 
+/** helm's MCP servers in Codex's config form (`mcp_servers`): a command to run, or an address to call. */
+export function codexMcp(servers: Record<string, any> = {}): Record<string, any> {
+  return Object.fromEntries(Object.entries(servers).map(([name, v]) => [name, v.type === 'stdio'
+    ? { command: v.command, args: v.args || [], ...(v.env ? { env: v.env } : {}) }
+    : { url: v.url, ...(v.headers ? { http_headers: v.headers } : {}) }]));
+}
+
 /** Turns the unified diff Codex gives for one file into the old and new text helm's diff cards are built from. */
 function sidesOf(diff: string): { old: string; new: string } {
   const o: string[] = [], n: string[] = [];
@@ -457,7 +464,10 @@ class CodexHandle {
       const base: Json = {
         model: this.model, cwd: this.o.cwd, approvalPolicy: approvalFor(this.mode), sandbox: this.mode === 'all' ? 'danger-full-access' : this.mode === 'plan' ? 'read-only' : 'workspace-write',
         developerInstructions: this.o.systemAppend,
-        ...(this.o.env && Object.keys(this.o.env).length ? { config: { shell_environment_policy: { inherit: 'all', set: this.o.env } } } : {})
+        config: {
+          ...(this.o.env && Object.keys(this.o.env).length ? { shell_environment_policy: { inherit: 'all', set: this.o.env } } : {}),
+          ...(this.o.mcpServers && Object.keys(this.o.mcpServers).length ? { mcp_servers: codexMcp(this.o.mcpServers) } : {})
+        }
       };
       const r = this.o.resume ? await this.server.request('thread/resume', { threadId: this.o.resume, ...base }) : await this.server.request('thread/start', base);
       this.threadId = r.thread.id;

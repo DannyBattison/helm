@@ -1,3 +1,4 @@
+import { mcpConfig } from '../shared/mcp';
 import { copyFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, posix, relative, resolve, win32 } from 'node:path';
@@ -541,6 +542,7 @@ export class SessionManager {
       extraDirs: [...(s.uploads ? [s.uploads.dir] : []), ...(s.extras || []).map((x) => x.worktree)],
       env: settings.commitAuthor === 'sole' ? { GIT_AUTHOR_NAME: this.backendOf(s).identity.name, GIT_AUTHOR_EMAIL: this.backendOf(s).identity.email } : {},
       remoteControl: settings.remoteControl,
+      mcpServers: mcpConfig(settings.mcpServers, this.store.data.repos.find((r) => r.id === s.repoId)?.mcpServers),
       canUseTool: (tool, input, o) => this.canUse(s, rt, tool, input, o),
       admitSubagent: (id) => this.checkSubagentLimit(s, rt, id)
     });

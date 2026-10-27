@@ -49,6 +49,8 @@ export interface AgentStartOptions {
   /** Extra environment for anything the agent runs, such as the git author. */
   env?: Record<string, string>;
   remoteControl?: boolean;
+  /** MCP servers to give the agent, by name, in the form helm stores them (`type` stdio, http or sse). */
+  mcpServers?: Record<string, any>;
   /** Folders outside the working directory the agent may read, such as files the user uploaded. */
   extraDirs?: string[];
   /** Asked before a tool runs, to let the user decide. */

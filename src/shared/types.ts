@@ -84,6 +84,21 @@ export interface Repo {
   addedAt: number;
   /** Overrides the default limit on subagents running at once across this repository. */
   maxSubagents?: number;
+  /** MCP servers for this repository's sessions, added to the global ones (and replacing a global one of the same name). */
+  mcpServers?: McpServer[];
+}
+
+/** An MCP server given to sessions: a program helm starts (stdio) or one it connects to over http or sse. */
+export interface McpServer {
+  name: string;
+  type: 'stdio' | 'http' | 'sse';
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+  url: string;
+  headers: Record<string, string>;
+  /** Kept in the list but not given to sessions. */
+  disabled?: boolean;
 }
 
 /** An artifact (an uploaded file) of a repository: copied into every session's worktree, never committed. */
@@ -344,6 +359,8 @@ export type ActivityKind =
   | 'push' | 'fetch' | 'git' | 'pr' | 'worktree' | 'session' | 'approval' | 'bash' | 'edit';
 
 export interface Settings {
+  /** MCP servers every session gets. */
+  mcpServers: McpServer[];
   theme: ThemePref;
   /** Colour scheme id (see shared/schemes.ts); 'helm' is the stylesheet's own colours. */
   colorScheme: string;
@@ -993,6 +1010,9 @@ export interface HelmApi {
   /** Re-reads a subagent's transcript from Claude Code's session file. */
   refreshSubagent(sessionId: string, subId: string): Promise<void>;
   setRepoMaxSubagents(repoId: string, max: number | null): Promise<void>;
+  /** Adds or replaces an MCP server (`replace` is the name it had, when renamed) for a repository, or for every session when `repoId` is null. Throws when it is not valid. */
+  saveMcpServer(repoId: string | null, server: McpServer, replace?: string): Promise<void>;
+  removeMcpServer(repoId: string | null, name: string): Promise<void>;
   /** Files uploaded to a repository, copied into every session's worktree (new and resumed) and kept out of git. */
   listRepoArtifacts(repoId: string): Promise<RepoArtifact[]>;
   addRepoArtifact(repoId: string, name: string, base64: string): Promise<void>;

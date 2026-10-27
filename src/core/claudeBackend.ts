@@ -236,6 +236,7 @@ export class ClaudeBackend implements AgentBackend {
       },
       env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'helm', ...o.env }
     };
+    if (o.mcpServers && Object.keys(o.mcpServers).length) options.mcpServers = o.mcpServers;
     // Only set when on, so a user's own Claude Code setting is never switched off by helm.
     if (o.remoteControl) options.settings = { remoteControlAtStartup: true };
     const exe = this.paths.sdk();

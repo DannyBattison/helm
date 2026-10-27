@@ -21,6 +21,7 @@ import { applyImport, buildExport } from './migrate';
 import { diagnostics } from '../shared/diagnostics';
 import { memoryHealth, memoryReads, STALE_DAYS, type MemoryFile, type MemoryUsage } from '../shared/memoryhealth';
 import type { Host } from './host';
+import { cleanMcp, mcpProblem } from '../shared/mcp';
 import { appendInstruction, deleteMemory, projectMemory, readMemory, writeMemory } from './memory';
 import { Automations } from './automations';
 import { RepoService } from './repos';
@@ -472,6 +473,22 @@ export const api: HelmApi = {
   setSessionPermMode: (id, m) => sessions.setPermMode(id, m),
   refreshSubagent: (id, subId) => sessions.refreshSubagent(id, subId),
   async setSessionMaxSubagents(id, max) { sess(id).maxSubagents = max ?? undefined; store.save(); emitState(); },
+  async saveMcpServer(repoId, server, replace) {
+    const list = repoId ? repos.must(repoId).mcpServers || [] : store.data.settings.mcpServers || [];
+    const s = cleanMcp(server);
+    const old = replace ?? s.name;
+    const problem = mcpProblem(s, list.filter((x) => x.name !== old).map((x) => x.name));
+    if (problem) throw new Error(problem);
+    const i = list.findIndex((x) => x.name === old);
+    const next = i < 0 ? [...list, s] : list.map((x, j) => (j === i ? s : x));
+    if (repoId) repos.must(repoId).mcpServers = next; else store.data.settings.mcpServers = next;
+    store.save(); emitState();
+  },
+  async removeMcpServer(repoId, name) {
+    if (repoId) { const r = repos.must(repoId); r.mcpServers = (r.mcpServers || []).filter((x) => x.name !== name); }
+    else store.data.settings.mcpServers = (store.data.settings.mcpServers || []).filter((x) => x.name !== name);
+    store.save(); emitState();
+  },
   async setRepoMaxSubagents(id, max) { repos.must(id).maxSubagents = max ?? undefined; store.save(); emitState(); },
   resolveAsk: (id, askId, answer) => sessions.resolveAsk(id, askId, answer),
   getTranscript: (id) => store.transcript(id),

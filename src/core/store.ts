@@ -11,6 +11,7 @@ import { dayStart, home, uid, weekStart } from './util';
 export const DEFAULT_GITHUB_CLIENT_ID = 'Ov23liTYcKE5lBWCEAAV';
 
 export const defaultSettings = (): Settings => ({
+  mcpServers: [],
   theme: 'dark',
   colorScheme: 'helm',
   accentColor: '',
