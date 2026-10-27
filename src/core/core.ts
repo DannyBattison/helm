@@ -15,6 +15,7 @@ import { cleanHeavy, dirSize, reclaimableBytes } from './disk';
 import { readArtifact } from './artifacts';
 import { addRepoArtifact, listRepoArtifacts, removeRepoArtifact, setRepoArtifactDir } from './repoartifacts';
 import { cpuTimes, cpuUse, HISTORY_LIMIT, parseLimit, type CpuTimes, type SystemPoint } from '../shared/system';
+import { SyncService } from './sync';
 import { applyImport, buildExport } from './migrate';
 import { diagnostics } from '../shared/diagnostics';
 import { memoryHealth, memoryReads, STALE_DAYS, type MemoryFile, type MemoryUsage } from '../shared/memoryhealth';
@@ -154,6 +155,7 @@ const repos = new RepoService(store, emitState);
 // The companion is created before the sessions, which call into it when a transcript changes, but it needs them to act: so its
 // operations are filled in once they exist.
 const companionOps: import('./companion').CompanionOps = {} as any;
+const syncer = new SyncService(store, () => host, (id) => sessions.isRunning(id), () => emitState(), () => !!host.syncServer);
 const companion = new Companion(store, companionOps, () => emitState(), () => host);
 const sessions = new SessionManager(store, {
   emitState,
@@ -844,6 +846,17 @@ export const api: HelmApi = {
     emitState();
     return r;
   },
+  syncStatus: async () => syncer.status(),
+  syncKey: () => syncer.key(),
+  syncRegenerateKey: () => syncer.regenerateKey(),
+  syncAddPeer: (name, url, key) => syncer.addPeer(String(name), String(url), String(key)),
+  syncRemovePeer: (id) => syncer.removePeer(String(id)),
+  async syncRun(peerId) {
+    const r = await syncer.run(peerId);
+    const n = r.reduce((a, x) => a + x.result.pulled.sessions + x.result.pushed.sessions, 0);
+    if (n) store.log({ kind: 'git', who: me(), human: true, what: `synced ${n} sessions with ${r.map((x) => x.name).join(', ')}`, repo: '' });
+    return r;
+  },
   async openLogFolder() { const f = logFile(); if (f) host.showInFolder?.(f); },
   async logRenderer(message) { logLine('error', 'window: ' + String(message).slice(0, 2000)); },
   repoWorkflows: (repoId, ref) => GH.listWorkflows(repoId, ref),
@@ -1102,6 +1115,7 @@ export async function start(h: Host) {
   GH.setSignInGuard(host.allowLogin ?? null);
   GH.watchAuth(() => G.setGitToken(GH.getToken()), () => { G.setGitToken(null); store.data.user = null; store.save(); emitState(); logLine('warn', 'GitHub rejected the sign-in and it could not be renewed; signed out'); });
   await loadOutboundSecrets(host);
+  await syncer.load();
   await GH.loadToken(host);
   await GH.ensureFresh();
   // A server's list can change between runs: a token that belongs to someone no longer on it is dropped, not honoured.
@@ -1145,4 +1159,6 @@ export async function shutdown() {
 
 /** What a desktop shell needs to reach into (its tray lists and answers sessions). */
 export { sessions, store };
+/** For a host with a web address: answers another instance's sync request. */
+export const syncHttp = { authorised: (h: string | undefined) => syncer.authorised(h), isOn: () => syncer.isOn(), handle: (m: string, p: string, b: string) => syncer.handle(m, p, b) };
 export type { TranscriptEvent };

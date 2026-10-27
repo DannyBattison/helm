@@ -12,15 +12,15 @@ export const EXPORT_FORMAT = 'helm-export';
 export const EXPORT_VERSION = 1;
 
 /** Settings that describe the machine they were set on, so an import keeps the destination's own. */
-const MACHINE_SETTINGS: (keyof Settings)[] = ['claudePath', 'worktreeRoot', 'freeRoot', 'cloneRoot', 'terminalShell', 'terminalShellCustom', 'companionEnabled', 'companionUrl', 'githubClientId', 'tray', 'autoUpdate'];
+export const MACHINE_SETTINGS: (keyof Settings)[] = ['claudePath', 'worktreeRoot', 'freeRoot', 'cloneRoot', 'terminalShell', 'terminalShellCustom', 'companionEnabled', 'companionUrl', 'githubClientId', 'tray', 'autoUpdate', 'syncEnabled'];
 /** State kept as lists of records without an id of their own. */
 const LISTS = ['usage', 'audit', 'daily'] as const;
 /** Folders and files in the data directory that belong in an export. Caches, logs and `*.bin` secrets do not. */
-const FOLDERS = ['transcripts', 'repo-artifacts'];
-const FILES = ['activity.jsonl', 'activity.old.jsonl'];
+export const FOLDERS = ['transcripts', 'repo-artifacts'];
+export const FILES = ['activity.jsonl', 'activity.old.jsonl'];
 const TEXT = /\.(json|jsonl|md|txt|csv|yml|yaml)$/i;
 
-interface FileEntry { enc: 'utf8' | 'base64'; data: string }
+export interface FileEntry { enc: 'utf8' | 'base64'; data: string }
 export interface ExportBundle {
   format: typeof EXPORT_FORMAT;
   version: number;
@@ -31,12 +31,32 @@ export interface ExportBundle {
 }
 export interface ImportResult { repos: number; sessions: number; files: number }
 
-async function walk(root: string, rel: string, out: string[]) {
+export async function walk(root: string, rel: string, out: string[]) {
   for (const e of await readdir(join(root, rel), { withFileTypes: true }).catch(() => [])) {
     const p = rel + '/' + e.name;
     if (e.isDirectory()) await walk(root, p, out);
     else if (e.isFile() && !e.name.endsWith('.tmp')) out.push(p);
   }
+}
+
+export async function readEntry(root: string, name: string): Promise<FileEntry | null> {
+  const buf = await readFile(join(root, name)).catch(() => null);
+  if (!buf) return null;
+  return TEXT.test(name) ? { enc: 'utf8', data: buf.toString('utf8') } : { enc: 'base64', data: buf.toString('base64') };
+}
+
+export async function writeEntry(dest: string, f: FileEntry) {
+  await mkdir(dirname(dest), { recursive: true });
+  await writeFile(dest, f.enc === 'base64' ? Buffer.from(f.data, 'base64') : f.data);
+}
+
+/** A session from another instance, made safe to run here: stopped, and flagged when its worktree is not on this machine. */
+export function adopt(s: any, step = 'Imported') {
+  s.subagents ||= [];
+  for (const a of s.subagents) if (a.status === 'working') { a.status = 'stopped'; a.endedAt = a.endedAt ?? Date.now(); }
+  if (s.status === 'working' || s.status === 'attention') { s.status = 'idle'; s.step = step; s.ask = undefined; s.queued = undefined; }
+  if (!s.worktreeGone && s.worktree && !existsSync(s.worktree) && !(s.free && !s.free.managed)) s.worktreeGone = true;
+  return s;
 }
 
 export async function buildExport(store: Store): Promise<string> {
@@ -46,8 +66,8 @@ export async function buildExport(store: Store): Promise<string> {
   for (const f of FOLDERS) await walk(store.root, f, names);
   const files: Record<string, FileEntry> = {};
   for (const n of names) {
-    const buf = await readFile(join(store.root, n)).catch(() => null);
-    if (buf) files[n] = TEXT.test(n) ? { enc: 'utf8', data: buf.toString('utf8') } : { enc: 'base64', data: buf.toString('base64') };
+    const e = await readEntry(store.root, n);
+    if (e) files[n] = e;
   }
   const bundle: ExportBundle = { format: EXPORT_FORMAT, version: EXPORT_VERSION, exportedAt: Date.now(), state, files };
   return JSON.stringify(bundle);
@@ -62,7 +82,7 @@ export function parseExport(text: string): ExportBundle {
 }
 
 /** A path from the file that stays inside the data directory and under one of the folders above. */
-function target(root: string, name: string): string | null {
+export function target(root: string, name: string): string | null {
   if (typeof name !== 'string' || name.includes('\0') || name.includes('\\')) return null;
   const top = name.split('/')[0];
   if (!(FOLDERS.includes(top) || FILES.includes(name))) return null;
@@ -90,10 +110,7 @@ export async function applyImport(store: Store, text: string): Promise<ImportRes
   const known = new Set(d.sessions.map((s) => s.id));
   for (const s of Array.isArray(inc.sessions) ? inc.sessions : []) {
     if (!s?.id || known.has(s.id)) continue;
-    s.subagents ||= [];
-    for (const a of s.subagents) if (a.status === 'working') { a.status = 'stopped'; a.endedAt = a.endedAt ?? Date.now(); }
-    if (s.status === 'working' || s.status === 'attention') { s.status = 'idle'; s.step = 'Imported'; s.ask = undefined; s.queued = undefined; }
-    if (!s.worktreeGone && s.worktree && !existsSync(s.worktree) && !(s.free && !s.free.managed)) s.worktreeGone = true;
+    adopt(s);
     d.sessions.push(s); known.add(s.id); result.sessions++;
   }
 
@@ -117,8 +134,7 @@ export async function applyImport(store: Store, text: string): Promise<ImportRes
   for (const [name, f] of Object.entries(b.files)) {
     const dest = target(store.root, name);
     if (!dest || !f || typeof f.data !== 'string' || existsSync(dest)) continue;
-    await mkdir(dirname(dest), { recursive: true });
-    await writeFile(dest, f.enc === 'base64' ? Buffer.from(f.data, 'base64') : f.data);
+    await writeEntry(dest, f);
     result.files++;
   }
   store.forgetTranscripts();

@@ -59,6 +59,7 @@ export const defaultSettings = (): Settings => ({
   tray: true,
   autoUpdate: true,
   editorFontSize: 12.5,
+  syncEnabled: false,
   companionEnabled: false,
   companionUrl: 'http://localhost:8787',
   companionControl: true,
@@ -213,6 +214,11 @@ export class Store {
     try {
       for (const f of await readdir(join(this.dir, 'transcripts'))) if (f === id + '.json' || f.startsWith(id + '~')) await rm(join(this.dir, 'transcripts', f), { force: true });
     } catch { /* nothing saved */ }
+  }
+
+  /** Forgets one session's transcripts held in memory (and any save waiting), after the files were replaced on disk. */
+  dropTranscripts(id: string) {
+    for (const k of [...this.transcripts.keys()]) if (k === id || k.startsWith(id + '~')) { this.transcripts.delete(k); const tm = this.tTimers.get(k); if (tm) { clearTimeout(tm); this.tTimers.delete(k); } }
   }
 
   /** Drops transcripts held in memory, after files on disk have changed underneath them. */

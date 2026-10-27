@@ -378,6 +378,8 @@ export interface Settings {
   /** What interrupts a working agent from the keyboard: Esc, Esc pressed twice, or nothing (the Interrupt button still works). */
   interruptKey: 'esc' | 'double-esc' | 'off';
   /** Connect to a helm-companion server so the website can show this app's agents and answer them. Off until turned on. */
+  /** Lets other helm instances sync with this one, using the sync key. Only a hosted server can be reached, so the desktop app ignores it. */
+  syncEnabled: boolean;
   companionEnabled: boolean;
   /** The companion server, for example `https://companion.example.com`. */
   companionUrl: string;
@@ -1048,6 +1050,14 @@ export interface HelmApi {
   exportData(): Promise<string | null>;
   /** Adds the contents of an export file to what is here, leaving anything already here alone. */
   importData(text: string): Promise<{ repos: number; sessions: number; files: number }>;
+  syncStatus(): Promise<import('./sync').SyncStatus>;
+  /** The key other instances use to sync with this one. Made the first time it is asked for. */
+  syncKey(): Promise<string>;
+  syncRegenerateKey(): Promise<string>;
+  syncAddPeer(name: string, url: string, key: string): Promise<void>;
+  syncRemovePeer(id: string): Promise<void>;
+  /** Compares history with one other instance (or all of them) and pulls and pushes what differs. */
+  syncRun(peerId?: string): Promise<{ id: string; name: string; result: import('./sync').SyncPeerResult }[]>;
   openLogFolder(): Promise<void>;
   /** The window reports an error here so it ends up in the log. */
   logRenderer(message: string): Promise<void>;

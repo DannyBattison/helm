@@ -1,9 +1,10 @@
 import { randomBytes } from 'node:crypto';
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { WebSocket, WebSocketServer } from 'ws';
-import { api, shutdown, start } from '../../src/core/core';
+import { api, shutdown, start, syncHttp } from '../../src/core/core';
 import { originAllowed } from './auth';
 import { dispatch } from './dispatch';
 import { createGate, parseUser } from './gate';
@@ -43,9 +44,32 @@ const MIME: Record<string, string> = {
 };
 const CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://avatars.githubusercontent.com; font-src 'self' data:; worker-src 'self' blob:; connect-src 'self'";
 
+const SYNC_BODY_LIMIT = 512 * 1024 * 1024;
+const maySyncAttempt = signInLimiter(30);
+
+/** Another helm instance syncing with this one: a bearer key instead of the cookie. Off (and invisible) unless turned on in settings. */
+async function syncRoute(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const reply = (status: number, json: unknown) => { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(json)); };
+  if (!syncHttp.isOn()) return reply(404, { error: 'Not found' });
+  if (!syncHttp.authorised(req.headers.authorization)) {
+    // Guessing the key is rate limited per address; a right key is never counted.
+    return reply(maySyncAttempt(req.socket.remoteAddress || '?') ? 401 : 429, { error: 'Unauthorised' });
+  }
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const c of req) {
+    size += (c as Buffer).length;
+    if (size > SYNC_BODY_LIMIT) return reply(413, { error: 'Too large' });
+    chunks.push(c as Buffer);
+  }
+  const r = await syncHttp.handle(req.method || 'GET', new URL(req.url || '/', 'http://x').pathname, Buffer.concat(chunks).toString('utf8'));
+  reply(r.status, r.json);
+}
+
 const http = createServer(async (req, res) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'no-referrer');
+  if ((req.url || '').startsWith('/api/sync/')) { await syncRoute(req, res).catch(() => { if (!res.headersSent) res.writeHead(500).end(); }); return; }
   if (await gate.handle(req, res).catch(() => { res.writeHead(500).end(); return true; })) return;
   const url = new URL(req.url || '/', 'http://x');
   let rel = decodeURIComponent(url.pathname);
