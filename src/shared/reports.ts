@@ -78,7 +78,8 @@ export interface SpendReport {
 
 export function spendReport(input: ReportInput): SpendReport {
   const from = dayKey(since(input));
-  const rows = input.daily.filter((d) => d.day >= from);
+  // Corrections made by earlier versions could leave a day's cost below zero; spend is never negative.
+  const rows = input.daily.filter((d) => d.day >= from).map((d) => (d.cost < 0 ? { ...d, cost: 0 } : d));
   const tok = (d: DailyUsage) => d.input + d.output + d.cacheRead;
   const byDay = new Map<string, { cost: number; tokens: number }>();
   // Every day in the period appears, so a quiet day is a gap in the chart rather than a missing bar.
