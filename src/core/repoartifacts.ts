@@ -1,20 +1,20 @@
-import { appendFile, copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { appendFile, copyFile, mkdir, open, readdir, readFile, rename, rm, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import type { RepoArtifact } from '../shared/types';
 import * as G from './git';
-
-/** Largest file that can be uploaded: it travels as base64 (over a WebSocket on the hosted server). */
-export const MAX_REPO_ARTIFACT = 25 * 1024 * 1024;
 
 let root = '';
 /** Where uploaded files are kept, one folder per repository. Set once the data folder is known. */
 export const setRepoArtifactDir = (dir: string) => { root = dir; };
 
+/** Uploads in progress are written here, so a half-sent file is never listed or copied into a worktree. */
+const PARTIAL = '.partial';
 const folder = (repoId: string) => join(root, repoId.replace(/[^\w.-]/g, '_'));
 
 /** A file name is a single path segment: nothing that can leave the folder. */
 export function validName(name: string): boolean {
-  return !!name && name === name.trim() && name !== '.' && name !== '..' && !/[\\/\0]/.test(name) && name.length <= 200 && name !== '.git';
+  return !!name && name === name.trim() && name !== '.' && name !== '..' && !/[\\/\0]/.test(name) && name.length <= 200 && name !== '.git' && name !== PARTIAL;
 }
 
 export async function listRepoArtifacts(repoId: string): Promise<RepoArtifact[]> {
@@ -29,14 +29,26 @@ export async function listRepoArtifacts(repoId: string): Promise<RepoArtifact[]>
   return out;
 }
 
-export async function addRepoArtifact(repoId: string, name: string, base64: string): Promise<void> {
+/**
+ * Adds one piece of a file. A file of any size is sent in pieces (each base64 over the socket) and written in place, so nothing
+ * is held in memory whole. The piece at offset 0 starts the file afresh; later ones must continue exactly where the last ended.
+ * The file appears under its name only when `done` is set.
+ */
+export async function addRepoArtifactChunk(repoId: string, name: string, offset: number, base64: string, done: boolean): Promise<void> {
   if (!root) throw new Error('Uploads are not available yet.');
   if (!validName(name)) throw new Error('That file name is not allowed.');
+  const dir = join(folder(repoId), PARTIAL);
+  const part = join(dir, name);
+  await mkdir(dir, { recursive: true });
   const data = Buffer.from(base64, 'base64');
-  if (data.length > MAX_REPO_ARTIFACT) throw new Error('That file is larger than 25 MB.');
-  await mkdir(folder(repoId), { recursive: true });
-  await writeFile(join(folder(repoId), name), data);
+  if (offset === 0) await rm(part, { force: true });
+  else if ((await stat(part).catch(() => null))?.size !== offset) throw new Error('The upload got out of step; try again.');
+  const fh = await open(part, 'a');
+  try { await fh.write(data); } finally { await fh.close(); }
+  if (done) await rename(part, join(folder(repoId), name));
 }
+
+export const addRepoArtifact = (repoId: string, name: string, base64: string) => addRepoArtifactChunk(repoId, name, 0, base64, true);
 
 export async function removeRepoArtifact(repoId: string, name: string): Promise<void> {
   if (!root || !validName(name)) return;
@@ -57,7 +69,8 @@ export async function supplyRepoArtifacts(repoId: string, wt: string, overwrite:
     try {
       if (!overwrite && (await stat(dest).catch(() => null))) continue;
       if (await G.gitOk(wt, 'ls-files', '--error-unmatch', '--', f.name)) continue;
-      await copyFile(join(folder(repoId), f.name), dest);
+      // A copy-on-write clone where the filesystem has them, so a very large file costs no extra disk or time per worktree.
+      await copyFile(join(folder(repoId), f.name), dest, constants.COPYFILE_FICLONE);
       put.push(f.name);
     } catch { /* an unreadable file must not stop the session starting */ }
   }

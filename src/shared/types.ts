@@ -941,6 +941,8 @@ export interface HelmApi {
   /** Files uploaded to a repository, copied into every session's worktree (new and resumed) and kept out of git. */
   listRepoArtifacts(repoId: string): Promise<RepoArtifact[]>;
   addRepoArtifact(repoId: string, name: string, base64: string): Promise<void>;
+  /** One piece of a file of any size; the file appears once `done`. Pieces go in order, each at the offset where the last ended. */
+  addRepoArtifactChunk(repoId: string, name: string, offset: number, base64: string, done: boolean): Promise<void>;
   removeRepoArtifact(repoId: string, name: string): Promise<void>;
   /** Creates an automated agent (no `id`), or replaces the one with that id. Returns its id. */
   saveAutomation(agent: Omit<AutomatedAgent, 'id' | 'createdAt' | 'lastRun'> & { id?: string }): Promise<string>;

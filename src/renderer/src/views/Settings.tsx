@@ -117,6 +117,7 @@ function TerminalShellRow({ st, set }: { st: any; set(p: any): void }) {
 function RepoArtifactsSection({ repos }: { repos: { id: string }[] }) {
   const [repoId, setRepoId] = React.useState(repos[0]?.id || '');
   const [files, setFiles] = React.useState<{ name: string; size: number }[]>([]);
+  const [sending, setSending] = React.useState('');
   const pick = React.useRef<HTMLInputElement>(null);
   const id = repos.some((r) => r.id === repoId) ? repoId : repos[0]?.id || '';
   const load = React.useCallback(() => { if (id) api.listRepoArtifacts(id).then(setFiles).catch(() => setFiles([])); }, [id]);
@@ -124,17 +125,23 @@ function RepoArtifactsSection({ repos }: { repos: { id: string }[] }) {
   const upload = async (list: FileList | null) => {
     for (const f of Array.from(list || [])) {
       try {
-        const bytes = new Uint8Array(await f.arrayBuffer());
-        let bin = '';
-        for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-        await api.addRepoArtifact(id, f.name, btoa(bin));
+        // Pieces of 8 MB, so a file of any size is never held whole in the browser or in one message.
+        const PIECE = 8 * 1024 * 1024;
+        for (let at = 0; at === 0 || at < f.size; at += PIECE) {
+          const bytes = new Uint8Array(await f.slice(at, at + PIECE).arrayBuffer());
+          let bin = '';
+          for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+          await api.addRepoArtifactChunk(id, f.name, at, btoa(bin), at + PIECE >= f.size);
+          setSending(f.size ? `${f.name} ${Math.min(100, Math.round(((at + PIECE) / f.size) * 100))}%` : '');
+        }
       } catch (e) { toast({ tone: 'error', title: 'Could not upload artifact ' + f.name, description: errText(e) }); }
     }
+    setSending('');
     if (pick.current) pick.current.value = '';
     load();
   };
   return (
-    <SettingRow title="Artifacts" desc="Files copied into every session of a repository, at the top of its worktree, and kept out of commits. Sessions already open get them when the agent next starts. Up to 25 MB each.">
+    <SettingRow title="Artifacts" desc="Files copied into every session of a repository, at the top of its worktree, and kept out of commits. Sessions already open get them when the agent next starts. Any size; large files are sent in pieces and cloned (not duplicated) into each worktree where the filesystem allows it.">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
         <Select size="sm" value={id} onChange={(e: any) => setRepoId(e.target.value)} options={repos.map((r) => ({ value: r.id, label: r.id }))} />
         {files.map((f) => (
@@ -144,7 +151,7 @@ function RepoArtifactsSection({ repos }: { repos: { id: string }[] }) {
           </div>
         ))}
         <input ref={pick} type="file" multiple style={{ display: 'none' }} onChange={(e) => void upload(e.target.files)} />
-        <Button size="sm" icon="upload-simple" onClick={() => pick.current?.click()}>Upload artifacts…</Button>
+        <Button size="sm" icon="upload-simple" disabled={!!sending} onClick={() => pick.current?.click()}>{sending ? 'Uploading ' + sending : 'Upload artifacts…'}</Button>
       </div>
     </SettingRow>
   );
