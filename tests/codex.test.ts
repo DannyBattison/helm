@@ -163,3 +163,19 @@ describe('Codex details', () => {
     expect(findCodex('/opt/x/codex')).toBe('/opt/x/codex');
   });
 });
+
+import { explainLoginError } from '../src/core/codexBackend';
+
+describe('Codex sign-in refused by ChatGPT', () => {
+  it('adds what to do to the refusal, and leaves other errors alone', () => {
+    const out = explainLoginError('Enable device code sign-in for Codex in ChatGPT Security Settings, then run "codex login --device-auth" again.');
+    expect(out).toMatch(/Settings → Security/);
+    expect(out).toMatch(/OPENAI_API_KEY/);
+    expect(explainLoginError('network is down')).toBe('network is down');
+  });
+  it('shows it when starting the sign-in is refused', async () => {
+    process.env.FAKE_CODEX_DEVICE_OFF = '1';
+    const b = new CodexBackend({ cli: () => fake });
+    try { await expect(b.auth.startLogin()).rejects.toThrow(/Settings → Security/); } finally { delete process.env.FAKE_CODEX_DEVICE_OFF; b.stop(); }
+  });
+});

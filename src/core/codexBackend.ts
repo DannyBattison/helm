@@ -121,6 +121,15 @@ export class CodexServer {
 // ---------------------------------------------------------------- mapping
 
 /**
+ * ChatGPT can refuse a device-code sign-in: an account setting (or, for a workspace, its admin) has to allow it. Codex passes the
+ * refusal on in its own words, which say what to turn on; add what to do instead when it cannot be turned on.
+ */
+export function explainLoginError(message: string): string {
+  if (!/device.?code/i.test(message) || !/(enable|disabled|not allowed|security)/i.test(message)) return message;
+  return `${message.trim()} In ChatGPT, open Settings → Security and turn on device code sign-in for Codex (in a workspace, an admin may have to allow it), then sign in again. If that is not possible, set OPENAI_API_KEY on the machine helm runs on and restart it: Codex then signs in with that key, billed per token.`;
+}
+
+/**
  * OpenAI's structured output wants every property listed as required and no extras allowed, where helm's schemas leave some
  * optional. Make each one required, and let a property that was optional also be null.
  */
@@ -283,6 +292,7 @@ export class CodexBackend implements AgentBackend {
       for (const h of this.handles.values()) h.push({ t: 'plan_usage', ...w });
       return;
     }
+    if (n.method === 'account/login/completed') this.loginError = n.params?.success === false ? explainLoginError(String(n.params?.error || 'The sign-in did not finish.')) : '';
     if (n.method === '_exit') { for (const h of [...this.handles.values()]) h.serverGone(String(n.params?.why || 'Codex stopped')); return; }
     const tid = n.params?.threadId ?? n.params?.thread?.id;
     if (tid) this.handles.get(tid)?.notice(n);
@@ -315,6 +325,8 @@ export class CodexBackend implements AgentBackend {
 
   // ------------------------------------------------------------ sign-in
   private loginId: string | null = null;
+  /** Why the last sign-in did not finish, as Codex told us after the user approved it (or not). */
+  private loginError = '';
   private asLogin(r: Json): AgentLogin {
     const a = r?.account;
     this.account = a ?? null;
@@ -334,11 +346,13 @@ export class CodexBackend implements AgentBackend {
           await this.server.request('account/login/start', { type: 'apiKey', apiKey: key }).catch(() => undefined);
           r = await this.server.request('account/read', { refreshToken: false });
         }
-        return this.asLogin(r);
+        const login = this.asLogin(r);
+        return !login.loggedIn && this.loginError ? { ...login, error: this.loginError } : login;
       } catch (e: any) { return { loggedIn: false, method: 'none', error: String(e?.message || e) }; }
     },
     startLogin: async () => {
-      const r = await this.server.request('account/login/start', { type: 'chatgptDeviceCode' });
+      this.loginError = '';
+      const r = await this.server.request('account/login/start', { type: 'chatgptDeviceCode' }).catch((e) => { throw new Error(explainLoginError(String(e?.message || e))); });
       if (r?.type !== 'chatgptDeviceCode') throw new Error('Codex did not offer a sign-in code.');
       this.loginId = r.loginId;
       return { url: r.verificationUrl, code: r.userCode, needsCode: false };

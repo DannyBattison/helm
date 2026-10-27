@@ -21,7 +21,9 @@ async function handle(m) {
     case 'initialize': return reply({ userAgent: 'fake', codexHome: '/tmp/x', platformFamily: 'unix', platformOs: 'linux' });
     case 'initialized': return;
     case 'account/read': return reply({ account, requiresOpenaiAuth: !account });
-    case 'account/login/start': return reply({ type: 'chatgptDeviceCode', loginId: 'L1', verificationUrl: 'https://auth.example/device', userCode: 'ABCD-1234' });
+    case 'account/login/start':
+      if (process.env.FAKE_CODEX_DEVICE_OFF) return out({ id: m.id, error: { code: -32600, message: 'Enable device code sign-in for Codex in ChatGPT Security Settings, then run "codex login --device-auth" again.' } });
+      return reply({ type: 'chatgptDeviceCode', loginId: 'L1', verificationUrl: 'https://auth.example/device', userCode: 'ABCD-1234' });
     case 'account/logout': account = null; return reply({});
     case 'model/list': return reply({ data: [{ id: 'b', model: 'gpt-b', displayName: 'GPT B', hidden: true, isDefault: false }, { id: 'a', model: 'gpt-a', displayName: 'GPT A', hidden: false, isDefault: true }, { id: 'c', model: 'gpt-c', displayName: 'GPT C', hidden: false, isDefault: false }] });
     case 'account/rateLimits/read': return reply({ rateLimits: { limitId: 'codex', primary: { usedPercent: 42, windowDurationMins: 300, resetsAt: reset }, secondary: { usedPercent: 10, windowDurationMins: 10080, resetsAt: reset + 86400 } } });
