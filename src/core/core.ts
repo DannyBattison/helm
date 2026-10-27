@@ -15,6 +15,7 @@ import { cleanHeavy, dirSize, reclaimableBytes } from './disk';
 import { readArtifact } from './artifacts';
 import { addRepoArtifact, addRepoArtifactChunk, repoArtifactProgress, listRepoArtifacts, removeRepoArtifact, setRepoArtifactDir } from './repoartifacts';
 import { cpuTimes, cpuUse, HISTORY_LIMIT, parseLimit, type CpuTimes, type SystemPoint } from '../shared/system';
+import { queuedMergeStep } from '../shared/queue';
 import { SyncService } from './sync';
 import { applyImport, buildExport } from './migrate';
 import { diagnostics } from '../shared/diagnostics';
@@ -1139,8 +1140,6 @@ async function pollMerges() {
 
 // ------------------------------------------------------------------ queued merges
 let queuedTicking = false;
-/** How long a pull request with no checks at all is given to start some before it is merged anyway. */
-const CHECKS_GRACE = 2 * 60_000;
 /** Merges the pull requests of sessions whose merge was queued, once their checks have passed; flags the ones that cannot go ahead. */
 async function tickQueuedMerges() {
   if (queuedTicking) return;
@@ -1151,15 +1150,10 @@ async function tickQueuedMerges() {
       try {
         const pr = (await GH.listPulls(s.repoId)).find((p) => p.url === s.prUrl);
         if (!pr) continue;
-        if (pr.state === 'merged') { s.queuedMerge = undefined; await pollMerges(); continue; }
-        if (pr.state === 'closed') { sessions.failQueuedMerge(s.id, `Pull request #${pr.number} was closed without being merged.`); continue; }
-        if (pr.draft) { sessions.failQueuedMerge(s.id, `Pull request #${pr.number} is a draft. Mark it ready for review on GitHub, then try again.`); continue; }
-        if (pr.checks === 'failing') {
-          const bad = (pr.checkRuns || []).filter((c) => c.state === 'failing').map((c) => c.name);
-          sessions.failQueuedMerge(s.id, `Checks failed on pull request #${pr.number}${bad.length ? ': ' + bad.join(', ') : ''}.`);
-          continue;
-        }
-        if (pr.checks === 'pending' || (pr.checks === 'none' && Date.now() - q.since < CHECKS_GRACE)) continue;
+        const step = queuedMergeStep(pr, q.since, Date.now());
+        if (step.do === 'merged') { s.queuedMerge = undefined; await pollMerges(); continue; }
+        if (step.do === 'fail') { sessions.failQueuedMerge(s.id, step.error); continue; }
+        if (step.do === 'wait') continue;
         try { await api.mergePr(s.repoId, pr.number, { method: q.method, deleteBranch: q.deleteBranch }); }
         catch (e: any) { sessions.failQueuedMerge(s.id, `GitHub would not merge #${pr.number}: ${String(e?.message || e)}`); continue; }
         s.queuedMerge = undefined;
