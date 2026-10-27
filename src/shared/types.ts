@@ -35,6 +35,8 @@ export interface Repo {
   lang: string | null;
   defaultBranch: string;
   localPath: string;
+  /** When this record last changed on any instance (ms). Kept by the store; sync uses it to pick the newer copy. */
+  updatedAt?: number;
   /** Weekly spend cap for this repository, USD. */
   cap: number;
   addedAt: number;
@@ -135,6 +137,10 @@ export interface Session {
   branch: string;
   base: string;
   worktree: string;
+  /** When this session last changed on any instance (ms). Kept by the store; sync uses it to pick the newer copy. */
+  updatedAt?: number;
+  /** Set on a copy synced from another instance where the session is running: the name of that instance. It cannot be continued here until it stops there. */
+  remoteOwner?: string;
   /** More repositories this session works in, each with a worktree and branch of its own. Each can get its own pull request. */
   extras?: ExtraRepo[];
   /** Files uploaded for this session alone, kept in `dir` outside the worktree. */
@@ -1055,6 +1061,8 @@ export interface HelmApi {
   syncKey(): Promise<string>;
   syncRegenerateKey(): Promise<string>;
   syncAddPeer(name: string, url: string, key: string): Promise<void>;
+  /** Keeps a server in step all the time, over a standing connection, rather than only when asked. */
+  syncSetContinuous(id: string, on: boolean): Promise<void>;
   syncRemovePeer(id: string): Promise<void>;
   /** Compares history with one other instance (or all of them) and pulls and pushes what differs. */
   syncRun(peerId?: string): Promise<{ id: string; name: string; result: import('./sync').SyncPeerResult }[]>;

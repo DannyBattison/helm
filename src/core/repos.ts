@@ -71,7 +71,7 @@ export class RepoService {
 
   async remove(id: string) {
     const i = this.repos.findIndex((r) => r.id === id);
-    if (i >= 0) this.repos.splice(i, 1);
+    if (i >= 0) { this.repos.splice(i, 1); this.store.tombstone('repo', id); }
     this.store.save();
     this.changed();
   }

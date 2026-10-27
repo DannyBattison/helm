@@ -52,6 +52,8 @@ function SyncSection({ st }: { st: SettingsT }) {
   const [confirmRegen, setConfirmRegen] = React.useState(false);
   const refresh = React.useCallback(() => void api.syncStatus().then(setStatus).catch(() => undefined), []);
   React.useEffect(refresh, [refresh, st.syncEnabled]);
+  // Connections come and go and syncs finish on their own, so look again now and then.
+  React.useEffect(() => { const t = setInterval(refresh, 3000); return () => clearInterval(t); }, [refresh]);
   React.useEffect(() => { setKey(null); }, [st.syncEnabled]);
   const fail = (title: string) => (e: any) => toast({ tone: 'error', title, description: errText(e) });
   const run = async (peerId?: string) => {
@@ -59,18 +61,19 @@ function SyncSection({ st }: { st: SettingsT }) {
     try {
       const r = await api.syncRun(peerId);
       for (const x of r) {
-        const n = (c: { sessions: number; repos: number; records: number; files: number }) => `${c.sessions} sessions, ${c.records} usage records`;
+        const n = (c: { sessions: number; events: number; records: number }) => `${c.sessions} sessions, ${c.events} messages, ${c.records} usage records`;
         toast(x.result.ok ? { tone: 'ready', title: `Synced with ${x.name}`, description: `Received ${n(x.result.pulled)}. Sent ${n(x.result.pushed)}.` } : { tone: 'error', title: `Could not sync with ${x.name}`, description: x.result.error });
       }
     } catch (e) { fail('Could not sync')(e); } finally { setBusy(null); refresh(); }
   };
   const peers = status?.peers || [];
   return <>
-    <H sub="Keep the history of several helm instances (say your desktop and a cloud server) in step. Syncing only runs when you press the button.">Sync</H>
+    <H sub="Keep the history of several helm instances (say your desktop and a cloud server) in step. It runs when you press the button, and all the time for servers you turn Keep in sync on for.">Sync</H>
     {status?.canServe ? <>
       <SettingRow title="Let other instances sync with this one" desc="Off by default. When on, an instance that has the key below can read and add sessions, transcripts and usage here. Use HTTPS in front of this server.">
         <Switch checked={st.syncEnabled} onChange={(v: boolean) => set({ syncEnabled: v })} />
       </SettingRow>
+      {st.syncEnabled ? <SettingRow title="Connected" desc="Instances holding a standing connection to this one, which are told the moment something changes here."><Badge>{String(status.connected)}</Badge></SettingRow> : null}
       {st.syncEnabled ? <SettingRow title="Sync key" desc="Paste this, with this server's address, into the other instance. Anyone with it can read your conversations.">
         {key ? <code className="selectable" style={{ font: '400 12px var(--font-mono)', wordBreak: 'break-all' }}>{key}</code> : null}
         <Button size="sm" icon={key ? 'copy' : 'eye'} onClick={() => { if (key) void navigator.clipboard?.writeText(key); else void api.syncKey().then(setKey).catch(fail('Could not read the key')); }}>{key ? 'Copy' : 'Show'}</Button>
@@ -81,7 +84,8 @@ function SyncSection({ st }: { st: SettingsT }) {
       <Button icon="arrows-clockwise" disabled={!peers.length || !!busy} onClick={() => void run()}>{busy === 'all' ? 'Syncing…' : 'Sync all history'}</Button>
     </SettingRow>
     {peers.map((p) => (
-      <SettingRow key={p.id} title={p.name} desc={<>{p.url}{p.last ? <> · {p.last.ok ? `last synced ${new Date(p.last.at).toLocaleString()}` : `failed: ${p.last.error}`}</> : ' · never synced'}</>}>
+      <SettingRow key={p.id} title={p.name} desc={<>{p.url}{p.continuous ? <> · {p.live.state === 'connected' ? 'connected' : p.live.state === 'connecting' ? 'connecting…' : p.live.state === 'error' ? `reconnecting (${p.live.error})` : 'off'}</> : null}{p.last ? <> · {p.last.ok ? `last synced ${new Date(p.last.at).toLocaleString()}` : `failed: ${p.last.error}`}</> : ' · never synced'}</>}>
+        <Switch checked={p.continuous} onChange={(v: boolean) => void api.syncSetContinuous(p.id, v).then(refresh).catch(fail('Could not change'))} label="Keep in sync" />
         <Button size="sm" icon="arrows-clockwise" disabled={!!busy} onClick={() => void run(p.id)}>{busy === p.id ? 'Syncing…' : 'Sync'}</Button>
         <Button size="sm" variant="ghost" icon="trash" onClick={() => void api.syncRemovePeer(p.id).then(refresh)}>Remove</Button>
       </SettingRow>

@@ -91,8 +91,42 @@ const out = (ws: WebSocket, m: ServerMessage) => { if (ws.readyState === WebSock
 const mayStartSignIn = signInLimiter();
 const SIGN_IN_PATIENCE_MS = 10 * 60_000;
 
+/**
+ * The doorbell for continuous sync: another instance connects, proves it has the key in its first message (a header can't be set from a
+ * browser-style WebSocket client), and is told "changed" whenever this server's data changes. No data travels here; it syncs over HTTP.
+ */
+const syncWss = new WebSocketServer({ noServer: true, maxPayload: 8 * 1024 });
+syncWss.on('connection', (ws, req) => {
+  const ip = req.socket.remoteAddress || '?';
+  let stop: (() => void) | null = null;
+  const refuse = () => { try { ws.send(JSON.stringify({ t: 'refused' })); } catch { /* gone */ } ws.close(4401, 'refused'); };
+  const wait = setTimeout(() => ws.close(4408, 'no hello'), 10_000);
+  ws.on('error', () => ws.terminate());
+  ws.on('close', () => { clearTimeout(wait); stop?.(); });
+  ws.once('message', (raw) => {
+    clearTimeout(wait);
+    let key = '';
+    try { const m = JSON.parse(raw.toString()); if (m?.t === 'hello' && typeof m.key === 'string') key = m.key; } catch { /* not a hello */ }
+    if (!syncHttp.isOn()) return refuse();
+    if (!syncHttp.authorised('Bearer ' + key)) { maySyncAttempt(ip); return refuse(); }
+    stop = syncHttp.subscribe(() => { if (ws.readyState === WebSocket.OPEN) ws.send('{"t":"changed"}'); }, () => ws.close(4401, 'key changed'));
+    ws.send('{"t":"ready"}');
+  });
+  (ws as any).__alive = true;
+  ws.on('pong', () => { (ws as any).__alive = true; });
+  syncClients.add(ws);
+  ws.on('close', () => syncClients.delete(ws));
+});
+const syncClients = new Set<WebSocket>();
+
 http.on('upgrade', (req, socket, head) => {
   const path = new URL(req.url || '/', 'http://x').pathname;
+  if (path === '/api/sync/stream') {
+    // No cookie and no Origin check: the key in the first message is what lets an instance in. Guesses are rate limited per address.
+    if (!maySyncAttempt(req.socket.remoteAddress || '?')) { socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n'); socket.destroy(); return; }
+    syncWss.handleUpgrade(req, socket, head, (ws) => syncWss.emit('connection', ws, req));
+    return;
+  }
   // A page on another site must not be able to use someone's cookie. Whether this page has signed in is decided per message, below.
   if (path !== '/ws' || !originAllowed(req.headers.origin, req.headers.host, EXTRA_ORIGINS)) { socket.write('HTTP/1.1 403 Forbidden\r\n\r\n'); socket.destroy(); return; }
   wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
@@ -139,6 +173,11 @@ wss.on('connection', (ws, req) => {
 
 // Dead connections (a closed laptop) would otherwise stay in `clients` and receive every terminal byte.
 setInterval(() => {
+  for (const ws of syncClients) {
+    if ((ws as any).__alive === false) { ws.terminate(); continue; }
+    (ws as any).__alive = false;
+    ws.ping();
+  }
   for (const ws of clients) {
     if ((ws as any).__alive === false) { ws.terminate(); continue; }
     (ws as any).__alive = false;

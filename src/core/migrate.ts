@@ -50,11 +50,14 @@ export async function writeEntry(dest: string, f: FileEntry) {
   await writeFile(dest, f.enc === 'base64' ? Buffer.from(f.data, 'base64') : f.data);
 }
 
-/** A session from another instance, made safe to run here: stopped, and flagged when its worktree is not on this machine. */
-export function adopt(s: any, step = 'Imported') {
+/** A session from another instance, made safe to run here: stopped, and flagged when its worktree is not on this machine. If `owner` is given it is running over there. */
+export function adopt(s: any, owner?: string) {
   s.subagents ||= [];
   for (const a of s.subagents) if (a.status === 'working') { a.status = 'stopped'; a.endedAt = a.endedAt ?? Date.now(); }
-  if (s.status === 'working' || s.status === 'attention') { s.status = 'idle'; s.step = step; s.ask = undefined; s.queued = undefined; }
+  if (s.status === 'working' || s.status === 'attention') {
+    s.status = 'idle'; s.step = owner ? `Running on ${owner}` : 'Imported'; s.ask = undefined; s.queued = undefined;
+    if (owner) s.remoteOwner = owner;
+  }
   if (!s.worktreeGone && s.worktree && !existsSync(s.worktree) && !(s.free && !s.free.managed)) s.worktreeGone = true;
   return s;
 }

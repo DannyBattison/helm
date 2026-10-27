@@ -155,7 +155,7 @@ const repos = new RepoService(store, emitState);
 // The companion is created before the sessions, which call into it when a transcript changes, but it needs them to act: so its
 // operations are filled in once they exist.
 const companionOps: import('./companion').CompanionOps = {} as any;
-const syncer = new SyncService(store, () => host, (id) => sessions.isRunning(id), () => emitState(), () => !!host.syncServer);
+const syncer = new SyncService(store, () => host, { isRunning: (id) => sessions.isRunning(id), changed: () => emitState(), canServe: () => !!host.syncServer, emitTranscript: (sessionId, index, event) => send('transcript', { sessionId, index, event }), name: () => os.hostname() });
 const companion = new Companion(store, companionOps, () => emitState(), () => host);
 const sessions = new SessionManager(store, {
   emitState,
@@ -322,6 +322,7 @@ export const api: HelmApi = {
   async updateSettings(patch: Partial<Settings>) {
     Object.assign(store.data.settings, patch);
     if ('theme' in patch) applyTheme();
+    if ('syncEnabled' in patch) syncer.settingsChanged();
     if ('billing' in patch && patch.billing === 'subscription') void refreshPlan(true);
     if ('archiveAfterDays' in patch) sessions.autoArchive();
     if (('companionEnabled' in patch || 'companionUrl' in patch) && host.companion !== false) companion.apply();
@@ -850,6 +851,7 @@ export const api: HelmApi = {
   syncKey: () => syncer.key(),
   syncRegenerateKey: () => syncer.regenerateKey(),
   syncAddPeer: (name, url, key) => syncer.addPeer(String(name), String(url), String(key)),
+  syncSetContinuous: (id, on) => syncer.setContinuous(String(id), !!on),
   syncRemovePeer: (id) => syncer.removePeer(String(id)),
   async syncRun(peerId) {
     const r = await syncer.run(peerId);
@@ -1116,6 +1118,7 @@ export async function start(h: Host) {
   GH.watchAuth(() => G.setGitToken(GH.getToken()), () => { G.setGitToken(null); store.data.user = null; store.save(); emitState(); logLine('warn', 'GitHub rejected the sign-in and it could not be renewed; signed out'); });
   await loadOutboundSecrets(host);
   await syncer.load();
+  syncer.start();
   await GH.loadToken(host);
   await GH.ensureFresh();
   // A server's list can change between runs: a token that belongs to someone no longer on it is dropped, not honoured.
@@ -1151,6 +1154,7 @@ export async function start(h: Host) {
 }
 
 export async function shutdown() {
+  syncer.stop();
   terms.closeAll();
   companion.shutdown();
   sessions.shutdown();
@@ -1160,5 +1164,5 @@ export async function shutdown() {
 /** What a desktop shell needs to reach into (its tray lists and answers sessions). */
 export { sessions, store };
 /** For a host with a web address: answers another instance's sync request. */
-export const syncHttp = { authorised: (h: string | undefined) => syncer.authorised(h), isOn: () => syncer.isOn(), handle: (m: string, p: string, b: string) => syncer.handle(m, p, b) };
+export const syncHttp = { subscribe: (ring: () => void, hangUp: () => void) => syncer.subscribe(ring, hangUp), authorised: (h: string | undefined) => syncer.authorised(h), isOn: () => syncer.isOn(), handle: (m: string, p: string, b: string) => syncer.handle(m, p, b) };
 export type { TranscriptEvent };
