@@ -64,6 +64,9 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       VERSION: ${{ needs.version.outputs.version }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
       - uses: actions/download-artifact@v4
         with:
           pattern: desktop-*
@@ -81,7 +84,9 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Create the release
         run: |
-          gh release create "v$VERSION" installers/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+          git tag "v$VERSION"
+          git push origin "v$VERSION"
+          gh release create "v$VERSION" installers/* --repo "$GITHUB_REPOSITORY" \
             --title "v$VERSION" --generate-notes --latest
       - name: Tag the images
         run: |
