@@ -10,7 +10,7 @@ import { dataUrl, downloadArtifact, fmtSize, isPreviewable } from './artifact';
 import { PlanMeters } from './Shell';
 
 const errText = (e: any) => String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '');
-const KIND: Record<InboxKind, { label: string; icon: string; tone: string }> = {
+export const KIND: Record<InboxKind, { label: string; icon: string; tone: string }> = {
   approve: { label: 'Approval', icon: 'shield-warning', tone: 'attention' },
   question: { label: 'Question', icon: 'question', tone: 'attention' },
   budget: { label: 'Limit reached', icon: 'gauge', tone: 'attention' },

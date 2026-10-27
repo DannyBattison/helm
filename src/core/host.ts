@@ -60,6 +60,8 @@ export interface Host {
    * The desktop app leaves this out: its user has their own credentials.
    */
   ghConfigDir?: string;
+  /** This host has a web address other helm instances can sync with (the hosted server). */
+  syncServer?: true;
   /** Set to false where linking a companion server is not offered (the hosted server: D-101). The desktop app leaves it out. */
   companion?: false;
   /** Things that happen on the user's own computer, which a hosted server has no access to. */

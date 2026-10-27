@@ -1,5 +1,6 @@
 import React from 'react';
 import type { ModelAlias, PermMode, Settings as SettingsT } from '@shared/types';
+import type { SyncStatus } from '@shared/sync';
 import { api, platform } from '../api';
 import { defaultChoice, livePlan, modelChoices, splitChoice, theme as resolveTheme, untilReset } from '../lib';
 import { CURRENCIES, rateFor } from '@shared/money';
@@ -15,6 +16,90 @@ const errText = (e: any) => String(e?.message || e).replace(/^Error invoking rem
 const set = (patch: Partial<SettingsT>) => void api.updateSettings(patch);
 
 export const PERM_OPTIONS = [{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits, ask for commands' }, { value: 'plan', label: 'Plan only' }, { value: 'all', label: 'Allow everything' }];
+
+/** Moving helm to another machine or server: everything but sign-ins and passwords, as one file. */
+function TransferSection({ st }: { st: SettingsT }) {
+  const [busy, setBusy] = React.useState(false);
+  const file = React.useRef<HTMLInputElement>(null);
+  const fail = (title: string) => (e: any) => toast({ tone: 'error', title, description: errText(e) });
+  const pick = async (f?: File) => {
+    if (!f) return;
+    setBusy(true);
+    try {
+      const r = await api.importData(await f.text());
+      toast({ tone: 'ready', title: 'Imported', description: `${r.sessions} sessions, ${r.repos} repositories, ${r.files} files` });
+    } catch (e) { fail('Could not import')(e); } finally { setBusy(false); if (file.current) file.current.value = ''; }
+  };
+  return <>
+    <H sub="For moving helm to another computer or server.">Import and export</H>
+    <SettingRow title="Export" desc="Saves repositories, sessions, transcripts, usage history, automated agents, settings and uploaded artifacts as one file. Your GitHub and Claude sign-ins and passwords are not included, so you sign in again on the new machine. The file holds your conversations; keep it private.">
+      <Button icon="download-simple" disabled={busy} onClick={() => { setBusy(true); void api.exportData().then((f) => f && toast({ tone: 'ready', title: 'Exported', description: f })).catch(fail('Could not export')).finally(() => setBusy(false)); }}>Export…</Button>
+    </SettingRow>
+    <SettingRow title="Import" desc="Adds the contents of an export file to what is here. Anything already here is kept: sessions and repositories with the same name are not overwritten. Paths, shells and update settings stay as they are on this machine. Imported sessions come in stopped; those whose worktree is not on this machine are marked as having none.">
+      <input ref={file} type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={(e) => void pick(e.target.files?.[0])} />
+      <Button icon="upload-simple" disabled={busy} onClick={() => file.current?.click()}>Import…</Button>
+    </SettingRow>
+    <SyncSection st={st} />
+  </>;
+}
+
+/** Keeping history in step with other helm instances: a key for them to use here, and the servers to sync with from here. */
+function SyncSection({ st }: { st: SettingsT }) {
+  const [status, setStatus] = React.useState<SyncStatus | null>(null);
+  const [key, setKey] = React.useState<string | null>(null);
+  const [busy, setBusy] = React.useState<string | null>(null);
+  const [form, setForm] = React.useState({ name: '', url: '', key: '' });
+  const [confirmRegen, setConfirmRegen] = React.useState(false);
+  const refresh = React.useCallback(() => void api.syncStatus().then(setStatus).catch(() => undefined), []);
+  React.useEffect(refresh, [refresh, st.syncEnabled]);
+  // Connections come and go and syncs finish on their own, so look again now and then.
+  React.useEffect(() => { const t = setInterval(refresh, 3000); return () => clearInterval(t); }, [refresh]);
+  React.useEffect(() => { setKey(null); }, [st.syncEnabled]);
+  const fail = (title: string) => (e: any) => toast({ tone: 'error', title, description: errText(e) });
+  const run = async (peerId?: string) => {
+    setBusy(peerId || 'all');
+    try {
+      const r = await api.syncRun(peerId);
+      for (const x of r) {
+        const n = (c: { sessions: number; events: number; records: number }) => `${c.sessions} sessions, ${c.events} messages, ${c.records} usage records`;
+        toast(x.result.ok ? { tone: 'ready', title: `Synced with ${x.name}`, description: `Received ${n(x.result.pulled)}. Sent ${n(x.result.pushed)}.` } : { tone: 'error', title: `Could not sync with ${x.name}`, description: x.result.error });
+      }
+    } catch (e) { fail('Could not sync')(e); } finally { setBusy(null); refresh(); }
+  };
+  const peers = status?.peers || [];
+  return <>
+    <H sub="Keep the history of several helm instances (say your desktop and a cloud server) in step. It runs when you press the button, and all the time for servers you turn Keep in sync on for.">Sync</H>
+    {status?.canServe ? <>
+      <SettingRow title="Let other instances sync with this one" desc="Off by default. When on, an instance that has the key below can read and add sessions, transcripts and usage here. Use HTTPS in front of this server.">
+        <Switch checked={st.syncEnabled} onChange={(v: boolean) => set({ syncEnabled: v })} />
+      </SettingRow>
+      {st.syncEnabled ? <SettingRow title="Connected" desc="Instances holding a standing connection to this one, which are told the moment something changes here."><Badge>{String(status.connected)}</Badge></SettingRow> : null}
+      {st.syncEnabled ? <SettingRow title="Sync key" desc="Paste this, with this server's address, into the other instance. Anyone with it can read your conversations.">
+        {key ? <code className="selectable" style={{ font: '400 12px var(--font-mono)', wordBreak: 'break-all' }}>{key}</code> : null}
+        <Button size="sm" icon={key ? 'copy' : 'eye'} onClick={() => { if (key) void navigator.clipboard?.writeText(key); else void api.syncKey().then(setKey).catch(fail('Could not read the key')); }}>{key ? 'Copy' : 'Show'}</Button>
+        <Button size="sm" icon="arrows-clockwise" onClick={() => setConfirmRegen(true)}>Regenerate</Button>
+      </SettingRow> : null}
+    </> : null}
+    <SettingRow title="Servers to sync with" desc={status?.canServe ? 'Another helm server and its sync key.' : 'A helm server and the sync key from its settings. This app has no address of its own, so it starts every sync and other instances cannot sync into it.'}>
+      <Button icon="arrows-clockwise" disabled={!peers.length || !!busy} onClick={() => void run()}>{busy === 'all' ? 'Syncing…' : 'Sync all history'}</Button>
+    </SettingRow>
+    {peers.map((p) => (
+      <SettingRow key={p.id} title={p.name} desc={<>{p.url}{p.continuous ? <> · {p.live.state === 'connected' ? 'connected' : p.live.state === 'connecting' ? 'connecting…' : p.live.state === 'error' ? `reconnecting (${p.live.error})` : 'off'}</> : null}{p.last ? <> · {p.last.ok ? `last synced ${new Date(p.last.at).toLocaleString()}` : `failed: ${p.last.error}`}</> : ' · never synced'}</>}>
+        <Switch checked={p.continuous} onChange={(v: boolean) => void api.syncSetContinuous(p.id, v).then(refresh).catch(fail('Could not change'))} label="Keep in sync" />
+        <Button size="sm" icon="arrows-clockwise" disabled={!!busy} onClick={() => void run(p.id)}>{busy === p.id ? 'Syncing…' : 'Sync'}</Button>
+        <Button size="sm" variant="ghost" icon="trash" onClick={() => void api.syncRemovePeer(p.id).then(refresh)}>Remove</Button>
+      </SettingRow>
+    ))}
+    <SettingRow title="Add a server">
+      <Input placeholder="Name" value={form.name} onChange={(e: any) => setForm({ ...form, name: e.target.value })} style={{ width: 120 }} />
+      <Input placeholder="https://helm.example.com" value={form.url} onChange={(e: any) => setForm({ ...form, url: e.target.value })} style={{ width: 220 }} />
+      <Input type="password" placeholder="Sync key" value={form.key} onChange={(e: any) => setForm({ ...form, key: e.target.value })} style={{ width: 160 }} />
+      <Button icon="plus" disabled={!form.url || !form.key} onClick={() => void api.syncAddPeer(form.name, form.url, form.key).then(() => { setForm({ name: '', url: '', key: '' }); refresh(); }).catch(fail('Could not add'))}>Add</Button>
+    </SettingRow>
+    <Dialog open={confirmRegen} width={440} title="Regenerate the sync key?" description="Instances using the old key stop working until you give them the new one." onClose={() => setConfirmRegen(false)}
+      footer={<><Button variant="ghost" onClick={() => setConfirmRegen(false)}>Cancel</Button><Button variant="danger" onClick={() => { setConfirmRegen(false); void api.syncRegenerateKey().then(setKey).catch(fail('Could not regenerate')); }}>Regenerate</Button></>} />
+  </>;
+}
 
 /** Which shell the terminal starts: whatever is installed here, or any command. Changes apply to terminals opened after it. */
 function TerminalShellRow({ st, set }: { st: any; set(p: any): void }) {
@@ -343,7 +428,7 @@ export function Settings({ section }: { section?: string }) {
   const subCols = useColumns('subagent-repos', [{ w: 1, min: 160, flex: true }, { w: 170, min: 110, fixed: true }]);
   const pctOptions = [{ value: '0', label: 'Off' }, { value: '50', label: '50%' }, { value: '70', label: '70%' }, { value: '80', label: '80%' }, { value: '90', label: '90%' }];
   const subLimits = (extra: number[]) => [...new Set([0, 1, 2, 3, 4, 6, 8, 12, ...extra])].sort((a, b) => a - b).map((n) => ({ value: String(n), label: n === 0 ? 'Off' : String(n) }));
-  const nav = [['account', 'Account', 'github-logo'], ['agents', 'Agents', 'robot'], ['automations', 'Automated agents', 'clock-clockwise'], ['worktrees', 'Worktrees', 'tree-structure'], ['budgets', 'Usage', 'coins'], ...(hosted ? [] : [['companion', 'Companion', 'broadcast']]), ['notifications', 'Notifications', 'bell'], ['appearance', 'Appearance', 'paint-brush'], ['shortcuts', 'Keyboard shortcuts', 'keyboard'], ['about', 'About and support', 'info']];
+  const nav = [['account', 'Account', 'github-logo'], ['agents', 'Agents', 'robot'], ['automations', 'Automated agents', 'clock-clockwise'], ['worktrees', 'Worktrees', 'tree-structure'], ['budgets', 'Usage', 'coins'], ...(hosted ? [] : [['companion', 'Companion', 'broadcast']]), ['notifications', 'Notifications', 'bell'], ['appearance', 'Appearance', 'paint-brush'], ['shortcuts', 'Keyboard shortcuts', 'keyboard'], ['transfer', 'Import, export and sync', 'arrows-left-right'], ['about', 'About and support', 'info']];
   const notif = (key: 'notifyAttention' | 'notifyReady' | 'notifyFailed' | 'notifyChecks', title: string) => (
     <SettingRow title={title}>
       <Switch checked={st[key].desktop} onChange={(v: boolean) => set({ [key]: { ...st[key], desktop: v } })} label="Desktop" />
@@ -522,6 +607,7 @@ export function Settings({ section }: { section?: string }) {
             </>}
           </> : null}
           {sec === 'shortcuts' ? <ShortcutsSection st={st} set={set} /> : null}
+          {sec === 'transfer' ? <TransferSection st={st} /> : null}
           {sec === 'about' ? <>
             <H sub="Updates, and what to send if something goes wrong.">About and support</H>
             {hosted ? null : <>

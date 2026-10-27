@@ -1,9 +1,10 @@
 import { randomBytes } from 'node:crypto';
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { WebSocket, WebSocketServer } from 'ws';
-import { api, shutdown, start } from '../../src/core/core';
+import { api, shutdown, start, syncHttp } from '../../src/core/core';
 import { originAllowed } from './auth';
 import { dispatch } from './dispatch';
 import { createGate, parseUser } from './gate';
@@ -43,9 +44,32 @@ const MIME: Record<string, string> = {
 };
 const CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://avatars.githubusercontent.com; font-src 'self' data:; worker-src 'self' blob:; connect-src 'self'";
 
+const SYNC_BODY_LIMIT = 512 * 1024 * 1024;
+const maySyncAttempt = signInLimiter(30);
+
+/** Another helm instance syncing with this one: a bearer key instead of the cookie. Off (and invisible) unless turned on in settings. */
+async function syncRoute(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const reply = (status: number, json: unknown) => { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(json)); };
+  if (!syncHttp.isOn()) return reply(404, { error: 'Not found' });
+  if (!syncHttp.authorised(req.headers.authorization)) {
+    // Guessing the key is rate limited per address; a right key is never counted.
+    return reply(maySyncAttempt(req.socket.remoteAddress || '?') ? 401 : 429, { error: 'Unauthorised' });
+  }
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const c of req) {
+    size += (c as Buffer).length;
+    if (size > SYNC_BODY_LIMIT) return reply(413, { error: 'Too large' });
+    chunks.push(c as Buffer);
+  }
+  const r = await syncHttp.handle(req.method || 'GET', new URL(req.url || '/', 'http://x').pathname, Buffer.concat(chunks).toString('utf8'));
+  reply(r.status, r.json);
+}
+
 const http = createServer(async (req, res) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'no-referrer');
+  if ((req.url || '').startsWith('/api/sync/')) { await syncRoute(req, res).catch(() => { if (!res.headersSent) res.writeHead(500).end(); }); return; }
   if (await gate.handle(req, res).catch(() => { res.writeHead(500).end(); return true; })) return;
   const url = new URL(req.url || '/', 'http://x');
   let rel = decodeURIComponent(url.pathname);
@@ -60,15 +84,49 @@ const http = createServer(async (req, res) => {
   createReadStream(file).pipe(res);
 });
 
-const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 * 1024 });
+const wss = new WebSocketServer({ noServer: true, maxPayload: 512 * 1024 * 1024 });
 /** Signed-in connections: the only ones that receive events. */
 const clients = new Set<WebSocket>();
 const out = (ws: WebSocket, m: ServerMessage) => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(m)); };
 const mayStartSignIn = signInLimiter();
 const SIGN_IN_PATIENCE_MS = 10 * 60_000;
 
+/**
+ * The doorbell for continuous sync: another instance connects, proves it has the key in its first message (a header can't be set from a
+ * browser-style WebSocket client), and is told "changed" whenever this server's data changes. No data travels here; it syncs over HTTP.
+ */
+const syncWss = new WebSocketServer({ noServer: true, maxPayload: 8 * 1024 });
+syncWss.on('connection', (ws, req) => {
+  const ip = req.socket.remoteAddress || '?';
+  let stop: (() => void) | null = null;
+  const refuse = () => { try { ws.send(JSON.stringify({ t: 'refused' })); } catch { /* gone */ } ws.close(4401, 'refused'); };
+  const wait = setTimeout(() => ws.close(4408, 'no hello'), 10_000);
+  ws.on('error', () => ws.terminate());
+  ws.on('close', () => { clearTimeout(wait); stop?.(); });
+  ws.once('message', (raw) => {
+    clearTimeout(wait);
+    let key = '';
+    try { const m = JSON.parse(raw.toString()); if (m?.t === 'hello' && typeof m.key === 'string') key = m.key; } catch { /* not a hello */ }
+    if (!syncHttp.isOn()) return refuse();
+    if (!syncHttp.authorised('Bearer ' + key)) { maySyncAttempt(ip); return refuse(); }
+    stop = syncHttp.subscribe(() => { if (ws.readyState === WebSocket.OPEN) ws.send('{"t":"changed"}'); }, () => ws.close(4401, 'key changed'));
+    ws.send('{"t":"ready"}');
+  });
+  (ws as any).__alive = true;
+  ws.on('pong', () => { (ws as any).__alive = true; });
+  syncClients.add(ws);
+  ws.on('close', () => syncClients.delete(ws));
+});
+const syncClients = new Set<WebSocket>();
+
 http.on('upgrade', (req, socket, head) => {
   const path = new URL(req.url || '/', 'http://x').pathname;
+  if (path === '/api/sync/stream') {
+    // No cookie and no Origin check: the key in the first message is what lets an instance in. Guesses are rate limited per address.
+    if (!maySyncAttempt(req.socket.remoteAddress || '?')) { socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n'); socket.destroy(); return; }
+    syncWss.handleUpgrade(req, socket, head, (ws) => syncWss.emit('connection', ws, req));
+    return;
+  }
   // A page on another site must not be able to use someone's cookie. Whether this page has signed in is decided per message, below.
   if (path !== '/ws' || !originAllowed(req.headers.origin, req.headers.host, EXTRA_ORIGINS)) { socket.write('HTTP/1.1 403 Forbidden\r\n\r\n'); socket.destroy(); return; }
   wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
@@ -115,6 +173,11 @@ wss.on('connection', (ws, req) => {
 
 // Dead connections (a closed laptop) would otherwise stay in `clients` and receive every terminal byte.
 setInterval(() => {
+  for (const ws of syncClients) {
+    if ((ws as any).__alive === false) { ws.terminate(); continue; }
+    (ws as any).__alive = false;
+    ws.ping();
+  }
   for (const ws of clients) {
     if ((ws as any).__alive === false) { ws.terminate(); continue; }
     (ws as any).__alive = false;

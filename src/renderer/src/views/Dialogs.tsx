@@ -384,9 +384,7 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
         {!free && !compare && others.length ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <span style={{ font: '500 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>Also work in</span>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px' }}>
-              {others.map((x) => <Checkbox key={x.id} checked={extraRepos.includes(x.id)} onChange={(on: boolean) => setMore((c) => on ? [...c, x.id] : c.filter((i) => i !== x.id))} label={x.id} />)}
-            </div>
+            <Select multiple value={extraRepos} onChange={(e: any) => setMore(e.target.value)} options={others.map((x) => ({ value: x.id, label: x.id }))} placeholder="None" icon="books" />
             {extraRepos.length ? <span style={{ font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>The agent gets a worktree in each, from its default branch, and each can have its own pull request.</span> : null}
           </div>
         ) : null}

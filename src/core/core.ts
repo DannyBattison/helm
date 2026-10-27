@@ -16,6 +16,8 @@ import { cleanHeavy, dirSize, reclaimableBytes } from './disk';
 import { readArtifact } from './artifacts';
 import { addRepoArtifact, listRepoArtifacts, removeRepoArtifact, setRepoArtifactDir } from './repoartifacts';
 import { cpuTimes, cpuUse, HISTORY_LIMIT, parseLimit, type CpuTimes, type SystemPoint } from '../shared/system';
+import { SyncService } from './sync';
+import { applyImport, buildExport } from './migrate';
 import { diagnostics } from '../shared/diagnostics';
 import { memoryHealth, memoryReads, STALE_DAYS, type MemoryFile, type MemoryUsage } from '../shared/memoryhealth';
 import type { Host } from './host';
@@ -177,6 +179,7 @@ const repos = new RepoService(store, emitState);
 // The companion is created before the sessions, which call into it when a transcript changes, but it needs them to act: so its
 // operations are filled in once they exist.
 const companionOps: import('./companion').CompanionOps = {} as any;
+const syncer = new SyncService(store, () => host, { isRunning: (id) => sessions.isRunning(id), changed: () => emitState(), canServe: () => !!host.syncServer, emitTranscript: (sessionId, index, event) => send('transcript', { sessionId, index, event }), name: () => os.hostname() });
 const companion = new Companion(store, companionOps, () => emitState(), () => host);
 const registry = new BackendRegistry([
   new ClaudeBackend({
@@ -342,6 +345,7 @@ export const api: HelmApi = {
   async updateSettings(patch: Partial<Settings>) {
     Object.assign(store.data.settings, patch);
     if ('theme' in patch) applyTheme();
+    if ('syncEnabled' in patch) syncer.settingsChanged();
     if ('billing' in patch && patch.billing === 'subscription') void refreshPlan(true);
     if ('archiveAfterDays' in patch) sessions.autoArchive();
     if (('companionEnabled' in patch || 'companionUrl' in patch) && host.companion !== false) companion.apply();
@@ -566,6 +570,7 @@ export const api: HelmApi = {
     if (!x) throw new Error('This session has no worktree in ' + repoId);
     return G.changes(x.worktree, x.base);
   },
+  async imageVersions(id, path) { const s = sess(id); return G.imageVersions(s.worktree, s.base, path); },
   async fileDiff(id, path) { const s = sess(id); return G.fileDiff(s.worktree, s.base, path); },
 
   async commitOnly(id, files, message) {
@@ -872,6 +877,25 @@ export const api: HelmApi = {
     });
     return saveFile(`helm-diagnostics-${new Date().toISOString().slice(0, 10)}.md`, text);
   },
+  async exportData() { return saveFile(`helm-export-${new Date().toISOString().slice(0, 10)}.json`, await buildExport(store)); },
+  async importData(text) {
+    const r = await applyImport(store, String(text));
+    store.log({ kind: 'git', who: me(), human: true, what: `imported ${r.sessions} sessions and ${r.repos} repositories`, repo: '' });
+    emitState();
+    return r;
+  },
+  syncStatus: async () => syncer.status(),
+  syncKey: () => syncer.key(),
+  syncRegenerateKey: () => syncer.regenerateKey(),
+  syncAddPeer: (name, url, key) => syncer.addPeer(String(name), String(url), String(key)),
+  syncSetContinuous: (id, on) => syncer.setContinuous(String(id), !!on),
+  syncRemovePeer: (id) => syncer.removePeer(String(id)),
+  async syncRun(peerId) {
+    const r = await syncer.run(peerId);
+    const n = r.reduce((a, x) => a + x.result.pulled.sessions + x.result.pushed.sessions, 0);
+    if (n) store.log({ kind: 'git', who: me(), human: true, what: `synced ${n} sessions with ${r.map((x) => x.name).join(', ')}`, repo: '' });
+    return r;
+  },
   async openLogFolder() { const f = logFile(); if (f) host.showInFolder?.(f); },
   async logRenderer(message) { logLine('error', 'window: ' + String(message).slice(0, 2000)); },
   repoWorkflows: (repoId, ref) => GH.listWorkflows(repoId, ref),
@@ -1121,6 +1145,8 @@ export async function start(h: Host) {
   GH.setSignInGuard(host.allowLogin ?? null);
   GH.watchAuth(() => G.setGitToken(GH.getToken()), () => { G.setGitToken(null); store.data.user = null; store.save(); emitState(); logLine('warn', 'GitHub rejected the sign-in and it could not be renewed; signed out'); });
   await loadOutboundSecrets(host);
+  await syncer.load();
+  syncer.start();
   await GH.loadToken(host);
   await GH.ensureFresh();
   // A server's list can change between runs: a token that belongs to someone no longer on it is dropped, not honoured.
@@ -1155,6 +1181,7 @@ export async function start(h: Host) {
 }
 
 export async function shutdown() {
+  syncer.stop();
   terms.closeAll();
   companion.shutdown();
   sessions.shutdown();
@@ -1163,4 +1190,6 @@ export async function shutdown() {
 
 /** What a desktop shell needs to reach into (its tray lists and answers sessions). */
 export { sessions, store };
+/** For a host with a web address: answers another instance's sync request. */
+export const syncHttp = { subscribe: (ring: () => void, hangUp: () => void) => syncer.subscribe(ring, hangUp), authorised: (h: string | undefined) => syncer.authorised(h), isOn: () => syncer.isOn(), handle: (m: string, p: string, b: string) => syncer.handle(m, p, b) };
 export type { TranscriptEvent };

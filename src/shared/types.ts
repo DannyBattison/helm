@@ -77,6 +77,8 @@ export interface Repo {
   lang: string | null;
   defaultBranch: string;
   localPath: string;
+  /** When this record last changed on any instance (ms). Kept by the store; sync uses it to pick the newer copy. */
+  updatedAt?: number;
   /** Weekly spend cap for this repository, USD. */
   cap: number;
   addedAt: number;
@@ -177,6 +179,10 @@ export interface Session {
   branch: string;
   base: string;
   worktree: string;
+  /** When this session last changed on any instance (ms). Kept by the store; sync uses it to pick the newer copy. */
+  updatedAt?: number;
+  /** Set on a copy synced from another instance where the session is running: the name of that instance. It cannot be continued here until it stops there. */
+  remoteOwner?: string;
   /** More repositories this session works in, each with a worktree and branch of its own. Each can get its own pull request. */
   extras?: ExtraRepo[];
   /** Files uploaded for this session alone, kept in `dir` outside the worktree. */
@@ -426,6 +432,8 @@ export interface Settings {
   /** What interrupts a working agent from the keyboard: Esc, Esc pressed twice, or nothing (the Interrupt button still works). */
   interruptKey: 'esc' | 'double-esc' | 'off';
   /** Connect to a helm-companion server so the website can show this app's agents and answer them. Off until turned on. */
+  /** Lets other helm instances sync with this one, using the sync key. Only a hosted server can be reached, so the desktop app ignores it. */
+  syncEnabled: boolean;
   companionEnabled: boolean;
   /** The companion server, for example `https://companion.example.com`. */
   companionUrl: string;
@@ -1017,6 +1025,8 @@ export interface HelmApi {
   /** The same for one of the session's additional repositories. */
   extraChanges(sessionId: string, repoId: string): Promise<ChangesSummary>;
   fileDiff(sessionId: string, path: string): Promise<DiffHunk[]>;
+  /** Both sides of an image change as data URLs, or null when the file isn't an image. */
+  imageVersions(sessionId: string, path: string): Promise<{ old: string | null; new: string | null } | null>;
   createPr(input: CreatePrInput): Promise<{ url: string | null }>;
   /** Merges an open pull request on GitHub, optionally deleting its branch there. The session (if helm started it) is settled straight away. */
   mergePr(repoId: string, number: number, opts: { method: MergeMethod; deleteBranch: boolean }): Promise<void>;
@@ -1103,6 +1113,20 @@ export interface HelmApi {
   installUpdate(): Promise<void>;
   /** Saves a support bundle: versions, settings, session states and the recent log, with private text left out and secrets masked. */
   saveDiagnostics(): Promise<string | null>;
+  /** Saves everything helm knows (not sign-ins or passwords) as one file for moving to another machine. */
+  exportData(): Promise<string | null>;
+  /** Adds the contents of an export file to what is here, leaving anything already here alone. */
+  importData(text: string): Promise<{ repos: number; sessions: number; files: number }>;
+  syncStatus(): Promise<import('./sync').SyncStatus>;
+  /** The key other instances use to sync with this one. Made the first time it is asked for. */
+  syncKey(): Promise<string>;
+  syncRegenerateKey(): Promise<string>;
+  syncAddPeer(name: string, url: string, key: string): Promise<void>;
+  /** Keeps a server in step all the time, over a standing connection, rather than only when asked. */
+  syncSetContinuous(id: string, on: boolean): Promise<void>;
+  syncRemovePeer(id: string): Promise<void>;
+  /** Compares history with one other instance (or all of them) and pulls and pushes what differs. */
+  syncRun(peerId?: string): Promise<{ id: string; name: string; result: import('./sync').SyncPeerResult }[]>;
   openLogFolder(): Promise<void>;
   /** The window reports an error here so it ends up in the log. */
   logRenderer(message: string): Promise<void>;

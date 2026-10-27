@@ -13,6 +13,8 @@ export type AutomationTrigger =
 
 export interface AutomatedAgent {
   id: string;
+  /** When this changed on any instance (ms). Kept by the store, used by sync. */
+  updatedAt?: number;
   name: string;
   /** What the agent is asked to do each time it starts. May use {{repo}}, {{number}}, {{title}}, {{url}} and {{branch}}; for a workflow run {{number}} is the run number and {{title}} names the workflow. */
   prompt: string;

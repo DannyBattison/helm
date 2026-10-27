@@ -1,4 +1,5 @@
 import { mkdir, readdir, readFile, rm, stat } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import type { ChangesSummary, DiffHunk, FileChange } from '../shared/types';
 import { run } from './util';
@@ -208,4 +209,20 @@ export async function searchFiles(wt: string, query: string, matchCase: boolean)
     if (hits.length >= 400) break;
   }
   return hits;
+}
+
+const IMAGE_TYPES: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', avif: 'image/avif', bmp: 'image/bmp', ico: 'image/x-icon' };
+const MAX_IMAGE = 8 * 1024 * 1024;
+
+/** The two sides of an image change as data URLs: the file at the merge base, and the file now. Either is null when it doesn't exist (added or deleted) or is too large; the whole result is null for anything that isn't an image. */
+export async function imageVersions(wt: string, base: string, path: string): Promise<{ old: string | null; new: string | null } | null> {
+  const type = IMAGE_TYPES[path.split('.').pop()?.toLowerCase() || ''];
+  if (!type) return null;
+  const url = (b: Buffer | null) => (b && b.length <= MAX_IMAGE ? `data:${type};base64,${b.toString('base64')}` : null);
+  const mb = await mergeBase(wt, base).catch(() => base);
+  const old = await new Promise<Buffer | null>((resolve) => {
+    execFile('git', ['show', `${mb}:${path}`], { cwd: wt, env: env(), encoding: 'buffer', maxBuffer: MAX_IMAGE + 1024 }, (err, out) => resolve(err ? null : out));
+  });
+  const now = await readFile(join(wt, path)).catch(() => null);
+  return { old: url(old), new: url(now) };
 }

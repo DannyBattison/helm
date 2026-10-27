@@ -43,6 +43,8 @@ interface Runtime {
   asks: Map<string, AskWaiter>;
   turnCost: number;
   baseCost: number;
+  /** Session cost when this run started; the SDK's total_cost_usd counts only from there. */
+  startCost: number;
   interrupted: boolean;
   budgetPaused: boolean;
   toolStart: Map<string, { t: number; idx: number; kind: string; input: any; tkey: string; name?: string }>;
@@ -532,7 +534,7 @@ export class SessionManager {
     // A worktree made before a file was uploaded gets it when the agent next starts. Files already there are left as the agent has them.
     if (!s.free) await supplyRepoArtifacts(s.repoId, s.worktree, false);
     for (const x of s.extras || []) await supplyRepoArtifacts(x.repoId, x.worktree, false);
-    const rt: Runtime = { agent: null as any, asks: new Map(), turnCost: 0, baseCost: s.cost, interrupted: false, budgetPaused: false, toolStart: new Map(), fails: new Map(), lastTools: new Map(), subEvent: new Map(), admitted: new Set() };
+    const rt: Runtime = { agent: null as any, asks: new Map(), turnCost: 0, baseCost: s.cost, startCost: s.cost, interrupted: false, budgetPaused: false, toolStart: new Map(), fails: new Map(), lastTools: new Map(), subEvent: new Map(), admitted: new Set() };
     rt.agent = this.backendOf(s).start({
       cwd: s.worktree, model: s.model, effort: s.effort, permMode: s.permMode,
       systemAppend: this.systemAppend(s, artifacts),
@@ -958,13 +960,17 @@ export class SessionManager {
   }
 
   private async onResult(s: Session, rt: Runtime, m: Extract<AgentEvent, { t: 'result' }>) {
-    if (m.costUsd != null) {
-      // The SDK total is authoritative: correct the running estimate in either direction.
-      const delta = m.costUsd - rt.baseCost - rt.turnCost;
+    // The agent's total counts from the start of this run (a resumed session starts again at zero), and is 0 when it reports nothing, as on a subscription. Only a positive total corrects the estimate.
+    if (m.costUsd != null && m.costUsd > 0) {
+      const target = rt.startCost + m.costUsd;
+      const delta = target - rt.baseCost - rt.turnCost;
       if (Math.abs(delta) > 1e-6) { this.store.addUsage(s.repoId, delta, 0); this.store.addDaily(s.repoId, s.model, { cost: delta }); }
-      rt.baseCost = Math.max(rt.baseCost, m.costUsd);
+      rt.baseCost = target;
       rt.turnCost = 0;
       s.cost = rt.baseCost;
+    } else if (m.costUsd != null) {
+      rt.baseCost += rt.turnCost;
+      rt.turnCost = 0;
     }
     rt.toolStart.clear();
     rt.lastTools.clear();
@@ -1268,6 +1274,7 @@ export class SessionManager {
     const s = this.get(id);
     if (!s) throw new Error('Session not found');
     if (s.worktreeGone) throw new Error('This session\'s work was merged and its worktree removed, so it cannot be continued. Start a new session.');
+    if (s.remoteOwner) throw new Error(`This session is running on ${s.remoteOwner}. It can be continued here once it stops there.`);
     let rt = this.rt.get(id);
     // Talking to a queued session starts it now.
     s.queued = undefined;
@@ -1499,6 +1506,7 @@ export class SessionManager {
     }
     this.store.data.sessions = this.store.data.sessions.filter((x) => x.id !== id);
     await this.store.deleteTranscripts(id);
+    this.store.tombstone('session', id);
     if (s.uploads) await rm(s.uploads.dir, { recursive: true, force: true }).catch(() => undefined);
     await dropArtifacts(id);
     this.touch();

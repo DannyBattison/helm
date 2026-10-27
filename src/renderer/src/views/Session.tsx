@@ -6,7 +6,7 @@ import { Cmd, Hl } from '../Hl';
 import { highlightBlock, langFromPath, langFromTag } from '../highlight';
 import { agentName, billingOf, can, clock, elapsed, fmtTokens, modelOptions, prettyModel, runningSubagents, STATUS_LABEL, subagentTree, tilde } from '../lib';
 import { go, loadTranscript, setUI, toast, useApp, useMoney, useTranscript } from '../store';
-import { Avatar, Badge, BranchTag, Button, CopyBox, DiffStat, Grip, IconButton, Lightbox, Meter, Select, StatusDot, Tabs, Tooltip, usePaneWidth } from '../ui';
+import { Avatar, Badge, BranchTag, Button, CopyBox, DiffStat, Grip, IconButton, Lightbox, Meter, Select, StatusDot, Tabs, Tooltip, useNarrow, usePaneWidth } from '../ui';
 import { Changes } from './Changes';
 import { TranscriptList } from './TranscriptList';
 import { usePush } from './push';
@@ -381,6 +381,7 @@ function matchFiles(files: string[], q: string): string[] {
 
 function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAreaElement> }) {
   const app = useApp();
+  const narrow = useNarrow();
   const [text, setTextState] = React.useState(drafts.get(s.id) || '');
   const [images, setImages] = React.useState<Draft[]>([]);
   const [focused, setFocused] = React.useState(false);
@@ -492,17 +493,15 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
           onPaste={(e) => { const f = [...e.clipboardData.files].filter((x) => x.type.startsWith('image/')); if (f.length) { e.preventDefault(); void addImages(f); } }}
           onKeyDown={onKeyDown}
           style={{ display: 'block', width: '100%', boxSizing: 'border-box', resize: 'none', border: 'none', outline: 'none', boxShadow: 'none', background: 'transparent', color: 'var(--text-1)', font: '400 13px/1.5 var(--font-sans)', padding: '10px 12px 4px', maxHeight: 200 }} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px 6px 8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px 6px 8px', flexWrap: narrow ? 'wrap' : undefined }}>
           <input ref={picker} type="file" accept={IMAGE_TYPES.join(',')} multiple hidden onChange={(e) => { void addImages([...(e.target.files || [])]); e.target.value = ''; }} />
           <IconButton icon="at" label="Mention a file" size="sm" onClick={() => { const el = inputRef.current; const c = el ? el.selectionStart : text.length; const pre = text.slice(0, c); const lead = pre && !/\s$/.test(pre) ? ' ' : ''; setText(pre + lead + '@' + text.slice(c)); requestAnimationFrame(() => { el?.focus(); const p = c + lead.length + 1; el?.setSelectionRange(p, p); track(el!.value, p); }); }} />
           <IconButton icon="paperclip" label="Attach an image" size="sm" onClick={() => picker.current?.click()} />
-          <Select size="sm" value={s.model} onChange={(e: any) => guard(api.setSessionModel(s.id, e.target.value as ModelAlias))} options={modelOptions(app, s.backend)} />
-          {can(app, s, 'effort') ? <Select size="sm" value={s.effort || 'default'} onChange={(e: any) => guard(api.setSessionEffort(s.id, e.target.value === 'default' ? null : (e.target.value as Effort)))} options={EFFORTS} /> : null}
-          <Select size="sm" value={s.permMode} onChange={(e: any) => guard(api.setSessionPermMode(s.id, e.target.value as PermMode))} options={[{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits' }, ...(can(app, s, 'planMode') ? [{ value: 'plan', label: 'Plan only' }] : []), { value: 'all', label: 'Allow everything' }]} />
+          {narrow ? <div style={{ order: 3, flexBasis: '100%', display: 'flex', gap: 6 }}><Select size="sm" style={{ flex: 1, minWidth: 0 }} value={s.model} onChange={(e: any) => guard(api.setSessionModel(s.id, e.target.value as ModelAlias))} options={modelOptions(app, s.backend)} />{can(app, s, 'effort') ? <Select size="sm" style={{ flex: 1, minWidth: 0 }} value={s.effort || 'default'} onChange={(e: any) => guard(api.setSessionEffort(s.id, e.target.value === 'default' ? null : (e.target.value as Effort)))} options={EFFORTS} /> : null}<Select size="sm" style={{ flex: 1, minWidth: 0 }} value={s.permMode} onChange={(e: any) => guard(api.setSessionPermMode(s.id, e.target.value as PermMode))} options={[{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits' }, ...(can(app, s, 'planMode') ? [{ value: 'plan', label: 'Plan only' }] : []), { value: 'all', label: 'Allow everything' }]} /></div> : <><Select size="sm" value={s.model} onChange={(e: any) => guard(api.setSessionModel(s.id, e.target.value as ModelAlias))} options={modelOptions(app, s.backend)} />{can(app, s, 'effort') ? <Select size="sm" value={s.effort || 'default'} onChange={(e: any) => guard(api.setSessionEffort(s.id, e.target.value === 'default' ? null : (e.target.value as Effort)))} options={EFFORTS} /> : null}<Select size="sm" value={s.permMode} onChange={(e: any) => guard(api.setSessionPermMode(s.id, e.target.value as PermMode))} options={[{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits' }, ...(can(app, s, 'planMode') ? [{ value: 'plan', label: 'Plan only' }] : []), { value: 'all', label: 'Allow everything' }]} /></>}
           <span style={{ flex: 1 }} />
           {s.ctx ? <span title={`Context window: ${fmtTokens(s.ctx)} of 200k tokens in use`} style={{ font: '400 11.5px/1.5 var(--font-mono)', color: ctxPct >= 75 ? 'var(--status-attention-text)' : 'var(--text-3)', whiteSpace: 'nowrap' }}>{ctxPct}% context</span> : null}
-          {working ? <Button size="sm" variant="ghost" kbd={interruptKey === 'esc' ? 'Esc' : interruptKey === 'double-esc' ? 'Esc Esc' : undefined} onClick={() => guard(api.interrupt(s.id))}>Interrupt</Button> : null}
-          <Button size="sm" variant="primary" icon="paper-plane-right" kbd={enterSends ? '↵' : MOD() + '↵'} disabled={!text.trim() && !images.length} onClick={send}>Send</Button>
+          {working ? <Button size="sm" variant="ghost" kbd={narrow ? undefined : interruptKey === 'esc' ? 'Esc' : interruptKey === 'double-esc' ? 'Esc Esc' : undefined} onClick={() => guard(api.interrupt(s.id))}>Interrupt</Button> : null}
+          <Button size="sm" variant="primary" icon="paper-plane-right" kbd={narrow ? undefined : enterSends ? '↵' : MOD() + '↵'} disabled={!text.trim() && !images.length} onClick={send}>Send</Button>
         </div>
       </div>
     </div>
