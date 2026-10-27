@@ -53,6 +53,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
   const route = useUI((u) => u.route);
   const [closed, setClosed] = React.useState<Record<string, boolean>>({});
   const [subsClosed, setSubsClosed] = React.useState<Record<string, boolean>>({});
+  const [subsShown, setSubsShown] = React.useState<Record<string, boolean>>({});
   const [width, grip, resetWidth] = usePaneWidth('sidebar', 240, 180, 440);
   const t = totals(app);
   const inboxCount = inbox(app.sessions).filter((i) => i.kind !== 'queued' && i.kind !== 'stuck' && i.kind !== 'artifact').length;
@@ -170,18 +171,20 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
                 onClick={() => { if (isFreeGroup(r) || (route.screen === 'repo' && route.id === r.id)) setClosed({ ...closed, [r.id]: open }); else go({ screen: 'repo', id: r.id }); }} />
               </div>
               {open ? sessions.map((s) => {
-                const tree = subagentTree(s);
+                const hiddenSubs = (s.subagents || []).filter((a) => a.archived).length;
+                const showHidden = !!subsShown[s.id] || !!(route.screen === 'session' && route.id === s.id && route.sub && s.subagents.find((a) => a.id === route.sub && a.archived));
+                const tree = subagentTree(s, showHidden);
                 const running = runningSubagents(s);
                 const subsOpen = !subsClosed[s.id];
                 return (
                   <div key={s.id} {...target('session', s.id, r.id)} style={line(s.id)}>
                     <div {...dnd('session', s.id, r.id)} onContextMenu={(e) => sessionMenu(e, s)}>
-                    <TreeItem depth={1} status={s.status} label={sessionTitle(s)} expandable={tree.length > 0} expanded={subsOpen} style={s.archivedAt ? { opacity: 0.6 } : undefined} trailing={s.archivedAt ? <i className="ph ph-archive" title="Archived" style={{ fontSize: 12, color: 'var(--text-3)' }} /> : s.stuck ? <i className="ph ph-warning" title={'Looks stuck: ' + s.stuck} style={{ fontSize: 12, color: 'var(--status-attention-text)' }} /> : null}
+                    <TreeItem depth={1} status={s.status} label={sessionTitle(s)} expandable={tree.length > 0 || hiddenSubs > 0} expanded={subsOpen} style={s.archivedAt ? { opacity: 0.6 } : undefined} trailing={s.archivedAt ? <i className="ph ph-archive" title="Archived" style={{ fontSize: 12, color: 'var(--text-3)' }} /> : s.stuck ? <i className="ph ph-warning" title={'Looks stuck: ' + s.stuck} style={{ fontSize: 12, color: 'var(--status-attention-text)' }} /> : null}
                       meta={running ? <span style={{ color: 'var(--status-working-text)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><i className="ph ph-tree-structure" style={{ fontSize: 11 }} />{running}</span> : elapsed(s.startedAt, s.endedAt)}
                       selected={route.screen === 'session' && route.id === s.id && !route.sub}
                       onClick={() => {
                         const here = route.screen === 'session' && route.id === s.id && !route.sub;
-                        if (here && tree.length) setSubsClosed({ ...subsClosed, [s.id]: subsOpen });
+                        if (here && (tree.length || hiddenSubs)) setSubsClosed({ ...subsClosed, [s.id]: subsOpen });
                         else go({ screen: 'session', id: s.id, tab: s.status === 'ready' ? 'changes' : 'conversation' });
                       }} />
                     </div>
@@ -190,6 +193,10 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
                         selected={route.screen === 'session' && route.id === s.id && route.sub === a.id}
                         onClick={() => go({ screen: 'session', id: s.id, tab: 'conversation', sub: a.id })} />
                     )) : null}
+                    {subsOpen && hiddenSubs ? (
+                      <div onClick={() => setSubsShown({ ...subsShown, [s.id]: !showHidden })} className="helm-row-hover" title="Subagents that handed back without changing any files are tidied away"
+                        style={{ padding: '3px 8px 3px 62px', font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)', cursor: 'pointer', borderRadius: 4 }}>{showHidden ? 'Hide handed-back subagents' : `${hiddenSubs} handed back`}</div>
+                    ) : null}
                   </div>
                 );
               }) : null}
