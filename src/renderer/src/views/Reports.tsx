@@ -203,7 +203,7 @@ function Quality({ r }: { r: Report }) {
         <Panel title="Context window" icon="database">
           {q.context.length ? q.context.map((x) => (
             <div key={x.id} onClick={() => go({ screen: 'session', id: x.id })} style={{ padding: '4px', cursor: 'pointer' }}>
-              <Meter value={x.ctx} max={200_000} warnAt={0.7} label={x.id} detail={`${fmtTokens(x.ctx)} · ${pct(x.pct)}`} />
+              <Meter value={x.ctx} max={x.window} warnAt={0.7} label={x.id} detail={`${fmtTokens(x.ctx)} · ${pct(x.pct)}`} />
             </div>
           )) : empty('No sessions have used context yet.')}
         </Panel>
