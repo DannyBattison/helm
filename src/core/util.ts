@@ -34,19 +34,25 @@ export function dayStart(now = Date.now()): number {
   return d.getTime();
 }
 
+/** Commands that always ask, whatever is allowed: they kill processes by name or in bulk, which takes down every agent helm runs. */
+export const DEFAULT_ALWAYS_ASK = ['pkill *', 'killall *', 'killall5 *', 'skill *', 'xkill *', 'taskkill *', 'kill -1 *', 'kill * -1 *', 'kill 0 *', 'kill $(*', 'kill `*', 'xargs kill *'];
+
 /**
- * True for a command that kills processes by name or in bulk (`pkill node`, `killall -9 claude`, `kill -9 -1`, `kill $(pgrep …)`,
- * `pgrep … | xargs kill`). Those take down every agent helm is running, not just the one that ran them, so they are refused outright.
- * Killing one process by a literal pid (`kill 4242`) is left alone.
+ * True when any part of a chained command (split on `; & | newline`, past `sudo` and env assignments) matches one of the patterns.
+ * Checked before the allow lists, so an "always allow" pattern can never cover these.
  */
-export function killsBroadly(cmd: string): boolean {
-  if (/(^|[\s;&|(`{])(?:sudo\s+|command\s+|exec\s+|env\s+)*(?:\/\S*\/)?(?:pkill|killall5?|skill|xkill|taskkill)(?=$|[\s;&|)`}])/.test(cmd)) return true;
-  for (const m of cmd.matchAll(/(^|[\s;&|(`{])kill(?=\s|$)([^;&|\n]*)/g)) {
-    const args = m[2];
-    if (/[$`]/.test(args)) return true; // pids from a substitution, usually pgrep
-    if (/(^|\s)(-+\s+)?-1(?=\s|$)/.test(args) || /(^|\s)0(?=\s|$)/.test(args)) return true; // every process we may signal / our process group
+export function matchesAlwaysAsk(patterns: string[], cmd: string): boolean {
+  if (!patterns.length) return false;
+  for (const raw of cmd.split(/[;&|\n]+/)) {
+    let seg = raw.trim().replace(/^[({]\s*/, '');
+    for (;;) {
+      const next = seg.replace(/^(?:sudo|command|exec|env|nohup|time)\s+/, '').replace(/^[A-Za-z_]\w*=\S*\s+/, '').replace(/^\/\S*\//, '');
+      if (next === seg) break;
+      seg = next;
+    }
+    if (seg && patterns.some((p) => globMatch(p, seg) || globMatch(p, seg + ' _'))) return true;
   }
-  return /\bxargs\b[^;&|\n]*\bkill\b/.test(cmd);
+  return false;
 }
 
 /** Glob-ish match where `*` matches anything. */

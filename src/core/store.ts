@@ -5,7 +5,7 @@ import type { AutomationSeen } from '../shared/automations';
 import type { ActivityEvent, AutomatedAgent, AuditEntry, DailyUsage, Lifetime, ModelAlias, PlanUsage, Repo, Session, Settings, TranscriptEvent, User } from '../shared/types';
 import { defaultOutbound } from '../shared/outbound';
 import type { Tombstone } from '../shared/sync';
-import { dayStart, home, uid, weekStart } from './util';
+import { DEFAULT_ALWAYS_ASK, dayStart, home, uid, weekStart } from './util';
 
 /** helm's registered GitHub OAuth app. Client IDs are public; the device flow uses no secret. */
 export const DEFAULT_GITHUB_CLIENT_ID = 'Ov23liTYcKE5lBWCEAAV';
@@ -24,6 +24,7 @@ export const defaultSettings = (): Settings => ({
   defaultModel: 'sonnet',
   permMode: 'ask',
   alwaysAllow: [],
+  alwaysAsk: [...DEFAULT_ALWAYS_ASK],
   runTests: true,
   resumeOnLaunch: false,
   autoPush: true,

@@ -17,7 +17,7 @@ import * as G from './git';
 import { supplyRepoArtifacts } from './repoartifacts';
 import { checkpointParent, dropCheckpoints, listCheckpoints, restoreCheckpoint, seedFromCheckpoint, takeCheckpoint } from './review';
 import type { Store } from './store';
-import { commandPattern, expandHome, findBash, globMatch, hasShellControl, killsBroadly, uid } from './util';
+import { commandPattern, expandHome, findBash, globMatch, hasShellControl, matchesAlwaysAsk, uid } from './util';
 
 export interface Hooks {
   emitState(): void;
@@ -1117,13 +1117,13 @@ export class SessionManager {
     }
     if (COMMAND_TOOLS.has(tool)) {
       const cmd = String(input.command || '');
-      if (killsBroadly(cmd)) return { behavior: 'deny', message: 'Refused: this would kill processes by name or in bulk, which also takes down the other agents helm is running. Kill only the specific process you started, by its pid (for example `kill 4242`).' };
       const plain = !hasShellControl(cmd);
-      if (plain && SAFE_CMD.test(cmd.trim())) return { behavior: 'allow', updatedInput: input };
-      if (plain && st.alwaysAllow.some((p) => globMatch(p, cmd))) return { behavior: 'allow', updatedInput: input };
-      const pattern = commandPattern(cmd);
+      const mustAsk = matchesAlwaysAsk(st.alwaysAsk || [], cmd);
+      if (!mustAsk && plain && SAFE_CMD.test(cmd.trim())) return { behavior: 'allow', updatedInput: input };
+      if (!mustAsk && plain && st.alwaysAllow.some((p) => globMatch(p, cmd))) return { behavior: 'allow', updatedInput: input };
+      const pattern = mustAsk ? undefined : commandPattern(cmd);
       const summary = commandSummary(cmd, input.description);
-      const ask: PendingAsk = { id: uid(), type: 'approve', at: Date.now(), tool, command: cmd, summary, pattern, head: 'Wants to run a command', note: o?.decisionReason || `Runs inside ${s.worktree}. Your checkout is untouched.` };
+      const ask: PendingAsk = { id: uid(), type: 'approve', at: Date.now(), tool, command: cmd, summary, pattern, head: 'Wants to run a command', note: mustAsk ? 'Matches an always-ask command in Settings, so it needs your approval every time.' : o?.decisionReason || `Runs inside ${s.worktree}. Your checkout is untouched.` };
       await this.push(s.id, { k: 'permission', askId: ask.id, cmd, summary, tool, why: ask.note, pattern });
       return this.waitAsk(s, rt, ask, 'tool', input, tool);
     }

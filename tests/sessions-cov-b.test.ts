@@ -800,6 +800,19 @@ describe('permissions', () => {
     expect(s.step).toBe('Running');
   });
 
+  it('asks for an always-ask command even when an always-allow pattern covers it, and offers no always-allow', async () => {
+    const id = await sm.create(input());
+    const s = sm.get(id)!;
+    store.data.settings.alwaysAllow = ['pkill *'];
+    const p = ask('Bash', { command: 'pkill node' });
+    await until(() => s.ask);
+    expect(s.ask!.pattern).toBeUndefined();
+    expect(s.ask!.note).toContain('always-ask');
+    await sm.resolveAsk(id, s.ask!.id, { decision: 'deny', text: 'no' });
+    expect(await p).toMatchObject({ behavior: 'deny' });
+    expect(store.data.settings.alwaysAllow).toEqual(['pkill *']);
+  });
+
   it('does not auto-allow a compound command even if it starts with a safe one', async () => {
     const id = await sm.create(input());
     const s = sm.get(id)!;
