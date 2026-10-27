@@ -4,7 +4,7 @@ import { usePush } from './push';
 import { sessionTitle, type ActivityEvent, type ExternalSession, type Session } from '@shared/types';
 import { contextWindow } from '@shared/reports';
 import { api, platform } from '../api';
-import { planBackends, isFreeGroup, whereLabel, ago, clock, fmtTokens, lifetimeTokens, laneAxis, laneData, LANE_MIN, livePlan, repoOf, reposWithSessions, runningSubagents, sessionTokens, totals, untilReset } from '../lib';
+import { backendIdOf, planBackends, isFreeGroup, whereLabel, ago, clock, fmtTokens, lifetimeTokens, laneAxis, laneData, LANE_MIN, livePlan, repoOf, reposWithSessions, runningSubagents, sessionTokens, totals, untilReset } from '../lib';
 import { Cmd } from '../Hl';
 import { go, setUI, useApp, useMoney, toast, useUI } from '../store';
 import { Avatar, Button, DiffStat, Hint, Meter, SegmentedControl, Stat, StatusDot, useColumns, useNarrow } from '../ui';
@@ -408,7 +408,7 @@ export function Activity() {
             <span style={{ font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{clock(a.t)}</span>
             <i className={'ph ph-' + ic} style={{ fontSize: 15, color: col }} />
             <span style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0, font: '400 13px/1.5 var(--font-sans)' }}>
-              <Avatar size={16} agent={!human} name={a.who} />
+              <Avatar size={16} agent={!human} backend={backendIdOf(app, app.sessions.find((x) => x.id === a.sessionId))} name={a.who} />
               <span style={{ font: '500 12px/1.5 var(--font-mono)', color: 'var(--text-1)', cursor: human ? 'default' : 'pointer' }} onClick={() => !human && a.sessionId && go({ screen: 'session', id: a.sessionId, tab: 'conversation' })}>{a.who}</span>
               <span title={a.detail || a.what} style={{ color: failed ? 'var(--status-error-text)' : 'var(--text-2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.what}</span>
             </span>

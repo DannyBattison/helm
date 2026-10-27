@@ -1,5 +1,6 @@
 export { CopyBox } from './CopyBox';
 export { Avatar } from './Avatar';
+export { AgentLogo, hasAgentLogo } from './AgentLogo';
 export { Badge } from './Badge';
 export { BranchTag } from './BranchTag';
 export { Breadcrumbs } from './Breadcrumbs';

@@ -5,7 +5,7 @@ import { api, platform } from '../api';
 import { commandSteps } from '@shared/commandSummary';
 import { Cmd, Hl } from '../Hl';
 import { highlightBlock, langFromPath, langFromTag } from '../highlight';
-import { agentName, billingOf, can, clock, elapsed, fmtTokens, modelOptions, prettyModel, runningSubagents, STATUS_LABEL, subagentTree, tilde } from '../lib';
+import { backendIdOf, agentName, billingOf, can, clock, elapsed, fmtTokens, modelOptions, prettyModel, runningSubagents, STATUS_LABEL, subagentTree, tilde } from '../lib';
 import { go, loadTranscript, setUI, toast, useApp, useMoney, useTranscript } from '../store';
 import { Avatar, Badge, BranchTag, Button, CopyBox, DiffStat, Grip, IconButton, Lightbox, Meter, Select, StatusDot, Tabs, Tooltip, useNarrow, usePaneWidth } from '../ui';
 import { QuestionForm } from './QuestionForm';
@@ -36,7 +36,7 @@ function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string
   return (
     <div style={{ flex: 'none', padding: '14px 20px 0', display: 'flex', flexDirection: 'column', gap: 12, borderBottom: '1px solid var(--border)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-        <Avatar agent name={s.id} size={26} />
+        <Avatar agent backend={backendIdOf(app, s)} name={s.id} size={26} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0, flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
             <span style={{ font: '600 16px/1.5 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={s.task} onDoubleClick={() => setUI({ renaming: s.id })}>{s.customTitle || s.title || s.task}</span>
@@ -255,7 +255,7 @@ function TranscriptItemView({ m, s, index, onDeny }: { m: TranscriptEvent; s: S;
   // Same padding as your own messages, so the text of every message starts and ends at the same place.
   if (m.k === 'agent') return (
     <div style={{ display: 'flex', gap: 10, padding: '10px 12px' }}>
-      <Avatar agent name={agentName(app, s || {})} size={22} />
+      <Avatar agent backend={backendIdOf(app, s)} name={agentName(app, s || {})} size={22} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
         <span style={{ font: '500 12px/1.5 var(--font-sans)' }}>{agentName(app, s || {})} {m.at ? <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)', marginLeft: 6 }}>{clock(m.at)}</span> : null}</span>
         <div className="selectable" style={{ font: '400 13px/1.6 var(--font-sans)', color: 'var(--text-1)', display: 'flex', flexDirection: 'column', gap: 6, wordBreak: 'break-word' }}><Rich text={m.text} sessionId={s?.id} /></div>

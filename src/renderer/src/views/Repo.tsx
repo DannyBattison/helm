@@ -1,7 +1,7 @@
 import React from 'react';
 import type { DiffHunk, ExternalSession, FileChange, HistoryCommit, PullRequest, Repo as R, TranscriptEvent, WorktreeInfo } from '@shared/types';
 import { api, platform } from '../api';
-import { fmtTokens, lifetimeTokens, money, relTime, tilde } from '../lib';
+import { backendIdOf, fmtTokens, lifetimeTokens, money, relTime, tilde } from '../lib';
 import { go, setUI, toast, useApp, useUI } from '../store';
 import { Avatar, Badge, BranchTag, Button, Dialog, DiffStat, Grip, SegmentedControl, Select, Skeleton, StatusDot, Tabs, useColumns, useNarrow, usePaneWidth } from '../ui';
 import { CodeView } from './CodeView';
@@ -168,7 +168,7 @@ function CommitDetail({ repo, c, files, onOpen }: { repo: R; c: HistoryCommit; f
         <Grip edge="left" onMouseDown={grip} onDoubleClick={reset} />
         <span className="selectable" style={{ font: '600 14px/1.5 var(--font-sans)' }}>{c.msg}</span>
         <span style={{ display: 'flex', alignItems: 'center', gap: 6, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>
-          <Avatar agent={c.agent} name={c.who} size={18} />{c.who}{c.agent ? <span style={{ color: 'var(--text-3)' }}>· on behalf of {app.user?.login}</span> : null}
+          <Avatar agent={c.agent} backend={c.agent ? backendIdOf(app, app.sessions.find((x) => x.id === c.who)) : undefined} name={c.who} size={18} />{c.who}{c.agent ? <span style={{ color: 'var(--text-3)' }}>· on behalf of {app.user?.login}</span> : null}
         </span>
         <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}><BranchTag kind="commit" name={c.hash.slice(0, 7)} />{c.refs.map((r) => <BranchTag key={r} name={r} />)}</span>
       </div>
