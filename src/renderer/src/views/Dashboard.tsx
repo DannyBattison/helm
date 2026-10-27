@@ -4,7 +4,7 @@ import { usePush } from './push';
 import { sessionTitle, type ActivityEvent, type ExternalSession, type Session } from '@shared/types';
 import { contextWindow } from '@shared/reports';
 import { api, platform } from '../api';
-import { isFreeGroup, whereLabel, ago, clock, fmtTokens, lifetimeTokens, laneAxis, laneData, LANE_MIN, livePlan, repoOf, reposWithSessions, runningSubagents, sessionTokens, totals, untilReset } from '../lib';
+import { planBackends, isFreeGroup, whereLabel, ago, clock, fmtTokens, lifetimeTokens, laneAxis, laneData, LANE_MIN, livePlan, repoOf, reposWithSessions, runningSubagents, sessionTokens, totals, untilReset } from '../lib';
 import { Cmd } from '../Hl';
 import { go, setUI, useApp, useMoney, toast, useUI } from '../store';
 import { Avatar, Button, DiffStat, Hint, Meter, SegmentedControl, Stat, StatusDot, useColumns, useNarrow } from '../ui';
@@ -213,6 +213,10 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
   const { fmt } = useMoney();
   const sub = app.settings.billing === 'subscription';
   const plan = livePlan(app);
+  // With more than one agent on a plan the headline is the default agent's; the others are listed beside it.
+  const planAgents = planBackends(app);
+  const planName = (planAgents.find((b) => b.id === app.settings.defaultBackend) ?? planAgents[0])?.shortName ?? 'Claude';
+  const others = planAgents.filter((b) => b.shortName !== planName).map((b) => ({ name: b.shortName, weekly: livePlan(app, b.id).weekly }));
   const narrow = useNarrow();
   const col = useColumns(sub ? 'ledger-sub' : 'ledger-api', [
     { w: 20, min: 20, fixed: true }, { w: 270, min: 150 }, { w: 200, min: 150, flex: true }, { w: 300, min: 180 }, { w: 88, min: 60 }, { w: 56, min: 44 },
@@ -249,7 +253,7 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
           <div style={cell}><Stat label="Tokens today" value={fmtTokens(t.tokens)} /></div>
           <div style={{ ...cell, gap: 10, ...(narrow ? { gridColumn: '1 / -1', borderTop: '1px solid var(--border-subtle)' } : null) }}>
             {sub ? <>
-              <Stat label="Plan usage this week" value={plan.weekly ? Math.round(plan.weekly.util * 100) + '%' : '—'} detail={plan.weekly ? `resets in ${untilReset(plan.weekly.resetsAt)}` : 'appears after the first message'} />
+              <Stat label="Plan usage this week" value={plan.weekly ? Math.round(plan.weekly.util * 100) + '%' : '—'} detail={others.length ? [plan.weekly ? `${planName}: resets in ${untilReset(plan.weekly.resetsAt)}` : `${planName}: no data yet`, ...others.map((o) => `${o.name} ${o.weekly ? Math.round(o.weekly.util * 100) + '%' : '—'}`)].join(' · ') : plan.weekly ? `resets in ${untilReset(plan.weekly.resetsAt)}` : 'appears after the first message'} />
               <Meter value={plan.fiveHour?.util ?? 0} max={1} warnAt={app.settings.warnAt / 100} detail={plan.fiveHour ? `5-hour window ${Math.round(plan.fiveHour.util * 100)}% · resets ${untilReset(plan.fiveHour.resetsAt)}` : '5-hour window: no data yet'} />
             </> : <>
               <Stat label="Spend this week" value={fmt(t.spent)} />

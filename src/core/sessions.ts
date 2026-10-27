@@ -553,6 +553,7 @@ export class SessionManager {
       extraDirs: [...(s.uploads ? [s.uploads.dir] : []), ...(s.extras || []).map((x) => x.worktree)],
       env: settings.commitAuthor === 'sole' ? { GIT_AUTHOR_NAME: this.backendOf(s).identity.name, GIT_AUTHOR_EMAIL: this.backendOf(s).identity.email } : {},
       remoteControl: settings.remoteControl,
+      subagentLimit: this.sessionLimit(s),
       mcpServers: mcpConfig(settings.mcpServers, this.store.data.repos.find((r) => r.id === s.repoId)?.mcpServers),
       canUseTool: (tool, input, o) => this.canUse(s, rt, tool, input, o),
       admitSubagent: (id) => this.checkSubagentLimit(s, rt, id)

@@ -126,6 +126,25 @@ describe('Codex through a stand-in app server', () => {
 import { findCodex, strictSchema } from '../src/core/codexBackend';
 import { REVIEW_SCHEMA } from '../src/shared/selfreview';
 
+describe('Codex subagents', () => {
+  it('tracks a helper from the call that starts it to the end of its thread, and caps them', async () => {
+    const h = backend.start({ ...opts(() => ({ behavior: 'allow' })), subagentLimit: 3 });
+    const it = h.events[Symbol.asyncIterator]();
+    h.send('please spawn a helper');
+    const ev = await take(it, (e) => e.t === 'result');
+    const kinds = ev.map((e) => e.t === 'assistant' ? 'assistant:' + e.blocks.map((b) => (b.type === 'tool_use' ? b.name : 'text')).join(',') : e.t);
+    expect(kinds).toEqual(['init', 'assistant:Agent', 'subagent_started', 'tool_results', 'subagent_done', 'result']);
+    const use = (ev[1] as Extract<AgentEvent, { t: 'assistant' }>).blocks[0] as any;
+    expect(use.input).toMatchObject({ description: 'Read the readme', run_in_background: true });
+    expect(ev[2]).toEqual({ t: 'subagent_started', id: 's1', agentId: 'child1' });
+    expect(ev[4]).toEqual({ t: 'subagent_done', id: 's1', status: 'completed', summary: 'found it' });
+    // The session counts as a thread too, so three helpers means four.
+    const start = await (backend as any).server.request('debug/lastStart');
+    expect(start.config.agents.max_concurrent_threads_per_session).toBe(4);
+    h.close();
+  });
+});
+
 describe('Codex details', () => {
   it('makes helm\'s review schema strict for structured output', () => {
     const s = strictSchema(REVIEW_SCHEMA);

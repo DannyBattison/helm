@@ -1081,12 +1081,12 @@ export interface HelmApi {
   /** Opens the session's worktree, or one file in it (at a line), in the editor chosen in Settings. */
   openInEditor(sessionId: string, path?: string, line?: number): Promise<void>;
   openExternal(url: string): Promise<void>;
-  /** What Claude Code has remembered about this repository, plus the instruction files (CLAUDE.md) that apply to it. */
-  projectMemory(repoId: string): Promise<ProjectMemory>;
-  readMemory(repoId: string, path: string): Promise<string>;
-  writeMemory(repoId: string, path: string, text: string): Promise<void>;
+  /** What an agent has remembered about this repository, plus the instruction files (CLAUDE.md, AGENTS.md) that apply to it. Claude Code is the default. */
+  projectMemory(repoId: string, agent?: string): Promise<ProjectMemory>;
+  readMemory(repoId: string, path: string, agent?: string): Promise<string>;
+  writeMemory(repoId: string, path: string, text: string, agent?: string): Promise<void>;
   /** Deletes a memory file and its line in the index. */
-  deleteMemory(repoId: string, path: string): Promise<void>;
+  deleteMemory(repoId: string, path: string, agent?: string): Promise<void>;
   /** Whether a commit is on GitHub (reachable from a remote branch). A commit that only exists locally is a 404 there. */
   commitPushed(repoId: string, hash: string): Promise<boolean>;
   /** Opens a folder in the system file manager. */
@@ -1135,9 +1135,10 @@ export interface HelmApi {
   /** Searches conversations, commit messages and (for a session or repository) code. A workspace id is a session id, or `repo:<owner/name>`. */
   searchAll(query: string, workspace?: string): Promise<SearchResults>;
   /** Which memories sessions have read, and what looks wrong with them: stale, mentioning files that are gone, or reading alike. */
-  memoryInsights(repoId: string): Promise<{ usage: Record<string, MemoryUsage>; issues: HealthIssue[]; sessions: number }>;
+  memoryInsights(repoId: string, agent?: string): Promise<{ usage: Record<string, MemoryUsage>; issues: HealthIssue[]; sessions: number }>;
   /** Adds a line to the "Learned in helm" list in the repository's CLAUDE.md, its CLAUDE.local.md, or your own ~/.claude/CLAUDE.md. Resolves to the file. */
-  rememberInstruction(repoId: string, target: 'repo' | 'local' | 'user', text: string): Promise<string>;
+  /** Adds a standing instruction to the agent's instructions file (CLAUDE.md for Claude Code, AGENTS.md for Codex). */
+  rememberInstruction(repoId: string, target: 'repo' | 'local' | 'user', text: string, agent?: string): Promise<string>;
   /** Every session worktree with its size, and how much of it is build output that can go. Slow the first time; remembered for a few minutes. */
   worktreeUsage(refresh?: boolean): Promise<WorktreeUsage[]>;
   /** Deletes node_modules, build output and the like from a worktree, only where git ignores them. Resolves to bytes freed. */

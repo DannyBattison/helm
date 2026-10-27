@@ -23,7 +23,7 @@ import { diagnostics } from '../shared/diagnostics';
 import { memoryHealth, memoryReads, STALE_DAYS, type MemoryFile, type MemoryUsage } from '../shared/memoryhealth';
 import type { Host } from './host';
 import { cleanMcp, mcpProblem } from '../shared/mcp';
-import { appendInstruction, deleteMemory, projectMemory, readMemory, writeMemory } from './memory';
+import { appendInstruction, codexHome, deleteMemory, projectMemory, readMemory, writeMemory, type MemoryAgent } from './memory';
 import { Automations } from './automations';
 import { RepoService } from './repos';
 import { forecastRepo, revertHunk } from './review';
@@ -252,6 +252,7 @@ function ws(id: string): { worktree: string; base: string; sessionId?: string } 
   const s = sess(id);
   return { worktree: s.worktree, base: s.base, sessionId: s.id };
 }
+const memoryAgent = (a?: string): MemoryAgent => (a === 'codex' ? 'codex' : 'claude');
 function safePath(s: { worktree: string }, p: string): string {
   const abs = resolve(s.worktree, p);
   const r = relative(s.worktree, abs);
@@ -780,10 +781,10 @@ export const api: HelmApi = {
     else openExternalEditor(path ? safePath(s, path) : s.worktree, kind, line);
   },
   async openExternal(url) { if (/^https:\/\//.test(url)) await host.openExternal(url); },
-  projectMemory: (id) => projectMemory(repos.must(id).localPath),
-  readMemory: (id, path) => readMemory(repos.must(id).localPath, path),
-  writeMemory: (id, path, text) => writeMemory(repos.must(id).localPath, path, text),
-  deleteMemory: (id, path) => deleteMemory(repos.must(id).localPath, path),
+  projectMemory: (id, agent) => projectMemory(repos.must(id).localPath, memoryAgent(agent)),
+  readMemory: (id, path, agent) => readMemory(repos.must(id).localPath, path, memoryAgent(agent)),
+  writeMemory: (id, path, text, agent) => writeMemory(repos.must(id).localPath, path, text, memoryAgent(agent)),
+  deleteMemory: (id, path, agent) => deleteMemory(repos.must(id).localPath, path, memoryAgent(agent)),
   async commitPushed(id, hash) {
     const out = await G.git(repos.must(id).localPath, 'branch', '-r', '--contains', hash).catch(() => '');
     return out.split(/\r?\n/).some((l) => l.trim() && !l.includes('->'));
@@ -825,7 +826,9 @@ export const api: HelmApi = {
   },
   async setHunksReviewed(id, ids, reviewed) { sessions.setReviewed(id, ids, reviewed); },
   startReview: (id) => sessions.review(id),
-  async memoryInsights(repoId) {
+  async memoryInsights(repoId, agent) {
+    // Which memories sessions read is worked out from Claude's tool calls; Codex's notes are not tracked that way.
+    if (memoryAgent(agent) !== 'claude') return { usage: {}, issues: [], sessions: 0 };
     const repo = repos.must(repoId);
     const mine = store.data.sessions.filter((s) => s.repoId === repoId);
     const usage: Record<string, MemoryUsage> = {};
@@ -842,9 +845,11 @@ export const api: HelmApi = {
     const issues = memoryHealth({ memories: files, usage, now: Date.now(), recentSessions: mine.filter((s) => s.startedAt >= since).length, exists: (p) => known.has(p) || [...known].some((k) => k.startsWith(p.replace(/\/$/, '') + '/')) });
     return { usage, issues, sessions: mine.length };
   },
-  async rememberInstruction(repoId, target, text) {
+  async rememberInstruction(repoId, target, text, agent) {
     const repo = repos.must(repoId);
-    const file = target === 'user' ? join(home, '.claude', 'CLAUDE.md') : join(repo.localPath, target === 'local' ? 'CLAUDE.local.md' : 'CLAUDE.md');
+    const file = memoryAgent(agent) === 'codex'
+      ? (target === 'user' ? join(codexHome(), 'AGENTS.md') : join(repo.localPath, target === 'local' ? 'AGENTS.override.md' : 'AGENTS.md'))
+      : (target === 'user' ? join(home, '.claude', 'CLAUDE.md') : join(repo.localPath, target === 'local' ? 'CLAUDE.local.md' : 'CLAUDE.md'));
     await appendInstruction(file, text);
     return file;
   },

@@ -42,7 +42,7 @@ export interface UI {
   restoring: { sessionId: string; n: number; label: string } | null;
   forking: { sessionId: string; index: number | null; text: string } | null;
   continuing: { repoId: string; externalId: string; title: string } | null;
-  remembering: { repoId: string; text: string } | null;
+  remembering: { repoId: string; text: string; agent?: string } | null;
   /** The repository whose remove dialog is open. */
   removingRepo: string | null;
   /** Show archived sessions in the left tree. Off by default. */

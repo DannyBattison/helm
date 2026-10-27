@@ -244,7 +244,7 @@ function TranscriptItemView({ m, s, index, onDeny }: { m: TranscriptEvent; s: S;
         {hover && s && !m.from && !s.worktreeGone && index != null ? (
           <div style={{ position: 'absolute', top: 6, right: 8, display: 'flex', gap: 2, background: 'var(--bg-overlay)', borderRadius: 'var(--radius-sm)', boxShadow: 'var(--shadow-popover)', padding: 2 }}>
             {m.cp && !(s.free && !s.free.managed) ? <Button size="sm" variant="ghost" icon="clock-counter-clockwise" onClick={() => setUI({ restoring: { sessionId: s.id, n: m.cp!, label: 'Before: ' + m.text } })}>Restore</Button> : null}
-            {s.free || agentName(app, s) !== 'Claude' ? null : <Button size="sm" variant="ghost" icon="bookmark-simple" title="Add this to CLAUDE.md so later sessions know it" onClick={() => setUI({ remembering: { repoId: s.repoId, text: m.text } })}>Remember</Button>}
+            {s.free ? null : <Button size="sm" variant="ghost" icon="bookmark-simple" title={`Add this to ${(s.backend || 'claude') === 'codex' ? 'AGENTS.md' : 'CLAUDE.md'} so later sessions know it`} onClick={() => setUI({ remembering: { repoId: s.repoId, text: m.text, agent: s.backend || 'claude' } })}>Remember</Button>}
             {s.agentSessionId && can(app, s, 'fork') && !s.free ? <Button size="sm" variant="ghost" icon="git-fork" onClick={() => setUI({ forking: { sessionId: s.id, index, text: m.text } })}>Fork</Button> : null}
           </div>
         ) : null}

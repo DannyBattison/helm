@@ -232,15 +232,22 @@ const TARGETS = [
   { value: 'user', label: 'Everywhere: ~/.claude/CLAUDE.md' }
 ];
 
-/** Turns something you told an agent into a standing instruction in a CLAUDE.md, so later sessions start knowing it. */
-export function RememberDialog({ target, onClose }: { target: { repoId: string; text: string }; onClose(): void }) {
+const CODEX_TARGETS = [
+  { value: 'repo', label: 'This repository: AGENTS.md (shared with the team)' },
+  { value: 'local', label: 'This repository: AGENTS.override.md (just you)' },
+  { value: 'user', label: 'Everywhere: ~/.codex/AGENTS.md' }
+];
+
+/** Turns something you told an agent into a standing instruction in its instructions file (CLAUDE.md, or AGENTS.md for Codex), so later sessions start knowing it. */
+export function RememberDialog({ target, onClose }: { target: { repoId: string; text: string; agent?: string }; onClose(): void }) {
+  const codex = target.agent === 'codex';
   const [text, setText] = React.useState(target.text.split('\n')[0].slice(0, 300));
   const [where, setWhere] = React.useState('repo');
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState('');
   const save = async () => {
     setBusy(true); setErr('');
-    try { const f = await api.rememberInstruction(target.repoId, where as 'repo' | 'local' | 'user', text); toast({ tone: 'ready', title: 'Added to your instructions', description: f }); onClose(); }
+    try { const f = await api.rememberInstruction(target.repoId, where as 'repo' | 'local' | 'user', text, target.agent); toast({ tone: 'ready', title: 'Added to your instructions', description: f }); onClose(); }
     catch (e) { setErr(errText(e)); } finally { setBusy(false); }
   };
   return (
@@ -253,7 +260,7 @@ export function RememberDialog({ target, onClose }: { target: { repoId: string; 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <textarea autoFocus rows={3} value={text} onChange={(e) => setText(e.target.value)} placeholder="For example: run npm test before committing"
           style={{ width: '100%', resize: 'vertical', border: 'none', outline: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border-strong)', color: 'var(--text-1)', font: '400 13px/1.55 var(--font-sans)', padding: '10px 12px' }} />
-        <Select value={where} onChange={(e: any) => setWhere(e.target.value)} options={TARGETS} />
+        <Select value={where} onChange={(e: any) => setWhere(e.target.value)} options={codex ? CODEX_TARGETS : TARGETS} />
       </div>
     </Dialog>
   );

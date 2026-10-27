@@ -188,7 +188,7 @@ export function toolUsesOf(item: Json): Extract<AgentBlock, { type: 'tool_use' }
       return [{ type: 'tool_use', id: item.id, name: 'Read', input: { file_path: item.path } }];
     case 'collabAgentToolCall':
       return item.tool === 'spawnAgent'
-        ? [{ type: 'tool_use', id: item.id, name: 'Agent', input: { description: String(item.prompt || 'Subagent').split('\n')[0].slice(0, 80), prompt: item.prompt || '', subagent_type: 'codex', run_in_background: false } }]
+        ? [{ type: 'tool_use', id: item.id, name: 'Agent', input: { description: String(item.prompt || 'Subagent').split('\n')[0].slice(0, 80), prompt: item.prompt || '', subagent_type: item.model || 'codex', run_in_background: true } }]
         : [];
     default:
       return [];
@@ -260,7 +260,7 @@ export class CodexBackend implements AgentBackend {
   readonly shortName = 'Codex';
   readonly identity = { name: 'Codex', email: 'noreply@openai.com' };
   models: ModelInfo[] = [];
-  readonly capabilities: AgentCapabilities = { subagents: false, planMode: true, effort: true, fork: true, cost: false, planUsage: true };
+  readonly capabilities: AgentCapabilities = { subagents: true, planMode: true, effort: true, fork: true, cost: false, planUsage: true };
   private server: CodexServer;
   private handles = new Map<string, CodexHandle>();
   private rate: Json = null;
@@ -452,6 +452,9 @@ class CodexHandle {
   /** File changes seen as an item started, so an approval request (which carries only the item id) can say which files. */
   private changes = new Map<string, Json[]>();
   private lastUsage: Json = null;
+  /** Codex starts a helper by a tool call and the helper runs on in a thread of its own: which call started which thread, and which have ended. */
+  private helpers = new Map<string, string>();
+  private helpersDone = new Set<string>();
 
   constructor(private server: CodexServer, private o: AgentStartOptions, private register: (id: string, h: CodexHandle | null) => void, private billing: () => 'subscription' | 'api') {
     this.model = o.model;
@@ -505,7 +508,9 @@ class CodexHandle {
         developerInstructions: this.o.systemAppend,
         config: {
           ...(this.o.env && Object.keys(this.o.env).length ? { shell_environment_policy: { inherit: 'all', set: this.o.env } } : {}),
-          ...(this.o.mcpServers && Object.keys(this.o.mcpServers).length ? { mcp_servers: codexMcp(this.o.mcpServers) } : {})
+          ...(this.o.mcpServers && Object.keys(this.o.mcpServers).length ? { mcp_servers: codexMcp(this.o.mcpServers) } : {}),
+          // Codex counts threads, the session's own included, so N helpers is N + 1 (0 leaves only the session itself).
+          ...(this.o.subagentLimit != null ? { agents: { max_concurrent_threads_per_session: this.o.subagentLimit + 1 } } : {})
         }
       };
       const r = this.o.resume ? await this.server.request('thread/resume', { threadId: this.o.resume, ...base }) : await this.server.request('thread/start', base);
@@ -577,7 +582,25 @@ class CodexHandle {
     if (uses.length) this.push({ t: 'assistant', parentId: null, blocks: uses });
   }
 
+  /** Tells helm about helpers Codex started, and when each one has finished. */
+  private helperEvents(item: Json) {
+    if (item.type === 'collabAgentToolCall') {
+      if (item.tool === 'spawnAgent') {
+        for (const child of item.receiverThreadIds || []) { this.helpers.set(child, item.id); this.push({ t: 'subagent_started', id: item.id, agentId: child }); }
+      }
+      for (const [child, st] of Object.entries<Json>(item.agentsStates || {})) this.helperEnded(child, st?.status, st?.message);
+    } else if (item.type === 'subAgentActivity' && item.kind === 'completed') this.helperEnded(item.agentThreadId, 'completed');
+  }
+
+  private helperEnded(child: string, status?: string, message?: string | null) {
+    const id = this.helpers.get(child);
+    if (!id || this.helpersDone.has(child) || !status || ['pendingInit', 'running'].includes(status)) return;
+    this.helpersDone.add(child);
+    this.push({ t: 'subagent_done', id, status: status === 'completed' ? 'completed' : status === 'errored' || status === 'notFound' ? 'failed' : 'stopped', summary: message || undefined });
+  }
+
   private itemCompleted(item: Json) {
+    this.helperEvents(item);
     if (item.type === 'agentMessage' || item.type === 'plan') {
       const text = String(item.text || '').trim();
       if (text) this.push({ t: 'assistant', parentId: null, blocks: [{ type: 'text', text }] });

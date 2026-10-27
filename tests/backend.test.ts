@@ -25,6 +25,20 @@ describe('BackendRegistry', () => {
   });
 });
 
+describe('readiness', () => {
+  const signIn = { status: async () => ({ loggedIn: false, method: 'none' }), startLogin: async () => ({ url: 'u', needsCode: false }), cancel() {}, logout: async () => ({ loggedIn: false, method: 'none' }) } as any;
+  const reg = (bundled: boolean) => new BackendRegistry([{ ...fake('a', ['m']), auth: signIn, bundled } as any]);
+  it('needs a sign-in for an agent that has an account', async () => {
+    expect((await reg(false).info({ a: { loggedIn: false, method: 'none' } }))[0].ready).toBe(false);
+    expect((await reg(false).info({ a: { loggedIn: true, method: 'x' } }))[0].ready).toBe(true);
+  });
+  it('does not shut out a bundled agent just because its sign-in could not be checked', async () => {
+    expect((await reg(true).info({ a: { loggedIn: false, method: 'none', error: 'spawn claude ENOENT' } }))[0].ready).toBe(true);
+    expect((await reg(true).info({ a: { loggedIn: false, method: 'none' } }))[0].ready).toBe(false);
+    expect((await reg(false).info({ a: { loggedIn: false, method: 'none', error: 'x' } }))[0].ready).toBe(false);
+  });
+});
+
 describe('claudeEvents', () => {
   it('turns an assistant message into text, tool calls and usage', () => {
     const [e] = claudeEvents({ type: 'assistant', parent_tool_use_id: null, message: { usage: { input_tokens: 5, output_tokens: 7, cache_creation_input_tokens: 2, cache_read_input_tokens: 3 }, content: [{ type: 'text', text: ' hi ' }, { type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'ls' } }, { type: 'thinking' }] } });

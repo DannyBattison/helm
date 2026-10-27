@@ -4,6 +4,7 @@ if (process.argv[2] === '--version') { console.log('codex-cli 9.9.9'); process.e
 let account = { type: 'chatgpt', email: 'me@example.com', planType: 'plus' };
 const out = (m) => process.stdout.write(JSON.stringify(m) + '\n');
 let nextServerId = 900;
+let lastStart = null;
 const waiting = new Map();
 const askServer = (method, params) => new Promise((res) => { const id = nextServerId++; waiting.set(id, res); out({ id, method, params }); });
 const reset = Math.floor(Date.now() / 1000) + 3600;
@@ -24,7 +25,8 @@ async function handle(m) {
     case 'account/logout': account = null; return reply({});
     case 'model/list': return reply({ data: [{ id: 'b', model: 'gpt-b', displayName: 'GPT B', hidden: true, isDefault: false }, { id: 'a', model: 'gpt-a', displayName: 'GPT A', hidden: false, isDefault: true }, { id: 'c', model: 'gpt-c', displayName: 'GPT C', hidden: false, isDefault: false }] });
     case 'account/rateLimits/read': return reply({ rateLimits: { limitId: 'codex', primary: { usedPercent: 42, windowDurationMins: 300, resetsAt: reset }, secondary: { usedPercent: 10, windowDurationMins: 10080, resetsAt: reset + 86400 } } });
-    case 'thread/start': return reply({ thread: { id: 't1' }, model: m.params.model });
+    case 'debug/lastStart': return reply(lastStart);
+    case 'thread/start': lastStart = m.params; return reply({ thread: { id: 't1' }, model: m.params.model });
     case 'thread/resume': return reply({ thread: { id: m.params.threadId }, model: m.params.model });
     case 'thread/fork': return reply({ thread: { id: 'forked-' + (m.params.lastTurnId ?? 'all') } });
     case 'thread/name/set': return reply({});
@@ -38,6 +40,13 @@ async function handle(m) {
       out({ method: 'turn/started', params: { threadId: t, turn: { id: 'u9' } } });
       const text = (m.params.input.find((x) => x.type === 'text') || {}).text || '';
       if (text.includes('hang')) return;
+      if (text.includes('spawn')) {
+        const sp = { type: 'collabAgentToolCall', id: 's1', tool: 'spawnAgent', status: 'inProgress', senderThreadId: t, receiverThreadIds: [], prompt: 'Read the readme\nthen report', model: 'gpt-a', agentsStates: {} };
+        out({ method: 'item/started', params: { threadId: t, turnId: 'u9', item: sp } });
+        out({ method: 'item/completed', params: { threadId: t, turnId: 'u9', item: { ...sp, status: 'completed', receiverThreadIds: ['child1'], agentsStates: { child1: { status: 'running', message: null } } } } });
+        out({ method: 'item/completed', params: { threadId: t, turnId: 'u9', item: { type: 'collabAgentToolCall', id: 'w1', tool: 'wait', status: 'completed', senderThreadId: t, receiverThreadIds: ['child1'], agentsStates: { child1: { status: 'completed', message: 'found it' } } } } });
+        return out({ method: 'turn/completed', params: { threadId: t, turn: { id: 'u9', status: 'completed', items: [] } } });
+      }
       const cmd = { type: 'commandExecution', id: 'c1', command: 'npm test', status: 'inProgress' };
       out({ method: 'item/started', params: { threadId: t, turnId: 'u9', item: cmd } });
       const a = await askServer('item/commandExecution/requestApproval', { threadId: t, turnId: 'u9', itemId: 'c1', command: 'npm test', reason: 'needs network' });

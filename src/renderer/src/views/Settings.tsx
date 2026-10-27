@@ -488,8 +488,8 @@ export function Settings({ section }: { section?: string }) {
               <Field value={st.alwaysAllow} format={(v: string[]) => v.join(', ')} parse={(s: string) => s.split(',').map((x) => x.trim()).filter(Boolean)} onCommit={(v: string[]) => set({ alwaysAllow: v })} style={{ width: 260 }} />
             </SettingRow>
             <SettingRow title="Sessions working at once" desc="More than this wait in a queue and start as others finish. Sessions waiting on you do not count. A queued session can be started by hand."><Select value={String(st.maxRunning)} onChange={(e: any) => set({ maxRunning: +e.target.value })} options={[0, 1, 2, 3, 4, 6, 8, 12].map((n) => ({ value: String(n), label: n === 0 ? 'No limit' : String(n) }))} /></SettingRow>
-            <SettingRow title="Subagents per session" desc="Most subagents one Claude Code session may run at once; Codex manages its own helpers. Off stops agents from starting any. A session can override this."><Select value={String(st.maxSubagentsSession)} onChange={(e: any) => set({ maxSubagentsSession: +e.target.value })} options={subLimits([st.maxSubagentsSession])} /></SettingRow>
-            <SettingRow title="Subagents per repository" desc="Most subagents that may run at once across every session of a repository."><Select value={String(st.maxSubagentsRepo)} onChange={(e: any) => set({ maxSubagentsRepo: +e.target.value })} options={subLimits([st.maxSubagentsRepo, 16, 24])} /></SettingRow>
+            <SettingRow title="Subagents per session" desc="Most subagents one session may run at once, for Claude Code and for Codex. Off stops agents from starting any. A session can override this."><Select value={String(st.maxSubagentsSession)} onChange={(e: any) => set({ maxSubagentsSession: +e.target.value })} options={subLimits([st.maxSubagentsSession])} /></SettingRow>
+            <SettingRow title="Subagents per repository" desc="Most subagents that may run at once across every session of a repository. Counted for Claude Code only: Codex sessions cannot be counted together."><Select value={String(st.maxSubagentsRepo)} onChange={(e: any) => set({ maxSubagentsRepo: +e.target.value })} options={subLimits([st.maxSubagentsRepo, 16, 24])} /></SettingRow>
             {app.repos.length ? (
               <div style={{ display: 'flex', flexDirection: 'column', marginBottom: 6 }}>
                 <div style={{ display: 'grid', gridTemplateColumns: subCols.template, gap: 12, padding: '8px 0', font: '500 10.5px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>
@@ -617,7 +617,9 @@ export function Settings({ section }: { section?: string }) {
               </SettingRow>
             ) : null}
             <SettingRow title="Permission modes" desc="How the mode chosen for a session (under Agents, or in the session) is given to Codex. Ask before commands: asks unless a command is trusted, can edit inside the worktree. Allow edits: works inside the worktree and asks only to go beyond it. Plan only: read-only. Allow everything: no approvals, no sandbox." />
-            <SettingRow title="Not available with Codex" desc="Remote Control, subagent limits, the CLAUDE.md memory button, and a dollar cost for each session." />
+            <SettingRow title="Memory" desc="Codex reads AGENTS.md in the repository and in ~/.codex, and keeps its own notes in ~/.codex/memories. They are in the repository's Memory tab, under Codex, and Remember on a message adds to AGENTS.md." />
+            <SettingRow title="Subagents" desc="Codex starts its own helpers. The per-session limit under Agents is passed to Codex as its cap on concurrent threads (the session itself counts as one). The repository-wide limit is not applied to Codex." />
+            <SettingRow title="Not available with Codex" desc="Remote Control (Claude Code only) and a dollar cost for each session: Codex reports tokens but no cost." />
           </>; })() : null}
           {sec === 'automations' ? <AutomationsSection /> : null}
           {sec === 'mcp' ? <><H sub="Tools and data sources Claude can use in every repository. Add one to a single repository from its MCP tab.">MCP servers</H><McpServers repoId={null} servers={st.mcpServers || []} /></> : null}

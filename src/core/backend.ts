@@ -53,6 +53,8 @@ export interface AgentStartOptions {
   mcpServers?: Record<string, any>;
   /** Folders outside the working directory the agent may read, such as files the user uploaded. */
   extraDirs?: string[];
+  /** Most subagents this session may have running at once. An agent that can cap its own helpers is given this; others only hear it in their instructions. */
+  subagentLimit?: number;
   /** Asked before a tool runs, to let the user decide. */
   canUseTool(tool: string, input: Record<string, unknown>, detail: { decisionReason?: string; description?: string }): Promise<ToolDecision>;
   /** Asked before a subagent starts. Returns why it may not, or nothing to let it start. */
@@ -158,12 +160,16 @@ export class BackendRegistry {
   get(id?: string): AgentBackend { return this.list.find((b) => b.id === id) ?? this.list[0]; }
   /** The named model of a backend; the backend's first when the name is not one of its models; a free stand-in when it lists none yet. */
   model(backend: string | undefined, model: string): ModelInfo { const b = this.get(backend); return b.models.find((m) => m.id === model) ?? b.models[0] ?? { id: model, label: model, price: [0, 0] }; }
-  /** Each backend as the interface sees it. `logins` is what was last read from `auth.status`. */
+  /**
+   * Each backend as the interface sees it. `logins` is what was last read from `auth.status`. An agent that ships with helm still
+   * counts as ready when the check could not be made (an error, as opposed to a clear "not signed in"), so a missing command-line
+   * tool does not shut out an agent that works without it.
+   */
   async info(logins: Record<string, AgentLogin | undefined> = {}): Promise<BackendInfo[]> {
     return Promise.all(this.list.map(async (b) => {
       const login = logins[b.id];
       const version = await b.version().catch(() => null);
-      return { id: b.id, label: b.label, shortName: b.shortName, models: b.models, capabilities: b.capabilities, version, installed: !!b.bundled || version !== null, canSignIn: !!b.auth, login, ready: (!b.auth || !!login?.loggedIn) && (!!b.bundled || version !== null) };
+      return { id: b.id, label: b.label, shortName: b.shortName, models: b.models, capabilities: b.capabilities, version, installed: !!b.bundled || version !== null, canSignIn: !!b.auth, login, ready: (!b.auth || !!login?.loggedIn || (!!b.bundled && !!login?.error)) && (!!b.bundled || version !== null) };
     }));
   }
 }
