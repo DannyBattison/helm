@@ -96,6 +96,9 @@ COPY --from=build /app /app
 # `claude` (to try things, or to log in) with exactly the version helm uses.
 RUN case "$(dpkg --print-architecture)" in amd64) A=x64 ;; arm64) A=arm64 ;; *) echo "unsupported architecture" >&2; exit 1 ;; esac     && rm -rf /app/node_modules/@anthropic-ai/claude-agent-sdk-linux-*-musl     && CLAUDE="/app/node_modules/@anthropic-ai/claude-agent-sdk-linux-$A/claude"     && test -x "$CLAUDE" && ln -s "$CLAUDE" /usr/local/bin/claude && claude --version
 
+# tsc, from the TypeScript helm is built with (a root devDependency, so it is in /app/node_modules), on the PATH for agents and the terminal tab.
+RUN test -f /app/node_modules/typescript/bin/tsc && ln -s /app/node_modules/typescript/bin/tsc /usr/local/bin/tsc && tsc --version
+
 # A normal user (created above), not root: the agent runs commands as whoever the server is. Everything it keeps (state, GitHub token,
 # clones, worktrees, Claude Code's login) lives under /home/helm, which is the one volume.
 # Built on Windows the script can arrive with CRLF line endings and no exec bit; fix both.
