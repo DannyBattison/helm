@@ -37,7 +37,7 @@ export function inbox(sessions: Session[]): InboxItem[] {
 }
 
 /** What a key does on an item, or null when it does nothing there. Letters are lowercase except `A`, which is shift-a. */
-export type InboxAction = { do: 'approve' } | { do: 'always' } | { do: 'deny' } | { do: 'answer'; option: number } | { do: 'continue' } | { do: 'open' } | { do: 'resume' } | { do: 'start' } | { do: 'download' } | { do: 'dismiss' };
+export type InboxAction = { do: 'approve' } | { do: 'always' } | { do: 'deny' } | { do: 'answer'; option: number } | { do: 'answers'; answers: Record<string, string> } | { do: 'continue' } | { do: 'open' } | { do: 'resume' } | { do: 'start' } | { do: 'download' } | { do: 'dismiss' };
 
 export function keyAction(item: InboxItem, key: string): InboxAction | null {
   const k = item.kind;
@@ -53,8 +53,8 @@ export function keyAction(item: InboxItem, key: string): InboxAction | null {
   }
   if (k === 'question' && /^[1-9]$/.test(key)) {
     const qs = item.session.ask?.questions ?? [];
-    // With several questions there is no single option to pick: answer them in the session.
-    return qs.length === 1 && +key <= qs[0].options.length ? { do: 'answer', option: +key - 1 } : null;
+    // With several questions, or a multi-select one, there is no single option to pick: answer them in the form.
+    return qs.length === 1 && !qs[0].multiSelect && +key <= qs[0].options.length ? { do: 'answer', option: +key - 1 } : null;
   }
   if (k === 'budget' && (key === 'a' || key === 'c')) return { do: 'continue' };
   if (k === 'error' && key === 'r') return { do: 'resume' };

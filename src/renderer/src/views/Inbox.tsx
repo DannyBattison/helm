@@ -7,6 +7,7 @@ import { ago } from '../lib';
 import { go, toast, useApp, useMoney } from '../store';
 import { Badge, Button, Kbd, Lightbox, Meter, StatusDot } from '../ui';
 import { dataUrl, downloadArtifact, fmtSize, isPreviewable } from './artifact';
+import { QuestionForm } from './QuestionForm';
 import { PlanMeters } from './Shell';
 
 const errText = (e: any) => String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '');
@@ -47,6 +48,7 @@ export function Inbox() {
         case 'always': await api.resolveAsk(s.id, s.ask!.id, { decision: 'always' }); break;
         case 'deny': await api.resolveAsk(s.id, s.ask!.id, { decision: 'deny', text }); break;
         case 'answer': { const q = s.ask!.questions![0]; await api.resolveAsk(s.id, s.ask!.id, { answers: { [q.question]: q.options[a.option].label } }); break; }
+        case 'answers': await api.resolveAsk(s.id, s.ask!.id, { answers: a.answers }); break;
         case 'continue': await api.resolveAsk(s.id, s.ask!.id, { addBudget: s.ask!.scope === 'plan' ? 0 : from(5) }); break;
         case 'resume': await api.resumeSession(s.id); break;
         case 'start': await api.startQueued(s.id); break;
@@ -139,21 +141,11 @@ export function Inbox() {
             </> : null}
 
             {cur.kind === 'question' && a ? <>
-              {a.questions?.map((qq, qi) => (
-                <div key={qi} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {qq.header ? <span style={{ font: '500 10.5px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>{qq.header}</span> : null}
-                  <div style={{ font: '600 14px/1.5 var(--font-sans)' }}>{qq.question}</div>
-                  {qq.options.map((o, oi) => (
-                    <button key={o.label} type="button" disabled={(a.questions?.length ?? 0) !== 1} onClick={() => void act(cur, { do: 'answer', option: oi })} className="helm-row-hover helm-tap-row"
-                      style={{ textAlign: 'left', display: 'flex', gap: 10, alignItems: 'flex-start', padding: '9px 12px', borderRadius: 'var(--radius-md)', border: 'none', cursor: (a.questions?.length ?? 0) === 1 ? 'pointer' : 'default', background: 'var(--bg-panel)', boxShadow: 'inset 0 0 0 1px var(--border)', color: 'var(--text-1)' }}>
-                      <Kbd keys={String(oi + 1)} />
-                      <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}><span style={{ font: '500 13px/1.5 var(--font-sans)' }}>{o.label}</span>{o.description ? <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{o.description}</span> : null}</span>
-                    </button>
-                  ))}
-                </div>
-              ))}
-              {(a.questions?.length ?? 0) > 1 ? <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>There are several questions: open the session to answer them together.</span> : null}
-              {q && (a.questions?.length ?? 0) === 1 ? null : null}
+              {(a.questions?.length ?? 0) === 1 ? <>
+                {a.questions![0].header ? <span style={{ font: '500 10.5px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>{a.questions![0].header}</span> : null}
+                <div style={{ font: '600 14px/1.5 var(--font-sans)' }}>{a.questions![0].question}</div>
+              </> : null}
+              {a.questions?.length ? <QuestionForm key={a.id} questions={a.questions} onSubmit={(answers) => void act(cur, { do: 'answers', answers })} /> : null}
             </> : null}
 
             {cur.kind === 'budget' && a ? <>
