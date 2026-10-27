@@ -1,0 +1,41 @@
+# Builds the desktop client for macOS, Windows and Linux on every push to main (and on demand), and uploads the installers as
+# workflow artifacts: open the run in the Actions tab and download "helm-macos", "helm-windows" or "helm-linux" (kept for 14 days).
+# Builds are unsigned and nothing is published; tagged releases (release.yml) are the signed, auto-updating ones.
+name: desktop-build
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['hosted/**', 'decisions/**', '**/*.md']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: desktop-build-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-latest, name: macos, files: 'release/*.dmg' }
+          - { os: windows-latest, name: windows, files: 'release/*.exe' }
+          - { os: ubuntu-latest, name: linux, files: 'release/*.AppImage' }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx electron-builder --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: helm-${{ matrix.name }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error
+          retention-days: 14
