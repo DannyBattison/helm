@@ -13,7 +13,7 @@ export interface TrayEntry {
   actions: { label: string; action: TrayAction }[];
 }
 
-const WORD: Record<InboxKind, string> = { approve: 'approval', question: 'question', budget: 'limit reached', error: 'failed', stuck: 'looks stuck', artifact: 'file for you', ready: 'ready for review', queued: 'queued' };
+const WORD: Record<InboxKind, string> = { approve: 'approval', question: 'question', budget: 'limit reached', error: 'failed', merge: 'merge failed', stuck: 'looks stuck', artifact: 'file for you', ready: 'ready for review', queued: 'queued' };
 const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
 
 /** What the tray menu lists: things waiting on you, each with the actions that can be taken from the menu. Queued and stuck sessions are left to the Inbox. */

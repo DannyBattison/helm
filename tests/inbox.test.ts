@@ -27,3 +27,17 @@ describe('inbox artifacts', () => {
     expect(trayEntries([sess({ artifacts: [art('a.png', 1)] })]).total).toBe(0);
   });
 });
+
+describe('inbox queued merges', () => {
+  const failed = sess({ status: 'ready', prUrl: 'u', queuedMerge: { method: 'squash', deleteBranch: false, since: 1, error: 'Checks failed', errorAt: 7 } });
+  it('flags a failed queued merge, but not one that is still waiting', () => {
+    const [item] = inbox([failed]);
+    expect(item).toMatchObject({ kind: 'merge', since: 7 });
+    expect(inbox([sess({ status: 'ready', prUrl: 'u', queuedMerge: { method: 'squash', deleteBranch: false, since: 1 } })])).toEqual([]);
+  });
+  it('keys: r retries, x cancels', () => {
+    const [item] = inbox([failed]);
+    expect(keyAction(item, 'r')).toEqual({ do: 'retryMerge' });
+    expect(keyAction(item, 'x')).toEqual({ do: 'cancelMerge' });
+  });
+});

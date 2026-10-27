@@ -651,6 +651,35 @@ export const api: HelmApi = {
     store.save();
     emitState();
   },
+  async queueMerge(repoId, number, opts) {
+    const pr = (await GH.listPulls(repoId)).find((p) => p.number === number);
+    if (!pr) throw new Error(`Pull request #${number} was not found.`);
+    if (pr.state !== 'open') throw new Error(`#${number} is already ${pr.state}.`);
+    const mine = sessions.sessions.find((x) => x.prUrl === pr.url);
+    if (!mine) throw new Error('Only a pull request opened by a helm session can be queued.');
+    mine.queuedMerge = { method: opts.method, deleteBranch: opts.deleteBranch, since: Date.now() };
+    mine.deleteBranchAfterMerge = opts.deleteBranch;
+    store.log({ kind: 'merge', who: me(), human: true, what: `queued PR #${pr.number} “${pr.title}” to merge when its checks pass`, repo: repoName(repoId), sessionId: mine.id });
+    store.save();
+    emitState();
+    void tickQueuedMerges();
+  },
+  async cancelQueuedMerge(id) {
+    const s = sess(id);
+    if (!s.queuedMerge) return;
+    s.queuedMerge = undefined;
+    store.log({ kind: 'merge', who: me(), human: true, what: 'cancelled the queued merge', repo: repoName(s.repoId), sessionId: s.id });
+    store.save();
+    emitState();
+  },
+  async retryQueuedMerge(id) {
+    const s = sess(id);
+    if (!s.queuedMerge) return;
+    s.queuedMerge = { method: s.queuedMerge.method, deleteBranch: s.queuedMerge.deleteBranch, since: Date.now() };
+    store.save();
+    emitState();
+    void tickQueuedMerges();
+  },
   async mergeDirect(input) {
     const s = sess(input.sessionId);
     if (s.free) throw new Error('A free agent has no repository to merge into.');
@@ -1108,6 +1137,39 @@ async function pollMerges() {
   }
 }
 
+// ------------------------------------------------------------------ queued merges
+let queuedTicking = false;
+/** How long a pull request with no checks at all is given to start some before it is merged anyway. */
+const CHECKS_GRACE = 2 * 60_000;
+/** Merges the pull requests of sessions whose merge was queued, once their checks have passed; flags the ones that cannot go ahead. */
+async function tickQueuedMerges() {
+  if (queuedTicking) return;
+  queuedTicking = true;
+  try {
+    for (const s of store.data.sessions.filter((x) => x.queuedMerge && !x.queuedMerge.error && !x.mergedAt)) {
+      const q = s.queuedMerge!;
+      try {
+        const pr = (await GH.listPulls(s.repoId)).find((p) => p.url === s.prUrl);
+        if (!pr) continue;
+        if (pr.state === 'merged') { s.queuedMerge = undefined; await pollMerges(); continue; }
+        if (pr.state === 'closed') { sessions.failQueuedMerge(s.id, `Pull request #${pr.number} was closed without being merged.`); continue; }
+        if (pr.draft) { sessions.failQueuedMerge(s.id, `Pull request #${pr.number} is a draft. Mark it ready for review on GitHub, then try again.`); continue; }
+        if (pr.checks === 'failing') {
+          const bad = (pr.checkRuns || []).filter((c) => c.state === 'failing').map((c) => c.name);
+          sessions.failQueuedMerge(s.id, `Checks failed on pull request #${pr.number}${bad.length ? ': ' + bad.join(', ') : ''}.`);
+          continue;
+        }
+        if (pr.checks === 'pending' || (pr.checks === 'none' && Date.now() - q.since < CHECKS_GRACE)) continue;
+        try { await api.mergePr(s.repoId, pr.number, { method: q.method, deleteBranch: q.deleteBranch }); }
+        catch (e: any) { sessions.failQueuedMerge(s.id, `GitHub would not merge #${pr.number}: ${String(e?.message || e)}`); continue; }
+        s.queuedMerge = undefined;
+        store.save();
+        emitState();
+      } catch { /* offline; tried again at the next tick */ }
+    }
+  } finally { queuedTicking = false; }
+}
+
 // ------------------------------------------------------------------ conflict forecast
 let forecastSig = '';
 let forecasting = false;
@@ -1157,6 +1219,7 @@ export async function start(h: Host) {
   void sampleSystem();
   setInterval(() => void sampleSystem(), 5000).unref?.();
   setInterval(pollMerges, 120_000);
+  setInterval(() => void tickQueuedMerges(), 30_000);
   setInterval(() => void automations.tick(), 60_000);
   setTimeout(() => void automations.tick(), 30_000);
   setInterval(() => void refreshForecast(), 20_000);
