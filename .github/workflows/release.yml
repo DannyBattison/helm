@@ -1,5 +1,7 @@
-# Builds installers for macOS, Windows and Linux and attaches them to a GitHub release when a version tag is pushed
-# (git tag v0.2.0 && git push --tags). The same release is what the app's auto-update reads.
+# Manual release: run the workflow from the Actions tab and choose a major, minor or patch bump. The version is worked out
+# from the latest v* tag (the first release is 0.1.0), tagged, built for macOS, Windows and Linux, and attached to a
+# GitHub release, which is what the app's auto-update reads, and marked as the latest release. The hosted Docker image is
+# published from the same tag, with :latest moved to it. The README's release badges read from that release.
 #
 # Signing is optional and driven by repository secrets; without them the installers are built unsigned.
 #   macOS:   CSC_LINK (base64 .p12 of a Developer ID Application certificate), CSC_KEY_PASSWORD,
@@ -7,12 +9,42 @@
 #   Windows: WIN_CSC_LINK (base64 .pfx code-signing certificate), WIN_CSC_KEY_PASSWORD
 name: release
 on:
-  push:
-    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump
+        type: choice
+        options: [minor, major, patch]
+        default: minor
 permissions:
   contents: write
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.next.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: next
+        run: |
+          latest=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)
+          if [ -z "$latest" ]; then
+            version=0.1.0
+          else
+            IFS=. read -r major minor patch <<< "${latest#v}"
+            case "${{ inputs.bump }}" in
+              major) version="$((major + 1)).0.0" ;;
+              minor) version="$major.$((minor + 1)).0" ;;
+              *) version="$major.$minor.$((patch + 1))" ;;
+            esac
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          git tag "v$version"
+          git push origin "v$version"
   build:
+    needs: version
     strategy:
       fail-fast: false
       matrix:
@@ -20,11 +52,14 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: v${{ needs.version.outputs.version }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm version ${{ needs.version.outputs.version }} --no-git-tag-version --allow-same-version
       - run: npm run typecheck
       - run: npm test
       - run: npm run release
@@ -37,3 +72,18 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+  image:
+    needs: version
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/hosted-image.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+  latest:
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh release edit "v${{ needs.version.outputs.version }}" --latest --repo "$GITHUB_REPOSITORY"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
