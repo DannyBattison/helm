@@ -15,6 +15,7 @@ import { cleanHeavy, dirSize, reclaimableBytes } from './disk';
 import { readArtifact } from './artifacts';
 import { addRepoArtifact, listRepoArtifacts, removeRepoArtifact, setRepoArtifactDir } from './repoartifacts';
 import { cpuTimes, cpuUse, HISTORY_LIMIT, parseLimit, type CpuTimes, type SystemPoint } from '../shared/system';
+import { applyImport, buildExport } from './migrate';
 import { diagnostics } from '../shared/diagnostics';
 import { memoryHealth, memoryReads, STALE_DAYS, type MemoryFile, type MemoryUsage } from '../shared/memoryhealth';
 import type { Host } from './host';
@@ -835,6 +836,13 @@ export const api: HelmApi = {
       app: { version: info.version, electron: info.electron, node: process.versions.node, chrome: info.chrome, platform: process.platform, arch: process.arch, os: (await import('node:os')).release(), packaged: info.packaged }
     });
     return saveFile(`helm-diagnostics-${new Date().toISOString().slice(0, 10)}.md`, text);
+  },
+  async exportData() { return saveFile(`helm-export-${new Date().toISOString().slice(0, 10)}.json`, await buildExport(store)); },
+  async importData(text) {
+    const r = await applyImport(store, String(text));
+    store.log({ kind: 'git', who: me(), human: true, what: `imported ${r.sessions} sessions and ${r.repos} repositories`, repo: '' });
+    emitState();
+    return r;
   },
   async openLogFolder() { const f = logFile(); if (f) host.showInFolder?.(f); },
   async logRenderer(message) { logLine('error', 'window: ' + String(message).slice(0, 2000)); },

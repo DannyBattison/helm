@@ -60,7 +60,7 @@ const http = createServer(async (req, res) => {
   createReadStream(file).pipe(res);
 });
 
-const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 * 1024 });
+const wss = new WebSocketServer({ noServer: true, maxPayload: 512 * 1024 * 1024 });
 /** Signed-in connections: the only ones that receive events. */
 const clients = new Set<WebSocket>();
 const out = (ws: WebSocket, m: ServerMessage) => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(m)); };

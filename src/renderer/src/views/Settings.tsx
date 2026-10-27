@@ -16,6 +16,31 @@ const set = (patch: Partial<SettingsT>) => void api.updateSettings(patch);
 export const PERM_OPTIONS = [{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits, ask for commands' }, { value: 'plan', label: 'Plan only' }, { value: 'all', label: 'Allow everything' }];
 export const MODEL_OPTIONS = [{ value: 'sonnet', label: 'Sonnet' }, { value: 'opus', label: 'Opus' }, { value: 'haiku', label: 'Haiku' }];
 
+/** Moving helm to another machine or server: everything but sign-ins and passwords, as one file. */
+function TransferSection() {
+  const [busy, setBusy] = React.useState(false);
+  const file = React.useRef<HTMLInputElement>(null);
+  const fail = (title: string) => (e: any) => toast({ tone: 'error', title, description: errText(e) });
+  const pick = async (f?: File) => {
+    if (!f) return;
+    setBusy(true);
+    try {
+      const r = await api.importData(await f.text());
+      toast({ tone: 'ready', title: 'Imported', description: `${r.sessions} sessions, ${r.repos} repositories, ${r.files} files` });
+    } catch (e) { fail('Could not import')(e); } finally { setBusy(false); if (file.current) file.current.value = ''; }
+  };
+  return <>
+    <H sub="For moving helm to another computer or server.">Import and export</H>
+    <SettingRow title="Export" desc="Saves repositories, sessions, transcripts, usage history, automated agents, settings and uploaded artifacts as one file. Your GitHub and Claude sign-ins and passwords are not included, so you sign in again on the new machine. The file holds your conversations; keep it private.">
+      <Button icon="download-simple" disabled={busy} onClick={() => { setBusy(true); void api.exportData().then((f) => f && toast({ tone: 'ready', title: 'Exported', description: f })).catch(fail('Could not export')).finally(() => setBusy(false)); }}>Export…</Button>
+    </SettingRow>
+    <SettingRow title="Import" desc="Adds the contents of an export file to what is here. Anything already here is kept: sessions and repositories with the same name are not overwritten. Paths, shells and update settings stay as they are on this machine. Imported sessions come in stopped; those whose worktree is not on this machine are marked as having none.">
+      <input ref={file} type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={(e) => void pick(e.target.files?.[0])} />
+      <Button icon="upload-simple" disabled={busy} onClick={() => file.current?.click()}>Import…</Button>
+    </SettingRow>
+  </>;
+}
+
 /** Which shell the terminal starts: whatever is installed here, or any command. Changes apply to terminals opened after it. */
 function TerminalShellRow({ st, set }: { st: any; set(p: any): void }) {
   const [shells, setShells] = React.useState<{ id: string; label: string }[] | null>(null);
@@ -311,7 +336,7 @@ export function Settings({ section }: { section?: string }) {
   const subCols = useColumns('subagent-repos', [{ w: 1, min: 160, flex: true }, { w: 170, min: 110, fixed: true }]);
   const pctOptions = [{ value: '0', label: 'Off' }, { value: '50', label: '50%' }, { value: '70', label: '70%' }, { value: '80', label: '80%' }, { value: '90', label: '90%' }];
   const subLimits = (extra: number[]) => [...new Set([0, 1, 2, 3, 4, 6, 8, 12, ...extra])].sort((a, b) => a - b).map((n) => ({ value: String(n), label: n === 0 ? 'Off' : String(n) }));
-  const nav = [['account', 'Account', 'github-logo'], ['agents', 'Claude Code', 'robot'], ['automations', 'Automated agents', 'clock-clockwise'], ['worktrees', 'Worktrees', 'tree-structure'], ['budgets', 'Usage', 'coins'], ...(hosted ? [] : [['companion', 'Companion', 'broadcast']]), ['notifications', 'Notifications', 'bell'], ['appearance', 'Appearance', 'paint-brush'], ['shortcuts', 'Keyboard shortcuts', 'keyboard'], ['about', 'About and support', 'info']];
+  const nav = [['account', 'Account', 'github-logo'], ['agents', 'Claude Code', 'robot'], ['automations', 'Automated agents', 'clock-clockwise'], ['worktrees', 'Worktrees', 'tree-structure'], ['budgets', 'Usage', 'coins'], ...(hosted ? [] : [['companion', 'Companion', 'broadcast']]), ['notifications', 'Notifications', 'bell'], ['appearance', 'Appearance', 'paint-brush'], ['shortcuts', 'Keyboard shortcuts', 'keyboard'], ['transfer', 'Import and export', 'arrows-left-right'], ['about', 'About and support', 'info']];
   const notif = (key: 'notifyAttention' | 'notifyReady' | 'notifyFailed' | 'notifyChecks', title: string) => (
     <SettingRow title={title}>
       <Switch checked={st[key].desktop} onChange={(v: boolean) => set({ [key]: { ...st[key], desktop: v } })} label="Desktop" />
@@ -500,6 +525,7 @@ export function Settings({ section }: { section?: string }) {
             </>}
           </> : null}
           {sec === 'shortcuts' ? <ShortcutsSection st={st} set={set} /> : null}
+          {sec === 'transfer' ? <TransferSection /> : null}
           {sec === 'about' ? <>
             <H sub="Updates, and what to send if something goes wrong.">About and support</H>
             {hosted ? null : <>

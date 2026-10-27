@@ -1044,6 +1044,10 @@ export interface HelmApi {
   installUpdate(): Promise<void>;
   /** Saves a support bundle: versions, settings, session states and the recent log, with private text left out and secrets masked. */
   saveDiagnostics(): Promise<string | null>;
+  /** Saves everything helm knows (not sign-ins or passwords) as one file for moving to another machine. */
+  exportData(): Promise<string | null>;
+  /** Adds the contents of an export file to what is here, leaving anything already here alone. */
+  importData(text: string): Promise<{ repos: number; sessions: number; files: number }>;
   openLogFolder(): Promise<void>;
   /** The window reports an error here so it ends up in the log. */
   logRenderer(message: string): Promise<void>;

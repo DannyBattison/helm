@@ -215,6 +215,9 @@ export class Store {
     } catch { /* nothing saved */ }
   }
 
+  /** Drops transcripts held in memory, after files on disk have changed underneath them. */
+  forgetTranscripts() { for (const k of [...this.transcripts.keys()]) if (!this.tTimers.has(k)) this.transcripts.delete(k); }
+
   saveTranscript(id: string) {
     if (this.tTimers.has(id)) return;
     this.tTimers.set(id, setTimeout(async () => {
