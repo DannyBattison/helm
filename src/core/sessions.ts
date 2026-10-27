@@ -1,3 +1,4 @@
+import { mcpConfig } from '../shared/mcp';
 import { forkSession, getSessionInfo, getSessionMessages, getSubagentMessages, query, renameSession, type Query, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
@@ -641,6 +642,8 @@ export class SessionManager {
         ...(settings.commitAuthor === 'sole' ? { GIT_AUTHOR_NAME: 'Claude', GIT_AUTHOR_EMAIL: 'noreply@anthropic.com' } : {})
       }
     };
+    const servers = mcpConfig(settings.mcpServers, this.store.data.repos.find((r) => r.id === s.repoId)?.mcpServers);
+    if (Object.keys(servers).length) options.mcpServers = servers;
     // Only set when on, so a user's own Claude Code setting is never switched off by helm.
     if (settings.remoteControl) options.settings = { remoteControlAtStartup: true };
     const exe = settings.claudePath || this.hooks.claudePath();
