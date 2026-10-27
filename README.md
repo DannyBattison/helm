@@ -8,6 +8,8 @@ Supervise many Claude Code sessions across many GitHub repositories, from one wi
 
 **Website and downloads: [takethehelm.dev](https://takethehelm.dev)**
 
+Latest release: none yet
+
 ## Features
 
 - **Isolated sessions.** Each session works in its own git worktree on an `agent/<name>` branch. Your checkout is never touched.
