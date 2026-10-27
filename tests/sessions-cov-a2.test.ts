@@ -47,7 +47,8 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   renameSession: async (...a: any[]) => { fake.state.renamed.push(a); }
 }));
 
-import { claudeProjectDir, SessionManager } from '../src/core/sessions';
+import { SessionManager } from '../src/core/sessions';
+import { claudeProjectDir } from '../src/core/claudeBackend';
 import { Store } from '../src/core/store';
 import { FREE_ID, type NewSessionInput } from '../src/shared/types';
 
@@ -140,7 +141,7 @@ describe('create, further paths', () => {
 
   it('removes the extra worktrees already made when a later step fails', async () => {
     mkRepo('other');
-    await expect(sm.create(input({ extraRepos: ['o/other'] }), { claude: async () => { throw new Error('copy failed'); } })).rejects.toThrow('copy failed');
+    await expect(sm.create(input({ extraRepos: ['o/other'] }), { conversation: async () => { throw new Error('copy failed'); } })).rejects.toThrow('copy failed');
     expect(existsSync(join(store.data.settings.worktreeRoot, 'other', 'fix-the-thing'))).toBe(false);
     expect(existsSync(join(store.data.settings.worktreeRoot, 'r', 'fix-the-thing'))).toBe(false);
   });
@@ -158,9 +159,9 @@ describe('create, further paths', () => {
   it('resumes the conversation a claude hook returns, and passes the effort, the executable and remote control', async () => {
     store.data.settings.remoteControl = true;
     store.data.settings.claudePath = '/custom/claude';
-    const id = await sm.create(input({ effort: 'high' }), { claude: async () => 'sess-9' });
+    const id = await sm.create(input({ effort: 'high' }), { conversation: async () => 'sess-9' });
     const o = q().options;
-    expect(sm.get(id)!.claudeSessionId).toBe('sess-9');
+    expect(sm.get(id)!.agentSessionId).toBe('sess-9');
     expect(o.resume).toBe('sess-9');
     expect(o.effort).toBe('high');
     expect(o.settings).toEqual({ remoteControlAtStartup: true });
@@ -311,7 +312,7 @@ describe('forking from a Claude Code conversation', () => {
   const user = (uuid: string, content: any, extra: any = {}) => ({ type: 'user', uuid, message: { content }, ...extra });
 
   it('copies the conversation up to the message before the picked one', async () => {
-    const id = await sm.create(input(), { claude: async () => 'src-1' });
+    const id = await sm.create(input(), { conversation: async () => 'src-1' });
     const s = sm.get(id)!;
     await sm.stop(id);
     await sm.send(id, 'second').catch(() => undefined);
@@ -338,20 +339,20 @@ describe('forking from a Claude Code conversation', () => {
     expect(f.task).toBe('retry');
     expect(fake.state.forkArgs[0][0]).toBe('src-1');
     expect(fake.state.forkArgs[0][1]).toMatchObject({ upToMessageId: 'u4', title: expect.stringContaining('Fork of') });
-    expect(f.claudeSessionId).toBe('copy-1');
+    expect(f.agentSessionId).toBe('copy-1');
     expect(readFileSync(join(claudeProjectDir(f.worktree), 'copy-1.jsonl'), 'utf8')).toBe('{"a":1}\n');
   });
 
   it('forks from the first message with a fresh conversation, and finds the copy in another folder', async () => {
-    const id = await sm.create(input(), { claude: async () => 'src-2' });
+    const id = await sm.create(input(), { conversation: async () => 'src-2' });
     await sm.stop(id);
     fake.state.msgs = [user('u0', 'Fix the thing')];
     const forked = await sm.fork(id, 0, 'again');
     expect(fake.state.forkArgs).toHaveLength(0);
-    expect(sm.get(forked)!.claudeSessionId).toBeUndefined();
+    expect(sm.get(forked)!.agentSessionId).toBeUndefined();
 
     // The copy sits in a differently named project folder.
-    const id2 = await sm.create(input({ task: 'Other task' }), { claude: async () => 'src-3' });
+    const id2 = await sm.create(input({ task: 'Other task' }), { conversation: async () => 'src-3' });
     await sm.stop(id2);
     fake.state.msgs = [{ type: 'assistant', uuid: 'a' }, user('u1', 'Other task')];
     fake.state.forkResult = { sessionId: 'elsewhere' };
@@ -364,7 +365,7 @@ describe('forking from a Claude Code conversation', () => {
   });
 
   it('fails clearly when the message or the copy cannot be found', async () => {
-    const id = await sm.create(input(), { claude: async () => 'src-4' });
+    const id = await sm.create(input(), { conversation: async () => 'src-4' });
     await sm.stop(id);
     fake.state.msgs = [user('u0', 'something else')];
     await expect(sm.fork(id, 0, 'x')).rejects.toThrow(/Could not find that message/);

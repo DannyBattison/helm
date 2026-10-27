@@ -191,7 +191,7 @@ describe('the agent talking', () => {
     const id = await sm.create(input());
     const s = sm.get(id)!;
     q().emit({ type: 'system', subtype: 'init', session_id: 'claude-1', model: 'claude-sonnet-5', apiKeySource: 'none' });
-    await until(() => s.claudeSessionId);
+    await until(() => s.agentSessionId);
     expect(s.modelName).toBe('claude-sonnet-5');
     q().emit(text('Working on it [chart](artifact:c%20d.png)', { input_tokens: 100, output_tokens: 50, cache_read_input_tokens: 1000, cache_creation_input_tokens: 10 }));
     await until(() => s.tokens.output === 50);
@@ -544,7 +544,7 @@ describe('controls', () => {
 
   it('renames, and keeps Claude Code\'s name in step', async () => {
     const id = await sm.create(input());
-    sm.get(id)!.claudeSessionId = 'c1';
+    sm.get(id)!.agentSessionId = 'c1';
     await sm.rename(id, '  My name ');
     expect(sm.get(id)!.customTitle).toBe('My name');
     expect(fake.state.renamed[0][0]).toBe('c1');
@@ -555,7 +555,7 @@ describe('controls', () => {
   it('names the branch after Claude\'s title', async () => {
     const id = await sm.create(input());
     const s = sm.get(id)!;
-    s.claudeSessionId = 'c1';
+    s.agentSessionId = 'c1';
     fake.state.info = { summary: 'Repair cart totals', firstPrompt: 'Fix the thing' };
     q().emit(done());
     await until(() => s.branch === 'agent/repair-cart-totals');

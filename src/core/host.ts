@@ -53,7 +53,7 @@ export interface Host {
    * The app has to sign Claude Code in itself, because there is no one at the machine to run `claude` (a hosted server). The UI then makes
    * signing in the first thing you do, before anything else works. The desktop app leaves this out: it uses the Claude Code you already have.
    */
-  requireClaudeLogin?: boolean;
+  requireAgentLogin?: boolean;
   /**
    * Where the GitHub CLI keeps its config. A host that sets it gets the sign-in written there (as `hosts.yml`) and removed again on sign-out,
    * so `gh` and git's `gh auth git-credential` helper in agents and the terminal use whatever token helm holds now, renewals included.

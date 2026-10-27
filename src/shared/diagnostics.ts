@@ -4,7 +4,7 @@ import type { Repo, Session, Settings } from './types';
 export interface DiagnosticsInput {
   now: number;
   app: { version: string; electron: string; node: string; chrome: string; platform: string; arch: string; os: string; packaged: boolean };
-  claudeVersion: string | null;
+  agents: { label: string; version: string | null }[];
   gitVersion: string | null;
   home: string;
   settings: Settings;
@@ -27,8 +27,8 @@ export function scrub(text: string, home: string): string {
 export function diagnostics(i: DiagnosticsInput): string {
   const s = i.settings;
   const L: string[] = ['# helm diagnostics', '', `Created ${new Date(i.now).toISOString()}`, ''];
-  L.push('## Versions', `- helm ${i.app.version}${i.app.packaged ? '' : ' (development build)'}`, `- Electron ${i.app.electron}, Chrome ${i.app.chrome}, Node ${i.app.node}`, `- ${i.app.platform} ${i.app.arch}, ${i.app.os}`, `- Claude Code ${i.claudeVersion ?? 'not found'}`, `- git ${i.gitVersion ?? 'not found'}`, '');
-  L.push('## Settings', `- billing ${s.billing}, model ${s.defaultModel}, permission mode ${s.permMode}`, `- deliver by ${s.deliver}, merge method ${s.mergeMethod}, after merge ${s.afterMerge}`, `- sessions at once ${s.maxRunning || 'unlimited'}, subagents ${s.maxSubagentsSession} per session and ${s.maxSubagentsRepo} per repository`, `- remote control ${s.remoteControl ? 'on' : 'off'}, tray ${s.tray ? 'on' : 'off'}, auto-update ${s.autoUpdate ? 'on' : 'off'}`, `- custom Claude path ${s.claudePath ? 'yes' : 'no'}`, '');
+  L.push('## Versions', `- helm ${i.app.version}${i.app.packaged ? '' : ' (development build)'}`, `- Electron ${i.app.electron}, Chrome ${i.app.chrome}, Node ${i.app.node}`, `- ${i.app.platform} ${i.app.arch}, ${i.app.os}`, ...i.agents.map((a) => `- ${a.label} ${a.version ?? 'not found'}`), `- git ${i.gitVersion ?? 'not found'}`, '');
+  L.push('## Settings', `- billing ${s.billing}, model ${s.defaultModel}, permission mode ${s.permMode}`, `- deliver by ${s.deliver}, merge method ${s.mergeMethod}, after merge ${s.afterMerge}`, `- sessions at once ${s.maxRunning || 'unlimited'}, subagents ${s.maxSubagentsSession} per session and ${s.maxSubagentsRepo} per repository`, `- remote control ${s.remoteControl ? 'on' : 'off'}, tray ${s.tray ? 'on' : 'off'}, auto-update ${s.autoUpdate ? 'on' : 'off'}`, `- custom Claude path ${s.claudePath ? 'yes' : 'no'}, backend ${s.defaultBackend}`, '');
   L.push(`## Repositories (${i.repos.length})`, ...i.repos.slice(0, 40).map((r) => `- ${r.id}${r.private ? ' (private)' : ''}, default branch ${r.defaultBranch}`), '');
   const counts: Record<string, number> = {};
   for (const x of i.sessions) counts[x.status] = (counts[x.status] || 0) + 1;

@@ -8,7 +8,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import { api, on, platform, windowControls } from '../api';
 import { fontStack } from '../fonts';
 import glyph from '../assets/helm-glyph-violet.svg';
-import { ago, elapsed, fmtTokens, isFreeGroup, lifetimeTokens, livePlan, reposWithSessions, runningSubagents, subagentTree, totals, untilReset } from '../lib';
+import { ago, backendFor, billingOf, planBackends, elapsed, fmtTokens, isFreeGroup, lifetimeTokens, livePlan, reposWithSessions, runningSubagents, subagentTree, totals, untilReset } from '../lib';
 import { getUI, go, haltAll, isResumable, refreshExternals, resumeAll, setUI, toast, useApp, useMoney, useUI, useTranscript, type Route } from '../store';
 import { InboxPreview } from './InboxPreview';
 import { useShortcutKeys } from '../shortcuts';
@@ -25,22 +25,45 @@ function SectionLabel({ children, action }: any) {
   );
 }
 
+/** Two thin bars for one agent: its five-hour and weekly windows. Several agents fit in the space one used to take. */
+function MiniPlan({ label, p, warn }: { label: string; p: ReturnType<typeof livePlan>; warn: number }) {
+  const bar = (name: string, w?: { util: number; resetsAt: number }) => (
+    <div title={w ? `${name} window: ${Math.round(w.util * 100)}% used, resets in ${untilReset(w.resetsAt)}` : `${name} window: no data yet`} style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', font: '400 11px/1.3 var(--font-mono)', color: 'var(--text-3)' }}><span>{name}</span><span style={{ color: 'var(--text-1)' }}>{w ? Math.round(w.util * 100) + '%' : '–'}</span></div>
+      <Meter value={w?.util ?? 0} max={1} warnAt={warn} height={3} />
+    </div>
+  );
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <span style={{ font: '500 11.5px/1.3 var(--font-sans)', color: 'var(--text-2)' }}>{label}</span>
+      <div style={{ display: 'flex', gap: 10 }}>{bar('5h', p.fiveHour)}{bar('Week', p.weekly)}</div>
+    </div>
+  );
+}
+
 export function PlanMeters() {
   const app = useApp();
   const { fmt } = useMoney();
-  const p = livePlan(app);
   const warn = app.settings.warnAt / 100;
-  if (app.settings.billing === 'api') {
-    const t = totals(app);
-    return <Meter label="This week" detail={fmt(t.spent) + ' / ' + fmt(t.cap, true)} value={t.spent} max={t.cap} warnAt={warn} />;
+  const subs = planBackends(app);
+  const paidPerToken = (app.backends || []).some((b) => b.ready && billingOf(app, b.id) === 'api');
+  const spend = () => { const t = totals(app); return <Meter label="This week" detail={fmt(t.spent) + ' / ' + fmt(t.cap, true)} value={t.spent} max={t.cap} warnAt={warn} />; };
+  if (!subs.length) {
+    if (paidPerToken || billingOf(app) === 'api') return spend();
+    subs.push(backendFor(app, app.settings.defaultBackend)!);
   }
   const row = (label: string, w?: { util: number; resetsAt: number }) =>
     w ? <Meter label={label} detail={`${Math.round(w.util * 100)}% · resets ${untilReset(w.resetsAt)}`} value={w.util} max={1} warnAt={warn} />
       : <Meter label={label} detail="no data yet" value={0} max={1} />;
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }} title="Claude plan usage, as reported by Claude Code">
-      {row('5-hour', p.fiveHour)}
-      {row('Weekly', p.weekly)}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {subs.length === 1 ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }} title={`${subs[0].label} plan usage`}>
+          {row('5-hour', livePlan(app, subs[0].id).fiveHour)}
+          {row('Weekly', livePlan(app, subs[0].id).weekly)}
+        </div>
+      ) : subs.map((b) => <MiniPlan key={b.id} label={b.label} p={livePlan(app, b.id)} warn={warn} />)}
+      {paidPerToken && subs.length ? spend() : null}
     </div>
   );
 }
@@ -292,7 +315,7 @@ export function StatusBar() {
       {extLive ? <span style={item} title="Claude Code sessions running outside helm. Read-only."><i className="ph ph-eye" style={{ fontSize: 12 }} />{extLive} external live</span> : null}
       <span style={{ flex: 1 }} />
       <span style={item}>{tok} tokens today</span>
-      <span style={item} title={app.claudeVersion ? 'Claude Code CLI found' : 'Using the Claude Code bundled with helm'}><i className="ph ph-plugs-connected" style={{ fontSize: 12 }} />{app.claudeVersion ? 'claude ' + app.claudeVersion : 'claude (bundled)'}</span>
+      {(() => { const b = backendFor(app, app.settings.defaultBackend); return b ? <span style={item} title={b.version ? `${b.label} CLI found` : `Using the ${b.label} bundled with helm`}><i className="ph ph-plugs-connected" style={{ fontSize: 12 }} />{b.version ? `${b.id} ${b.version}` : `${b.id} (bundled)`}</span> : null; })()}
       <span style={{ ...item, cursor: 'pointer', color: term ? 'var(--text-1)' : 'var(--text-3)' }} onClick={() => setUI({ term: !term })}><i className="ph ph-terminal-window" style={{ fontSize: 12 }} />Terminal ⌃`</span>
     </div>
   );

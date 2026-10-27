@@ -1,12 +1,14 @@
-import { getSessionInfo, getSessionMessages, listSessions, query } from '@anthropic-ai/claude-agent-sdk';
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import * as os from 'node:os';
 import { appendFile, readFile, statfs, stat, writeFile } from 'node:fs/promises';
 import { join, relative, resolve, isAbsolute } from 'node:path';
-import type { AppState, ClaudeLogin, ExternalTranscript, HelmApi, HelmEvents, Settings, TranscriptEvent, WorktreeUsage } from '../shared/types';
+import type { AppState, AgentLogin, ExternalTranscript, HelmApi, HelmEvents, Settings, TranscriptEvent, WorktreeUsage } from '../shared/types';
 import type { SystemStatus } from '../shared/system';
-import { ClaudeAuth } from './claudeAuth';
+import { BackendRegistry } from './backend';
+import { defaultAgent, normalizeEnabled } from '../shared/agents';
+import { ClaudeBackend } from './claudeBackend';
+import { CodexBackend } from './codexBackend';
 import * as G from './git';
 import * as GH from './github';
 import { Companion } from './companion';
@@ -22,7 +24,7 @@ import { diagnostics } from '../shared/diagnostics';
 import { memoryHealth, memoryReads, STALE_DAYS, type MemoryFile, type MemoryUsage } from '../shared/memoryhealth';
 import type { Host } from './host';
 import { cleanMcp, mcpProblem } from '../shared/mcp';
-import { appendInstruction, deleteMemory, projectMemory, readMemory, writeMemory } from './memory';
+import { appendInstruction, codexHome, deleteMemory, projectMemory, readMemory, writeMemory, type MemoryAgent } from './memory';
 import { Automations } from './automations';
 import { RepoService } from './repos';
 import { forecastRepo, revertHunk } from './review';
@@ -42,7 +44,7 @@ import { prBody, prSummary, prTitle, replaceSummary } from '../shared/prText';
 import { auditCsv, buildReport, digestMarkdown, sessionsCsv, spendCsv, type ReportInput } from '../shared/reports';
 
 let host: Host;
-let claudeVersion: string | null = null;
+let backends: import('../shared/types').BackendInfo[] = [];
 let forecast: import('../shared/forecast').Conflict[] = [];
 let lastCpu: CpuTimes | null = null;
 let lastProc: { t: number; us: number } | null = null;
@@ -87,7 +89,7 @@ let stateTimer: NodeJS.Timeout | null = null;
 function buildState(): AppState {
   return {
     ready: true,
-    ...(host.requireClaudeLogin && claudeLogin ? { claudeLogin } : {}),
+    agentLoginRequired: !!host.requireAgentLogin,
     user: store.data.user,
     repos: store.data.repos,
     sessions: store.data.sessions,
@@ -102,21 +104,44 @@ function buildState(): AppState {
     tokensToday: store.tokensToday(),
     forecast,
     update: host.updates?.status() ?? { state: 'dev' },
-    claudeVersion,
+    backends,
     plan: store.data.plan,
+    plans: store.data.plans,
     rates: store.data.fx.rates,
     platform: process.platform,
     home
   };
 }
-let claudeLogin: ClaudeLogin | undefined;
-const claudeAuth = new ClaudeAuth(() => claudeExe() || 'claude');
-/** Asks Claude Code who is signed in and tells the UI if that changed. Only where the app has to sign it in itself. */
-async function refreshClaudeLogin(): Promise<ClaudeLogin | undefined> {
-  if (!host.requireClaudeLogin) return undefined;
-  const s = await claudeAuth.status();
-  if (JSON.stringify(s) !== JSON.stringify(claudeLogin)) { claudeLogin = s; emitState(); }
-  return s;
+/** Who each agent is signed in as, as last read. */
+let logins: Record<string, AgentLogin | undefined> = {};
+const authOf = (id: string) => {
+  const a = registry.get(id).auth;
+  if (!a) throw new Error('That agent does not need to be signed in.');
+  return a;
+};
+/** Reads who each agent is signed in as, and what models and versions it has, and tells the UI if anything changed. */
+async function refreshBackends() {
+  await Promise.all(registry.all().map(async (b) => {
+    if (b.auth) {
+      const l = await b.auth.status().catch((e): AgentLogin => ({ loggedIn: false, method: 'none', error: String(e?.message || e) }));
+      logins[b.id] = l;
+      if (l.billing && b.id !== 'claude') sessions.setBilling(b.id, l.billing);
+    }
+    // Only once signed in: a model list is no use before that, and asking starts the agent's process.
+    if (!b.auth || logins[b.id]?.loggedIn) await b.refresh?.();
+  }));
+  const next = await registry.info(logins, store.data.settings.enabledAgents);
+  if (JSON.stringify(next) !== JSON.stringify(backends)) { backends = next; emitState(); }
+}
+/** For a sign-in that finishes in the browser with no code to paste back: look until it is done. */
+const watching = new Map<string, NodeJS.Timeout>();
+function watchLogin(id: string) {
+  clearInterval(watching.get(id));
+  const t0 = Date.now();
+  const timer = setInterval(() => {
+    void refreshBackends().then(() => { if (logins[id]?.loggedIn || Date.now() - t0 > 10 * 60_000) { clearInterval(timer); watching.delete(id); void refreshPlan(true); } });
+  }, 3000);
+  watching.set(id, timer);
 }
 
 let lastBadge = -1;
@@ -159,6 +184,13 @@ const repos = new RepoService(store, emitState);
 const companionOps: import('./companion').CompanionOps = {} as any;
 const syncer = new SyncService(store, () => host, { isRunning: (id) => sessions.isRunning(id), changed: () => emitState(), canServe: () => !!host.syncServer, emitTranscript: (sessionId, index, event) => send('transcript', { sessionId, index, event }), name: () => os.hostname() });
 const companion = new Companion(store, companionOps, () => emitState(), () => host);
+const registry = new BackendRegistry([
+  new ClaudeBackend({
+    sdk: () => store.data.settings.claudePath || host.sdkClaudePath(),
+    cli: () => store.data.settings.claudePath || host.cliClaudePath()
+  }),
+  new CodexBackend({ cli: () => store.data.settings.codexPath || undefined })
+]);
 const sessions = new SessionManager(store, {
   emitState,
   emitTranscript: (sessionId, index, event) => { send('transcript', { sessionId, index, event }); companion.onTranscript(sessionId, index, event); },
@@ -175,7 +207,7 @@ const sessions = new SessionManager(store, {
     const answer = ask?.type === 'approve' ? (decision: 'approve' | 'deny') => { if (sessions.get(sessionId)?.ask?.id === ask.id) void sessions.resolveAsk(sessionId, ask.id, { decision }); } : undefined;
     host.notify?.({ kind, title, body, silent: !d.sound, sessionId, answer });
   }
-});
+}, registry);
 Object.assign(companionOps, {
   resolveAsk: (id: string, askId: string, answer: any) => sessions.resolveAsk(id, askId, answer),
   sendMessage: (id: string, text: string) => sessions.send(id, text),
@@ -200,7 +232,7 @@ const automations = new Automations(store, {
   listFinishedRuns: (id) => GH.listFinishedRuns(id),
   listCommits: (id, branch) => GH.listBranchCommits(id, branch),
   start: async (repoId, base, task, a) => {
-    await sessions.create({ repoId, base, task, model: a.model, budget: a.budget, permMode: a.permMode, automation: { id: a.id, name: a.name } });
+    await sessions.create({ repoId, base, task, backend: a.backend, model: a.model, budget: a.budget, permMode: a.permMode, automation: { id: a.id, name: a.name } });
   },
   automatedBranches: (repoId) => new Set(store.data.sessions.filter((s) => s.repoId === repoId && s.automation).map((s) => s.branch)),
   repoName: (id) => repoName(id),
@@ -221,18 +253,12 @@ function ws(id: string): { worktree: string; base: string; sessionId?: string } 
   const s = sess(id);
   return { worktree: s.worktree, base: s.base, sessionId: s.id };
 }
+const memoryAgent = (a?: string): MemoryAgent => (a === 'codex' ? 'codex' : 'claude');
 function safePath(s: { worktree: string }, p: string): string {
   const abs = resolve(s.worktree, p);
   const r = relative(s.worktree, abs);
   if (r.startsWith('..') || isAbsolute(r)) throw new Error('Path is outside the worktree');
   return abs;
-}
-
-async function detectClaude(path: string): Promise<string | null> {
-  try {
-    const out = await run(path || 'claude', ['--version'], { timeout: 8000 });
-    return out.trim().split(/\s+/)[0] || null;
-  } catch { return null; }
 }
 
 // ------------------------------------------------------------------ external transcripts
@@ -243,20 +269,25 @@ const extCache = new Map<string, { sig: string; events: TranscriptEvent[]; at: n
 const extLoading = new Map<string, Promise<void>>();
 const extError = new Map<string, string>();
 
-async function extSig(id: string): Promise<string> {
-  try { const i = await getSessionInfo(id); return i ? `${i.lastModified}:${i.fileSize}` : ''; } catch { return ''; }
-}
+/** Which backend each external conversation came from, learned when they are listed. */
+const extOwner = new Map<string, string>();
+const extStore = (id: string) => {
+  const owner = registry.all().find((b) => b.id === extOwner.get(id) && b.conversations) ?? registry.all().find((b) => b.conversations);
+  if (!owner?.conversations) throw new Error('No agent keeps conversations helm can read.');
+  return owner.conversations;
+};
 
 async function externalTranscript(repoId: string, sessionId: string, opts: { start?: number; end?: number; tail?: number } = {}): Promise<ExternalTranscript> {
   const repo = repos.must(repoId);
-  const sig = await extSig(sessionId);
+  const conv = extStore(sessionId);
+  const sig = await conv.signature(sessionId);
   let c = extCache.get(sessionId);
   const changed = !c || c.sig !== sig;
   if (changed && !extLoading.has(sessionId) && (!c || Date.now() - c.at > Math.max(4000, c.readMs * 3))) {
     const t0 = Date.now();
-    const p = getSessionMessages(sessionId)
-      .then((msgs) => {
-        extCache.set(sessionId, { sig, events: sessions.convertMessages(msgs as any[], repo.localPath, true), at: Date.now(), readMs: Date.now() - t0 });
+    const p = conv.transcript(sessionId, repo.localPath)
+      .then((events) => {
+        extCache.set(sessionId, { sig, events, at: Date.now(), readMs: Date.now() - t0 });
         extError.delete(sessionId);
         if (extCache.size > 4) extCache.delete(extCache.keys().next().value as string);
       })
@@ -276,17 +307,11 @@ async function externalTranscript(repoId: string, sessionId: string, opts: { sta
   return { ready: true, total, start, events: c.events.slice(start, end) };
 }
 
-/** Claude Code's own list of sessions that have a process running right now, or null when it can't be asked. */
-function claudeExe(): string | undefined {
-  return store.data.settings.claudePath || host.cliClaudePath();
-}
-
-async function liveClaudeSessions(): Promise<Set<string> | null> {
-  const exe = claudeExe();
-  try {
-    const out = await run(exe || 'claude', ['agents', '--json'], { timeout: 8000 });
-    return new Set((JSON.parse(out) as any[]).map((x) => x.sessionId));
-  } catch { return null; }
+/** Sessions that have a process running right now, across every backend, or null when none can be asked. */
+async function liveSessions(): Promise<Set<string> | null> {
+  const all = await Promise.all(registry.all().map((b) => b.conversations?.live() ?? Promise.resolve(null)));
+  const known = all.filter((x): x is Set<string> => !!x);
+  return known.length ? new Set(known.flatMap((x) => [...x])) : null;
 }
 
 /** A session from outside helm is archived by hand, or when it has been idle longer than the archive setting. A restore overrides the age rule. */
@@ -322,6 +347,7 @@ export const api: HelmApi = {
   async companionUnlink() { if (host.companion !== false) await companion.unlink(); },
   async reportStall(ms, where) { diag(`window stalled ${ms} ms on ${where}`); },
   async updateSettings(patch: Partial<Settings>) {
+    const prevEnabled = store.data.settings.enabledAgents;
     Object.assign(store.data.settings, patch);
     if ('theme' in patch) applyTheme();
     if ('syncEnabled' in patch) syncer.settingsChanged();
@@ -330,7 +356,15 @@ export const api: HelmApi = {
     if (('companionEnabled' in patch || 'companionUrl' in patch) && host.companion !== false) companion.apply();
     host.settingsChanged?.(patch);
     if ('planPause5h' in patch || 'planPauseWeek' in patch || 'billing' in patch) void sessions.enforcePlan();
-    if ('claudePath' in patch) claudeVersion = await detectClaude(store.data.settings.claudePath);
+    if ('enabledAgents' in patch) {
+      // At least one agent stays on, and new sessions default to one that is.
+      const known = registry.all().map((b) => b.id);
+      const st = store.data.settings;
+      st.enabledAgents = normalizeEnabled(patch.enabledAgents, known, prevEnabled);
+      const def = defaultAgent(st.defaultBackend, st.enabledAgents, known);
+      if (def !== st.defaultBackend) { st.defaultBackend = def; st.defaultModel = registry.get(def).models[0]?.id ?? st.defaultModel; }
+    }
+    if ('claudePath' in patch || 'codexPath' in patch || 'enabledAgents' in patch) await refreshBackends();
     store.save();
     emitState();
   },
@@ -352,20 +386,29 @@ export const api: HelmApi = {
     emitState();
     return u;
   },
-  async claudeLoginStart() { return claudeAuth.startLogin(); },
-  async claudeLoginCode(code) {
-    const s = await claudeAuth.submitCode(String(code));
-    claudeLogin = s;
-    emitState();
-    return s;
+  async agentLoginStart(backend) {
+    const r = await authOf(backend).startLogin();
+    if (!r.needsCode) watchLogin(backend);
+    return r;
   },
-  async claudeLoginCancel() { claudeAuth.cancel(); },
-  async claudeLogout() {
-    const s = await claudeAuth.logout();
-    claudeLogin = s;
-    emitState();
-    return s;
+  async agentLoginCode(backend, code) {
+    const a = authOf(backend);
+    if (!a.submitCode) throw new Error('This agent does not take a code.');
+    const l = await a.submitCode(String(code));
+    await refreshBackends();
+  setInterval(() => void refreshBackends(), 5 * 60_000).unref?.();
+    void refreshPlan(true);
+    return l;
   },
+  async agentLoginCancel(backend) { clearInterval(watching.get(backend)); watching.delete(backend); authOf(backend).cancel(); },
+  async agentLogout(backend) {
+    const l = await authOf(backend).logout();
+    store.planOf(backend).fiveHour = undefined;
+    store.planOf(backend).weekly = undefined;
+    await refreshBackends();
+    return l;
+  },
+  async refreshAgentLogins() { await refreshBackends(); },
 
   async signOut() {
     GH.cancelDeviceFlow();
@@ -489,16 +532,20 @@ export const api: HelmApi = {
   commitDiff: (repoId, hash, path) => G.commitDiff(repos.must(repoId).localPath, hash, path),
   async listExternalSessions(repoId) {
     const r = repos.must(repoId);
-    const live = await liveClaudeSessions();
-    const own = new Set(store.data.sessions.map((s) => s.claudeSessionId).filter(Boolean));
-    const list = await listSessions({ dir: r.localPath, includeWorktrees: true });
-    return list
-      .filter((x) => !own.has(x.sessionId))
-      .map((x) => ({
-        id: x.sessionId, title: x.customTitle || x.summary || x.firstPrompt || 'Untitled session', firstPrompt: x.firstPrompt, branch: x.gitBranch, cwd: x.cwd,
-        lastModified: x.lastModified, createdAt: x.createdAt, size: x.fileSize, active: live ? live.has(x.sessionId) : Date.now() - x.lastModified < 90_000,
-        ...externalArchiveState(x.sessionId, x.lastModified, live ? live.has(x.sessionId) : Date.now() - x.lastModified < 90_000)
-      }))
+    const live = await liveSessions();
+    const own = new Set(store.data.sessions.map((s) => s.agentSessionId).filter(Boolean));
+    const lists = await Promise.all(registry.all().map(async (b) => ((await b.conversations?.list(r.localPath)) ?? []).map((x) => ({ x, backend: b.id }))));
+    return lists.flat()
+      .filter(({ x }) => !own.has(x.id))
+      .map(({ x, backend }) => {
+        extOwner.set(x.id, backend);
+        const active = live ? live.has(x.id) : Date.now() - x.lastModified < 90_000;
+        return {
+          id: x.id, title: x.title || x.summary || x.firstPrompt || 'Untitled session', firstPrompt: x.firstPrompt, branch: x.branch, cwd: x.cwd,
+          lastModified: x.lastModified, createdAt: x.createdAt, size: x.size, active,
+          ...externalArchiveState(x.id, x.lastModified, active)
+        };
+      })
       .sort((a, b) => b.lastModified - a.lastModified);
   },
   externalTranscript: (repoId, sessionId, opts) => externalTranscript(repoId, sessionId, opts),
@@ -744,10 +791,10 @@ export const api: HelmApi = {
     else openExternalEditor(path ? safePath(s, path) : s.worktree, kind, line);
   },
   async openExternal(url) { if (/^https:\/\//.test(url)) await host.openExternal(url); },
-  projectMemory: (id) => projectMemory(repos.must(id).localPath),
-  readMemory: (id, path) => readMemory(repos.must(id).localPath, path),
-  writeMemory: (id, path, text) => writeMemory(repos.must(id).localPath, path, text),
-  deleteMemory: (id, path) => deleteMemory(repos.must(id).localPath, path),
+  projectMemory: (id, agent) => projectMemory(repos.must(id).localPath, memoryAgent(agent)),
+  readMemory: (id, path, agent) => readMemory(repos.must(id).localPath, path, memoryAgent(agent)),
+  writeMemory: (id, path, text, agent) => writeMemory(repos.must(id).localPath, path, text, memoryAgent(agent)),
+  deleteMemory: (id, path, agent) => deleteMemory(repos.must(id).localPath, path, memoryAgent(agent)),
   async commitPushed(id, hash) {
     const out = await G.git(repos.must(id).localPath, 'branch', '-r', '--contains', hash).catch(() => '');
     return out.split(/\r?\n/).some((l) => l.trim() && !l.includes('->'));
@@ -759,7 +806,7 @@ export const api: HelmApi = {
     if (kind === 'helm') send('navigate', { screen: 'repo', id, tab: 'code' });
     else openExternalEditor(r.localPath, kind);
   },
-  checkClaude: (p) => detectClaude(p),
+  checkAgent: (backend, p) => registry.get(backend).version(p),
 
   async termOpen(id, cols, rows) {
     const cwd = id ? ws(id).worktree : null;
@@ -789,7 +836,9 @@ export const api: HelmApi = {
   },
   async setHunksReviewed(id, ids, reviewed) { sessions.setReviewed(id, ids, reviewed); },
   startReview: (id) => sessions.review(id),
-  async memoryInsights(repoId) {
+  async memoryInsights(repoId, agent) {
+    // Which memories sessions read is worked out from Claude's tool calls; Codex's notes are not tracked that way.
+    if (memoryAgent(agent) !== 'claude') return { usage: {}, issues: [], sessions: 0 };
     const repo = repos.must(repoId);
     const mine = store.data.sessions.filter((s) => s.repoId === repoId);
     const usage: Record<string, MemoryUsage> = {};
@@ -806,9 +855,11 @@ export const api: HelmApi = {
     const issues = memoryHealth({ memories: files, usage, now: Date.now(), recentSessions: mine.filter((s) => s.startedAt >= since).length, exists: (p) => known.has(p) || [...known].some((k) => k.startsWith(p.replace(/\/$/, '') + '/')) });
     return { usage, issues, sessions: mine.length };
   },
-  async rememberInstruction(repoId, target, text) {
+  async rememberInstruction(repoId, target, text, agent) {
     const repo = repos.must(repoId);
-    const file = target === 'user' ? join(home, '.claude', 'CLAUDE.md') : join(repo.localPath, target === 'local' ? 'CLAUDE.local.md' : 'CLAUDE.md');
+    const file = memoryAgent(agent) === 'codex'
+      ? (target === 'user' ? join(codexHome(), 'AGENTS.md') : join(repo.localPath, target === 'local' ? 'AGENTS.override.md' : 'AGENTS.md'))
+      : (target === 'user' ? join(home, '.claude', 'CLAUDE.md') : join(repo.localPath, target === 'local' ? 'CLAUDE.local.md' : 'CLAUDE.md'));
     await appendInstruction(file, text);
     return file;
   },
@@ -885,7 +936,7 @@ export const api: HelmApi = {
     const gitVersion = (await run('git', ['--version']).catch(() => '')).replace(/^git version\s*/, '').trim() || null;
     const info = host.appInfo?.() ?? { version: 'server', packaged: true };
     const text = diagnostics({
-      now: Date.now(), claudeVersion, gitVersion, home, settings: store.data.settings, repos: store.data.repos, sessions: store.data.sessions, log: recentLog(),
+      now: Date.now(), agents: backends.map((b) => ({ label: b.label, version: b.version })), gitVersion, home, settings: store.data.settings, repos: store.data.repos, sessions: store.data.sessions, log: recentLog(),
       app: { version: info.version, electron: info.electron, node: process.versions.node, chrome: info.chrome, platform: process.platform, arch: process.arch, os: (await import('node:os')).release(), packaged: info.packaged }
     });
     return saveFile(`helm-diagnostics-${new Date().toISOString().slice(0, 10)}.md`, text);
@@ -1008,39 +1059,30 @@ async function commitFiles(wt: string, files: string[], message: string) {
 
 // ------------------------------------------------------------------ plan usage
 let lastPlanProbe = 0;
-const idleInput = { [Symbol.asyncIterator]: () => ({ next: () => new Promise<IteratorResult<never>>(() => undefined) }) };
 
 /**
- * Asks Claude Code for the data behind its /usage command. It answers without a message being sent, so the meters
- * can show real numbers at launch instead of waiting for a session to produce a rate-limit event.
+ * Asks a backend that can for the data behind its usage display, without a message being sent, so the meters can show real
+ * numbers at launch instead of waiting for a session to produce a rate-limit event.
  */
 export async function refreshPlan(force = false) {
   const st = store.data.settings;
-  if (st.billingDetected && st.billing !== 'subscription') return;
   if (!force && Date.now() - lastPlanProbe < 60_000) return;
   lastPlanProbe = Date.now();
-  let q: any;
-  try {
-    q = query({ prompt: idleInput as any, options: { cwd: home, settingSources: [], ...(claudeExe() ? { pathToClaudeCodeExecutable: claudeExe() } : {}) } as any });
-    const u: any = await Promise.race([
-      q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }),
-      new Promise((_, rej) => setTimeout(() => rej(new Error('timed out')), 20_000))
-    ]);
-    if (!st.billingDetected) { st.billing = u.subscription_type ? 'subscription' : 'api'; st.billingDetected = true; }
-    const rl = u.rate_limits;
-    if (u.rate_limits_available && rl) {
-      const win = (w: any) => (w && w.utilization != null && w.resets_at ? { util: w.utilization / 100, resetsAt: Date.parse(w.resets_at) / 1000 } : undefined);
-      const plan = store.data.plan;
-      plan.fiveHour = win(rl.five_hour) ?? plan.fiveHour;
-      plan.weekly = win(rl.seven_day) ?? plan.weekly;
-      plan.at = Date.now();
-    }
-    store.save();
-    emitState();
-    void sessions.enforcePlan();
-  } catch { /* experimental API, or Claude Code isn't signed in: the events from sessions still update the meters */ } finally {
-    try { q?.close(); } catch { /* already closed */ }
+  for (const b of registry.all()) {
+    if (!b.planUsage || (b.auth && !logins[b.id]?.loggedIn)) continue;
+    if (b.id === 'claude' && st.billingDetected && st.billing !== 'subscription') continue;
+    const u = await b.planUsage(home);
+    if (!u) continue;
+    if (b.id === 'claude' && !st.billingDetected) { st.billing = u.billing; st.billingDetected = true; }
+    if (b.id !== 'claude') sessions.setBilling(b.id, u.billing);
+    const plan = store.planOf(b.id);
+    plan.fiveHour = u.fiveHour ?? plan.fiveHour;
+    plan.weekly = u.weekly ?? plan.weekly;
+    if (u.fiveHour || u.weekly) plan.at = Date.now();
   }
+  store.save();
+  emitState();
+  void sessions.enforcePlan();
 }
 
 // ------------------------------------------------------------------ currency
@@ -1206,9 +1248,8 @@ export async function start(h: Host) {
   // git takes the token from the environment, so renew it before it lapses rather than when a push fails.
   setInterval(() => void GH.ensureFresh(15 * 60_000), 5 * 60_000);
   if (!GH.getToken() && !process.env.HELM_DEV_SEED) store.data.user = null;
-  claudeVersion = await detectClaude(store.data.settings.claudePath);
+  await refreshBackends();
   host.setTheme?.(store.data.settings.theme);
-  if (host.requireClaudeLogin) { void refreshClaudeLogin(); setInterval(() => void refreshClaudeLogin(), 5 * 60_000); }
   // Sampled all the time, so the System graphs already have a past when the tab is opened.
   void sampleSystem();
   setInterval(() => void sampleSystem(), 5000).unref?.();

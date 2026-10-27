@@ -1,0 +1,3 @@
+## 2026-10-27 · An agent's own logo stands in for the robot glyph: Claude's mark, and OpenAI's (ChatGPT's) for Codex
+The picture beside an agent's messages in a transcript, in the session header, in the activity list and beside an agent's commits is the mark of the service behind it, drawn inline in `ui/AgentLogo.tsx`. Claude's keeps its orange on a tint of it; the OpenAI mark, which ChatGPT uses, takes the text colour so it reads in both themes. An agent with no mark, or a session whose agent is not known, still gets the robot. The shapes are from the LobeHub icon set (MIT); the marks belong to Anthropic and OpenAI and are used only to say which service an agent is.
+Why: user request.

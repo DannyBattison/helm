@@ -14,7 +14,53 @@ export type { Workflow, WorkflowRun, Report, Conflict, Issue, SearchResults, Hea
 export type Status = 'working' | 'attention' | 'ready' | 'idle' | 'error';
 /** ask: approve commands; edits: edits go through, commands ask; plan: plan only; all: nothing asks. */
 export type PermMode = 'ask' | 'edits' | 'plan' | 'all';
-export type ModelAlias = 'sonnet' | 'opus' | 'haiku';
+/** A model's id as its backend knows it ('sonnet', 'gpt-5', …). Which ones exist comes from `AppState.backends`. */
+export type ModelAlias = string;
+
+/** A model an agent backend offers. */
+export interface ModelInfo {
+  id: string;
+  label: string;
+  /** USD per million tokens, input and output. Only used for running estimates between the agent's own cost reports. */
+  price: [number, number];
+}
+
+/** What a backend can do. The interface hides the controls for what it cannot. */
+export interface AgentCapabilities {
+  subagents: boolean;
+  planMode: boolean;
+  effort: boolean;
+  /** Conversations can be copied and continued in a new worktree. */
+  fork: boolean;
+  /** Reports dollar cost itself, so budgets can be enforced. */
+  cost: boolean;
+  /** Reports subscription plan usage windows. */
+  planUsage: boolean;
+}
+
+/** An agent backend as the interface sees it. */
+export interface BackendInfo {
+  id: string;
+  label: string;
+  /** What the agent is called in a conversation: Claude, Codex. */
+  shortName: string;
+  models: ModelInfo[];
+  capabilities: AgentCapabilities;
+  /** The installed command-line version, or null when it uses the copy bundled with helm or none was found. */
+  version: string | null;
+  /** Its command-line tool was found (or it ships with helm). */
+  installed: boolean;
+  /** True when helm can sign this agent in and out (an account to show in Settings). */
+  canSignIn: boolean;
+  /** Who is signed in, when known. Absent when the agent has no account or it could not be checked. */
+  login?: AgentLogin;
+  /** Signed in (or has no account) and installed. */
+  configured: boolean;
+  /** Turned on in Settings → Agents. */
+  enabled: boolean;
+  /** Can start sessions now: configured and turned on. */
+  ready: boolean;
+}
 export type ThemePref = 'dark' | 'light' | 'system';
 
 /** The repository id every free agent carries. It is not a real repository: free agents are not bound to one. */
@@ -160,6 +206,8 @@ export interface Session {
   extras?: ExtraRepo[];
   /** Files uploaded for this session alone, kept in `dir` outside the worktree. */
   uploads?: { dir: string; files: { name: string; size: number }[] };
+  /** Which agent backend runs it. Sessions saved before there were others have none, which means Claude. */
+  backend?: string;
   model: ModelAlias;
   modelName?: string;
   permMode: PermMode;
@@ -170,6 +218,8 @@ export interface Session {
   budget: number;
   /** Context window tokens in use. */
   ctx: number;
+  /** Size of the context window, when the agent says (Claude's is taken as 200k). */
+  ctxMax?: number;
   add: number;
   del: number;
   files: number;
@@ -179,7 +229,7 @@ export interface Session {
   /** When a push for this session last finished, so views showing what is unpushed refresh. */
   pushedAt?: number;
   ask?: PendingAsk;
-  claudeSessionId?: string;
+  agentSessionId?: string;
   editing?: { file: string; line: number };
   error?: string;
   prUrl?: string;
@@ -330,7 +380,13 @@ export interface Settings {
   /** Status colours (#rrggbb) over the defaults, by key: working, attention, ready, error. */
   statusColors: Record<string, string>;
   githubClientId: string;
+  /** Path to the Claude Code executable. */
   claudePath: string;
+  /** Path to the Codex executable; empty finds `codex` on the PATH. */
+  codexPath: string;
+  /** Agents turned on, by id. At least one is always on. A turned-off agent is left out of every model list and cannot start new sessions. */
+  enabledAgents: string[];
+  defaultBackend: string;
   defaultModel: ModelAlias;
   permMode: PermMode;
   alwaysAllow: string[];
@@ -468,11 +524,13 @@ export interface Lifetime {
   cost: number;
 }
 
-/** Whether Claude Code is signed in on a machine where the app has to do that itself (the hosted server). */
-export interface ClaudeLogin {
+/** Whether an agent is signed in, and to what. */
+export interface AgentLogin {
   loggedIn: boolean;
-  /** `none`, the account's login (`claude.ai`), `api key` or `subscription token`. */
+  /** `none`, the account's login (`claude.ai`, `chatgpt`), `api key` or `subscription token`. */
   method: string;
+  /** How usage is paid for: a subscription's plan limits, or per token. Absent when unknown. */
+  billing?: 'subscription' | 'api';
   email?: string;
   plan?: string;
   /** Why it could not be checked, when it could not. */
@@ -511,8 +569,8 @@ export interface WorktreeUsage {
 
 export interface AppState {
   ready: boolean;
-  /** Set only where the app signs Claude Code in itself (the hosted server); absent on the desktop. */
-  claudeLogin?: ClaudeLogin;
+  /** True where nobody is at the machine to sign an agent in (the hosted server), so helm asks for a sign-in before anything else. */
+  agentLoginRequired: boolean;
   user: User | null;
   repos: Repo[];
   sessions: Session[];
@@ -533,7 +591,10 @@ export interface AppState {
   /** Live sessions that would conflict with each other or with their base. */
   forecast: Conflict[];
   update: UpdateStatus;
-  claudeVersion: string | null;
+  backends: BackendInfo[];
+  /** Plan usage windows per backend id. */
+  plans: Record<string, PlanUsage>;
+  /** Claude's, kept for the parts that predate other agents. */
   plan: PlanUsage;
   companion: CompanionState;
   /** USD to other currencies. */
@@ -743,6 +804,8 @@ export interface NewSessionInput {
   repoId: string;
   base: string;
   task: string;
+  /** Which agent backend to use. Unset means the default one in Settings. */
+  backend?: string;
   model: ModelAlias;
   budget: number;
   permMode: PermMode;
@@ -1024,25 +1087,29 @@ export interface HelmApi {
   /** Opens the session's worktree, or one file in it (at a line), in the editor chosen in Settings. */
   openInEditor(sessionId: string, path?: string, line?: number): Promise<void>;
   openExternal(url: string): Promise<void>;
-  /** What Claude Code has remembered about this repository, plus the instruction files (CLAUDE.md) that apply to it. */
-  projectMemory(repoId: string): Promise<ProjectMemory>;
-  readMemory(repoId: string, path: string): Promise<string>;
-  writeMemory(repoId: string, path: string, text: string): Promise<void>;
+  /** What an agent has remembered about this repository, plus the instruction files (CLAUDE.md, AGENTS.md) that apply to it. Claude Code is the default. */
+  projectMemory(repoId: string, agent?: string): Promise<ProjectMemory>;
+  readMemory(repoId: string, path: string, agent?: string): Promise<string>;
+  writeMemory(repoId: string, path: string, text: string, agent?: string): Promise<void>;
   /** Deletes a memory file and its line in the index. */
-  deleteMemory(repoId: string, path: string): Promise<void>;
+  deleteMemory(repoId: string, path: string, agent?: string): Promise<void>;
   /** Whether a commit is on GitHub (reachable from a remote branch). A commit that only exists locally is a 404 there. */
   commitPushed(repoId: string, hash: string): Promise<boolean>;
   /** Opens a folder in the system file manager. */
   openFolder(path: string): Promise<void>;
   /** Opens the repository in the editor chosen in Settings. With helm as the editor it opens the Code tab instead. */
   openRepoInEditor(repoId: string): Promise<void>;
-  checkClaude(path: string): Promise<string | null>;
-  /** Starts signing Claude Code in with a Claude subscription: returns the address to open. */
-  claudeLoginStart(): Promise<{ url: string }>;
-  /** Gives the code shown after approving, and returns where Claude Code stands. Rejects with the reason when it did not sign in. */
-  claudeLoginCode(code: string): Promise<ClaudeLogin>;
-  claudeLoginCancel(): Promise<void>;
-  claudeLogout(): Promise<ClaudeLogin>;
+  /** The version of a backend's command-line tool at this path, or null when it is not there. */
+  checkAgent(backend: string, path: string): Promise<string | null>;
+  /** Starts signing an agent in with its subscription: returns the address to open, and a code to enter there when the agent gives one. */
+  agentLoginStart(backend: string): Promise<{ url: string; code?: string; needsCode: boolean }>;
+  /** For an agent whose sign-in ends with a code pasted back (Claude): gives it, and returns where the agent stands. Rejects with the reason when it did not sign in. */
+  agentLoginCode(backend: string, code: string): Promise<AgentLogin>;
+  agentLoginCancel(backend: string): Promise<void>;
+  /** Signs an agent out of its account. */
+  agentLogout(backend: string): Promise<AgentLogin>;
+  /** Checks again who each agent is signed in as. */
+  refreshAgentLogins(): Promise<void>;
 
   termOpen(sessionId: string | null, cols: number, rows: number): Promise<string>;
   termWrite(id: string, data: string): Promise<void>;
@@ -1063,7 +1130,7 @@ export interface HelmApi {
   /** Carries on a session started outside helm, in its own worktree, from a copy of its conversation. */
   continueExternal(repoId: string, externalId: string, task: string): Promise<string>;
   /** The same task started in several sessions, one per variant, to compare. */
-  createGroup(input: NewSessionInput, variants: { model: ModelAlias; effort?: Effort }[]): Promise<string[]>;
+  createGroup(input: NewSessionInput, variants: { backend?: string; model: ModelAlias; effort?: Effort }[]): Promise<string[]>;
   /** Keeps one session of a group and archives the rest. */
   keepFromGroup(group: string, keepId: string): Promise<void>;
   revertHunk(sessionId: string, path: string, hunk: DiffHunk): Promise<void>;
@@ -1074,9 +1141,10 @@ export interface HelmApi {
   /** Searches conversations, commit messages and (for a session or repository) code. A workspace id is a session id, or `repo:<owner/name>`. */
   searchAll(query: string, workspace?: string): Promise<SearchResults>;
   /** Which memories sessions have read, and what looks wrong with them: stale, mentioning files that are gone, or reading alike. */
-  memoryInsights(repoId: string): Promise<{ usage: Record<string, MemoryUsage>; issues: HealthIssue[]; sessions: number }>;
+  memoryInsights(repoId: string, agent?: string): Promise<{ usage: Record<string, MemoryUsage>; issues: HealthIssue[]; sessions: number }>;
   /** Adds a line to the "Learned in helm" list in the repository's CLAUDE.md, its CLAUDE.local.md, or your own ~/.claude/CLAUDE.md. Resolves to the file. */
-  rememberInstruction(repoId: string, target: 'repo' | 'local' | 'user', text: string): Promise<string>;
+  /** Adds a standing instruction to the agent's instructions file (CLAUDE.md for Claude Code, AGENTS.md for Codex). */
+  rememberInstruction(repoId: string, target: 'repo' | 'local' | 'user', text: string, agent?: string): Promise<string>;
   /** Every session worktree with its size, and how much of it is build output that can go. Slow the first time; remembered for a few minutes. */
   worktreeUsage(refresh?: boolean): Promise<WorktreeUsage[]>;
   /** Deletes node_modules, build output and the like from a worktree, only where git ignores them. Resolves to bytes freed. */

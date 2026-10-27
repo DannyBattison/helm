@@ -1,0 +1,3 @@
+## 2026-10-27 · When ChatGPT refuses a device-code sign-in, say what to turn on and what to do instead
+ChatGPT only allows the device-code sign-in Codex uses when an account setting allows it (a workspace admin may have to allow it too). Codex passes the refusal on as "Enable device code sign-in for Codex … in ChatGPT Security Settings, then run codex login --device-auth again", which does not fit a server with no terminal. helm now adds: turn it on in ChatGPT → Settings → Security, or set `OPENAI_API_KEY` where helm runs and restart it so Codex signs in with that key (billed per token). A refusal that arrives after the user approves is kept and shown under the Codex account until the next try.
+Why: user request, after seeing the message on the hosted server.

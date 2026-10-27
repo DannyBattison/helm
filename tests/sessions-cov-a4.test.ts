@@ -47,7 +47,8 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   renameSession: async (...a: any[]) => { fake.state.renamed.push(a); }
 }));
 
-import { claudeProjectDir, SessionManager } from '../src/core/sessions';
+import { SessionManager } from '../src/core/sessions';
+import { claudeProjectDir } from '../src/core/claudeBackend';
 import { Store } from '../src/core/store';
 import { FREE_ID, type NewSessionInput } from '../src/shared/types';
 
@@ -194,7 +195,7 @@ describe('fork and continue defaults', () => {
   });
 
   it('forks a conversation from the start of a message that is the second of two identical ones', async () => {
-    const id = await sm.create(input(), { claude: async () => 'dup' });
+    const id = await sm.create(input(), { conversation: async () => 'dup' });
     await sm.stop(id);
     const t = await store.transcript(id);
     t.push({ k: 'user', t: 1, text: 'Fix the thing' } as any);

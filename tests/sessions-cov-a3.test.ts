@@ -48,7 +48,8 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   renameSession: async (...a: any[]) => { fake.state.renamed.push(a); }
 }));
 
-import { claudeProjectDir, SessionManager } from '../src/core/sessions';
+import { SessionManager } from '../src/core/sessions';
+import { claudeProjectDir } from '../src/core/claudeBackend';
 import { Store } from '../src/core/store';
 import { FREE_ID, type NewSessionInput } from '../src/shared/types';
 
@@ -162,7 +163,7 @@ describe('the queue and release', () => {
 
 describe('fork and review edge cases', () => {
   it('says so when Claude Code\'s project folder does not exist at all', async () => {
-    const id = await sm.create(input(), { claude: async () => 'src-x' });
+    const id = await sm.create(input(), { conversation: async () => 'src-x' });
     await sm.stop(id);
     fake.state.msgs = [{ type: 'assistant', uuid: 'a0' }, { type: 'user', uuid: 'u0', message: { content: 'Fix the thing' } }];
     const home = process.env.HOME;
@@ -195,7 +196,7 @@ describe('the run loop', () => {
     await until(() => store.data.settings.billingDetected);
     expect(store.data.settings.billing).toBe('subscription');
     q().emit({ type: 'system', subtype: 'init', session_id: 'c1b', model: 'm', apiKeySource: 'user' });
-    await until(() => sm.get(a)!.claudeSessionId === 'c1b');
+    await until(() => sm.get(a)!.agentSessionId === 'c1b');
     expect(store.data.settings.billing).toBe('subscription');
     store.data.settings.billingDetected = false;
     await sm.create(input({ task: 'Two' }));
@@ -330,7 +331,7 @@ describe('subagents in the run loop', () => {
     const id = await sm.create(input());
     const s = sm.get(id)!;
     q().emit({ type: 'system', subtype: 'init', session_id: 'claude-sync', model: 'm', apiKeySource: 'none' });
-    await until(() => s.claudeSessionId);
+    await until(() => s.agentSessionId);
     await startAgent();
     await until(() => s.subagents.length === 1);
     q().emit({ type: 'system', subtype: 'task_started', tool_use_id: 'sa1', task_id: 'ag-1' });
@@ -362,7 +363,7 @@ describe('subagents in the run loop', () => {
     const id = await sm.create(input());
     const s = sm.get(id)!;
     q().emit({ type: 'system', subtype: 'init', session_id: 'cs', model: 'm', apiKeySource: 'none' });
-    await until(() => s.claudeSessionId);
+    await until(() => s.agentSessionId);
     await startAgent();
     await until(() => s.subagents.length === 1);
     s.subagents[0].agentId = 'ag';

@@ -1,7 +1,6 @@
 import { mcpConfig } from '../shared/mcp';
-import { forkSession, getSessionInfo, getSessionMessages, getSubagentMessages, query, renameSession, type Query, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
-import { copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
-import { homedir, tmpdir } from 'node:os';
+import { copyFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, posix, relative, resolve, win32 } from 'node:path';
 import { fmtMoney } from '../shared/money';
 import { auditText } from '../shared/redact';
@@ -10,6 +9,9 @@ import { stuckReason } from '../shared/stuck';
 import { REVIEW_SCHEMA, parseReview, reviewPrompt } from '../shared/selfreview';
 import { commandSummary } from '../shared/commandSummary';
 import { FREE_ID, freeRepo, sessionTitle, MAX_UPLOAD_FILES, MAX_UPLOAD_TOTAL, type ActivityEvent, type Checkpoint, type Effort, type ExtraRepo, type Repo, type MessageImage, type ModelAlias, type NewSessionInput, type PendingAsk, type PermMode, type Session, type Status, type Subagent, type TranscriptEvent } from '../shared/types';
+import { BackendRegistry, type AgentBackend, type AgentBlock, type AgentEvent, type AgentHandle, type AgentToolResult, type ToolDecision } from './backend';
+import { ClaudeBackend } from './claudeBackend';
+import { COMMAND_TOOLS, EDIT_TOOLS, convertMessages, rel, trunc } from './transcript';
 import { artifactDir, dropArtifacts, ensureArtifactDir } from './artifacts';
 import * as G from './git';
 import { supplyRepoArtifacts } from './repoartifacts';
@@ -28,38 +30,6 @@ export interface Hooks {
 /** Added to the system prompt: a subagent reports to the agent that started it, which keeps going. */
 const HAND_BACK = 'A subagent hands its result back to you when it finishes: end its task with a clear final report, and when you receive a subagent\'s result, carry on from it (use it, start the next step or summarise it for the user) rather than stopping.';
 
-/** Input stream for a streaming-mode query. */
-const sdkMode = (m: PermMode) => (m === 'plan' ? 'plan' : m === 'edits' ? 'acceptEdits' : m === 'all' ? 'bypassPermissions' : 'default') as 'plan' | 'acceptEdits' | 'bypassPermissions' | 'default';
-
-class InputQueue implements AsyncIterable<SDKUserMessage> {
-  private items: SDKUserMessage[] = [];
-  private waiters: ((r: IteratorResult<SDKUserMessage>) => void)[] = [];
-  private closed = false;
-  push(text: string, images: MessageImage[] = []) {
-    const content: any = images.length
-      ? [...images.map((i) => ({ type: 'image', source: { type: 'base64', media_type: i.mediaType, data: i.data } })), { type: 'text', text: text || 'See the attached image.' }]
-      : text;
-    const m: SDKUserMessage = { type: 'user', message: { role: 'user', content }, parent_tool_use_id: null };
-    const w = this.waiters.shift();
-    if (w) w({ value: m, done: false });
-    else this.items.push(m);
-  }
-  close() {
-    this.closed = true;
-    for (const w of this.waiters.splice(0)) w({ value: undefined as any, done: true });
-  }
-  [Symbol.asyncIterator](): AsyncIterator<SDKUserMessage> {
-    return {
-      next: () => {
-        const v = this.items.shift();
-        if (v) return Promise.resolve({ value: v, done: false });
-        if (this.closed) return Promise.resolve({ value: undefined as any, done: true });
-        return new Promise((r) => this.waiters.push(r));
-      }
-    };
-  }
-}
-
 interface AskWaiter {
   ask: PendingAsk;
   scope: 'session' | 'repo' | 'plan' | 'tool';
@@ -70,9 +40,7 @@ interface AskWaiter {
 }
 
 interface Runtime {
-  q: Query;
-  queue: InputQueue;
-  abort: AbortController;
+  agent: AgentHandle;
   asks: Map<string, AskWaiter>;
   turnCost: number;
   baseCost: number;
@@ -92,35 +60,18 @@ interface Runtime {
   admitted: Set<string>;
 }
 
-// Rough list prices, USD per million tokens. Only used between result messages; the SDK's total replaces it.
-const PRICE: Record<string, [number, number]> = { opus: [15, 75], sonnet: [3, 15], haiku: [1, 5] };
 
 const SAFE_CMD = /^(ls|dir|pwd|cat|head|tail|wc|echo|which|where|type|tree|file|stat|date|whoami|git (status|diff|log|show|branch|rev-parse|ls-files|blame|remote -v|config --get)|rg|grep|find(?!.*(-delete|-exec)))(\s|$)/;
-const COMMAND_TOOLS = new Set(['Bash', 'PowerShell']);
-const EDIT_TOOLS = new Set(['Edit', 'MultiEdit', 'Write', 'NotebookEdit']);
-
-const isWin = (p: string) => /^[A-Za-z]:[\\/]/.test(p);
-/** A path relative to the worktree, with forward slashes. Windows-style paths are understood on any platform, as session files can come from another machine. */
-const rel = (wt: string, p: string) => {
-  if (!p) return p;
-  const api = isWin(wt) || isWin(p) ? win32 : posix;
-  const r = api.isAbsolute(p) ? api.relative(wt, p) : p;
-  return (r.startsWith('..') ? p : r).split(api.sep).join('/');
-};
 const inside = (wt: string, p: string) => {
   const r = relative(wt, resolve(wt, p));
   return !r.startsWith('..') && !isAbsolute(r);
 };
-const trunc = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').split('-').slice(0, 4).join('-') || 'session';
-
-/** Claude Code files a project's sessions under ~/.claude/projects/<path with every non-alphanumeric turned into a dash>. */
-export const claudeProjectDir = (path: string) => join(homedir(), '.claude', 'projects', resolve(path).replace(/[^a-zA-Z0-9]/g, '-'));
 
 /** Things a new session can start with beyond a task: a copied conversation, a worktree seeded from a checkpoint, where it came from. */
 export interface CreateExtra {
-  /** Runs once the worktree exists. Returns the Claude Code session to resume, or nothing to start a new conversation. */
-  claude?: (worktree: string) => Promise<string | undefined>;
+  /** Runs once the worktree exists. Returns the backend's conversation to resume, or nothing to start a new conversation. */
+  conversation?: (worktree: string) => Promise<string | undefined>;
   /** Start the worktree from this checkpoint commit instead of from the base. */
   seed?: string;
   parentId?: string;
@@ -129,19 +80,34 @@ export interface CreateExtra {
   effort?: Effort;
 }
 
-export const MODEL_ALIAS: Record<ModelAlias, string> = { sonnet: 'sonnet', opus: 'opus', haiku: 'haiku' };
-
 export class SessionManager {
   private rt = new Map<string, Runtime>();
   /** True while helm is quitting: ending the agents must not rewrite what the sessions were doing. */
   private quitting = false;
   /** Plan windows the user chose to continue past, keyed to the window's reset time so it lapses on reset. */
-  private planOverride: Partial<Record<'fiveHour' | 'weekly', number>> = {};
-  constructor(private store: Store, private hooks: Hooks) {}
+  private planOverride: Record<string, number> = {};
+  /** How each backend other than Claude is paid for, as its sign-in reports it. Claude's is `settings.billing`. */
+  private billings: Record<string, 'subscription' | 'api'> = {};
+  private registry: BackendRegistry;
+  constructor(private store: Store, private hooks: Hooks, registry?: BackendRegistry) {
+    this.registry = registry ?? new BackendRegistry([new ClaudeBackend({ sdk: () => this.store.data.settings.claudePath || this.hooks.claudePath(), cli: () => this.store.data.settings.claudePath || undefined })]);
+  }
+
+  /** Where the session's backend keeps its conversations. Only called for sessions that have one. */
+  private conversationsOf(s: Pick<Session, 'backend'>) {
+    const c = this.backendOf(s).conversations;
+    if (!c) throw new Error('This agent keeps no conversations helm can read.');
+    return c;
+  }
+
+  /** The backend a session runs on. */
+  private backendOf(s: Pick<Session, 'backend'>): AgentBackend { return this.registry.get(s.backend); }
 
   get sessions() { return this.store.data.sessions; }
   private usd = (v: number, whole = false) => fmtMoney(v, this.store.data.settings.currency, this.store.data.fx.rates, { whole });
-  private get billing() { return this.store.data.settings.billing; }
+  /** Subscription limits or per-token cost: the user's setting for Claude, what the account reports for any other agent. */
+  private billingOf(backend: string): 'subscription' | 'api' { return backend === 'claude' ? this.store.data.settings.billing : this.billings[backend] ?? 'subscription'; }
+  setBilling(backend: string, b: 'subscription' | 'api') { this.billings[backend] = b; }
   get = (id: string) => this.sessions.find((s) => s.id === id);
   /** The session's repository. A free agent gets a stand-in whose folder is its own, so git commands there run in its folder. */
   repoOf = (s: Session) => (s.free ? freeRepo(s.worktree) : this.store.data.repos.find((r) => r.id === s.repoId)!);
@@ -210,6 +176,10 @@ export class SessionManager {
   async create(input: NewSessionInput, extra: CreateExtra = {}): Promise<string> {
     this.held = false;
     const free = input.repoId === FREE_ID;
+    const backendId = this.registry.get(input.backend || this.store.data.settings.defaultBackend).id;
+    const on = this.store.data.settings.enabledAgents;
+    if (on && !on.includes(backendId)) throw new Error(`${this.registry.get(backendId).label} is turned off. Turn it on under Settings → Agents, or pick another agent.`);
+    const modelId = this.registry.model(backendId, input.model).id;
     const repo = free ? undefined : this.store.data.repos.find((r) => r.id === input.repoId);
     if (!free && !repo) throw new Error('Repository not found');
     const st = this.store.data.settings;
@@ -220,7 +190,7 @@ export class SessionManager {
     // First, so a file that is refused stops the session before any worktree is made.
     const uploads = await this.saveUploads(id, input.files);
     let branch = '', wt = '', remoteBase = '';
-    let claudeSessionId: string | undefined;
+    let agentSessionId: string | undefined;
     const extras: ExtraRepo[] = [];
     if (free) {
       // A folder of its own: one helm makes (with local git, so changes and checkpoints work), or one of yours, left as it is.
@@ -250,7 +220,7 @@ export class SessionManager {
           if (!er) throw new Error('Repository not found: ' + rid);
           extras.push(await this.addExtra(er, id, branch));
         }
-        claudeSessionId = await extra.claude?.(wt);
+        agentSessionId = await extra.conversation?.(wt);
       } catch (e) {
         await G.removeWorktree(repo!.localPath, wt, branch);
         for (const x of extras) await G.removeWorktree(this.store.data.repos.find((r) => r.id === x.repoId)!.localPath, x.worktree, x.branch);
@@ -261,9 +231,9 @@ export class SessionManager {
     const now = Date.now();
     const s: Session = {
       id, repoId: free ? FREE_ID : repo!.id, free: free ? { managed: !input.folder } : undefined, status: 'working', task: input.task, step: 'Starting', branch, base: remoteBase, worktree: wt,
-      model: input.model, permMode: input.permMode, startedAt: now, tokens: { input: 0, output: 0, cacheRead: 0 }, cost: 0, budget: input.budget,
+      backend: backendId, model: modelId, permMode: input.permMode, startedAt: now, tokens: { input: 0, output: 0, cacheRead: 0 }, cost: 0, budget: input.budget,
       lastAccess: now, ctx: 0, add: 0, del: 0, files: 0, filesTouched: {}, timeline: [{ t: now, status: 'working' }], commits: [], removeAfterMerge: st.removeAfterMerge, deleteBranchAfterMerge: st.deleteBranchAfterMerge, subagents: [],
-      extras: extras.length ? extras : undefined, uploads, claudeSessionId, effort: extra.effort, parentId: extra.parentId, group: extra.group, source: extra.source
+      extras: extras.length ? extras : undefined, uploads, agentSessionId, effort: extra.effort, parentId: extra.parentId, group: extra.group, source: extra.source
     };
     s.source ??= input.source;
     s.automation = input.automation;
@@ -403,46 +373,6 @@ export class SessionManager {
     this.touch();
   }
 
-  /**
-   * Copies a Claude Code conversation (optionally only up to a message) so a new worktree can resume it. The copy is written to the
-   * project folder of the source, then moved to the folder Claude Code uses for the new worktree.
-   */
-  private async adoptConversation(sourceId: string, sourceDir: string, destWorktree: string, upTo: string | undefined, title: string): Promise<string> {
-    const forked = await forkSession(sourceId, { dir: sourceDir, upToMessageId: upTo, title });
-    const file = forked.sessionId + '.jsonl';
-    let from = join(claudeProjectDir(sourceDir), file);
-    if (!(await G.fileExists(from))) {
-      // The folder name is not always the plain encoding (long paths are shortened), so look for the file.
-      const root = join(homedir(), '.claude', 'projects');
-      from = '';
-      for (const d of await readdir(root).catch(() => [] as string[])) if (await G.fileExists(join(root, d, file))) { from = join(root, d, file); break; }
-    }
-    if (!from) throw new Error('The copy of the conversation was made but could not be found on disk.');
-    const to = join(claudeProjectDir(destWorktree), file);
-    await mkdir(dirname(to), { recursive: true });
-    await copyFile(from, to);
-    return forked.sessionId;
-  }
-
-  /** The uuid of the message just before your n-th identical message, so a fork can stop short of it. null if it is the first message, undefined if it is not found. */
-  private async messageBefore(claudeId: string, dir: string, text: string, occurrence: number): Promise<string | null | undefined> {
-    const msgs = (await getSessionMessages(claudeId, { dir })) as any[];
-    const body = (m: any) => {
-      const c = m.message?.content;
-      if (typeof c === 'string') return c;
-      if (!Array.isArray(c) || c.some((b: any) => b.type === 'tool_result')) return null;
-      return c.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n');
-    };
-    let seen = 0;
-    for (let i = 0; i < msgs.length; i++) {
-      if (msgs[i].type !== 'user' || msgs[i].parent_tool_use_id) continue;
-      const t = body(msgs[i]);
-      if (t == null || t.trim() !== text.trim()) continue;
-      if (++seen === occurrence) return i === 0 ? null : msgs[i - 1].uuid;
-    }
-    return undefined;
-  }
-
   async fork(id: string, index: number | null, task: string): Promise<string> {
     const s = this.get(id);
     if (!s) throw new Error('Session not found');
@@ -454,44 +384,47 @@ export class SessionManager {
     let seed: string | undefined;
     if (ev?.k === 'user' && ev.cp && !s.worktreeGone) seed = (await listCheckpoints(s.worktree, id)).find((c) => c.n === ev.cp)?.commit;
     let upTo: string | null | undefined;
-    if (ev?.k === 'user' && s.claudeSessionId) {
+    if (ev?.k === 'user' && s.agentSessionId) {
       const occurrence = t.slice(0, index! + 1).filter((e) => e.k === 'user' && e.text.trim() === ev.text.trim()).length;
-      upTo = await this.messageBefore(s.claudeSessionId, s.worktree, ev.text, occurrence);
-      if (upTo === undefined) throw new Error('Could not find that message in the Claude Code conversation, so it cannot be forked from there.');
+      upTo = await this.conversationsOf(s).messageBefore(s.agentSessionId, s.worktree, ev.text, occurrence);
+      if (upTo === undefined) throw new Error('Could not find that message in the agent\'s conversation, so it cannot be forked from there.');
     }
-    const claude = s.claudeSessionId && upTo !== null
-      ? (wt: string) => this.adoptConversation(s.claudeSessionId!, s.worktree, wt, upTo ?? undefined, `Fork of ${sessionTitle(s)}`)
+    const conversation = s.agentSessionId && upTo !== null
+      ? (wt: string) => this.conversationsOf(s).fork({ sourceId: s.agentSessionId!, sourceDir: s.worktree, destDir: wt, upToMessageId: upTo ?? undefined, title: `Fork of ${sessionTitle(s)}` })
       : undefined;
-    return this.create({ repoId: s.repoId, base: seed || s.worktreeGone ? s.base : s.branch, task: task.trim(), model: s.model, budget: s.budget, permMode: s.permMode }, { seed, claude, parentId: s.id, effort: s.effort });
+    return this.create({ repoId: s.repoId, base: seed || s.worktreeGone ? s.base : s.branch, task: task.trim(), backend: s.backend, model: s.model, budget: s.budget, permMode: s.permMode }, { seed, conversation, parentId: s.id, effort: s.effort });
   }
 
   async continueExternal(repoId: string, externalId: string, task: string): Promise<string> {
     const repo = this.store.data.repos.find((r) => r.id === repoId);
     if (!repo) throw new Error('Repository not found');
     if (!task.trim()) throw new Error('Say what the session should do next.');
-    const info = await getSessionInfo(externalId);
-    if (!info) throw new Error('That Claude Code session could not be found.');
-    if ((info.fileSize ?? 0) > 300 * 1024 * 1024) throw new Error('That conversation file is over 300 MB, too big to copy. Start a new session and tell it what you were doing.');
+    const st0 = this.store.data.settings;
+    const be = this.registry.get(st0.defaultBackend);
+    const store = this.conversationsOf({ backend: be.id });
+    const info = await store.info(externalId);
+    if (!info) throw new Error('That session could not be found.');
+    if (info.size > 300 * 1024 * 1024) throw new Error('That conversation file is over 300 MB, too big to copy. Start a new session and tell it what you were doing.');
     const dir = info.cwd || repo.localPath;
     const st = this.store.data.settings;
     // Carry on from the branch it was on when that still exists, otherwise from the default branch.
-    const branch = info.gitBranch;
+    const branch = info.branch;
     let base = repo.defaultBranch;
     if (branch && !branch.startsWith(st.branchPrefix)) {
       if (await G.gitOk(repo.localPath, 'rev-parse', '--verify', '--quiet', 'refs/heads/' + branch)) base = branch;
       else if (await G.gitOk(repo.localPath, 'rev-parse', '--verify', '--quiet', 'refs/remotes/origin/' + branch)) base = 'origin/' + branch;
     }
-    return this.create({ repoId, base, task: task.trim(), model: st.defaultModel, budget: st.sessionBudget, permMode: st.permMode },
-      { claude: (wt) => this.adoptConversation(externalId, dir, wt, undefined, `${info.customTitle || info.summary || 'Session'} (in helm)`) });
+    return this.create({ repoId, base, task: task.trim(), backend: be.id, model: st.defaultModel, budget: st.sessionBudget, permMode: st.permMode },
+      { conversation: (wt) => store.fork({ sourceId: externalId, sourceDir: dir, destDir: wt, title: `${info.title || info.summary || 'Session'} (in helm)` }) });
   }
 
-  async createGroup(input: NewSessionInput, variants: { model: ModelAlias; effort?: Effort }[]): Promise<string[]> {
+  async createGroup(input: NewSessionInput, variants: { backend?: string; model: ModelAlias; effort?: Effort }[]): Promise<string[]> {
     if (variants.length < 2) throw new Error('Pick at least two variants to compare.');
     if (input.repoId === FREE_ID) throw new Error('Comparing runs needs a repository.');
     const group = uid();
     const ids: string[] = [];
     // One after another: each session's name is made unique against the ones that exist.
-    for (const v of variants.slice(0, 6)) ids.push(await this.create({ ...input, model: v.model }, { group, effort: v.effort }));
+    for (const v of variants.slice(0, 6)) ids.push(await this.create({ ...input, backend: v.backend ?? input.backend, model: v.model }, { group, effort: v.effort }));
     return ids;
   }
 
@@ -522,29 +455,7 @@ export class SessionManager {
   }
 
   private async runReview(s: Session, head: string) {
-    const settings = this.store.data.settings;
-    let structured: unknown, text = '', cost = 0, failure = '';
-    let q: Query | undefined;
-    try {
-      const options: any = {
-        cwd: s.worktree, model: MODEL_ALIAS[s.model], maxTurns: 30, permissionMode: 'dontAsk', settingSources: ['user', 'project', 'local'],
-        allowedTools: ['Read', 'Grep', 'Glob', 'Bash(git diff:*)', 'Bash(git log:*)', 'Bash(git show:*)', 'Bash(git merge-base:*)', 'Bash(git status:*)', 'Bash(git blame:*)', 'Bash(ls:*)', 'Bash(cat:*)', 'Bash(rg:*)', 'Bash(grep:*)'],
-        disallowedTools: ['Edit', 'MultiEdit', 'Write', 'NotebookEdit', 'Agent', 'Task'],
-        outputFormat: { type: 'json_schema', schema: REVIEW_SCHEMA },
-        env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'helm' }
-      };
-      const exe = settings.claudePath || this.hooks.claudePath();
-      if (exe) options.pathToClaudeCodeExecutable = exe;
-      q = query({ prompt: reviewPrompt(s.task, s.base), options });
-      for await (const m of q as AsyncIterable<any>) {
-        if (m.type !== 'result') continue;
-        structured = m.structured_output;
-        text = String(m.result || '');
-        cost = Number(m.total_cost_usd) || 0;
-        if (m.is_error) failure = text || String(m.subtype || 'The reviewer stopped early');
-      }
-    } catch (e: any) { failure = String(e?.message || e); }
-    finally { try { q?.close(); } catch { /* already closed */ } }
+    const { structured, text, cost, failure } = await this.backendOf(s).review({ cwd: s.worktree, model: s.model, prompt: reviewPrompt(s.task, s.base), schema: REVIEW_SCHEMA });
     if (cost) { this.store.addUsage(s.repoId, cost, 0); this.store.addDaily(s.repoId, s.model, { cost }); }
     const parsed = failure ? null : parseReview(structured, text);
     s.review = parsed
@@ -597,16 +508,20 @@ export class SessionManager {
   private baseAppend(s: Session, artifacts: string): string {
     const st = this.store.data.settings;
     const art = `To hand the user a file (a generated image, chart, report, export), write it to ${artifacts} (not into the worktree), then link it in your reply as [label](artifact:file.ext), using a plain file name without spaces. For an image use ![description](artifact:file.png) and helm shows it in the chat; any other file becomes a download button. These files are temporary and are deleted with the session.`;
+    // Claude has a dedicated question tool and helm limits its subagents; another agent is simply told to ask, and manages its own helpers.
+    const be = this.backendOf(s);
+    const ask = be.id === 'claude' ? 'ask with the AskUserQuestion tool' : 'ask the user';
+    const subs = be.capabilities.subagents;
     if (s.free) {
       return [
         `You are a free agent running inside helm: you are not tied to any repository. Your working directory is ${s.worktree}.`,
         s.free.managed
           ? 'It is a folder made for this task alone. git is set up in it so the user can see what you changed; you may commit, but you do not have to. There is no remote, so do not push or open pull requests.'
           : 'It is one of the user\'s own folders, and you are working in it directly with nothing to undo your changes, so be careful with anything destructive. Do not push or open pull requests unless asked.',
-        'Stay in this directory unless the user asks you to work elsewhere. If you need a decision from the user, ask with the AskUserQuestion tool instead of guessing.',
+        `Stay in this directory unless the user asks you to work elsewhere. If you need a decision from the user, ${ask} instead of guessing.`,
         art,
-        `Subagents: at most ${this.sessionLimit(s)} may run at once in this session. Start independent work in parallel only within that limit. ${HAND_BACK}`
-      ].join('\n');
+        subs ? `Subagents: at most ${this.sessionLimit(s)} may run at once in this session. Start independent work in parallel only within that limit. ${HAND_BACK}` : ''
+      ].filter(Boolean).join('\n');
     }
     const others = (s.extras || []).map((x) => `- ${x.repoId}: ${x.worktree} (branch ${x.branch}, based on ${x.base})`);
     return [
@@ -614,63 +529,47 @@ export class SessionManager {
       others.length ? `This session spans more than one repository. Besides this one (${s.repoId}), you have a worktree in each of these, which you may read and edit and commit in (use git -C <path>):\n${others.join('\n')}\nCommit in each repository whose files you changed; each one gets its own pull request.` : '',
       'Commit as you go: make a commit each time a coherent piece of work is done and working, rather than one big commit at the end. Keep commits small with clear messages.',
       st.commitAuthor === 'sole'
-        ? `End every commit message with a blank line and this trailer: "Helm-Session: ${s.id}". Do not add any Co-authored-by trailer. The commits are authored by Claude alone.`
+        ? `End every commit message with a blank line and this trailer: "Helm-Session: ${s.id}". Do not add any Co-authored-by trailer. The commits are authored by ${this.backendOf(s).shortName} alone.`
         : `End every commit message with a blank line and this trailer: "Co-authored-by: helm session ${s.id} <noreply@helm.app>".`,
       st.autoPush && !s.free
         ? 'Do not push and do not open pull requests. helm pushes your branch to GitHub after each commit, and the user opens the pull request from helm.'
         : 'Do not push and do not open pull requests; the user does that from helm after reviewing your changes.',
-      'If you need a decision from the user, ask with the AskUserQuestion tool instead of guessing.',
+      `If you need a decision from the user, ${ask} instead of guessing.`,
       art,
-      `Subagents: at most ${this.sessionLimit(s)} may run at once in this session and ${this.repoLimit(s)} across the repository. Start independent work in parallel only within those limits. ${HAND_BACK}`,
+      subs ? `Subagents: at most ${this.sessionLimit(s)} may run at once in this session and ${this.repoLimit(s)} across the repository. Start independent work in parallel only within those limits. ${HAND_BACK}` : '',
       st.runTests ? 'Before you finish, run the project\'s tests (from package.json, go.mod, Makefile or equivalent) when they exist, and state the result.' : ''
     ].filter(Boolean).join('\n');
   }
 
   private async start(s: Session, first?: string, firstImages: MessageImage[] = []) {
-    const abort = new AbortController();
-    const queue = new InputQueue();
     const settings = this.store.data.settings;
     const artifacts = await ensureArtifactDir(s.id);
     // A worktree made before a file was uploaded gets it when the agent next starts. Files already there are left as the agent has them.
     if (!s.free) await supplyRepoArtifacts(s.repoId, s.worktree, false);
     for (const x of s.extras || []) await supplyRepoArtifacts(x.repoId, x.worktree, false);
-    const rt: Runtime = { q: null as any, queue, abort, asks: new Map(), turnCost: 0, baseCost: s.cost, startCost: s.cost, interrupted: false, budgetPaused: false, toolStart: new Map(), fails: new Map(), lastTools: new Map(), subEvent: new Map(), admitted: new Set() };
-    const options: any = {
-      cwd: s.worktree,
-      model: MODEL_ALIAS[s.model],
-      ...(s.effort ? { effort: s.effort } : {}),
-      permissionMode: sdkMode(s.permMode),
-      // Only permission to switch to Allow everything later in the conversation; the mode itself is what is chosen above.
-      allowDangerouslySkipPermissions: true,
-      abortController: abort,
-      settingSources: ['user', 'project', 'local'],
-      ...(s.uploads || s.extras?.length ? { additionalDirectories: [...(s.uploads ? [s.uploads.dir] : []), ...(s.extras || []).map((x) => x.worktree)] } : {}),
-      systemPrompt: { type: 'preset', preset: 'claude_code', append: this.systemAppend(s, artifacts) },
-      canUseTool: (tool: string, input: Record<string, unknown>, o: any) => this.canUse(s, rt, tool, input, o),
-      hooks: { PreToolUse: [{ matcher: 'Agent|Task', hooks: [async (input: any) => this.checkSubagentLimit(s, rt, input)] }] },
-      env: {
-        ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'helm',
-        ...(settings.commitAuthor === 'sole' ? { GIT_AUTHOR_NAME: 'Claude', GIT_AUTHOR_EMAIL: 'noreply@anthropic.com' } : {})
-      }
-    };
-    const servers = mcpConfig(settings.mcpServers, this.store.data.repos.find((r) => r.id === s.repoId)?.mcpServers);
-    if (Object.keys(servers).length) options.mcpServers = servers;
-    // Only set when on, so a user's own Claude Code setting is never switched off by helm.
-    if (settings.remoteControl) options.settings = { remoteControlAtStartup: true };
-    const exe = settings.claudePath || this.hooks.claudePath();
-    if (exe) options.pathToClaudeCodeExecutable = exe;
-    if (s.claudeSessionId) options.resume = s.claudeSessionId;
-    rt.q = query({ prompt: queue, options });
+    const rt: Runtime = { agent: null as any, asks: new Map(), turnCost: 0, baseCost: s.cost, startCost: s.cost, interrupted: false, budgetPaused: false, toolStart: new Map(), fails: new Map(), lastTools: new Map(), subEvent: new Map(), admitted: new Set() };
+    rt.agent = this.backendOf(s).start({
+      cwd: s.worktree, model: s.model, effort: s.effort, permMode: s.permMode,
+      systemAppend: this.systemAppend(s, artifacts),
+      resume: s.agentSessionId,
+      extraDirs: [...(s.uploads ? [s.uploads.dir] : []), ...(s.extras || []).map((x) => x.worktree)],
+      env: settings.commitAuthor === 'sole' ? { GIT_AUTHOR_NAME: this.backendOf(s).identity.name, GIT_AUTHOR_EMAIL: this.backendOf(s).identity.email } : {},
+      remoteControl: settings.remoteControl,
+      subagentLimit: this.sessionLimit(s),
+      mcpServers: mcpConfig(settings.mcpServers, this.store.data.repos.find((r) => r.id === s.repoId)?.mcpServers),
+      canUseTool: (tool, input, o) => this.canUse(s, rt, tool, input, o),
+      admitSubagent: (id) => this.checkSubagentLimit(s, rt, id)
+    });
     this.rt.set(s.id, rt);
-    if (first) queue.push(first, firstImages);
+    if (first) rt.agent.send(first, firstImages);
     void this.consume(s, rt);
   }
 
   private async consume(s: Session, rt: Runtime) {
     try {
-      for await (const m of rt.q) await this.onMessage(s, rt, m as any);
+      for await (const ev of rt.agent.events) await this.onEvent(s, rt, ev);
     } catch (e: any) {
-      if (!rt.abort.signal.aborted) {
+      if (!rt.agent.closed) {
         s.error = String(e?.message || e);
         await this.push(s.id, { k: 'note', tone: 'error', text: s.error! });
         this.setStatus(s, 'error', trunc(s.error!, 120));
@@ -688,57 +587,58 @@ export class SessionManager {
     }
   }
 
-  private async onMessage(s: Session, rt: Runtime, m: any) {
-    if (m.type === 'system' && m.subtype === 'init') {
-      s.claudeSessionId = m.session_id;
-      s.modelName = m.model;
-      const st = this.store.data.settings;
-      if (!st.billingDetected) {
-        // A Claude login reports no API key; an API key means tokens are paid for.
-        st.billing = m.apiKeySource === 'none' ? 'subscription' : 'api';
-        st.billingDetected = true;
+  private async onEvent(s: Session, rt: Runtime, ev: AgentEvent) {
+    switch (ev.t) {
+      case 'init':
+        s.agentSessionId = ev.sessionId;
+        s.modelName = ev.model;
+        {
+          const st = this.store.data.settings;
+          // A Claude login reports no API key; an API key means tokens are paid for.
+          if (this.backendOf(s).id !== 'claude') { if (ev.billing) this.billings[this.backendOf(s).id] = ev.billing; }
+          else if (!st.billingDetected && ev.billing) { st.billing = ev.billing; st.billingDetected = true; }
+        }
+        this.touch();
+        return;
+      case 'subagent_started': {
+        const a = s.subagents.find((x) => x.id === ev.id);
+        if (a) { a.agentId = ev.agentId; this.touch(); }
+        return;
       }
-      this.touch();
-      return;
+      case 'subagent_progress': return this.onTaskProgress(s, ev);
+      case 'subagent_done': return this.onTaskDone(s, rt, ev);
+      case 'plan_usage': return this.onPlanUsage(s, ev);
+      case 'assistant': return this.onAssistant(s, rt, ev);
+      case 'tool_results': return this.onToolResults(s, rt, ev.results);
+      case 'result': return this.onResult(s, rt, ev);
     }
-    if (m.type === 'system' && m.subtype === 'task_started' && m.tool_use_id) {
-      const a = s.subagents.find((x) => x.id === m.tool_use_id);
-      if (a) { a.agentId = m.task_id; this.touch(); }
-      return;
-    }
-    if (m.type === 'system' && m.subtype === 'task_progress' && m.tool_use_id) return this.onTaskProgress(s, rt, m);
-    if (m.type === 'system' && m.subtype === 'task_notification' && m.tool_use_id) return this.onTaskDone(s, rt, m);
-    if (m.type === 'rate_limit_event') return this.onRateLimit(m.rate_limit_info);
-    if (m.type === 'assistant') return this.onAssistant(s, rt, m);
-    if (m.type === 'user') return this.onToolResults(s, rt, m);
-    if (m.type === 'result') return this.onResult(s, rt, m);
   }
 
-  private async onAssistant(s: Session, rt: Runtime, m: any) {
-    const parent: string | null = m.parent_tool_use_id || null;
+  private async onAssistant(s: Session, rt: Runtime, m: Extract<AgentEvent, { t: 'assistant' }>) {
+    const parent: string | null = m.parentId;
     const sub = parent ? s.subagents.find((x) => x.id === parent) : undefined;
     if (parent && !sub) return;
     if (!parent) this.resumeWorking(s);
     const tkey = sub ? `${s.id}~${sub.id}` : s.id;
-    const u = m.message?.usage;
+    const u = m.usage;
     if (u) {
-      const inp = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0);
+      const inp = u.input + u.cacheWrite;
       s.tokens.input += inp;
-      s.tokens.output += u.output_tokens || 0;
-      s.tokens.cacheRead += u.cache_read_input_tokens || 0;
-      this.store.addLifetimeTokens(s.repoId, inp, u.output_tokens || 0, u.cache_read_input_tokens || 0);
-      if (!sub) s.ctx = inp + (u.cache_read_input_tokens || 0);
-      else sub.tokens += inp + (u.output_tokens || 0);
-      const [pi, po] = PRICE[s.model] || PRICE.sonnet;
-      const est = ((u.input_tokens || 0) * pi + (u.cache_creation_input_tokens || 0) * pi * 1.25 + (u.cache_read_input_tokens || 0) * pi * 0.1 + (u.output_tokens || 0) * po) / 1e6;
+      s.tokens.output += u.output;
+      s.tokens.cacheRead += u.cacheRead;
+      this.store.addLifetimeTokens(s.repoId, inp, u.output, u.cacheRead);
+      if (!sub) { s.ctx = inp + u.cacheRead; if (u.contextWindow) s.ctxMax = u.contextWindow; }
+      else sub.tokens += inp + u.output;
+      const [pi, po] = this.registry.model(s.backend, s.model).price;
+      const est = (u.input * pi + u.cacheWrite * pi * 1.25 + u.cacheRead * pi * 0.1 + u.output * po) / 1e6;
       rt.turnCost += est;
-      this.store.addUsage(s.repoId, est, inp + (u.output_tokens || 0));
-      this.store.addDaily(s.repoId, s.model, { cost: est, input: inp, output: u.output_tokens || 0, cacheRead: u.cache_read_input_tokens || 0 });
+      this.store.addUsage(s.repoId, est, inp + u.output);
+      this.store.addDaily(s.repoId, s.model, { cost: est, input: inp, output: u.output, cacheRead: u.cacheRead });
       s.cost = rt.baseCost + rt.turnCost;
     }
-    for (const b of m.message?.content || []) {
-      if (b.type === 'text' && b.text?.trim()) {
-        await this.push(tkey, { k: 'agent', text: b.text.trim() });
+    for (const b of m.blocks) {
+      if (b.type === 'text') {
+        await this.push(tkey, { k: 'agent', text: b.text });
         this.collectArtifacts(s, b.text);
       } else if (b.type === 'tool_use') {
         await this.onToolUse(s, rt, b, tkey, sub);
@@ -748,7 +648,7 @@ export class SessionManager {
     await this.checkBudget(s, rt);
   }
 
-  private async startSubagent(s: Session, rt: Runtime, b: any, tkey: string, parentSub?: Subagent) {
+  private async startSubagent(s: Session, rt: Runtime, b: Extract<AgentBlock, { type: 'tool_use' }>, tkey: string, parentSub?: Subagent) {
     const input = b.input || {};
     const now = Date.now();
     const a: Subagent = {
@@ -789,11 +689,12 @@ export class SessionManager {
 
   private subSyncAt = new Map<string, number>();
 
-  private async onTaskProgress(s: Session, rt: Runtime, m: any) {
-    const a = s.subagents.find((x) => x.id === m.tool_use_id);
+  private async onTaskProgress(s: Session, m: Extract<AgentEvent, { t: 'subagent_progress' }>) {
+    const a = s.subagents.find((x) => x.id === m.id);
     if (!a) return;
-    if (m.usage) { a.tools = m.usage.tool_uses ?? a.tools; a.tokens = m.usage.total_tokens ?? a.tokens; }
-    if (m.last_tool_name && a.status === 'working') s.step = `${a.description}: ${m.last_tool_name}`;
+    a.tools = m.tools ?? a.tools;
+    a.tokens = m.tokens ?? a.tokens;
+    if (m.lastTool && a.status === 'working') s.step = `${a.description}: ${m.lastTool}`;
     this.touch();
     // Claude Code does not stream a subagent's own messages, so read them from its transcript now and then.
     const last = this.subSyncAt.get(a.id) ?? 0;
@@ -821,10 +722,9 @@ export class SessionManager {
   }
 
   private async doSyncSubagent(s: Session, a: Subagent) {
-    if (!s.claudeSessionId || !a.agentId) return;
+    if (!s.agentSessionId || !a.agentId) return;
     try {
-      const msgs = await getSubagentMessages(s.claudeSessionId, a.agentId, { dir: s.worktree });
-      const events = this.convertMessages(msgs as any[], s.worktree);
+      const events = await this.conversationsOf(s).subagentTranscript(s.agentSessionId, a.agentId, s.worktree);
       const key = `${s.id}~${a.id}`;
       const t = await this.store.transcript(key);
       const next: TranscriptEvent[] = [...(t[0]?.k === 'user' ? [t[0]] : []), ...events];
@@ -836,77 +736,14 @@ export class SessionManager {
     } catch { /* the session file may not be flushed yet; the next sync will catch up */ }
   }
 
-  convertMessages(msgs: any[], wt: string, withUser = false): TranscriptEvent[] {
-    const ev: TranscriptEvent[] = [];
-    const pending = new Map<string, { kind: 'bash' | 'tool'; idx: number; item?: number }>();
-    let group = -1;
-    for (const m of msgs) {
-      const raw = m.message?.content;
-      const content: any[] = Array.isArray(raw) ? raw : typeof raw === 'string' ? [{ type: 'text', text: raw }] : [];
-      if (m.type === 'assistant') {
-        const at = Date.parse(m.timestamp) || undefined;
-        for (const b of content) {
-          if (b.type === 'text' && b.text?.trim()) { ev.push({ k: 'agent', text: b.text.trim(), at }); continue; }
-          if (b.type !== 'tool_use') continue;
-          const input = b.input || {};
-          if (COMMAND_TOOLS.has(b.name)) {
-            pending.set(b.id, { kind: 'bash', idx: ev.push({ k: 'bash', id: b.id, cmd: String(input.command || ''), summary: commandSummary(String(input.command || ''), input.description), out: '', ok: true, meta: '', done: false }) - 1 });
-          } else if (EDIT_TOOLS.has(b.name)) {
-            const file = rel(wt, String(input.file_path || input.notebook_path || ''));
-            const lines: [string, string][] = [];
-            let add = 0, del = 0;
-            const edits = b.name === 'MultiEdit' ? input.edits || [] : b.name === 'Edit' ? [input] : [];
-            if (b.name === 'Write') {
-              const all = String(input.content || '').split('\n');
-              add = all.length;
-              for (const l of all.slice(0, 24)) lines.push(['+', l]);
-            } else for (const e of edits) {
-              const o = String(e.old_string || '').split('\n'), n = String(e.new_string || '').split('\n');
-              if (e.old_string) { del += o.length; for (const l of o.slice(0, 12)) lines.push(['-', l]); }
-              if (e.new_string) { add += n.length; for (const l of n.slice(0, 12)) lines.push(['+', l]); }
-            }
-            ev.push({ k: 'edit', file, add, del, lines: lines.slice(0, 40) });
-            group = -1;
-          } else {
-            const target = trunc(String(input.file_path ?? input.pattern ?? input.path ?? input.url ?? input.query ?? input.description ?? input.prompt ?? ''), 140);
-            const item: [string, string, string] = [b.name, rel(wt, target), ''];
-            const last = ev[ev.length - 1];
-            if (last && last.k === 'tools' && group === ev.length - 1) last.items.push(item);
-            else group = ev.push({ k: 'tools', items: [item] }) - 1;
-            pending.set(b.id, { kind: 'tool', idx: group, item: (ev[group] as any).items.length - 1 });
-          }
-        }
-      } else if (m.type === 'user') {
-        if (withUser) {
-          const text = content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
-          if (text && !/^<(local-command|command-|system-reminder|ide_)/.test(text)) ev.push({ k: 'user', t: 0, text });
-        }
-        for (const b of content) {
-          if (b.type !== 'tool_result') continue;
-          const p = pending.get(b.tool_use_id);
-          if (!p) continue;
-          const text = typeof b.content === 'string' ? b.content : (b.content || []).map((c: any) => c.text || '').join('\n');
-          if (p.kind === 'bash') {
-            const cur = ev[p.idx] as Extract<TranscriptEvent, { k: 'bash' }>;
-            const lines = text.split('\n').map((l: string) => l.trim()).filter(Boolean);
-            ev[p.idx] = { ...cur, out: b.is_error ? trunc(lines[lines.length - 1] || 'failed', 70) : lines.length ? trunc(lines[lines.length - 1], 70) : '✓', ok: !b.is_error, done: true };
-          } else {
-            const cur = ev[p.idx] as Extract<TranscriptEvent, { k: 'tools' }>;
-            const it = cur.items[p.item!];
-            const n = text.split('\n').filter(Boolean).length;
-            it[2] = b.is_error ? 'failed' : it[0] === 'Read' ? `${text.split('\n').length} lines` : it[0] === 'Grep' || it[0] === 'Glob' ? `${n} ${n === 1 ? 'match' : 'matches'}` : '';
-          }
-        }
-      }
-    }
-    return ev;
-  }
+  /** Kept for callers that hold a session manager; the conversion itself lives in transcript.ts. */
+  convertMessages(msgs: any[], wt: string, withUser = false): TranscriptEvent[] { return convertMessages(msgs, wt, withUser); }
 
-  private async onTaskDone(s: Session, rt: Runtime, m: any) {
-    const a = s.subagents.find((x) => x.id === m.tool_use_id);
+  private async onTaskDone(s: Session, rt: Runtime, m: Extract<AgentEvent, { t: 'subagent_done' }>) {
+    const a = s.subagents.find((x) => x.id === m.id);
     if (!a || a.status !== 'working') return;
     if (m.summary) a.summary = trunc(String(m.summary).trim(), 600);
-    await this.finishSubagent(s, rt, a, m.status === 'completed' ? 'done' : m.status === 'stopped' ? 'stopped' : 'failed');
+    await this.finishSubagent(s, rt, a, m.status === 'completed' ? 'done' : m.status);
     // The result goes back to the parent, which continues in a new turn even if its last one had ended.
     if (m.status === 'completed' || m.status === 'failed') this.resumeWorking(s, `Continuing with the result of ${a.description}`);
   }
@@ -917,7 +754,7 @@ export class SessionManager {
     this.setStatus(s, 'working', step ?? 'Continuing');
   }
 
-  private async onToolUse(s: Session, rt: Runtime, b: any, tkey: string, sub?: Subagent) {
+  private async onToolUse(s: Session, rt: Runtime, b: Extract<AgentBlock, { type: 'tool_use' }>, tkey: string, sub?: Subagent) {
     const input = b.input || {};
     const wt = s.worktree;
     const name: string = b.name;
@@ -979,15 +816,13 @@ export class SessionManager {
     s.step = (sub ? `${sub.description}: ` : '') + (verb ? verb + item[1] : 'Using ' + name);
   }
 
-  private async onToolResults(s: Session, rt: Runtime, m: any) {
-    const content = m.message?.content;
-    if (!Array.isArray(content)) return;
-    for (const b of content) {
-      if (b.type !== 'tool_result') continue;
-      const start = rt.toolStart.get(b.tool_use_id);
+  private async onToolResults(s: Session, rt: Runtime, results: AgentToolResult[]) {
+    for (const r of results) {
+      const start = rt.toolStart.get(r.id);
       if (!start) continue;
-      rt.toolStart.delete(b.tool_use_id);
-      const text = typeof b.content === 'string' ? b.content : (b.content || []).map((c: any) => c.text || '').join('\n');
+      rt.toolStart.delete(r.id);
+      const text = r.text;
+      const b = { tool_use_id: r.id, is_error: r.isError };
       const secs = (Date.now() - start.t) / 1000;
       if (b.is_error && start.name) this.countTool(s, start.name, true);
       const meta = secs < 1 ? Math.round(secs * 1000) + 'ms' : secs < 60 ? secs.toFixed(1) + 's' : Math.floor(secs / 60) + 'm ' + Math.round(secs % 60) + 's';
@@ -1139,16 +974,16 @@ export class SessionManager {
     } catch { /* worktree removed */ }
   }
 
-  private async onResult(s: Session, rt: Runtime, m: any) {
-    // The SDK total counts from the start of this run (a resumed session starts again at zero), and is 0 when it reports nothing, as on a subscription. Only a positive total corrects the estimate.
-    if (typeof m.total_cost_usd === 'number' && m.total_cost_usd > 0) {
-      const target = rt.startCost + m.total_cost_usd;
+  private async onResult(s: Session, rt: Runtime, m: Extract<AgentEvent, { t: 'result' }>) {
+    // The agent's total counts from the start of this run (a resumed session starts again at zero), and is 0 when it reports nothing, as on a subscription. Only a positive total corrects the estimate.
+    if (m.costUsd != null && m.costUsd > 0) {
+      const target = rt.startCost + m.costUsd;
       const delta = target - rt.baseCost - rt.turnCost;
       if (Math.abs(delta) > 1e-6) { this.store.addUsage(s.repoId, delta, 0); this.store.addDaily(s.repoId, s.model, { cost: delta }); }
       rt.baseCost = target;
       rt.turnCost = 0;
       s.cost = rt.baseCost;
-    } else if (typeof m.total_cost_usd === 'number') {
+    } else if (m.costUsd != null) {
       rt.baseCost += rt.turnCost;
       rt.turnCost = 0;
     }
@@ -1167,8 +1002,8 @@ export class SessionManager {
       this.setStatus(s, 'idle', 'Paused. Reply to continue');
       return;
     }
-    if (m.is_error) {
-      const msg = String(m.result || m.subtype || 'The run failed');
+    if (m.isError) {
+      const msg = m.text;
       s.error = msg;
       await this.push(s.id, { k: 'note', tone: 'error', text: msg });
       this.setStatus(s, 'error', trunc(msg, 120));
@@ -1197,50 +1032,49 @@ export class SessionManager {
   }
 
   // ---------------------------------------------------------------- budget
-  private onRateLimit(info: any) {
-    if (!info) return;
-    const w = info.unifiedWindows || {};
-    const plan = this.store.data.plan;
-    const pick = (key: string, type: string) => w[key] ?? (info.rateLimitType === type ? info : undefined);
-    const five = pick('five_hour', 'five_hour');
-    const week = pick('seven_day', 'seven_day');
-    if (five?.utilization != null && five.resetsAt) plan.fiveHour = { util: five.utilization, resetsAt: five.resetsAt };
-    if (week?.utilization != null && week.resetsAt) plan.weekly = { util: week.utilization, resetsAt: week.resetsAt };
+  private onPlanUsage(s: Session, m: Extract<AgentEvent, { t: 'plan_usage' }>) {
+    const plan = this.store.planOf(this.backendOf(s).id);
+    if (m.fiveHour) plan.fiveHour = m.fiveHour;
+    if (m.weekly) plan.weekly = m.weekly;
     plan.at = Date.now();
     this.touch();
     void this.enforcePlan();
   }
 
-  /** Pauses running sessions when a subscription window passes the percentage the user set. */
+  /** Pauses running sessions when a subscription window passes the percentage the user set. Each agent has windows of its own. */
   async enforcePlan() {
     const st = this.store.data.settings;
-    if (st.billing !== 'subscription') return;
-    const plan = this.store.data.plan;
-    const checks: ['fiveHour' | 'weekly', number, string][] = [['fiveHour', st.planPause5h, '5-hour'], ['weekly', st.planPauseWeek, 'weekly']];
-    for (const [key, limit, name] of checks) {
-      const w = plan[key];
-      if (!limit || !w || w.resetsAt * 1000 < Date.now() || w.util * 100 < limit || (this.planOverride[key] ?? 0) >= w.resetsAt) continue;
-      for (const [id, rt] of this.rt) {
-        const s = this.get(id);
-        if (!s || s.status !== 'working' || s.ask || rt.budgetPaused) continue;
-        const mins = Math.max(1, Math.round((w.resetsAt * 1000 - Date.now()) / 60000));
-        const resets = mins >= 90 ? `${Math.round(mins / 60)}h` : `${mins}m`;
-        const ask: PendingAsk = { id: uid(), type: 'budget', scope: 'plan', at: Date.now(), head: `Paused at ${Math.round(w.util * 100)}% of your ${name} plan usage`, note: `You set a limit of ${limit}%. The window resets in ${resets}. Continuing may use up the rest of your plan.` };
-        rt.budgetPaused = true;
-        rt.asks.set(ask.id, { ask, scope: 'plan', planKey: key, resolve: () => undefined });
-        s.ask = ask;
-        this.activity(s, 'budget', `paused at ${Math.round(w.util * 100)}% of the ${name} plan usage`);
-        this.setStatus(s, 'attention', ask.head);
-        this.hooks.notify('attention', `${s.id} is paused`, ask.head, s.id);
-        rt.interrupted = true;
-        await rt.q.interrupt().catch(() => undefined);
+    for (const be of this.registry.all()) {
+      if (!be.capabilities.planUsage || this.billingOf(be.id) !== 'subscription') continue;
+      // Claude's wording is the plain one; another agent is named, since its windows are its own.
+      const who = be.id === 'claude' ? '' : be.label + ' ';
+      const plan = this.store.planOf(be.id);
+      const checks: ['fiveHour' | 'weekly', number, string][] = [['fiveHour', st.planPause5h, '5-hour'], ['weekly', st.planPauseWeek, 'weekly']];
+      for (const [key, limit, name] of checks) {
+        const w = plan[key];
+        if (!limit || !w || w.resetsAt * 1000 < Date.now() || w.util * 100 < limit || (this.planOverride[be.id + ':' + key] ?? 0) >= w.resetsAt) continue;
+        for (const [id, rt] of this.rt) {
+          const s = this.get(id);
+          if (!s || this.backendOf(s).id !== be.id || s.status !== 'working' || s.ask || rt.budgetPaused) continue;
+          const mins = Math.max(1, Math.round((w.resetsAt * 1000 - Date.now()) / 60000));
+          const resets = mins >= 90 ? `${Math.round(mins / 60)}h` : `${mins}m`;
+          const ask: PendingAsk = { id: uid(), type: 'budget', scope: 'plan', at: Date.now(), head: `Paused at ${Math.round(w.util * 100)}% of your ${who}${name} plan usage`, note: `You set a limit of ${limit}%. The window resets in ${resets}. Continuing may use up the rest of your plan.` };
+          rt.budgetPaused = true;
+          rt.asks.set(ask.id, { ask, scope: 'plan', planKey: key, resolve: () => undefined });
+          s.ask = ask;
+          this.activity(s, 'budget', `paused at ${Math.round(w.util * 100)}% of the ${who}${name} plan usage`);
+          this.setStatus(s, 'attention', ask.head);
+          this.hooks.notify('attention', `${s.id} is paused`, ask.head, s.id);
+          rt.interrupted = true;
+          await rt.agent.interrupt();
+        }
+        break;
       }
-      return;
     }
   }
 
   private async checkBudget(s: Session, rt: Runtime) {
-    if (this.billing !== 'api') {
+    if (this.billingOf(this.backendOf(s).id) !== 'api') {
       await this.enforcePlan();
       return;
     }
@@ -1262,11 +1096,11 @@ export class SessionManager {
     this.hooks.notify('attention', `${s.id} is paused`, ask.head, s.id);
     rt.interrupted = true;
     this.activity(s, 'session', 'paused the agent', { who: this.me(), human: true });
-    await rt.q.interrupt().catch(() => undefined);
+    await rt.agent.interrupt();
   }
 
   // ---------------------------------------------------------------- permissions
-  private async canUse(s: Session, rt: Runtime, tool: string, input: Record<string, unknown>, o: any): Promise<any> {
+  private async canUse(s: Session, rt: Runtime, tool: string, input: Record<string, unknown>, o: { decisionReason?: string; description?: string }): Promise<ToolDecision> {
     const st = this.store.data.settings;
     // A request the user approved while helm was closed: the agent has re-issued it, so let it through once.
     const key = COMMAND_TOOLS.has(tool) ? String(input.command || '') : EDIT_TOOLS.has(tool) ? `${tool}:${String(input.file_path || input.notebook_path || '')}` : '';
@@ -1307,7 +1141,7 @@ export class SessionManager {
       const r = await this.waitAsk(s, rt, ask, 'tool', input, tool);
       if (r.behavior === 'allow') {
         s.permMode = 'edits';
-        await rt.q.setPermissionMode('acceptEdits').catch(() => undefined);
+        await rt.agent.setPermMode('edits');
       }
       return r;
     }
@@ -1345,18 +1179,18 @@ export class SessionManager {
 
     if (w.ask.type === 'budget') {
       if (w.scope === 'plan' && w.planKey) {
-        const win = this.store.data.plan[w.planKey];
-        this.planOverride[w.planKey] = win?.resetsAt ?? Math.floor(Date.now() / 1000) + 3600;
+        const win = this.store.planOf(this.backendOf(s).id)[w.planKey];
+        this.planOverride[this.backendOf(s).id + ':' + w.planKey] = win?.resetsAt ?? Math.floor(Date.now() / 1000) + 3600;
         rt.budgetPaused = false;
         this.setStatus(s, 'working', 'Resuming');
-        rt.queue.push('You were paused at a plan usage limit the user set, and they chose to continue. Continue where you left off.');
+        rt.agent.send('You were paused at a plan usage limit the user set, and they chose to continue. Continue where you left off.');
         return;
       }
       const add = Number(answer.addBudget) || 5; // USD
       if (w.scope === 'repo') { const r = this.repoOf(s); r.cap += add; } else s.budget += add;
       rt.budgetPaused = false;
       this.setStatus(s, 'working', 'Resuming');
-      rt.queue.push('You hit a spending limit and it has been raised. Continue where you left off.');
+      rt.agent.send('You hit a spending limit and it has been raised. Continue where you left off.');
       return;
     }
 
@@ -1415,9 +1249,9 @@ export class SessionManager {
     let message: string;
     if (ask.type === 'budget') {
       if (ask.scope === 'plan') {
-        const p = this.store.data.plan;
-        if (p.fiveHour) this.planOverride.fiveHour = p.fiveHour.resetsAt;
-        if (p.weekly) this.planOverride.weekly = p.weekly.resetsAt;
+        const bid = this.backendOf(s).id, p = this.store.planOf(bid);
+        if (p.fiveHour) this.planOverride[bid + ':fiveHour'] = p.fiveHour.resetsAt;
+        if (p.weekly) this.planOverride[bid + ':weekly'] = p.weekly.resetsAt;
         message = 'You were paused at a plan usage limit the user set, and they chose to continue. Continue where you left off.';
       } else {
         const add = Number(answer.addBudget) || 5; // USD
@@ -1483,7 +1317,7 @@ export class SessionManager {
       return;
     }
     this.setStatus(s, 'working', 'Reading your message');
-    rt.queue.push(outgoing, images);
+    rt.agent.send(outgoing, images);
   }
 
   async interrupt(id: string) {
@@ -1491,7 +1325,7 @@ export class SessionManager {
     const s = this.get(id);
     if (!rt || !s) return;
     rt.interrupted = true;
-    await rt.q.interrupt().catch(() => undefined);
+    await rt.agent.interrupt();
   }
 
   async stop(id: string) {
@@ -1502,8 +1336,7 @@ export class SessionManager {
       this.activity(s, 'session', 'stopped the session', { who: this.me(), human: true });
       for (const w of rt.asks.values()) w.resolve({ behavior: 'deny', message: 'Session stopped', interrupt: true });
       rt.asks.clear();
-      rt.queue.close();
-      rt.abort.abort();
+      rt.agent.close();
       this.rt.delete(id);
     }
     s.ask = undefined;
@@ -1514,7 +1347,7 @@ export class SessionManager {
     const s = this.get(id);
     if (!s) return;
     s.model = model;
-    await this.rt.get(id)?.q.setModel(MODEL_ALIAS[model]).catch(() => undefined);
+    await this.rt.get(id)?.agent.setModel(model);
     this.touch();
   }
 
@@ -1523,7 +1356,7 @@ export class SessionManager {
     if (!s) return;
     s.effort = effort ?? undefined;
     // Applies to the running conversation when Claude Code accepts it, and to every later start either way.
-    await this.rt.get(id)?.q.applyFlagSettings({ effortLevel: effort ?? undefined } as any).catch(() => undefined);
+    await this.rt.get(id)?.agent.setEffort(effort);
     this.touch();
   }
 
@@ -1531,15 +1364,15 @@ export class SessionManager {
     const s = this.get(id);
     if (!s) return;
     s.permMode = mode;
-    await this.rt.get(id)?.q.setPermissionMode(sdkMode(mode)).catch(() => undefined);
+    await this.rt.get(id)?.agent.setPermMode(mode);
     this.touch();
   }
 
   /** Claude Code names a conversation after its first turns. Pick that up once it exists, unless it is just the first prompt echoed back. */
   private async refreshTitle(s: Session) {
-    if (!s.claudeSessionId) return;
+    if (!s.agentSessionId) return;
     try {
-      const i = await getSessionInfo(s.claudeSessionId, { dir: s.worktree });
+      const i = await this.conversationsOf(s).info(s.agentSessionId, s.worktree);
       const t = i?.summary?.trim();
       if (!t || t === i?.firstPrompt?.trim() || t === s.title) return;
       s.title = t;
@@ -1576,10 +1409,10 @@ export class SessionManager {
     if (!s) return;
     title = title.trim().slice(0, 120);
     s.customTitle = title || undefined;
-    this.activity(s, 'session', title ? `renamed to “${title}”` : 'went back to Claude\'s name', { who: this.me(), human: true });
+    this.activity(s, 'session', title ? `renamed to “${title}”` : `went back to ${this.backendOf(s).shortName}'s name`, { who: this.me(), human: true });
     this.touch();
     // Keep Claude Code's own name in step, so the same session reads the same in VS Code.
-    if (title && s.claudeSessionId) await renameSession(s.claudeSessionId, title, { dir: s.worktree }).catch(() => undefined);
+    if (title && s.agentSessionId) await this.conversationsOf(s).rename(s.agentSessionId, s.worktree, title).catch(() => undefined);
   }
 
   archive(id: string, archived: boolean) {
@@ -1707,8 +1540,7 @@ export class SessionManager {
   }
 
   /** PreToolUse hook for the Agent tool: enforces the per-session and per-repository limits on subagents running at once. */
-  private async checkSubagentLimit(s: Session, rt: Runtime, input: any): Promise<any> {
-    const id = String(input?.tool_use_id || '');
+  private async checkSubagentLimit(s: Session, rt: Runtime, id: string): Promise<string | undefined> {
     const sl = this.sessionLimit(s), rl = this.repoLimit(s);
     const mine = this.runningSubagents(s);
     const inRepo = this.sessions.filter((x) => x.repoId === s.repoId).reduce((n, x) => n + this.runningSubagents(x), 0);
@@ -1717,10 +1549,10 @@ export class SessionManager {
     else if (inRepo >= rl) reason = `${this.repoOf(s)?.id} already has ${inRepo} subagents running across its sessions, which is the repository limit.`;
     if (!reason) {
       rt.admitted.add(id);
-      return {};
+      return undefined;
     }
     await this.push(s.id, { k: 'note', tone: 'neutral', text: 'Subagent blocked. ' + reason });
-    return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason + ' Wait for one to finish, or do this work yourself.' } };
+    return reason;
   }
 
   private stopSubagents(s: Session) {
@@ -1735,13 +1567,13 @@ export class SessionManager {
     const rt = this.rt.get(id);
     if (!s || !rt || s.status !== 'working') return;
     await this.push(id, { k: 'note', tone: 'neutral', text: `You edited ${file}. The agent was told.` });
-    rt.queue.push(`Note from the user: they edited ${file} directly in the worktree. Re-read it before changing it again.`);
+    rt.agent.send(`Note from the user: they edited ${file} directly in the worktree. Re-read it before changing it again.`);
   }
 
   /** helm is quitting: end the agent processes but leave each session as it was, so a pending approval survives to the next launch. */
   shutdown() {
     this.quitting = true;
-    for (const rt of this.rt.values()) { rt.queue.close(); rt.abort.abort(); }
+    for (const rt of this.rt.values()) rt.agent.close();
     this.rt.clear();
   }
 

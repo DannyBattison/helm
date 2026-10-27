@@ -7,7 +7,7 @@ import { dismissToast, getUI, go, haltAll, init, resumeAll, setUI, useUI } from 
 import { Button, Toast, useNarrow } from './ui';
 import { isShortcut } from './shortcuts';
 import { Activity, Dashboard } from './views/Dashboard';
-import { AddRepo, ClaudeLoginGate, DeleteSession, MergePr, NewSession, Palette, RemoveRepo, RenameSession, SignIn } from './views/Dialogs';
+import { AddRepo, AgentLoginGate, DeleteSession, MergePr, NewSession, Palette, RemoveRepo, RenameSession, SignIn } from './views/Dialogs';
 import { Archive } from './views/Archive';
 import { Reports } from './views/Reports';
 import { Inbox } from './views/Inbox';
@@ -147,8 +147,8 @@ export function App() {
     body = <Dashboard key={route.filter || 'all'} filter={route.filter} />;
   }
   const inCode = route.screen === 'session' && route.tab === 'code';
-  // On a server where Claude Code is not signed in yet, that comes first: the overlay covers the app and the app behind it is switched off.
-  const needsClaude = !!app.claudeLogin && !app.claudeLogin.loggedIn;
+  // On a server where no agent is signed in yet, that comes first: the overlay covers the app and the app behind it is switched off.
+  const needsClaude = app.agentLoginRequired && !!app.backends.length && !app.backends.some((b) => b.canSignIn && b.login?.loggedIn);
 
   return (
     <div style={{ position: 'relative', height: '100%', minWidth: 320, display: 'flex', flexDirection: 'column' }}>
@@ -178,7 +178,7 @@ export function App() {
       {deleting ? <DeleteSession key={deleting} id={deleting} onClose={() => setUI({ deleting: null })} /> : null}
       {palette ? <Palette onClose={() => setUI({ palette: false })} toggleTheme={toggleTheme} /> : null}
       </div>
-      {needsClaude ? <ClaudeLoginGate /> : null}
+      {needsClaude ? <AgentLoginGate /> : null}
       <div style={{ position: 'absolute', right: narrow ? 8 : 16, left: narrow ? 8 : undefined, top: 'calc(var(--titlebar-h) + 8px)', zIndex: 60, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
         {toasts.map((t) => (
           <Toast key={t.id} tone={t.tone} title={t.title} description={t.description} onClose={() => dismissToast(t.id)}

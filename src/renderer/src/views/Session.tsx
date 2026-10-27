@@ -1,11 +1,11 @@
-import { contextWindow } from '@shared/reports';
+import { contextWindow, windowLabel } from '@shared/reports';
 import React from 'react';
 import type { Session as S, TranscriptEvent, ModelAlias, PermMode, Effort, MessageImage, Artifact } from '@shared/types';
 import { api, platform } from '../api';
 import { commandSteps } from '@shared/commandSummary';
 import { Cmd, Hl } from '../Hl';
 import { highlightBlock, langFromPath, langFromTag } from '../highlight';
-import { clock, elapsed, fmtTokens, prettyModel, runningSubagents, STATUS_LABEL, subagentTree, tilde } from '../lib';
+import { backendIdOf, agentName, billingOf, can, clock, elapsed, fmtTokens, modelOptions, prettyModel, runningSubagents, STATUS_LABEL, subagentTree, tilde } from '../lib';
 import { go, loadTranscript, setUI, toast, useApp, useMoney, useTranscript } from '../store';
 import { Avatar, Badge, BranchTag, Button, CopyBox, DiffStat, Grip, IconButton, Lightbox, Meter, Select, StatusDot, Tabs, Tooltip, useNarrow, usePaneWidth } from '../ui';
 import { QuestionForm } from './QuestionForm';
@@ -30,13 +30,13 @@ const stepsTip = (cmd: string, summary?: string) => { const steps = commandSteps
 function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string): void }) {
   const { fmt } = useMoney();
   const app = useApp();
-  const sub = app.settings.billing === 'subscription';
+  const sub = billingOf(app, s.backend) === 'subscription';
   const running = s.status === 'working' || s.status === 'attention';
   const push = usePush(s.repoId, s.id);
   return (
     <div style={{ flex: 'none', padding: '14px 20px 0', display: 'flex', flexDirection: 'column', gap: 12, borderBottom: '1px solid var(--border)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-        <Avatar agent name={s.id} size={26} />
+        <Avatar agent backend={backendIdOf(app, s)} name={s.id} size={26} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0, flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
             <span style={{ font: '600 16px/1.5 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={s.task} onDoubleClick={() => setUI({ renaming: s.id })}>{s.customTitle || s.title || s.task}</span>
@@ -65,7 +65,7 @@ function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string
         {running ? <Tooltip side="bottom" wide content="End the session entirely, discarding any pending prompts. You'd need to Resume to start it again."><Button variant="ghost" icon="stop" onClick={() => guard(api.stopSession(s.id))}>Stop</Button></Tooltip> : null}
         {push.commits && !s.worktreeGone ? <span title={push.tip}><Button variant="secondary" icon="cloud-arrow-up" loading={push.busy} onClick={push.push}>Push · {push.commits}</Button></span> : null}
         {!s.worktreeGone && !(s.free && !s.free.managed) ? <IconButton icon="clock-counter-clockwise" label="Checkpoints" onClick={() => setUI({ checkpointsOf: s.id })} /> : null}
-        {s.claudeSessionId && !s.worktreeGone && !s.free ? <IconButton icon="git-fork" label="Fork this session" onClick={() => setUI({ forking: { sessionId: s.id, index: null, text: '' } })} /> : null}
+        {s.agentSessionId && can(app, s, 'fork') && !s.worktreeGone && !s.free ? <IconButton icon="git-fork" label="Fork this session" onClick={() => setUI({ forking: { sessionId: s.id, index: null, text: '' } })} /> : null}
         <Button variant="secondary" icon="arrow-square-out" onClick={() => guard(api.openInEditor(s.id))}>Open in editor</Button>
         {s.free ? <Button variant="secondary" icon="git-diff" disabled={!s.free.managed} title={s.free.managed ? undefined : 'Changes are tracked only in folders helm made'} onClick={() => setTab('changes')}>Changes</Button> : <>
         {s.mergedAt ? <Badge tone="ready">Merged into {s.mergedInto}</Badge> : null}
@@ -245,8 +245,8 @@ function TranscriptItemView({ m, s, index, onDeny }: { m: TranscriptEvent; s: S;
         {hover && s && !m.from && !s.worktreeGone && index != null ? (
           <div style={{ position: 'absolute', top: 6, right: 8, display: 'flex', gap: 2, background: 'var(--bg-overlay)', borderRadius: 'var(--radius-sm)', boxShadow: 'var(--shadow-popover)', padding: 2 }}>
             {m.cp && !(s.free && !s.free.managed) ? <Button size="sm" variant="ghost" icon="clock-counter-clockwise" onClick={() => setUI({ restoring: { sessionId: s.id, n: m.cp!, label: 'Before: ' + m.text } })}>Restore</Button> : null}
-            {s.free ? null : <Button size="sm" variant="ghost" icon="bookmark-simple" title="Add this to CLAUDE.md so later sessions know it" onClick={() => setUI({ remembering: { repoId: s.repoId, text: m.text } })}>Remember</Button>}
-            {s.claudeSessionId && !s.free ? <Button size="sm" variant="ghost" icon="git-fork" onClick={() => setUI({ forking: { sessionId: s.id, index, text: m.text } })}>Fork</Button> : null}
+            {s.free ? null : <Button size="sm" variant="ghost" icon="bookmark-simple" title={`Add this to ${(s.backend || 'claude') === 'codex' ? 'AGENTS.md' : 'CLAUDE.md'} so later sessions know it`} onClick={() => setUI({ remembering: { repoId: s.repoId, text: m.text, agent: s.backend || 'claude' } })}>Remember</Button>}
+            {s.agentSessionId && can(app, s, 'fork') && !s.free ? <Button size="sm" variant="ghost" icon="git-fork" onClick={() => setUI({ forking: { sessionId: s.id, index, text: m.text } })}>Fork</Button> : null}
           </div>
         ) : null}
         {m.images?.length ? <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{m.images.map((im, i) => <img key={i} src={`data:${im.mediaType};base64,${im.data}`} alt={im.name || 'attached image'} title={im.name} style={{ maxWidth: 260, maxHeight: 180, borderRadius: 'var(--radius-md)', boxShadow: 'inset 0 0 0 1px var(--border)', objectFit: 'contain', background: 'var(--bg-editor)' }} />)}</div> : null}
@@ -256,9 +256,9 @@ function TranscriptItemView({ m, s, index, onDeny }: { m: TranscriptEvent; s: S;
   // Same padding as your own messages, so the text of every message starts and ends at the same place.
   if (m.k === 'agent') return (
     <div style={{ display: 'flex', gap: 10, padding: '10px 12px' }}>
-      <Avatar agent name="Claude" size={22} />
+      <Avatar agent backend={backendIdOf(app, s)} name={agentName(app, s || {})} size={22} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <span style={{ font: '500 12px/1.5 var(--font-sans)' }}>Claude {m.at ? <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)', marginLeft: 6 }}>{clock(m.at)}</span> : null}</span>
+        <span style={{ font: '500 12px/1.5 var(--font-sans)' }}>{agentName(app, s || {})} {m.at ? <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)', marginLeft: 6 }}>{clock(m.at)}</span> : null}</span>
         <div className="selectable" style={{ font: '400 13px/1.6 var(--font-sans)', color: 'var(--text-1)', display: 'flex', flexDirection: 'column', gap: 6, wordBreak: 'break-word' }}><Rich text={m.text} sessionId={s?.id} /></div>
       </div>
     </div>
@@ -380,6 +380,7 @@ function matchFiles(files: string[], q: string): string[] {
 }
 
 function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAreaElement> }) {
+  const app = useApp();
   const narrow = useNarrow();
   const [text, setTextState] = React.useState(drafts.get(s.id) || '');
   const [images, setImages] = React.useState<Draft[]>([]);
@@ -460,7 +461,7 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
 
   const placeholder = s.ask?.type === 'question' ? 'Type your answer' : s.ask ? 'Tell the agent what to do instead, or approve above' : working ? 'Add guidance while it works' + (interruptKey === 'esc' ? ', or press Esc to interrupt' : interruptKey === 'double-esc' ? ', or press Esc twice to interrupt' : '') : 'Reply to ' + (s.customTitle || s.title || s.id) + '. @ mentions a file, and you can paste or drop images';
   const ctxWindow = contextWindow(s);
-  const ctxLabel = ctxWindow >= 1_000_000 ? '1M' : '200k';
+  const ctxLabel = windowLabel(ctxWindow);
   const ctxPct = Math.round((s.ctx / ctxWindow) * 100);
   return (
     <div style={{ flex: 'none', padding: '0 20px 16px' }}>
@@ -498,7 +499,7 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
           <input ref={picker} type="file" accept={IMAGE_TYPES.join(',')} multiple hidden onChange={(e) => { void addImages([...(e.target.files || [])]); e.target.value = ''; }} />
           <IconButton icon="at" label="Mention a file" size="sm" onClick={() => { const el = inputRef.current; const c = el ? el.selectionStart : text.length; const pre = text.slice(0, c); const lead = pre && !/\s$/.test(pre) ? ' ' : ''; setText(pre + lead + '@' + text.slice(c)); requestAnimationFrame(() => { el?.focus(); const p = c + lead.length + 1; el?.setSelectionRange(p, p); track(el!.value, p); }); }} />
           <IconButton icon="paperclip" label="Attach an image" size="sm" onClick={() => picker.current?.click()} />
-          {narrow ? <div style={{ order: 3, flexBasis: '100%', display: 'flex', gap: 6 }}><Select size="sm" style={{ flex: 1, minWidth: 0 }} value={s.model} onChange={(e: any) => guard(api.setSessionModel(s.id, e.target.value as ModelAlias))} options={[{ value: 'sonnet', label: 'Sonnet' }, { value: 'opus', label: 'Opus' }, { value: 'haiku', label: 'Haiku' }]} /><Select size="sm" style={{ flex: 1, minWidth: 0 }} value={s.effort || 'default'} onChange={(e: any) => guard(api.setSessionEffort(s.id, e.target.value === 'default' ? null : (e.target.value as Effort)))} options={EFFORTS} /><Select size="sm" style={{ flex: 1, minWidth: 0 }} value={s.permMode} onChange={(e: any) => guard(api.setSessionPermMode(s.id, e.target.value as PermMode))} options={[{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits' }, { value: 'plan', label: 'Plan only' }, { value: 'all', label: 'Allow everything' }]} /></div> : <><Select size="sm" value={s.model} onChange={(e: any) => guard(api.setSessionModel(s.id, e.target.value as ModelAlias))} options={[{ value: 'sonnet', label: 'Sonnet' }, { value: 'opus', label: 'Opus' }, { value: 'haiku', label: 'Haiku' }]} /><Select size="sm" value={s.effort || 'default'} onChange={(e: any) => guard(api.setSessionEffort(s.id, e.target.value === 'default' ? null : (e.target.value as Effort)))} options={EFFORTS} /><Select size="sm" value={s.permMode} onChange={(e: any) => guard(api.setSessionPermMode(s.id, e.target.value as PermMode))} options={[{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits' }, { value: 'plan', label: 'Plan only' }, { value: 'all', label: 'Allow everything' }]} /></>}
+          {narrow ? <div style={{ order: 3, flexBasis: '100%', display: 'flex', gap: 6 }}><Select size="sm" style={{ flex: 1, minWidth: 0 }} value={s.model} onChange={(e: any) => guard(api.setSessionModel(s.id, e.target.value as ModelAlias))} options={modelOptions(app, s.backend)} />{can(app, s, 'effort') ? <Select size="sm" style={{ flex: 1, minWidth: 0 }} value={s.effort || 'default'} onChange={(e: any) => guard(api.setSessionEffort(s.id, e.target.value === 'default' ? null : (e.target.value as Effort)))} options={EFFORTS} /> : null}<Select size="sm" style={{ flex: 1, minWidth: 0 }} value={s.permMode} onChange={(e: any) => guard(api.setSessionPermMode(s.id, e.target.value as PermMode))} options={[{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits' }, ...(can(app, s, 'planMode') ? [{ value: 'plan', label: 'Plan only' }] : []), { value: 'all', label: 'Allow everything' }]} /></div> : <><Select size="sm" value={s.model} onChange={(e: any) => guard(api.setSessionModel(s.id, e.target.value as ModelAlias))} options={modelOptions(app, s.backend)} />{can(app, s, 'effort') ? <Select size="sm" value={s.effort || 'default'} onChange={(e: any) => guard(api.setSessionEffort(s.id, e.target.value === 'default' ? null : (e.target.value as Effort)))} options={EFFORTS} /> : null}<Select size="sm" value={s.permMode} onChange={(e: any) => guard(api.setSessionPermMode(s.id, e.target.value as PermMode))} options={[{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits' }, ...(can(app, s, 'planMode') ? [{ value: 'plan', label: 'Plan only' }] : []), { value: 'all', label: 'Allow everything' }]} /></>}
           <span style={{ flex: 1 }} />
           {s.ctx ? <span title={`Context window: ${fmtTokens(s.ctx)} of ${ctxLabel} tokens in use`} style={{ font: '400 11.5px/1.5 var(--font-mono)', color: ctxPct >= 75 ? 'var(--status-attention-text)' : 'var(--text-3)', whiteSpace: 'nowrap' }}>{ctxPct}% context</span> : null}
           {working ? <Button size="sm" variant="ghost" kbd={narrow ? undefined : interruptKey === 'esc' ? 'Esc' : interruptKey === 'double-esc' ? 'Esc Esc' : undefined} onClick={() => guard(api.interrupt(s.id))}>Interrupt</Button> : null}
@@ -512,7 +513,7 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
 function UsagePanel({ s }: { s: S }) {
   const app = useApp();
   const { fmt } = useMoney();
-  const sub = app.settings.billing === 'subscription';
+  const sub = billingOf(app, s.backend) === 'subscription';
   const [width, grip, resetWidth] = usePaneWidth('usage-panel', 300, 240, 560, -1);
   const limit = s.maxSubagents ?? app.settings.maxSubagentsSession;
   const running = runningSubagents(s);
@@ -523,7 +524,7 @@ function UsagePanel({ s }: { s: S }) {
       <Grip edge="left" onMouseDown={grip} onDoubleClick={resetWidth} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <span style={label}>Usage</span>
-        <Meter label="Context window" detail={fmtTokens(s.ctx) + ' / ' + ctxLabel} value={s.ctx} max={ctxWindow} warnAt={0.75} />
+        <Meter label="Context window" detail={fmtTokens(s.ctx) + ' / ' + windowLabel(contextWindow(s))} value={s.ctx} max={contextWindow(s)} warnAt={0.75} />
         {sub ? null : <Meter label="Session budget" detail={fmt(s.cost) + ' / ' + fmt(s.budget, true)} value={s.cost} max={s.budget} warnAt={app.settings.warnAt / 100} />}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 4 }}>
           {n(fmtTokens(s.tokens.input), 'Input')}{n(fmtTokens(s.tokens.output), 'Output')}{n(fmtTokens(s.tokens.cacheRead), 'Cache read')}{sub ? n(String(s.subagents.length), 'Subagents') : n(fmt(s.cost), 'Cost so far')}

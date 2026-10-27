@@ -7,10 +7,14 @@ export const DAY = 86_400_000;
 export const CONTEXT_WINDOW = 200_000;
 export const LONG_CONTEXT_WINDOW = 1_000_000;
 
-/** The window a session runs in: 1M when the model name says so, or when it has already used more than 200k (so it can't be in the smaller one). */
-export function contextWindow(s: { ctx: number; modelName?: string }): number {
+/** The window a session runs in: the one its agent reported, else 1M when the model name says so or when it has already used more than 200k (so it can't be in the smaller one). */
+export function contextWindow(s: { ctx: number; ctxMax?: number; modelName?: string }): number {
+  if (s.ctxMax) return s.ctxMax;
   return s.ctx > CONTEXT_WINDOW || /1m/i.test(s.modelName ?? '') ? LONG_CONTEXT_WINDOW : CONTEXT_WINDOW;
 }
+
+/** A window size for display: 200k, 272k, 1M. */
+export const windowLabel = (n: number) => (n >= 1_000_000 ? `${+(n / 1_000_000).toFixed(1)}M` : `${Math.round(n / 1000)}k`);
 
 export interface ReportInput {
   sessions: Session[];

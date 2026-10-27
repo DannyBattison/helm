@@ -2,8 +2,9 @@ import React from 'react';
 import { CopyBox } from '../ui';
 import { usePush } from './push';
 import { sessionTitle, type ActivityEvent, type ExternalSession, type Session } from '@shared/types';
+import { contextWindow } from '@shared/reports';
 import { api, platform } from '../api';
-import { isFreeGroup, whereLabel, ago, clock, fmtTokens, lifetimeTokens, laneAxis, laneData, LANE_MIN, livePlan, repoOf, reposWithSessions, runningSubagents, sessionTokens, totals, untilReset } from '../lib';
+import { backendIdOf, planBackends, isFreeGroup, whereLabel, ago, clock, fmtTokens, lifetimeTokens, laneAxis, laneData, LANE_MIN, livePlan, repoOf, reposWithSessions, runningSubagents, sessionTokens, totals, untilReset } from '../lib';
 import { Cmd } from '../Hl';
 import { go, setUI, useApp, useMoney, toast, useUI } from '../store';
 import { Avatar, Button, DiffStat, Hint, Meter, SegmentedControl, Stat, StatusDot, useColumns, useNarrow } from '../ui';
@@ -124,7 +125,7 @@ function SessionRow({ s, now, tpl, sub, narrow }: { s: Session; now: number; tpl
         </div>
       ) : <>
         <Lane s={s} now={now} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Meter value={s.ctx} max={200000} warnAt={0.75} style={{ flex: 1 }} /><span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-2)', width: 30, textAlign: 'right' }}>{fmtTokens(s.ctx)}</span></div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Meter value={s.ctx} max={contextWindow(s)} warnAt={0.75} style={{ flex: 1 }} /><span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-2)', width: 30, textAlign: 'right' }}>{fmtTokens(s.ctx)}</span></div>
         <span style={{ font: 'var(--type-data)', textAlign: 'right' }}>{fmtTokens(sessionTokens(s))}</span>
         {sub ? null : <span style={{ font: 'var(--type-data)', textAlign: 'right' }}>{fmt(s.cost)}</span>}
         <span style={{ textAlign: 'right' }}><DiffStat additions={s.add} deletions={s.del} /></span>
@@ -212,6 +213,10 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
   const { fmt } = useMoney();
   const sub = app.settings.billing === 'subscription';
   const plan = livePlan(app);
+  // With more than one agent on a plan the headline is the default agent's; the others are listed beside it.
+  const planAgents = planBackends(app);
+  const planName = (planAgents.find((b) => b.id === app.settings.defaultBackend) ?? planAgents[0])?.shortName ?? 'Claude';
+  const others = planAgents.filter((b) => b.shortName !== planName).map((b) => ({ name: b.shortName, weekly: livePlan(app, b.id).weekly }));
   const narrow = useNarrow();
   const col = useColumns(sub ? 'ledger-sub' : 'ledger-api', [
     { w: 20, min: 20, fixed: true }, { w: 270, min: 150 }, { w: 200, min: 150, flex: true }, { w: 300, min: 180 }, { w: 88, min: 60 }, { w: 56, min: 44 },
@@ -248,7 +253,7 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
           <div style={cell}><Stat label="Tokens today" value={fmtTokens(t.tokens)} /></div>
           <div style={{ ...cell, gap: 10, ...(narrow ? { gridColumn: '1 / -1', borderTop: '1px solid var(--border-subtle)' } : null) }}>
             {sub ? <>
-              <Stat label="Plan usage this week" value={plan.weekly ? Math.round(plan.weekly.util * 100) + '%' : '—'} detail={plan.weekly ? `resets in ${untilReset(plan.weekly.resetsAt)}` : 'appears after the first message'} />
+              <Stat label="Plan usage this week" value={plan.weekly ? Math.round(plan.weekly.util * 100) + '%' : '—'} detail={others.length ? [plan.weekly ? `${planName}: resets in ${untilReset(plan.weekly.resetsAt)}` : `${planName}: no data yet`, ...others.map((o) => `${o.name} ${o.weekly ? Math.round(o.weekly.util * 100) + '%' : '—'}`)].join(' · ') : plan.weekly ? `resets in ${untilReset(plan.weekly.resetsAt)}` : 'appears after the first message'} />
               <Meter value={plan.fiveHour?.util ?? 0} max={1} warnAt={app.settings.warnAt / 100} detail={plan.fiveHour ? `5-hour window ${Math.round(plan.fiveHour.util * 100)}% · resets ${untilReset(plan.fiveHour.resetsAt)}` : '5-hour window: no data yet'} />
             </> : <>
               <Stat label="Spend this week" value={fmt(t.spent)} />
@@ -403,7 +408,7 @@ export function Activity() {
             <span style={{ font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{clock(a.t)}</span>
             <i className={'ph ph-' + ic} style={{ fontSize: 15, color: col }} />
             <span style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0, font: '400 13px/1.5 var(--font-sans)' }}>
-              <Avatar size={16} agent={!human} name={a.who} />
+              <Avatar size={16} agent={!human} backend={backendIdOf(app, app.sessions.find((x) => x.id === a.sessionId))} name={a.who} />
               <span style={{ font: '500 12px/1.5 var(--font-mono)', color: 'var(--text-1)', cursor: human ? 'default' : 'pointer' }} onClick={() => !human && a.sessionId && go({ screen: 'session', id: a.sessionId, tab: 'conversation' })}>{a.who}</span>
               <span title={a.detail || a.what} style={{ color: failed ? 'var(--status-error-text)' : 'var(--text-2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.what}</span>
             </span>

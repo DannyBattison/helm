@@ -2,7 +2,7 @@ import React from 'react';
 import type { ModelAlias, PermMode, Settings as SettingsT } from '@shared/types';
 import type { SyncStatus } from '@shared/sync';
 import { api, platform } from '../api';
-import { livePlan, theme as resolveTheme, untilReset } from '../lib';
+import { billingOf, defaultChoice, livePlan, modelChoices, planBackends, splitChoice, theme as resolveTheme, untilReset } from '../lib';
 import { CURRENCIES, rateFor } from '@shared/money';
 import { BUNDLED_FONTS, fontStack, SYSTEM_DEFAULT, systemFonts, systemUiFonts, uiStack, UI_BUNDLED_FONTS, dataStack } from '../fonts';
 import { ACCENT_SWATCHES, SCHEMES, STATUS_KEYS, STATUS_LABEL, isHex, schemeVars } from '@shared/schemes';
@@ -10,13 +10,13 @@ import { McpServers } from './McpServers';
 import { AutomationsSection } from './Automations';
 import { toast, useApp, useMoney } from '../store';
 import { comboFromEvent, comboKeys, comboProblem, normalizeCombo, SHORTCUT_ACTIONS, shortcutConflict, shortcutOf } from '@shared/shortcuts';
+import { AgentSignInDialog } from './AgentSignIn';
 import { Avatar, Badge, Button, Dialog, Input, Kbd, Meter, SegmentedControl, Select, Switch, TreeItem, useColumns, useNarrow } from '../ui';
 
 const errText = (e: any) => String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '');
 const set = (patch: Partial<SettingsT>) => void api.updateSettings(patch);
 
 export const PERM_OPTIONS = [{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits, ask for commands' }, { value: 'plan', label: 'Plan only' }, { value: 'all', label: 'Allow everything' }];
-export const MODEL_OPTIONS = [{ value: 'sonnet', label: 'Sonnet' }, { value: 'opus', label: 'Opus' }, { value: 'haiku', label: 'Haiku' }];
 
 /** Moving helm to another machine or server: everything but sign-ins and passwords, as one file. */
 function TransferSection() {
@@ -390,15 +390,52 @@ function FontRow({ title, desc, value, onChange, bundled, system, stack }: { tit
   );
 }
 
+/** One agent's accounts and command-line tool. Signing out is here, and so is signing in to one that was not chosen first. */
+function AgentAccount({ b, heading = true }: { b: import('@shared/types').BackendInfo; heading?: boolean }) {
+  const app = useApp();
+  const st = app.settings;
+  const [signing, setSigning] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const l = b.login;
+  const fromEnv = !!l?.loggedIn && /key|token/.test(l.method);
+  const pathKey = b.id === 'claude' ? 'claudePath' : b.id === 'codex' ? 'codexPath' : '';
+  const who = l?.loggedIn
+    ? fromEnv ? `Using the ${l.method} set in this machine's environment.` : `Signed in${l.method === 'chatgpt' ? ' with ChatGPT' : ' with your subscription'}${l.email ? ` as ${l.email}` : ''}${l.plan ? ` (${l.plan})` : ''}.`
+    : l?.error ? `Not signed in. ${l.error}` : 'Not signed in. This agent cannot be used until you sign in.';
+  return (
+    <>
+      {heading ? <div style={{ margin: '14px 0 2px', font: '600 13px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>{b.label}</div> : null}
+      {pathKey ? (
+        <SettingRow title="Command-line tool" desc={(st as any)[pathKey] ? 'Custom path' : b.id === 'claude' ? 'Uses the Claude Code bundled with helm unless a path is set.' : `Uses \`${b.id}\` from the PATH unless a path is set.`}>
+          <Field value={(st as any)[pathKey]} onCommit={(v: string) => set({ [pathKey]: v.trim() } as any)} placeholder={`Path to ${b.id} (optional)`} style={{ width: 260 }} />
+          {b.version ? <Badge tone="ready" dot>{b.version}</Badge> : b.installed ? <Badge>bundled</Badge> : <Badge tone="error">not found</Badge>}
+        </SettingRow>
+      ) : null}
+      {b.canSignIn ? (
+        <SettingRow title="Account" desc={who}>
+          {l?.loggedIn && !fromEnv ? <Button size="sm" variant="ghost" loading={busy} onClick={async () => { setBusy(true); try { await api.agentLogout(b.id); } finally { setBusy(false); } }}>Sign out</Button> : null}
+          {!l?.loggedIn ? <Button size="sm" variant="secondary" disabled={!b.installed} onClick={() => setSigning(true)}>Sign in</Button> : null}
+        </SettingRow>
+      ) : null}
+      {signing ? <AgentSignInDialog backendId={b.id} onClose={() => setSigning(false)} /> : null}
+    </>
+  );
+}
+
 export function Settings({ section }: { section?: string }) {
   const narrow = useNarrow();
   const hosted = !!window.helmBridge.hosted;
   const app = useApp();
   const st = app.settings;
-  const [sec, setSec] = React.useState(section || 'account');
+  const [sec, setSec] = React.useState(!section || section === 'account' ? 'github' : section);
   const [signOut, setSignOut] = React.useState(false);
   const { fmt, sym, to, from, cur } = useMoney();
   const plan = livePlan(app);
+  // Agents paid for by a plan get meters; before anything is signed in, Claude's own billing setting decides what to show.
+  const noneReady = !app.backends.some((b) => b.ready);
+  const subs = planBackends(app).length ? planBackends(app) : noneReady && st.billing === 'subscription' ? app.backends.filter((b) => b.id === st.defaultBackend || b.id === 'claude').slice(0, 1) : [];
+  const showPlan = subs.length > 0;
+  const showDollars = !showPlan || app.backends.some((b) => b.ready && billingOf(app, b.id) === 'api');
   const money0 = { format: (v: number) => sym + String(Math.round(v * 100) / 100), parse: (x: string) => { const n = parseFloat(x.replace(/[^0-9.]/g, '')); return Number.isFinite(n) && n >= 0 ? n : undefined; } };
   const repoCols = useColumns('budget-repos', [{ w: 1, min: 160, flex: true }, { w: 220, min: 120 }, { w: 90, min: 70, fixed: true }]);
   const monoSystem = React.useMemo(() => systemFonts(), []);
@@ -406,7 +443,9 @@ export function Settings({ section }: { section?: string }) {
   const subCols = useColumns('subagent-repos', [{ w: 1, min: 160, flex: true }, { w: 170, min: 110, fixed: true }]);
   const pctOptions = [{ value: '0', label: 'Off' }, { value: '50', label: '50%' }, { value: '70', label: '70%' }, { value: '80', label: '80%' }, { value: '90', label: '90%' }];
   const subLimits = (extra: number[]) => [...new Set([0, 1, 2, 3, 4, 6, 8, 12, ...extra])].sort((a, b) => a - b).map((n) => ({ value: String(n), label: n === 0 ? 'Off' : String(n) }));
-  const nav = [['account', 'Account', 'github-logo'], ['agents', 'Claude Code', 'robot'], ['automations', 'Automated agents', 'clock-clockwise'], ['mcp', 'MCP servers', 'plugs-connected'], ['worktrees', 'Worktrees', 'tree-structure'], ['budgets', 'Usage', 'coins'], ...(hosted ? [] : [['companion', 'Companion', 'broadcast']]), ['notifications', 'Notifications', 'bell'], ['appearance', 'Appearance', 'paint-brush'], ['shortcuts', 'Keyboard shortcuts', 'keyboard'], ['transfer', 'Import and export', 'arrows-left-right'], ['sync', 'Sync', 'arrows-clockwise'], ['about', 'About and support', 'info']];
+  const nav = [['github', 'GitHub', 'github-logo', 1], ['claude', 'Claude Code', 'sparkle', 1], ['codex', 'Codex', 'terminal-window', 1], ['agents', 'Agents', 'robot'], ['automations', 'Automated agents', 'clock-clockwise'], ['mcp', 'MCP servers', 'plugs-connected'], ['worktrees', 'Worktrees', 'tree-structure'], ['budgets', 'Usage', 'coins'], ...(hosted ? [] : [['companion', 'Companion', 'broadcast']]), ['notifications', 'Notifications', 'bell'], ['appearance', 'Appearance', 'paint-brush'], ['shortcuts', 'Keyboard shortcuts', 'keyboard'], ['transfer', 'Import and export', 'arrows-left-right'], ['sync', 'Sync', 'arrows-clockwise'], ['about', 'About and support', 'info']] as [string, string, string, number?][];
+  // Accounts is a node of its own with nothing on it: it only holds the three accounts, always shown.
+  const groups: Record<string, string> = { github: 'Accounts' };
   const notif = (key: 'notifyAttention' | 'notifyReady' | 'notifyFailed' | 'notifyChecks', title: string) => (
     <SettingRow title={title}>
       <Switch checked={st[key].desktop} onChange={(v: boolean) => set({ [key]: { ...st[key], desktop: v } })} label="Desktop" />
@@ -421,13 +460,18 @@ export function Settings({ section }: { section?: string }) {
         </nav>
       ) : (
         <nav style={{ width: 200, flex: 'none', padding: '16px 8px', borderRight: '1px solid var(--border)' }}>
-          {nav.map(([k, l, ic]) => <TreeItem key={k} icon={ic} label={l} selected={sec === k} onClick={() => setSec(k)} />)}
+          {nav.map(([k, l, ic, depth]) => (
+            <React.Fragment key={k}>
+              {groups[k] ? <TreeItem icon="user-circle" label={groups[k]} expandable expanded style={{ cursor: 'default' }} /> : null}
+              <TreeItem icon={ic} label={l} depth={depth || 0} selected={sec === k} onClick={() => setSec(k)} />
+            </React.Fragment>
+          ))}
         </nav>
       )}
       <div style={{ flex: 1, minWidth: 0, overflow: 'auto' }}>
         <div style={{ maxWidth: 720, padding: narrow ? '16px 14px 32px' : '24px 32px 40px' }}>
-          {sec === 'account' ? <>
-            <H sub="helm signs in with GitHub only. Repositories, pull requests and history all come from this account.">Account</H>
+          {sec === 'github' ? <>
+            <H sub="helm signs in with GitHub. Repositories, pull requests and history all come from this account. Claude Code and Codex are signed in separately, under Accounts.">GitHub</H>
             <SettingRow title={<span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Avatar name={app.user?.login || '?'} src={app.user?.avatar || undefined} size={24} />{app.user?.name || app.user?.login} <Badge mono>@{app.user?.login}</Badge></span>} desc="Signed in with GitHub · scopes: repo, read:org, workflow">
               <Button variant="ghost" onClick={() => setSignOut(true)}>Sign out</Button>
             </SettingRow>
@@ -435,32 +479,37 @@ export function Settings({ section }: { section?: string }) {
               <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>{(app.user?.orgs || []).length ? app.user!.orgs.map((o) => <Badge key={o}>{o}</Badge>) : <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>None</span>}</span>
               <Button size="sm" iconRight="arrow-square-out" onClick={() => api.openExternal('https://github.com/settings/applications')}>Manage on GitHub</Button>
             </SettingRow>
-            <SettingRow title="Commit identity" desc="Your git user.name and user.email are used for commits and pushes. Who agent commits are credited to is set under Claude Code." />
+            <SettingRow title="Commit identity" desc="Your git user.name and user.email are used for commits and pushes. Who agent commits are credited to is set under Agents." />
             <SettingRow title="GitHub OAuth client ID" desc="Used for sign-in. Create an OAuth app on GitHub with device flow enabled.">
               <Field value={st.githubClientId} onCommit={(v: string) => set({ githubClientId: v.trim() })} style={{ width: 240 }} />
             </SettingRow>
           </> : null}
           {sec === 'agents' ? <>
-            <H sub="Defaults for new sessions. Each session can override them.">Claude Code</H>
-            <SettingRow title="CLI" desc={st.claudePath ? 'Custom path' : 'Uses the Claude Code bundled with helm unless a path is set.'}>
-              <Field value={st.claudePath} onCommit={(v: string) => set({ claudePath: v.trim() })} placeholder="Path to claude (optional)" style={{ width: 260 }} />
-              {app.claudeVersion ? <Badge tone="ready" dot>{app.claudeVersion}</Badge> : <Badge>bundled</Badge>}
-            </SettingRow>
-            {app.claudeLogin ? (
-              <SettingRow title="Claude account" desc={app.claudeLogin.loggedIn
-                ? (/key|token/.test(app.claudeLogin.method) ? `Using the ${app.claudeLogin.method} set in this server's environment.` : `Signed in with your Claude subscription${app.claudeLogin.email ? ` as ${app.claudeLogin.email}` : ''}${app.claudeLogin.plan ? ` (${app.claudeLogin.plan})` : ''}.`)
-                : 'Not signed in. Agents cannot run until you sign in.'}>
-                {app.claudeLogin.loggedIn && !/key|token/.test(app.claudeLogin.method) ? <Button size="sm" variant="ghost" onClick={() => void api.claudeLogout()}>Sign out</Button> : null}
-              </SettingRow>
-            ) : null}
-            <SettingRow title="Default model"><Select value={st.defaultModel} onChange={(e: any) => set({ defaultModel: e.target.value as ModelAlias })} options={MODEL_OPTIONS} /></SettingRow>
+            <H sub="Settings for every agent. Each agent's account, command-line tool and anything specific to it are under Accounts, in Claude Code and Codex.">Agents</H>
+            {app.backends.map((b) => {
+              const on = (st.enabledAgents || []).includes(b.id);
+              const left = app.backends.filter((x) => (st.enabledAgents || []).includes(x.id)).length;
+              const last = on && left <= 1;
+              return (
+                <SettingRow key={b.id} title={b.label}
+                  desc={b.configured
+                    ? (on ? 'On. Its models are offered when you start a session.' : 'Off. It is left out of the model lists and cannot start new sessions; sessions it already has still work.')
+                    : <>{!b.installed ? 'Not installed on this machine.' : 'Not signed in.'} It cannot be used until it is set up, under <a href="#" onClick={(e) => { e.preventDefault(); setSec(b.id); }} style={{ color: 'var(--accent-text, var(--accent))' }}>Accounts → {b.label}</a>.</>}>
+                  {b.configured ? <Badge tone="ready" dot>ready</Badge> : <Button size="sm" variant="secondary" onClick={() => setSec(b.id)}>{!b.installed ? 'Set up' : 'Sign in'}</Button>}
+                  <span title={last ? 'At least one agent has to stay on.' : undefined}>
+                    <Switch checked={on} disabled={last} onChange={(v: boolean) => set({ enabledAgents: v ? [...(st.enabledAgents || []), b.id] : (st.enabledAgents || []).filter((x) => x !== b.id) })} />
+                  </span>
+                </SettingRow>
+              );
+            })}
+            <SettingRow title="Default model" desc="New sessions start with this. Models of every agent you are signed in to are listed."><Select value={defaultChoice(app)} onChange={(e: any) => { const c = splitChoice(e.target.value); set({ defaultBackend: c.backend, defaultModel: c.model }); }} options={modelChoices(app)} /></SettingRow>
             <SettingRow title="Permission mode" desc={st.permMode === 'all' ? 'Agents run every command and edit every file without asking. The worktree keeps them off your checkout, but they can still reach the network and files outside it. Pre-approved patterns and approvals no longer matter.' : 'What an agent can do without asking you first.'}><Select value={st.permMode} onChange={(e: any) => set({ permMode: e.target.value as PermMode })} options={PERM_OPTIONS} /></SettingRow>
             <SettingRow title="Always allowed commands" desc="Comma separated patterns. * matches anything. Added to when you choose Always allow.">
               <Field value={st.alwaysAllow} format={(v: string[]) => v.join(', ')} parse={(s: string) => s.split(',').map((x) => x.trim()).filter(Boolean)} onCommit={(v: string[]) => set({ alwaysAllow: v })} style={{ width: 260 }} />
             </SettingRow>
             <SettingRow title="Sessions working at once" desc="More than this wait in a queue and start as others finish. Sessions waiting on you do not count. A queued session can be started by hand."><Select value={String(st.maxRunning)} onChange={(e: any) => set({ maxRunning: +e.target.value })} options={[0, 1, 2, 3, 4, 6, 8, 12].map((n) => ({ value: String(n), label: n === 0 ? 'No limit' : String(n) }))} /></SettingRow>
-            <SettingRow title="Subagents per session" desc="Most subagents one session may run at once. Off stops agents from starting any. A session can override this."><Select value={String(st.maxSubagentsSession)} onChange={(e: any) => set({ maxSubagentsSession: +e.target.value })} options={subLimits([st.maxSubagentsSession])} /></SettingRow>
-            <SettingRow title="Subagents per repository" desc="Most subagents that may run at once across every session of a repository."><Select value={String(st.maxSubagentsRepo)} onChange={(e: any) => set({ maxSubagentsRepo: +e.target.value })} options={subLimits([st.maxSubagentsRepo, 16, 24])} /></SettingRow>
+            <SettingRow title="Subagents per session" desc="Most subagents one session may run at once, for Claude Code and for Codex. Off stops agents from starting any. A session can override this."><Select value={String(st.maxSubagentsSession)} onChange={(e: any) => set({ maxSubagentsSession: +e.target.value })} options={subLimits([st.maxSubagentsSession])} /></SettingRow>
+            <SettingRow title="Subagents per repository" desc="Most subagents that may run at once across every session of a repository. Counted for Claude Code only: Codex sessions cannot be counted together."><Select value={String(st.maxSubagentsRepo)} onChange={(e: any) => set({ maxSubagentsRepo: +e.target.value })} options={subLimits([st.maxSubagentsRepo, 16, 24])} /></SettingRow>
             {app.repos.length ? (
               <div style={{ display: 'flex', flexDirection: 'column', marginBottom: 6 }}>
                 <div style={{ display: 'grid', gridTemplateColumns: subCols.template, gap: 12, padding: '8px 0', font: '500 10.5px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>
@@ -476,11 +525,10 @@ export function Settings({ section }: { section?: string }) {
               </div>
             ) : null}
             {app.repos.length ? <RepoArtifactsSection repos={app.repos} /> : null}
-            <SettingRow title="Remote Control for new and resumed sessions" desc="Starts Remote Control (/rc) in every agent, so you can follow and drive it from claude.ai/code or the Claude app. Takes effect when a session next starts. Needs a Claude subscription sign-in, and can be blocked by your organisation."><Switch checked={st.remoteControl} onChange={(v: boolean) => set({ remoteControl: v })} /></SettingRow>
             <SettingRow title="Auto push" desc="Pushes the branch to GitHub right after every commit, whether the agent or you made it from the Changes panel, so nothing exists only on this machine. Free agents have no remote and are not pushed. A failed push shows in the activity log and is tried again at the next commit."><Switch checked={st.autoPush} onChange={(v: boolean) => set({ autoPush: v })} /></SettingRow>
             <SettingRow title="Resume agents on launch" desc="When helm opens, agents that were working when it closed pick up where they left off, one after another. Agents waiting on your answer still wait for you, and archived or merged sessions stay as they are."><Switch checked={st.resumeOnLaunch} onChange={(v: boolean) => set({ resumeOnLaunch: v })} /></SettingRow>
-            <SettingRow title="Commit author" desc="Co-author: commits are authored by you, with a Co-authored-by trailer for the session. Claude only: commits are authored by Claude, with no co-author. Takes effect when a session next starts.">
-              <SegmentedControl value={st.commitAuthor} onChange={(v: string) => set({ commitAuthor: v as any })} options={[{ value: 'coauthor', label: 'Co-author' }, { value: 'sole', label: 'Claude only' }]} />
+            <SettingRow title="Commit author" desc="Co-author: commits are authored by you, with a Co-authored-by trailer for the session. Agent only: commits are authored by the agent (Claude or Codex), with no co-author. Takes effect when a session next starts.">
+              <SegmentedControl value={st.commitAuthor} onChange={(v: string) => set({ commitAuthor: v as any })} options={[{ value: 'coauthor', label: 'Co-author' }, { value: 'sole', label: 'Agent only' }]} />
             </SettingRow>
             <SettingRow title="Send messages with" desc={st.sendKey === 'enter' ? 'Enter sends. Shift+Enter starts a new line.' : 'Ctrl+Enter (Cmd+Enter on a Mac) sends. Enter starts a new line.'}>
               <SegmentedControl value={st.sendKey} onChange={(v: string) => set({ sendKey: v as any })} options={[{ value: 'enter', label: 'Enter' }, { value: 'mod-enter', label: platform() === 'darwin' ? 'Cmd+Enter' : 'Ctrl+Enter' }]} />
@@ -519,10 +567,7 @@ export function Settings({ section }: { section?: string }) {
             </SettingRow>
           </> : null}
           {sec === 'budgets' ? <>
-            <H sub="How helm measures and limits usage. Pick the option that matches how you pay for Claude.">Usage</H>
-            <SettingRow title="Billing" desc={st.billing === 'subscription' ? 'A Claude subscription (Pro or Max). Usage is limited by plan windows, not dollars, so helm shows plan usage and has no dollar budgets.' : 'Pay per token with an API key. helm tracks cost and enforces the dollar budgets below.'}>
-              <SegmentedControl value={st.billing} onChange={(v: string) => set({ billing: v as any, billingDetected: true })} options={[{ value: 'subscription', label: 'Subscription' }, { value: 'api', label: 'API tokens' }]} />
-            </SettingRow>
+            <H sub="How helm measures and limits usage across your agents. Claude Code's billing is chosen under Claude Code; Codex reports its own from its account.">Usage</H>
             <SettingRow title="Currency" desc={`Used wherever an amount is shown. 1 USD = ${rateFor(cur, app.rates).toFixed(rateFor(cur, app.rates) > 20 ? 0 : 2)} ${cur}.`}>
               <Select value={cur} onChange={(e: any) => {
                 // Round limits to whole amounts in the new currency, so $100 becomes £75 rather than £74.76.
@@ -533,17 +578,23 @@ export function Settings({ section }: { section?: string }) {
                 for (const repo of app.repos) void api.setRepoCap(repo.id, snap(repo.cap));
               }} options={CURRENCIES as any} />
             </SettingRow>
-            {st.billing === 'subscription' ? <>
-              <SettingRow title="Current plan usage" desc="Reported by Claude Code after each message. A window resets by itself.">
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: 260 }}>
-                  <Meter label="5-hour window" value={plan.fiveHour?.util ?? 0} max={1} warnAt={st.warnAt / 100} detail={plan.fiveHour ? `${Math.round(plan.fiveHour.util * 100)}% · resets ${untilReset(plan.fiveHour.resetsAt)}` : 'no data yet'} />
-                  <Meter label="Weekly" value={plan.weekly?.util ?? 0} max={1} warnAt={st.warnAt / 100} detail={plan.weekly ? `${Math.round(plan.weekly.util * 100)}% · resets ${untilReset(plan.weekly.resetsAt)}` : 'no data yet'} />
+            {showPlan ? <>
+              <SettingRow title="Current plan usage" desc="Reported by each agent as it works. A window resets by itself.">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: 260 }}>
+                  {subs.map((b) => { const p = livePlan(app, b.id); return (
+                    <div key={b.id} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {subs.length > 1 ? <span style={{ font: '600 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>{b.label}</span> : null}
+                      <Meter label="5-hour window" value={p.fiveHour?.util ?? 0} max={1} warnAt={st.warnAt / 100} detail={p.fiveHour ? `${Math.round(p.fiveHour.util * 100)}% · resets ${untilReset(p.fiveHour.resetsAt)}` : 'no data yet'} />
+                      <Meter label="Weekly" value={p.weekly?.util ?? 0} max={1} warnAt={st.warnAt / 100} detail={p.weekly ? `${Math.round(p.weekly.util * 100)}% · resets ${untilReset(p.weekly.resetsAt)}` : 'no data yet'} />
+                    </div>
+                  ); })}
                 </div>
               </SettingRow>
               <SettingRow title="Pause agents at 5-hour usage" desc="Running sessions pause and wait in Needs you when the 5-hour window reaches this. You can continue anyway until it resets."><SegmentedControl size="sm" value={String(st.planPause5h)} onChange={(v: string) => set({ planPause5h: +v })} options={pctOptions} /></SettingRow>
               <SettingRow title="Pause agents at weekly usage" desc="The same for the weekly limit."><SegmentedControl size="sm" value={String(st.planPauseWeek)} onChange={(v: string) => set({ planPauseWeek: +v })} options={pctOptions} /></SettingRow>
               <SettingRow title="Warn at" desc="Meters turn amber at this share of a window."><SegmentedControl size="sm" value={String(st.warnAt)} onChange={(v: string) => set({ warnAt: +v })} options={[{ value: '50', label: '50%' }, { value: '80', label: '80%' }, { value: '90', label: '90%' }]} /></SettingRow>
-            </> : <>
+            </> : null}
+            {showDollars ? <>
               <SettingRow title="Weekly limit, all repositories" desc="Agents pause when a limit is reached and wait in Needs you."><Field value={to(st.weeklyLimit)} onCommit={(v: number) => set({ weeklyLimit: from(v) })} {...money0} style={{ width: 100 }} /></SettingRow>
               <SettingRow title="Default per-session limit"><Field value={to(st.sessionBudget)} onCommit={(v: number) => set({ sessionBudget: from(v) })} {...money0} style={{ width: 100 }} /></SettingRow>
               <SettingRow title="Warn at"><SegmentedControl size="sm" value={String(st.warnAt)} onChange={(v: string) => set({ warnAt: +v })} options={[{ value: '50', label: '50%' }, { value: '80', label: '80%' }, { value: '90', label: '90%' }]} /></SettingRow>
@@ -561,8 +612,35 @@ export function Settings({ section }: { section?: string }) {
                   </div>
                 ))}
               </div>
-            </>}
+            </> : null}
           </> : null}
+          {sec === 'claude' ? (() => { const b = app.backends.find((x) => x.id === 'claude'); return b ? <>
+            <H sub="Anthropic's coding agent. Signs in with a Claude subscription or an API key.">Claude Code</H>
+            <AgentAccount b={b} heading={false} />
+            <SettingRow title="Billing" desc={st.billing === 'subscription' ? 'A Claude subscription (Pro or Max). Usage is limited by plan windows, not dollars, so helm shows plan usage and has no dollar budgets.' : 'Pay per token with an API key. helm tracks cost and enforces the dollar budgets below.'}>
+              <SegmentedControl value={st.billing} onChange={(v: string) => set({ billing: v as any, billingDetected: true })} options={[{ value: 'subscription', label: 'Subscription' }, { value: 'api', label: 'API tokens' }]} />
+            </SettingRow>
+            <SettingRow title="Remote Control for new and resumed sessions" desc="Starts Remote Control (/rc) in every Claude Code agent, so you can follow and drive it from claude.ai/code or the Claude app. Takes effect when a session next starts. Needs a Claude subscription sign-in, and can be blocked by your organisation. Codex has no equivalent."><Switch checked={st.remoteControl} onChange={(v: boolean) => set({ remoteControl: v })} /></SettingRow>
+          </> : null; })() : null}
+          {sec === 'codex' ? (() => { const b = app.backends.find((x) => x.id === 'codex'); if (!b) return null; const p = livePlan(app, 'codex'); return <>
+            <H sub="OpenAI's coding agent (OpenAI Codex). Signs in with a ChatGPT plan or an OpenAI API key.">Codex</H>
+            <AgentAccount b={b} heading={false} />
+            <SettingRow title="Billing" desc={!b.login?.loggedIn ? 'Known once you are signed in.' : b.login.billing === 'api' ? 'Pay per token with an API key. Codex reports tokens but no dollar cost, so helm shows no cost and its dollar budgets do not apply to Codex.' : 'A ChatGPT plan. Usage is limited by plan windows, not dollars; helm shows them and can pause agents at the percentage set under Usage.'}>
+              {b.login?.loggedIn ? <Badge tone="ready" dot>{b.login.billing === 'api' ? 'API tokens' : 'ChatGPT plan'}</Badge> : null}
+            </SettingRow>
+            {b.login?.loggedIn && b.login.billing !== 'api' ? (
+              <SettingRow title="Current plan usage" desc="Reported by Codex as it works.">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: 260 }}>
+                  <Meter label="5-hour window" value={p.fiveHour?.util ?? 0} max={1} warnAt={st.warnAt / 100} detail={p.fiveHour ? `${Math.round(p.fiveHour.util * 100)}% · resets ${untilReset(p.fiveHour.resetsAt)}` : 'no data yet'} />
+                  <Meter label="Weekly" value={p.weekly?.util ?? 0} max={1} warnAt={st.warnAt / 100} detail={p.weekly ? `${Math.round(p.weekly.util * 100)}% · resets ${untilReset(p.weekly.resetsAt)}` : 'no data yet'} />
+                </div>
+              </SettingRow>
+            ) : null}
+            <SettingRow title="Permission modes" desc="How the mode chosen for a session (under Agents, or in the session) is given to Codex. Ask before commands: asks unless a command is trusted, can edit inside the worktree. Allow edits: works inside the worktree and asks only to go beyond it. Plan only: read-only. Allow everything: no approvals, no sandbox." />
+            <SettingRow title="Memory" desc="Codex reads AGENTS.md in the repository and in ~/.codex, and keeps its own notes in ~/.codex/memories. They are in the repository's Memory tab, under Codex, and Remember on a message adds to AGENTS.md." />
+            <SettingRow title="Subagents" desc="Codex starts its own helpers. The per-session limit under Agents is passed to Codex as its cap on concurrent threads (the session itself counts as one). The repository-wide limit is not applied to Codex." />
+            <SettingRow title="Not available with Codex" desc="Remote Control (Claude Code only) and a dollar cost for each session: Codex reports tokens but no cost." />
+          </>; })() : null}
           {sec === 'automations' ? <AutomationsSection /> : null}
           {sec === 'mcp' ? <><H sub="Tools and data sources Claude can use in every repository. Add one to a single repository from its MCP tab.">MCP servers</H><McpServers repoId={null} servers={st.mcpServers || []} /></> : null}
           {sec === 'companion' ? <CompanionSection st={st} set={set} state={app.companion} /> : null}

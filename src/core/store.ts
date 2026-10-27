@@ -18,6 +18,9 @@ export const defaultSettings = (): Settings => ({
   statusColors: {},
   githubClientId: process.env.HELM_GITHUB_CLIENT_ID || DEFAULT_GITHUB_CLIENT_ID,
   claudePath: '',
+  codexPath: '',
+  enabledAgents: ['claude', 'codex'],
+  defaultBackend: 'claude',
   defaultModel: 'sonnet',
   permMode: 'ask',
   alwaysAllow: [],
@@ -89,7 +92,10 @@ interface Persisted {
   activity: ActivityEvent[];
   settings: Settings;
   usage: { t: number; repoId: string; cost: number; tokens: number }[];
+  /** Claude's plan usage; the same object as `plans.claude`, kept so older saved files still load. */
   plan: PlanUsage;
+  /** Plan usage windows per backend id. */
+  plans: Record<string, PlanUsage>;
   /** Lifetime usage per repository id. */
   totals: Record<string, Lifetime>;
   /** Overrides for sessions started outside helm, by Claude session id. */
@@ -109,7 +115,7 @@ interface Persisted {
 }
 
 export class Store {
-  data: Persisted = { user: null, repos: [], sessions: [], activity: [], settings: defaultSettings(), usage: [], plan: { at: 0 }, totals: {}, extArchive: {}, fx: { rates: {}, at: 0 }, audit: [], daily: [], automations: [], automationSeen: {}, instanceId: '', deleted: [] };
+  data: Persisted = { user: null, repos: [], sessions: [], activity: [], settings: defaultSettings(), usage: [], plan: { at: 0 }, plans: {}, totals: {}, extArchive: {}, fx: { rates: {}, at: 0 }, audit: [], daily: [], automations: [], automationSeen: {}, instanceId: '', deleted: [] };
   private transcripts = new Map<string, TranscriptEvent[]>();
   private dir = '';
   private timer: NodeJS.Timeout | null = null;
@@ -156,6 +162,9 @@ export class Store {
 
   get root() { return this.dir; }
 
+  /** One backend's plan usage windows. */
+  planOf(backend: string): PlanUsage { return (this.data.plans[backend] ||= backend === 'claude' ? this.data.plan : { at: 0 }); }
+
   async load(dir: string) {
     this.dir = dir;
     await mkdir(join(this.dir, 'transcripts'), { recursive: true });
@@ -164,9 +173,11 @@ export class Store {
       this.data = { ...this.data, ...raw, settings: { ...defaultSettings(), ...raw.settings } };
       { const o = defaultOutbound(), r = this.data.settings.outbound || o; this.data.settings.outbound = { email: { ...o.email, ...r.email, kinds: { ...o.email.kinds, ...r.email?.kinds } } }; }
       if (!this.data.settings.githubClientId) this.data.settings.githubClientId = defaultSettings().githubClientId;
-      // Sessions saved by older versions have no subagents.
-      for (const x of this.data.sessions) { x.subagents ||= []; x.lastAccess ||= x.endedAt ?? x.startedAt; }
+      // Sessions saved by older versions have no subagents, and kept the agent's conversation id under Claude's name.
+      for (const x of this.data.sessions as any[]) { x.subagents ||= []; x.lastAccess ||= x.endedAt ?? x.startedAt; if (x.claudeSessionId && !x.agentSessionId) { x.agentSessionId = x.claudeSessionId; delete x.claudeSessionId; } }
       this.data.extArchive ||= {};
+      this.data.plan ||= { at: 0 };
+      this.data.plans = { ...(raw.plans || {}), claude: this.data.plan };
       if (!existsSync(join(this.dir, 'activity.jsonl')) && this.data.activity.length) {
         await writeFile(join(this.dir, 'activity.jsonl'), [...this.data.activity].reverse().map((e) => JSON.stringify(e)).join('\n') + '\n', 'utf8');
       }

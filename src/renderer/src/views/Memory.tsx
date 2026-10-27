@@ -27,8 +27,16 @@ function Prose({ text, open }: { text: string; open(target: string): void }) {
   );
 }
 
+/** The agents that keep notes helm can show: the ones installed here. */
+const MEMORY_AGENTS = ['claude', 'codex'];
+
 export function RepoMemory({ repo }: { repo: R }) {
   const app = useApp();
+  const agents = app.backends.filter((b) => MEMORY_AGENTS.includes(b.id) && b.installed);
+  const [agent, setAgent] = React.useState(() => (agents.some((b) => b.id === app.settings.defaultBackend) ? app.settings.defaultBackend : agents[0]?.id || 'claude'));
+  const codex = agent === 'codex';
+  const instructionFile = codex ? 'AGENTS.md' : 'CLAUDE.md';
+  const agentName = agents.find((b) => b.id === agent)?.shortName || 'Claude';
   const [mem, setMem] = React.useState<ProjectMemory | null>(null);
   const [err, setErr] = React.useState('');
   const [sel, setSel] = React.useState<string | null>(null);
@@ -43,17 +51,17 @@ export function RepoMemory({ repo }: { repo: R }) {
   const [flagged, setFlagged] = React.useState(false);
 
   const load = React.useCallback(() => {
-    api.projectMemory(repo.id).then((m) => { setMem(m); setErr(''); }).catch((e) => { setErr(errText(e)); setMem({ dir: null, memories: [], instructions: [] }); });
+    api.projectMemory(repo.id, agent).then((m) => { setMem(m); setErr(''); }).catch((e) => { setErr(errText(e)); setMem({ dir: null, memories: [], instructions: [] }); });
     // Reading every session's conversation takes a moment, so it comes after the list.
-    api.memoryInsights(repo.id).then(setIns).catch(() => setIns(null));
-  }, [repo.id]);
-  React.useEffect(() => { setMem(null); setSel(null); setBodies({}); load(); }, [repo.id]);
+    api.memoryInsights(repo.id, agent).then(setIns).catch(() => setIns(null));
+  }, [repo.id, agent]);
+  React.useEffect(() => { setMem(null); setSel(null); setBodies({}); setQ(''); setType('all'); setFlagged(false); load(); }, [repo.id, agent]);
 
   const all = mem ? [...mem.instructions, ...mem.memories] : [];
   const cur = all.find((e) => e.path === sel) || null;
   React.useEffect(() => {
     setText(null); setDraft(null); setConfirm(false);
-    if (cur) api.readMemory(repo.id, cur.path).then(setText).catch((e) => setErr(errText(e)));
+    if (cur) api.readMemory(repo.id, cur.path, agent).then(setText).catch((e) => setErr(errText(e)));
   }, [sel]);
   // Searching reads every file once, so a match inside the text counts and not only the name.
   React.useEffect(() => {
@@ -61,7 +69,7 @@ export function RepoMemory({ repo }: { repo: R }) {
     const need = mem.memories.filter((m) => !(m.path in bodies));
     if (!need.length) return;
     let dead = false;
-    Promise.all(need.map((m) => api.readMemory(repo.id, m.path).then((t) => [m.path, t] as const).catch(() => [m.path, ''] as const)))
+    Promise.all(need.map((m) => api.readMemory(repo.id, m.path, agent).then((t) => [m.path, t] as const).catch(() => [m.path, ''] as const)))
       .then((rows) => { if (!dead) setBodies((b) => ({ ...b, ...Object.fromEntries(rows) })); });
     return () => { dead = true; };
   }, [q, mem]);
@@ -81,13 +89,13 @@ export function RepoMemory({ repo }: { repo: R }) {
   const save = async () => {
     if (!cur || draft == null) return;
     setBusy(true);
-    try { await api.writeMemory(repo.id, cur.path, draft); setText(draft); setDraft(null); setBodies((b) => ({ ...b, [cur.path]: draft })); load(); }
+    try { await api.writeMemory(repo.id, cur.path, draft, agent); setText(draft); setDraft(null); setBodies((b) => ({ ...b, [cur.path]: draft })); load(); }
     catch (e) { toast({ tone: 'error', title: 'Could not save', description: errText(e) }); } finally { setBusy(false); }
   };
   const remove = async () => {
     if (!cur) return;
     setBusy(true);
-    try { await api.deleteMemory(repo.id, cur.path); setSel(null); load(); toast({ tone: 'neutral', title: 'Memory deleted', description: cur.file }); }
+    try { await api.deleteMemory(repo.id, cur.path, agent); setSel(null); load(); toast({ tone: 'neutral', title: 'Memory deleted', description: cur.file }); }
     catch (e) { toast({ tone: 'error', title: 'Could not delete', description: errText(e) }); } finally { setBusy(false); setConfirm(false); }
   };
 
@@ -111,13 +119,14 @@ export function RepoMemory({ repo }: { repo: R }) {
     <div className="helm-split" style={{ flex: 1, minHeight: 0, display: 'flex' }}>
       <div className="helm-list" style={{ width: 380, flex: 'none', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8, flex: 'none' }}>
+          {agents.length > 1 ? <SegmentedControl value={agent} onChange={setAgent} options={agents.map((b) => ({ value: b.id, label: b.label }))} /> : null}
           <Input value={q} placeholder={`Search ${mem.memories.filter((m) => !m.index).length} memories`} onChange={(e: any) => setQ(e.target.value)} />
           {ins && ins.issues.length ? <div onClick={() => setFlagged(!flagged)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 'var(--radius-md)', cursor: 'pointer', background: flagged ? 'var(--status-attention-bg)' : 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px ' + (flagged ? 'var(--status-attention)' : 'var(--border)'), font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}><i className="ph ph-warning" style={{ color: 'var(--status-attention-text)' }} />{new Set(ins.issues.map((i) => i.path)).size} {new Set(ins.issues.map((i) => i.path)).size === 1 ? 'memory needs' : 'memories need'} a look<span style={{ flex: 1 }} /><span style={{ color: 'var(--text-3)' }}>{flagged ? 'Show all' : 'Show only these'}</span></div> : null}
           {types.length > 2 ? <SegmentedControl value={type} onChange={setType} options={types.map((t) => ({ value: t, label: t === 'all' ? 'All' : t }))} /> : null}
         </div>
         <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
           {err ? <div style={{ ...muted, padding: '0 14px 10px', color: 'var(--status-error-text)' }}>{err}</div> : null}
-          {empty ? <div style={{ ...muted, padding: '8px 14px' }}>Claude Code has not saved any memory for this repository yet, and there is no CLAUDE.md. Memories appear here once an agent writes one.</div> : null}
+          {empty ? <div style={{ ...muted, padding: '8px 14px' }}>{codex ? 'Codex has not saved any memory yet, and there is no AGENTS.md for this repository. Add an AGENTS.md, or use Remember on something you told a Codex agent.' : 'Claude Code has not saved any memory for this repository yet, and there is no CLAUDE.md. Memories appear here once an agent writes one.'}</div> : null}
           {mem.instructions.length && !needle ? <>{heading('Instructions')}{mem.instructions.map((e) => row(e, 'scroll'))}</> : null}
           {index && !needle && type === 'all' ? <>{heading('Index')}{row(index, 'list-bullets')}</> : null}
           {mem.memories.length ? <>{heading(`Memories · ${memories.length}`)}{memories.map((e) => row(e, 'brain'))}</> : null}
@@ -129,7 +138,7 @@ export function RepoMemory({ repo }: { repo: R }) {
         </div> : null}
       </div>
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-        {!cur ? <div style={{ ...muted, padding: 24, maxWidth: 520 }}>Pick a memory to read it. Claude loads the index at the start of every session in this repository, and reads individual memories when they look relevant. Edit or delete one here and the next session sees the change.</div> : <>
+        {!cur ? <div style={{ ...muted, padding: 24, maxWidth: 520 }}>{codex ? 'Pick a file to read it. Codex reads AGENTS.md at the start of every session in this repository, and keeps what it learns across sessions in one memory folder for all your projects.' : 'Pick a memory to read it. Claude loads the index at the start of every session in this repository, and reads individual memories when they look relevant.'}{' '} Edit or delete one here and the next session sees the change.</div> : <>
           <div style={{ flex: 'none', padding: '12px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ font: '600 15px/1.5 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cur.kind === 'memory' && !cur.index ? cur.name : cur.file}</div>

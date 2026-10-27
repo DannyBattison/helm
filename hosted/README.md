@@ -50,6 +50,7 @@ Put settings in an env file (`docker run --env-file helm.env …`, or `.env` for
 | `HELM_HOSTED_ALLOWED_USER` | **Required.** The one GitHub username let in. Anyone else is turned away. That person can run commands in the container. |
 | `HELM_HOSTED_SECRET` | Signs the sign-in cookie. 32+ random characters. If unset, everyone is signed out on every restart. |
 | `ANTHROPIC_API_KEY` | Optional. Agents use this API key instead of a Claude login (billed per token). |
+| `OPENAI_API_KEY` | Optional. Signs Codex in with this API key (billed per token) instead of a ChatGPT login. |
 | `CLAUDE_CODE_OAUTH_TOKEN` | Optional. A long-lived subscription token from `claude setup-token`, instead of the in-app login. |
 | `HELM_GIT_NAME`, `HELM_GIT_EMAIL` | Who agent commits are made as. |
 
@@ -65,11 +66,11 @@ helm.example.com {
 }
 ```
 
-### Signing in to Claude
+### Signing in to an agent
 
-If no key or token is set, the first visit shows **Sign in to Claude to start**: press the button, approve in the tab that opens, paste the code Claude shows, and press **Continue**. The server runs `claude auth login` for you; helm only passes the one-time code along. The login is kept in the volume. Settings → Claude Code shows who is signed in and has a sign out.
+If no key or token is set, the first visit shows **Sign in to start** with a choice of Claude or ChatGPT (Codex). One is enough to begin, and the other can be signed in, or either signed out, under **Settings → Accounts**. For Claude: press the button, approve in the tab that opens, paste the code Claude shows, and press **Continue**. For ChatGPT: press the button, open the page it links to, enter the code shown in helm, and helm carries on by itself. The server runs `claude auth login` for you; helm only passes the one-time code along. The login is kept in the volume. Settings → Claude Code shows who is signed in and has a sign out.
 
-This uses your subscription. Anthropic's terms limit sharing a subscription login, so use your own account on a server only you use.
+This uses your subscription. If Codex says device code sign-in has to be enabled, that is a ChatGPT account setting: turn on device code sign-in for Codex under ChatGPT → Settings → Security (in a workspace an admin may have to allow it), or set `OPENAI_API_KEY` instead. Anthropic's terms limit sharing a subscription login, so use your own account on a server only you use.
 
 ### Signing in with GitHub
 

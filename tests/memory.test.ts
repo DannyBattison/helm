@@ -88,7 +88,7 @@ import { diagnostics, scrub } from '../src/shared/diagnostics';
 describe('diagnostics bundle', () => {
   const settings: any = { billing: 'api', defaultModel: 'sonnet', permMode: 'ask', deliver: 'pr', mergeMethod: 'merge', afterMerge: 'archive', maxRunning: 0, maxSubagentsSession: 4, maxSubagentsRepo: 8, remoteControl: false, tray: true, autoUpdate: true, claudePath: '/home/danny/bin/claude' };
   const session: any = { id: 'fix-cart', repoId: 'acme/shop', status: 'error', model: 'opus', permMode: 'all', commits: [1], files: 2, lastAccess: 5, task: 'SECRET TASK about the unannounced product', error: 'failed in /home/danny/code/shop with ghp_abcdefghijklmnopqrstuvwxyz0123456789' };
-  const input = { now: 0, app: { version: '0.1.0', electron: '45', node: '22', chrome: '140', platform: 'linux', arch: 'x64', os: '6.1', packaged: true }, claudeVersion: '2.0', gitVersion: '2.43', home: '/home/danny', settings, repos: [{ id: 'acme/shop', private: true, defaultBranch: 'main', localPath: '/home/danny/code/shop' } as any], sessions: [session], log: ['2026 ERROR boom at /home/danny/x token=abc123', 'ok'] };
+  const input = { now: 0, app: { version: '0.1.0', electron: '45', node: '22', chrome: '140', platform: 'linux', arch: 'x64', os: '6.1', packaged: true }, agents: [{ label: 'Claude Code', version: '2.0' }], gitVersion: '2.43', home: '/home/danny', settings, repos: [{ id: 'acme/shop', private: true, defaultBranch: 'main', localPath: '/home/danny/code/shop' } as any], sessions: [session], log: ['2026 ERROR boom at /home/danny/x token=abc123', 'ok'] };
   it('leaves out task text and paths, and masks secrets and the home folder', () => {
     const out = diagnostics(input);
     expect(out).not.toContain('SECRET TASK');

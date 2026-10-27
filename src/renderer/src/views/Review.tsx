@@ -2,7 +2,7 @@ import React from 'react';
 import type { Checkpoint, Conflict, Effort, ModelAlias, Session } from '@shared/types';
 import { sessionTitle } from '@shared/types';
 import { api } from '../api';
-import { ago, fmtTokens, relTime } from '../lib';
+import { ago, fmtTokens, modelChoices, relTime } from '../lib';
 import { go, setUI, toast, useApp, useMoney } from '../store';
 import { Badge, Button, Dialog, Select, StatusDot } from '../ui';
 
@@ -204,21 +204,23 @@ export function Compare({ group }: { group: string }) {
 }
 
 // ------------------------------------------------------------------ variants for a compare run
-export interface Variant { model: ModelAlias; effort: Effort | 'default' }
+export interface Variant { /** `agent/model` */ choice: string; effort: Effort | 'default' }
 
 export function VariantEditor({ variants, onChange }: { variants: Variant[]; onChange(v: Variant[]): void }) {
+  const app = useApp();
+  const models = modelChoices(app);
   const set = (i: number, patch: Partial<Variant>) => onChange(variants.map((v, k) => (k === i ? { ...v, ...patch } : v)));
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       {variants.map((v, i) => (
         <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           <span style={{ font: '500 11px/1.5 var(--font-mono)', color: 'var(--text-3)', width: 14 }}>{i + 1}</span>
-          <Select value={v.model} onChange={(e: any) => set(i, { model: e.target.value })} options={[{ value: 'sonnet', label: 'Sonnet' }, { value: 'opus', label: 'Opus' }, { value: 'haiku', label: 'Haiku' }]} style={{ flex: 1 }} />
+          <Select value={v.choice} onChange={(e: any) => set(i, { choice: e.target.value })} options={models} style={{ flex: 1 }} />
           <Select value={v.effort} onChange={(e: any) => set(i, { effort: e.target.value })} options={EFFORT_OPTIONS} style={{ flex: 1 }} />
           <Button size="sm" variant="ghost" icon="x" disabled={variants.length <= 2} onClick={() => onChange(variants.filter((_, k) => k !== i))} />
         </div>
       ))}
-      {variants.length < 4 ? <Button size="sm" variant="ghost" icon="plus" style={{ alignSelf: 'flex-start' }} onClick={() => onChange([...variants, { model: 'sonnet', effort: 'default' }])}>Add a run</Button> : null}
+      {variants.length < 4 ? <Button size="sm" variant="ghost" icon="plus" style={{ alignSelf: 'flex-start' }} onClick={() => onChange([...variants, { choice: models[0]?.value ?? '', effort: 'default' }])}>Add a run</Button> : null}
     </div>
   );
 }
@@ -230,15 +232,22 @@ const TARGETS = [
   { value: 'user', label: 'Everywhere: ~/.claude/CLAUDE.md' }
 ];
 
-/** Turns something you told an agent into a standing instruction in a CLAUDE.md, so later sessions start knowing it. */
-export function RememberDialog({ target, onClose }: { target: { repoId: string; text: string }; onClose(): void }) {
+const CODEX_TARGETS = [
+  { value: 'repo', label: 'This repository: AGENTS.md (shared with the team)' },
+  { value: 'local', label: 'This repository: AGENTS.override.md (just you)' },
+  { value: 'user', label: 'Everywhere: ~/.codex/AGENTS.md' }
+];
+
+/** Turns something you told an agent into a standing instruction in its instructions file (CLAUDE.md, or AGENTS.md for Codex), so later sessions start knowing it. */
+export function RememberDialog({ target, onClose }: { target: { repoId: string; text: string; agent?: string }; onClose(): void }) {
+  const codex = target.agent === 'codex';
   const [text, setText] = React.useState(target.text.split('\n')[0].slice(0, 300));
   const [where, setWhere] = React.useState('repo');
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState('');
   const save = async () => {
     setBusy(true); setErr('');
-    try { const f = await api.rememberInstruction(target.repoId, where as 'repo' | 'local' | 'user', text); toast({ tone: 'ready', title: 'Added to your instructions', description: f }); onClose(); }
+    try { const f = await api.rememberInstruction(target.repoId, where as 'repo' | 'local' | 'user', text, target.agent); toast({ tone: 'ready', title: 'Added to your instructions', description: f }); onClose(); }
     catch (e) { setErr(errText(e)); } finally { setBusy(false); }
   };
   return (
@@ -251,7 +260,7 @@ export function RememberDialog({ target, onClose }: { target: { repoId: string; 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <textarea autoFocus rows={3} value={text} onChange={(e) => setText(e.target.value)} placeholder="For example: run npm test before committing"
           style={{ width: '100%', resize: 'vertical', border: 'none', outline: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border-strong)', color: 'var(--text-1)', font: '400 13px/1.55 var(--font-sans)', padding: '10px 12px' }} />
-        <Select value={where} onChange={(e: any) => setWhere(e.target.value)} options={TARGETS} />
+        <Select value={where} onChange={(e: any) => setWhere(e.target.value)} options={codex ? CODEX_TARGETS : TARGETS} />
       </div>
     </Dialog>
   );

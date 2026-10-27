@@ -30,7 +30,7 @@ function Editor({ repoId, server, names, onClose }: { repoId: string | null; ser
   const save = async () => {
     setBusy(true);
     try { await api.saveMcpServer(repoId, built(), server?.name); onClose(); }
-    catch (e) { toast(errText(e), 'error'); setBusy(false); }
+    catch (e) { toast({ tone: 'error', title: errText(e) }); setBusy(false); }
   };
   return (
     <Dialog title={server ? `Edit ${server.name}` : 'Add MCP server'} width={520} onClose={onClose}
@@ -62,7 +62,7 @@ function Editor({ repoId, server, names, onClose }: { repoId: string | null; ser
 export function McpServers({ repoId, servers, inherited = [] }: { repoId: string | null; servers: McpServer[]; inherited?: McpServer[] }) {
   const [edit, setEdit] = React.useState<McpServer | 'new' | null>(null);
   const names = servers.map((x) => x.name);
-  const run = (p: Promise<void>) => p.catch((e) => toast(errText(e), 'error'));
+  const run = (p: Promise<void>) => p.catch((e) => toast({ tone: 'error', title: errText(e) }));
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

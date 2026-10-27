@@ -2,7 +2,7 @@
   "compilerOptions": {
     "target": "ES2022", "module": "ESNext", "moduleResolution": "Bundler", "lib": ["ES2023"],
     "strict": false, "noImplicitAny": false, "skipLibCheck": true, "esModuleInterop": true, "resolveJsonModule": true, "noEmit": true,
-    "types": ["node"], "paths": { "@shared/*": ["./src/shared/*"] }
+    "types": ["node"], "jsx": "react-jsx", "paths": { "@shared/*": ["./src/shared/*"] }
   },
   "include": ["src/core/**/*", "src/shared/**/*", "tests/**/*"]
 }

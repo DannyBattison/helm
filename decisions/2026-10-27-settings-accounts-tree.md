@@ -1,0 +1,3 @@
+## 2026-10-27 · Settings lists accounts as a tree: Accounts, holding GitHub, Claude Code and Codex
+The Settings list has an Accounts node that is always expanded and has nothing on it of its own; under it are GitHub (what was "Account"), Claude Code and Codex, each with its sign-in, command-line path and anything specific to that service. Agents, which holds the settings shared by every agent, stays a top-level entry below. The old `account` section id still opens GitHub. On a phone the same entries are in the segmented list, without the Accounts heading.
+Why: user request, so every account is found in one place.

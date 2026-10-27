@@ -4,8 +4,16 @@ import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import type { ProjectMemory, MemoryEntry } from '../shared/types';
 
+/** Which agent's notes and instructions: Claude Code's (CLAUDE.md, a memory folder per project) or Codex's (AGENTS.md, one memory folder for you). */
+export type MemoryAgent = 'claude' | 'codex';
+
+/** Codex keeps everything under CODEX_HOME, `~/.codex` unless that is set. */
+export const codexHome = () => process.env.CODEX_HOME || join(homedir(), '.codex');
+
 /** Claude Code keeps a project's notes under ~/.claude/projects/<path with every non-alphanumeric turned into a dash>/memory. */
-export async function memoryDir(repoPath: string): Promise<string | null> {
+export async function memoryDir(repoPath: string, agent: MemoryAgent = 'claude'): Promise<string | null> {
+  // Codex writes what it learns to one folder for all projects, once it has learned anything.
+  if (agent === 'codex') { const d = join(codexHome(), 'memories'); return existsSync(d) ? d : null; }
   const root = join(homedir(), '.claude', 'projects');
   const want = resolve(repoPath).replace(/[^a-zA-Z0-9]/g, '-');
   let names: string[];
@@ -34,8 +42,8 @@ async function entry(kind: MemoryEntry['kind'], path: string, label: string): Pr
   } catch { return null; }
 }
 
-export async function projectMemory(repoPath: string): Promise<ProjectMemory> {
-  const dir = await memoryDir(repoPath);
+export async function projectMemory(repoPath: string, agent: MemoryAgent = 'claude'): Promise<ProjectMemory> {
+  const dir = await memoryDir(repoPath, agent);
   const memories: MemoryEntry[] = [];
   if (dir && existsSync(dir)) {
     for (const f of (await readdir(dir)).filter((n) => n.endsWith('.md'))) {
@@ -43,7 +51,12 @@ export async function projectMemory(repoPath: string): Promise<ProjectMemory> {
       if (e) memories.push(e);
     }
   }
-  const candidates: [string, string][] = [
+  const candidates: [string, string][] = agent === 'codex' ? [
+    [join(repoPath, 'AGENTS.md'), 'AGENTS.md'],
+    [join(repoPath, 'AGENTS.override.md'), 'AGENTS.override.md'],
+    [join(codexHome(), 'AGENTS.md'), '~/.codex/AGENTS.md'],
+    [join(codexHome(), 'AGENTS.override.md'), '~/.codex/AGENTS.override.md']
+  ] : [
     [join(repoPath, 'CLAUDE.md'), 'CLAUDE.md'],
     [join(repoPath, 'CLAUDE.local.md'), 'CLAUDE.local.md'],
     [join(repoPath, '.claude', 'CLAUDE.md'), '.claude/CLAUDE.md'],
@@ -54,27 +67,29 @@ export async function projectMemory(repoPath: string): Promise<ProjectMemory> {
 }
 
 /** Only files the listing itself offers can be read, written or deleted, so a path from the renderer cannot reach anything else. */
-async function allowed(repoPath: string, path: string): Promise<MemoryEntry> {
-  const m = await projectMemory(repoPath);
+async function allowed(repoPath: string, path: string, agent: MemoryAgent): Promise<MemoryEntry> {
+  const m = await projectMemory(repoPath, agent);
   const e = [...m.memories, ...m.instructions].find((x) => x.path === path);
   if (!e) throw new Error('That file is not part of this project\'s memory.');
   return e;
 }
 
-export async function readMemory(repoPath: string, path: string): Promise<string> {
-  return readFile((await allowed(repoPath, path)).path, 'utf8');
+export async function readMemory(repoPath: string, path: string, agent: MemoryAgent = 'claude'): Promise<string> {
+  return readFile((await allowed(repoPath, path, agent)).path, 'utf8');
 }
 
-export async function writeMemory(repoPath: string, path: string, text: string): Promise<void> {
-  await writeFile((await allowed(repoPath, path)).path, text, 'utf8');
+export async function writeMemory(repoPath: string, path: string, text: string, agent: MemoryAgent = 'claude'): Promise<void> {
+  await writeFile((await allowed(repoPath, path, agent)).path, text, 'utf8');
 }
 
-export async function deleteMemory(repoPath: string, path: string): Promise<void> {
-  const e = await allowed(repoPath, path);
+export async function deleteMemory(repoPath: string, path: string, agent: MemoryAgent = 'claude'): Promise<void> {
+  // Codex keeps its notes in a database as well as files, so deleting a file here would only put the two out of step.
+  if (agent === 'codex') throw new Error('Codex manages its own memory; edit it, or turn it off in Codex\'s settings.');
+  const e = await allowed(repoPath, path, agent);
   if (e.kind !== 'memory' || e.index) throw new Error('Only memory files can be deleted here.');
   await rm(e.path);
   // Take its line out of the index, so the index does not point at nothing.
-  const dir = await memoryDir(repoPath);
+  const dir = await memoryDir(repoPath, agent);
   const idx = dir && join(dir, 'MEMORY.md');
   if (idx && existsSync(idx)) {
     const base = e.path.split(/[\/]/).pop()!;

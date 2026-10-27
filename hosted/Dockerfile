@@ -96,11 +96,16 @@ COPY --from=build /app /app
 # `claude` (to try things, or to log in) with exactly the version helm uses.
 RUN case "$(dpkg --print-architecture)" in amd64) A=x64 ;; arm64) A=arm64 ;; *) echo "unsupported architecture" >&2; exit 1 ;; esac     && rm -rf /app/node_modules/@anthropic-ai/claude-agent-sdk-linux-*-musl     && CLAUDE="/app/node_modules/@anthropic-ai/claude-agent-sdk-linux-$A/claude"     && test -x "$CLAUDE" && ln -s "$CLAUDE" /usr/local/bin/claude && claude --version
 
+# OpenAI Codex, the second agent. helm runs `codex app-server` and signs it in from the app, like Claude Code. Pinned, because helm talks to
+# its protocol; change CODEX_VERSION to move it, and the app-server types it was written against are in `codex app-server generate-ts`.
+ARG CODEX_VERSION=0.164.0
+RUN npm install -g "@openai/codex@${CODEX_VERSION}" && npm cache clean --force && codex --version
+
 # tsc, from the TypeScript helm is built with (a root devDependency, so it is in /app/node_modules), on the PATH for agents and the terminal tab.
 RUN test -f /app/node_modules/typescript/bin/tsc && ln -s /app/node_modules/typescript/bin/tsc /usr/local/bin/tsc && tsc --version
 
 # A normal user (created above), not root: the agent runs commands as whoever the server is. Everything it keeps (state, GitHub token,
-# clones, worktrees, Claude Code's login) lives under /home/helm, which is the one volume.
+# clones, worktrees, Claude Code's and Codex's logins) lives under /home/helm, which is the one volume.
 # Built on Windows the script can arrive with CRLF line endings and no exec bit; fix both.
 COPY hosted/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN sed -i 's/\x0d$//' /usr/local/bin/docker-entrypoint.sh && chmod 755 /usr/local/bin/docker-entrypoint.sh

@@ -1,7 +1,7 @@
 import React from 'react';
 import type { DiffHunk, ExternalSession, FileChange, HistoryCommit, PullRequest, Repo as R, TranscriptEvent, WorktreeInfo } from '@shared/types';
 import { api, platform } from '../api';
-import { fmtTokens, lifetimeTokens, money, relTime, tilde } from '../lib';
+import { backendIdOf, fmtTokens, lifetimeTokens, money, relTime, tilde } from '../lib';
 import { go, setUI, toast, useApp, useUI } from '../store';
 import { Avatar, Badge, BranchTag, Button, Dialog, DiffStat, Grip, SegmentedControl, Select, Skeleton, StatusDot, Tabs, useColumns, useNarrow, usePaneWidth } from '../ui';
 import { CodeView } from './CodeView';
@@ -168,7 +168,7 @@ function CommitDetail({ repo, c, files, onOpen }: { repo: R; c: HistoryCommit; f
         <Grip edge="left" onMouseDown={grip} onDoubleClick={reset} />
         <span className="selectable" style={{ font: '600 14px/1.5 var(--font-sans)' }}>{c.msg}</span>
         <span style={{ display: 'flex', alignItems: 'center', gap: 6, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>
-          <Avatar agent={c.agent} name={c.who} size={18} />{c.who}{c.agent ? <span style={{ color: 'var(--text-3)' }}>· on behalf of {app.user?.login}</span> : null}
+          <Avatar agent={c.agent} backend={c.agent ? backendIdOf(app, app.sessions.find((x) => x.id === c.who)) : undefined} name={c.who} size={18} />{c.who}{c.agent ? <span style={{ color: 'var(--text-3)' }}>· on behalf of {app.user?.login}</span> : null}
         </span>
         <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}><BranchTag kind="commit" name={c.hash.slice(0, 7)} />{c.refs.map((r) => <BranchTag key={r} name={r} />)}</span>
       </div>
@@ -371,7 +371,7 @@ function ExternalSessions({ repo, onCount }: { repo: R; onCount(n: number): void
     <div style={{ flex: 1, overflow: 'auto', padding: '0 20px 12px' }}>
       <div style={{ minWidth: col.minWidth + 32 }}>
       <div style={{ padding: '12px 0 4px', font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-3)', maxWidth: 760 }}>
-        Claude Code sessions for this repository that helm did not start, for example from the VS Code extension or the command line. They are found by project folder in <code style={{ font: 'var(--type-data)' }}>~/.claude</code>, are read-only here, and also appear in the list on the left.{hiddenCount ? <> {hiddenCount} {hiddenCount === 1 ? 'is' : 'are'} archived: <a href="#" onClick={(e) => { e.preventDefault(); go({ screen: 'archive' }); }}>see the Archive</a>.</> : null}
+        Sessions of your agents (Claude Code, Codex) for this repository that helm did not start, for example from an editor extension or the command line. They are found by project folder in each agent's own history, are read-only here, and also appear in the list on the left.{hiddenCount ? <> {hiddenCount} {hiddenCount === 1 ? 'is' : 'are'} archived: <a href="#" onClick={(e) => { e.preventDefault(); go({ screen: 'archive' }); }}>see the Archive</a>.</> : null}
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: col.template, gap: 12, padding: '10px 0', ...head }}>
         <span />{col.cell(1, 'Session')}{col.cell(2, 'Branch')}{col.cell(3, 'Last active')}<span style={{ textAlign: 'right' }}>Size</span>
@@ -505,7 +505,7 @@ export function Repo({ id, themeKey, tab: firstTab, hash, file, line }: { id: st
         <Tabs value={tab} onChange={setTab} style={{ borderBottom: 'none', padding: 0 }} tabs={[
           { value: 'history', label: 'History', icon: 'git-commit' },
           { value: 'code', label: 'Code', icon: 'code' },
-          { value: 'external', label: 'Claude sessions', icon: 'chats-circle', count: extCount },
+          { value: 'external', label: 'Outside sessions', icon: 'chats-circle', count: extCount },
           { value: 'memory', label: 'Memory', icon: 'brain' },
           { value: 'mcp', label: 'MCP servers', icon: 'plugs-connected', count: repo.mcpServers?.length || undefined },
           { value: 'worktrees', label: 'Branches & worktrees', icon: 'tree-structure', count: wts?.length },

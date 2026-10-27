@@ -6,7 +6,7 @@ import { api, platform } from '../api';
 import { Hl } from '../Hl';
 import { langFromPath } from '../highlight';
 import { prBody, prSummary, prTitle } from '@shared/prText';
-import { CHECK_RE, relTime } from '../lib';
+import { CHECK_RE, agentName, relTime } from '../lib';
 import { go, setUI, toast, useApp, useTranscript } from '../store';
 import { Avatar, Badge, BranchTag, Button, Checkbox, DiffStat, Grip, IconButton, Input, SegmentedControl, Select, usePaneWidth } from '../ui';
 
@@ -114,6 +114,7 @@ function HunkActions({ s, path, h, accepted, onAsk, onChanged }: { s: Session; p
 const SEVERITY: Record<string, { tone: string; label: string }> = { blocker: { tone: 'error', label: 'Blocker' }, warning: { tone: 'attention', label: 'Warning' }, note: { tone: 'neutral', label: 'Note' } };
 
 function ReviewPanel({ s, onOpen }: { s: Session; onOpen(file: string): void }) {
+  const app = useApp();
   const r = s.review;
   const head = s.commits[s.commits.length - 1]?.hash || '';
   // The review records the commit it saw; a later commit means it is out of date.
@@ -122,10 +123,10 @@ function ReviewPanel({ s, onOpen }: { s: Session; onOpen(file: string): void }) 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ ...label, flex: 1 }}>Review by Claude</span>
+        <span style={{ ...label, flex: 1 }}>Review by {agentName(app, s)}</span>
         <Button size="sm" variant="secondary" icon="magnifying-glass" loading={r?.state === 'running'} disabled={s.worktreeGone} onClick={() => void run()}>{r ? 'Review again' : 'Review this branch'}</Button>
       </div>
-      {!r ? <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>A separate, read-only Claude goes through the diff for bugs, missing tests and changes outside the task. It cannot edit anything.</span> : null}
+      {!r ? <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>A separate, read-only {agentName(app, s)} goes through the diff for bugs, missing tests and changes outside the task. It cannot edit anything.</span> : null}
       {r?.state === 'running' ? <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>Reading the diff…</span> : null}
       {r?.state === 'failed' ? <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--status-error-text)' }}>{r.summary}</span> : null}
       {r?.state === 'done' ? <>

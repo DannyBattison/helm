@@ -44,6 +44,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
 }));
 
 import { SessionManager } from '../src/core/sessions';
+import { claudeEvents } from '../src/core/claudeBackend';
 import { Store } from '../src/core/store';
 import { FREE_ID, type NewSessionInput } from '../src/shared/types';
 
@@ -280,14 +281,14 @@ describe('tool results', () => {
     s.subagents.push({ id: 'sa1', description: 'fg', status: 'working', tools: 0 } as any, { id: 'sa2', description: 'bg', status: 'working', background: true, tools: 0 } as any, { id: 'sa3', description: 'err', status: 'working', background: true, tools: 0 } as any);
     const rt = rtOf(id);
     for (const k of ['sa1', 'sa2', 'sa3']) rt.toolStart.set(k, { t: Date.now(), idx: 0, kind: 'subagent', input: {}, tkey: id, name: 'Agent' });
-    await priv().onToolResults(s, rt, result('sa1', ' all done '));
-    await priv().onToolResults(s, rt, result('sa2', 'started'));
-    await priv().onToolResults(s, rt, result('sa3', 'boom', true));
+    await priv().onToolResults(s, rt, (claudeEvents(result('sa1', ' all done '))[0] as any).results);
+    await priv().onToolResults(s, rt, (claudeEvents(result('sa2', 'started'))[0] as any).results);
+    await priv().onToolResults(s, rt, (claudeEvents(result('sa3', 'boom', true))[0] as any).results);
     expect(s.subagents.map((a) => a.status)).toEqual(['done', 'working', 'failed']);
     expect(s.subagents[0].summary).toBe('all done');
     // a result for a subagent that is no longer listed is ignored
     rt.toolStart.set('gone', { t: Date.now(), idx: 0, kind: 'subagent', input: {}, tkey: id, name: 'Agent' });
-    await priv().onToolResults(s, rt, result('gone', 'x'));
+    await priv().onToolResults(s, rt, (claudeEvents(result('gone', 'x'))[0] as any).results);
   });
 });
 
@@ -567,12 +568,12 @@ describe('results', () => {
     const s = sm.get(id)!;
     s.subagents.push({ id: 'ts', description: 'Dig', status: 'working', tools: 0 } as any);
     s.status = 'idle';
-    await priv().onTaskDone(s, rtOf(id), { tool_use_id: 'ts', status: 'completed', summary: '  found it  ' });
+    await priv().onTaskDone(s, rtOf(id), { t: 'subagent_done', id: 'ts', status: 'completed', summary: '  found it  ' });
     expect(s.subagents[0]).toMatchObject({ status: 'done', summary: 'found it' });
     expect(s.step).toBe('Continuing with the result of Dig');
     s.subagents.push({ id: 'ts2', description: 'Stop', status: 'working', tools: 0 } as any);
     s.status = 'idle';
-    await priv().onTaskDone(s, rtOf(id), { tool_use_id: 'ts2', status: 'stopped' });
+    await priv().onTaskDone(s, rtOf(id), { t: 'subagent_done', id: 'ts2', status: 'stopped' });
     expect(s.subagents[1].status).toBe('stopped');
     expect(s.status).toBe('idle');
   });
@@ -667,9 +668,9 @@ describe('plan limits', () => {
     rt.asks.set('pl', { ask, scope: 'plan', planKey: 'weekly', resolve: () => undefined });
     s.ask = ask; rt.budgetPaused = true;
     await sm.resolveAsk(id, 'pl', {});
-    expect(priv().planOverride.weekly).toBeGreaterThan(Date.now() / 1000);
+    expect(priv().planOverride['claude:weekly']).toBeGreaterThan(Date.now() / 1000);
     expect(rt.budgetPaused).toBe(false);
-    expect(rt.queue).toBeDefined();
+    expect(rt.agent).toBeDefined();
   });
 });
 
@@ -874,7 +875,7 @@ describe('answers that arrive after helm restarted', () => {
     store.data.plan.fiveHour = { util: 0.9, resetsAt: 111 };
     store.data.plan.weekly = { util: 0.9, resetsAt: 222 };
     const r = await orphan({ type: 'budget', scope: 'plan' }, {});
-    expect(priv().planOverride).toEqual({ fiveHour: 111, weekly: 222 });
+    expect(priv().planOverride).toEqual({ 'claude:fiveHour': 111, 'claude:weekly': 222 });
     expect(await r.sent()).toMatch(/plan usage limit/);
     expect(r.s.ask).toBeUndefined();
     expect((await transcript(r.id)).some((e: any) => /helm was restarted while this waited/.test(e.text || ''))).toBe(true);
@@ -1108,7 +1109,7 @@ describe('titles and branch names', () => {
   const withClaudeId = async () => {
     const id = await sm.create(input());
     const s = sm.get(id)!;
-    s.claudeSessionId = 'claude-1';
+    s.agentSessionId = 'claude-1';
     return { id, s };
   };
 
@@ -1116,7 +1117,7 @@ describe('titles and branch names', () => {
     const id = await sm.create(input());
     const s = sm.get(id)!;
     await priv().refreshTitle(s);
-    s.claudeSessionId = 'c';
+    s.agentSessionId = 'c';
     fake.state.info = null;
     await priv().refreshTitle(s);
     fake.state.info = { summary: '  ', firstPrompt: 'x' };
@@ -1208,7 +1209,7 @@ describe('renaming, archiving and artifacts', () => {
     await sm.rename(id, '  My name  ');
     expect(s.customTitle).toBe('My name');
     expect(fake.state.renamed).toEqual([]);
-    s.claudeSessionId = 'c1';
+    s.agentSessionId = 'c1';
     await sm.rename(id, 'x'.repeat(200));
     expect(s.customTitle).toHaveLength(120);
     expect(fake.state.renamed).toHaveLength(1);
