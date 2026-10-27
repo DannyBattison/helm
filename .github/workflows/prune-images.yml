@@ -1,0 +1,67 @@
+# Prunes stale hosted-image versions from ghcr.io/<owner>/helm-hosted. Manual only: run it from the Actions tab.
+#
+# Stale means:
+#   - untagged versions (superseded builds; the action keeps the untagged manifests that multi-arch images still use), and
+#   - sha-<commit> and branch-named tags older than the number of days you choose.
+# Never touched: :latest, :latest-full and release tags (0.2.0, 0.2, ...), with or without the -full suffix.
+#
+# Start with dry-run on (the default) to see what would go.
+name: prune-images
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: Delete sha and branch tags older than this many days
+        default: '14'
+        type: string
+      dry-run:
+        description: Only list what would be deleted
+        default: true
+        type: boolean
+permissions:
+  contents: read
+  packages: write
+concurrency:
+  group: prune-images
+  cancel-in-progress: false
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      OWNER: ${{ github.repository_owner }}
+      DAYS: ${{ inputs.days }}
+      DRY_RUN: ${{ inputs.dry-run }}
+    steps:
+      - name: Delete old sha and branch tags
+        run: |
+          set -euo pipefail
+          owner=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
+          kind=$(gh api "/users/$owner" --jq .type)
+          base=$([ "$kind" = Organization ] && echo "/orgs/$owner" || echo "/users/$owner")
+          pkg="$base/packages/container/helm-hosted"
+          cutoff=$(date -u -d "$DAYS days ago" +%Y-%m-%dT%H:%M:%SZ)
+          # Versions with at least one tag, none of them a keeper (latest, or a version number with an optional -full suffix), last updated before the cutoff.
+          gh api --paginate "$pkg/versions" --jq '.[] | select((.metadata.container.tags | length) > 0) | [.id, .updated_at, (.metadata.container.tags | join(","))] | @tsv' |
+          while IFS=$'\t' read -r id updated tags; do
+            [[ "$updated" < "$cutoff" ]] || continue
+            keep=false
+            for t in ${tags//,/ }; do
+              if [[ "$t" =~ ^(latest|[0-9]+(\.[0-9]+){0,2})(-full)?$ ]]; then keep=true; fi
+            done
+            $keep && continue
+            if [ "$DRY_RUN" = true ]; then
+              echo "would delete version $id ($tags, updated $updated)"
+            else
+              echo "deleting version $id ($tags, updated $updated)"
+              gh api -X DELETE "$pkg/versions/$id"
+            fi
+          done
+      - name: Delete untagged versions
+        if: ${{ !inputs.dry-run }}
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: helm-hosted
+          package-type: container
+          delete-only-untagged-versions: 'true'
+          min-versions-to-keep: 0
