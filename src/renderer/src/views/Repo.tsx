@@ -11,6 +11,7 @@ import { TranscriptItem } from './Session';
 import { Issues } from './Issues';
 import { Actions } from './Actions';
 import { RepoMemory } from './Memory';
+import { McpServers } from './McpServers';
 import { usePush } from './push';
 import { TranscriptList } from './TranscriptList';
 
@@ -506,6 +507,7 @@ export function Repo({ id, themeKey, tab: firstTab, hash, file, line }: { id: st
           { value: 'code', label: 'Code', icon: 'code' },
           { value: 'external', label: 'Claude sessions', icon: 'chats-circle', count: extCount },
           { value: 'memory', label: 'Memory', icon: 'brain' },
+          { value: 'mcp', label: 'MCP servers', icon: 'plugs-connected', count: repo.mcpServers?.length || undefined },
           { value: 'worktrees', label: 'Branches & worktrees', icon: 'tree-structure', count: wts?.length },
           { value: 'issues', label: 'Issues', icon: 'circle-dashed' },
           { value: 'actions', label: 'Actions', icon: 'lightning' },
@@ -532,6 +534,7 @@ export function Repo({ id, themeKey, tab: firstTab, hash, file, line }: { id: st
         </div>
       ) : tab === 'code' ? <RepoCode repo={repo} themeKey={themeKey} open={file ? { path: file, line } : undefined} />
         : tab === 'memory' ? <RepoMemory repo={repo} />
+        : tab === 'mcp' ? <div style={{ flex: 1, overflow: 'auto', padding: 16 }}><McpServers repoId={repo.id} servers={repo.mcpServers || []} inherited={app.settings.mcpServers || []} /></div>
         : tab === 'issues' ? <Issues repoId={repo.id} />
         : tab === 'actions' ? <Actions repoId={repo.id} />
         : tab === 'external' ? <ExternalSessions repo={repo} onCount={setExtCount} />
