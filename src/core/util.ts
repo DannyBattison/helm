@@ -34,6 +34,21 @@ export function dayStart(now = Date.now()): number {
   return d.getTime();
 }
 
+/**
+ * True for a command that kills processes by name or in bulk (`pkill node`, `killall -9 claude`, `kill -9 -1`, `kill $(pgrep …)`,
+ * `pgrep … | xargs kill`). Those take down every agent helm is running, not just the one that ran them, so they are refused outright.
+ * Killing one process by a literal pid (`kill 4242`) is left alone.
+ */
+export function killsBroadly(cmd: string): boolean {
+  if (/(^|[\s;&|(`{])(?:sudo\s+|command\s+|exec\s+|env\s+)*(?:\/\S*\/)?(?:pkill|killall5?|skill|xkill|taskkill)(?=$|[\s;&|)`}])/.test(cmd)) return true;
+  for (const m of cmd.matchAll(/(^|[\s;&|(`{])kill(?=\s|$)([^;&|\n]*)/g)) {
+    const args = m[2];
+    if (/[$`]/.test(args)) return true; // pids from a substitution, usually pgrep
+    if (/(^|\s)(-+\s+)?-1(?=\s|$)/.test(args) || /(^|\s)0(?=\s|$)/.test(args)) return true; // every process we may signal / our process group
+  }
+  return /\bxargs\b[^;&|\n]*\bkill\b/.test(cmd);
+}
+
 /** Glob-ish match where `*` matches anything. */
 export function globMatch(pattern: string, text: string): boolean {
   // `*` matches anything. Done by walking both strings, so no pattern can make it backtrack for long.

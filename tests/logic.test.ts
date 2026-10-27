@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Session } from '../src/shared/types';
 import { parseDiff, parseGithubUrl, isGenerated } from '../src/core/git';
-import { commandPattern, globMatch, hasShellControl, weekStart } from '../src/core/util';
+import { commandPattern, globMatch, hasShellControl, killsBroadly, weekStart } from '../src/core/util';
 import { fmtTokens, laneData, NOW_AT } from '../src/renderer/src/lib';
 import { currencyForRegion, fmtMoney, fromDisplay, toDisplay } from '../src/shared/money';
 
@@ -96,5 +96,16 @@ describe('currency', () => {
     expect(currencyForRegion('GB')).toBe('GBP');
     expect(currencyForRegion('de')).toBe('EUR');
     expect(currencyForRegion('ZZ')).toBeNull();
+  });
+});
+
+describe('killsBroadly', () => {
+  it('refuses kills by name or in bulk, even inside a chain', () => {
+    for (const c of ['pkill node', 'killall -9 claude', 'sudo pkill -f agent', 'kill -9 -1', 'kill 0', 'kill $(pgrep node)', 'kill `pgrep claude`', 'pgrep node | xargs kill -9', 'echo hi && pkill -f x', 'xkill'])
+      expect(killsBroadly(c), c).toBe(true);
+  });
+  it('allows killing one process by pid and unrelated commands', () => {
+    for (const c of ['kill 4242', 'kill -9 4242', 'ls', 'npm run skill-build', 'git commit -m fix'])
+      expect(killsBroadly(c), c).toBe(false);
   });
 });
