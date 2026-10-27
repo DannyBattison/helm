@@ -3,7 +3,6 @@
 #
 #   push to main      -> :latest and :sha-<commit>
 #   tag v0.2.0        -> :0.2.0, :0.2 and :latest
-#   pull request      -> built to check it still builds, not published
 #   run it by hand    -> from the Actions tab, to publish whatever branch you pick (tagged with the branch name)
 #
 # Two variants are built: the slim image (the tags above) and the full one, with LibreOffice, ffmpeg, pandoc, OCR and Playwright/Chromium,
@@ -18,8 +17,6 @@ on:
     branches: [main]
     tags: ['v*']
     paths: ['hosted/**', 'src/**', 'package.json', 'package-lock.json', 'tsconfig*.json', 'desktop/tsconfig.json', '.github/workflows/hosted-image.yml']
-  pull_request:
-    paths: ['hosted/**', 'src/**', 'package.json', 'package-lock.json', 'tsconfig*.json', 'desktop/tsconfig.json', '.github/workflows/hosted-image.yml']
   workflow_dispatch:
     inputs:
       platforms:
@@ -32,7 +29,7 @@ permissions:
   packages: write
 concurrency:
   group: hosted-image-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   image:
     runs-on: ubuntu-latest
@@ -50,7 +47,6 @@ jobs:
         if: contains(inputs.platforms, 'arm64')
       - uses: docker/setup-buildx-action@v3
       - name: Sign in to ghcr.io
-        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -77,7 +73,7 @@ jobs:
           file: hosted/Dockerfile
           build-args: INCLUDE=${{ matrix.include }}
           platforms: ${{ inputs.platforms || 'linux/amd64' }}
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=image${{ matrix.suffix }}
