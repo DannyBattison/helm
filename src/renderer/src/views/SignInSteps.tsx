@@ -1,5 +1,4 @@
 import React from 'react';
-import { api } from '../api';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 
@@ -9,15 +8,15 @@ const small: React.CSSProperties = { font: '400 12px/1.5 var(--font-sans)', colo
  * The same two steps for every agent: open the sign-in page, then finish it. Only the second differs: Claude shows a code to paste
  * back here, Codex is given one here to enter on its page.
  */
-export function SignInSteps({ backend, step, code, setCode, busy, error, onOpen, onPaste, onSubmit, onCancel }: {
+export function SignInSteps({ backend, step, code, setCode, busy, error, onOpen, onPaste, onCopy, onSubmit, onCancel }: {
   backend: { label: string }; step: { url: string; code?: string; needsCode: boolean }; code: string; setCode(v: string): void; busy: boolean; error?: React.ReactNode;
-  onOpen(): void; onPaste(): void; onSubmit(): void; onCancel(): void;
+  onOpen(): void; onPaste(): void; onCopy(text: string): Promise<unknown>; onSubmit(): void; onCancel(): void;
 }) {
   return <>
     <Step n={1} title="Open the sign-in page">
       <div style={{ display: 'flex', gap: 8 }}>
         <Button variant="secondary" style={{ flex: 1 }} iconRight="arrow-square-out" onClick={onOpen}>Open {backend.label} sign-in</Button>
-        <CopyButton text={step.url} label="Copy link" />
+        <CopyButton text={step.url} label="Copy link" copy={onCopy} />
       </div>
       <span style={small}>If the tab did not open, use the button or copy the link into a browser.</span>
     </Step>
@@ -36,7 +35,7 @@ export function SignInSteps({ backend, step, code, setCode, busy, error, onOpen,
       <Step n={2} title="Enter this code there">
         <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
           <div style={{ flex: 1, textAlign: 'center', padding: '12px 10px', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border)', font: '600 24px/1.2 var(--font-mono)', letterSpacing: '0.12em', color: 'var(--text-1)', userSelect: 'all' }}>{step.code}</div>
-          {step.code ? <CopyButton text={step.code} label="Copy code" /> : null}
+          {step.code ? <CopyButton text={step.code} label="Copy code" copy={onCopy} /> : null}
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <span style={{ ...small, flex: 1 }}>Waiting for you to finish. This carries on by itself.</span>
@@ -62,10 +61,10 @@ function Step({ n, title, children }: { n: number; title: string; children: Reac
 }
 
 /** Copies something, and says so for a moment. */
-function CopyButton({ text, label }: { text: string; label: string }) {
+function CopyButton({ text, label, copy: doCopy }: { text: string; label: string; copy(text: string): Promise<unknown> }) {
   const [done, setDone] = React.useState(false);
   const timer = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   React.useEffect(() => () => clearTimeout(timer.current), []);
-  const copy = () => void api.copyText(text).then(() => { setDone(true); clearTimeout(timer.current); timer.current = setTimeout(() => setDone(false), 1500); }).catch(() => undefined);
+  const copy = () => void doCopy(text).then(() => { setDone(true); clearTimeout(timer.current); timer.current = setTimeout(() => setDone(false), 1500); }).catch(() => undefined);
   return <Button variant="secondary" icon={done ? 'check' : 'copy'} onClick={copy} style={{ flex: 'none' }}>{done ? 'Copied' : label}</Button>;
 }

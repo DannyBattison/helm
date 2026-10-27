@@ -4,7 +4,7 @@ import React from 'react';
 import { SignInSteps } from '../src/renderer/src/views/SignInSteps';
 
 const noop = () => undefined;
-const html = (label: string, step: { url: string; code?: string; needsCode: boolean }) => renderToStaticMarkup(React.createElement(SignInSteps, { backend: { label }, step, code: '', setCode: noop, busy: false, onOpen: noop, onPaste: noop, onSubmit: noop, onCancel: noop }));
+const html = (label: string, step: { url: string; code?: string; needsCode: boolean }) => renderToStaticMarkup(React.createElement(SignInSteps, { backend: { label }, step, code: '', setCode: noop, busy: false, onOpen: noop, onPaste: noop, onCopy: async () => undefined, onSubmit: noop, onCancel: noop }));
 
 describe('sign-in steps for each agent', () => {
   const claude = html('Claude Code', { url: 'https://claude.example/auth', needsCode: true });

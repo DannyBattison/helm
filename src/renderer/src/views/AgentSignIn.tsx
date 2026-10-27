@@ -60,7 +60,7 @@ export function AgentSignInPanel({ backend, onDone }: { backend: BackendInfo; on
     </>;
   }
   const paste = async () => { try { const t = (await api.readClipboard()).trim(); if (t) setCode(t); } catch { /* the browser may refuse; typing works */ } };
-  return <SignInSteps backend={backend} step={step} code={code} setCode={setCode} busy={busy} error={error} onOpen={() => void api.openExternal(step.url)} onPaste={paste} onSubmit={submit} onCancel={startOver} />;
+  return <SignInSteps backend={backend} step={step} code={code} setCode={setCode} busy={busy} error={error} onOpen={() => void api.openExternal(step.url)} onPaste={paste} onCopy={(t) => api.copyText(t)} onSubmit={submit} onCancel={startOver} />;
 }
 
 /** A sign-in in a dialog, for the account rows in Settings. */
