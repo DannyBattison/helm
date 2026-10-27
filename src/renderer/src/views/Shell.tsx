@@ -241,6 +241,7 @@ export function TitleBar({ crumbs, theme, setTheme }: { crumbs: any[]; theme: 'd
       <div style={{ flex: narrow ? 'none' : 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 2 }}>
         <Hint id="play-pause" title="Pause and continue everything" text="Interrupt every working agent in one go, then continue them all when you are ready.">
           <span style={{ display: 'inline-flex', gap: 2 }}>
+            <IconButton size={narrow ? 'lg' : 'md'} icon="plus" label="New session" onClick={() => { const r = getUI().route; setUI({ newSession: r.screen === 'repo' ? { repoId: r.id } : {} }); }} />
             <IconButton size={narrow ? 'lg' : 'md'} icon="play" label={paused ? `Continue all agents (${paused} interrupted)` : 'Continue all agents: none were interrupted'} disabled={!paused} hoverColor="var(--status-ready-text)" onClick={() => void resumeAll()} />
             <IconButton size={narrow ? 'lg' : 'md'} icon="pause" label={working ? `Interrupt all agents (${working} working)` : 'Interrupt all agents: none are working'} disabled={!working} hoverColor="var(--status-error-text)" onClick={() => void haltAll()} />
           </span>
