@@ -10,7 +10,7 @@
 # It needs no secrets: the workflow's own token may push to the package of the repository it runs in. The first published image is private;
 # make it public (or give your server a token that can read packages) under the package's settings on GitHub.
 # Pulling it on the server: docker pull ghcr.io/<owner>/helm-hosted:latest
-name: hosted-image
+name: hosted
 on:
   workflow_call:
     inputs:
@@ -29,7 +29,7 @@ permissions:
   contents: read
   packages: write
 concurrency:
-  group: hosted-image-${{ github.ref }}
+  group: hosted-${{ github.ref }}
   cancel-in-progress: false
 jobs:
   build:

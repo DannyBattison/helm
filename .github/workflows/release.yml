@@ -1,6 +1,6 @@
 # Manual release: run the workflow from the Actions tab and choose a major, minor or patch bump. The version is worked out
 # from the latest v* tag (the first release is 0.1.0). The desktop installers (desktop.yml) and the hosted Docker images
-# (hosted-image.yml) are built in parallel with the tests and typecheck (ci.yml) and only provide artifacts. When all have succeeded, the publish job tags the
+# (hosted.yml) are built in parallel with the tests and typecheck (ci.yml) and only provide artifacts. When all have succeeded, the publish job tags the
 # commit, creates the GitHub release (which is what the app's auto-update reads) with the installers attached, and tags
 # the images :X.Y.Z, :X.Y and :latest. A failed build leaves no tag, release or image tag behind.
 # The README's release badges read from the release. Installers are unsigned.
@@ -46,16 +46,16 @@ jobs:
     with:
       ref: ${{ github.sha }}
       version: ${{ needs.version.outputs.version }}
-  image:
+  hosted:
     needs: version
     permissions:
       contents: read
       packages: write
-    uses: ./.github/workflows/hosted-image.yml
+    uses: ./.github/workflows/hosted.yml
     with:
       ref: ${{ github.sha }}
   publish:
-    needs: [version, tests, desktop, image]
+    needs: [version, tests, desktop, hosted]
     runs-on: ubuntu-latest
     permissions:
       contents: write
