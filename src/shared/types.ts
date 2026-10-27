@@ -962,6 +962,8 @@ export interface HelmApi {
   /** The same for one of the session's additional repositories. */
   extraChanges(sessionId: string, repoId: string): Promise<ChangesSummary>;
   fileDiff(sessionId: string, path: string): Promise<DiffHunk[]>;
+  /** Both sides of an image change as data URLs, or null when the file isn't an image. */
+  imageVersions(sessionId: string, path: string): Promise<{ old: string | null; new: string | null } | null>;
   createPr(input: CreatePrInput): Promise<{ url: string | null }>;
   /** Merges an open pull request on GitHub, optionally deleting its branch there. The session (if helm started it) is settled straight away. */
   mergePr(repoId: string, number: number, opts: { method: MergeMethod; deleteBranch: boolean }): Promise<void>;

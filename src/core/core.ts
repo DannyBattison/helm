@@ -530,6 +530,7 @@ export const api: HelmApi = {
     if (!x) throw new Error('This session has no worktree in ' + repoId);
     return G.changes(x.worktree, x.base);
   },
+  async imageVersions(id, path) { const s = sess(id); return G.imageVersions(s.worktree, s.base, path); },
   async fileDiff(id, path) { const s = sess(id); return G.fileDiff(s.worktree, s.base, path); },
 
   async commitOnly(id, files, message) {

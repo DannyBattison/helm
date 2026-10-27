@@ -267,6 +267,14 @@ function ChangesView({ s }: { s: Session }) {
 
   const file = sum?.files.find((f) => f.path === sel);
   const fileLang = sel ? langFromPath(sel) : null;
+  const [images, setImages] = React.useState<{ path: string; old: string | null; new: string | null } | null>(null);
+  React.useEffect(() => {
+    setImages(null);
+    if (!sel || !file?.binary) return;
+    let dead = false;
+    api.imageVersions(s.id, sel).then((v) => !dead && v && setImages({ path: sel, ...v })).catch(() => undefined);
+    return () => { dead = true; };
+  }, [sel, s.id, file?.binary, sum]);
   const collapsed = !!file && (file.generated || file.add + file.del > 1500 || file.binary) && !shown.has(file.path);
   React.useEffect(() => {
     setHunks(null);
@@ -398,7 +406,16 @@ function ChangesView({ s }: { s: Session }) {
           <IconButton icon="code" label="Open in Code tab" size="sm" onClick={() => go({ screen: 'session', id: s.id, tab: 'code' })} />
         </div>
         <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-          {collapsed && file ? (
+          {file?.binary && images?.path === file.path ? (
+            <div style={{ display: 'flex', gap: 1, minHeight: '100%', background: 'var(--border)' }}>
+              {([['Before', images.old], ['After', images.new]] as const).map(([label, src]) => (
+                <div key={label} style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center', padding: 16, background: 'var(--bg-editor)' }}>
+                  <span style={{ font: '500 11px/1.5 var(--font-sans)', color: label === 'Before' ? 'var(--diff-del-fg)' : 'var(--diff-add-fg)' }}>{label}</span>
+                  {src ? <img src={src} alt={label} style={{ maxWidth: '100%', maxHeight: 'calc(100vh - 220px)', objectFit: 'contain', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'repeating-conic-gradient(var(--bg-hover) 0% 25%, transparent 0% 50%) 50% / 16px 16px' }} /> : <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{label === 'Before' ? 'Did not exist' : 'Deleted'}</span>}
+                </div>
+              ))}
+            </div>
+          ) : collapsed && file ? (
             <div style={{ height: '100%', display: 'grid', placeItems: 'center' }}>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, maxWidth: 320, textAlign: 'center' }}>
                 <i className="ph ph-file-dashed" style={{ fontSize: 28, color: 'var(--text-3)' }} />
