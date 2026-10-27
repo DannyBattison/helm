@@ -530,7 +530,7 @@ export const api: HelmApi = {
     return res;
   },
   async changedFiles(id) { return G.dirtyFiles(ws(id).worktree); },
-  async changes(id) { const s = sess(id); return G.changes(s.worktree, s.base); },
+  async changes(id) { const s = sess(id); void sessions.refreshStats(s); return G.changes(s.worktree, s.base); },
   async extraChanges(id, repoId) {
     const x = sess(id).extras?.find((e) => e.repoId === repoId);
     if (!x) throw new Error('This session has no worktree in ' + repoId);

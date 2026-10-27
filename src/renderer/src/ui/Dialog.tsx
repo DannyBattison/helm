@@ -5,6 +5,15 @@ export function Dialog({ open = true, title, description, children, footer, widt
   const narrow = useNarrow();
   // Close only if the press began on the scrim too: a text selection dragged out of a field and released over it must not dismiss the dialog.
   const pressed = React.useRef(false);
+  const live = open && !inline && !!onClose;
+  const close = React.useRef(onClose);
+  close.current = onClose;
+  React.useEffect(() => {
+    if (!live) return;
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape' && !e.defaultPrevented) { e.preventDefault(); e.stopPropagation(); close.current?.(); } };
+    document.addEventListener('keydown', key);
+    return () => document.removeEventListener('keydown', key);
+  }, [live]);
   if (!open) return null;
   const box = (
     <div role="dialog" aria-modal="true" style={{ width, maxWidth: '100%', minWidth: 0, maxHeight: inline ? undefined : narrow ? 'calc(100dvh - 24px)' : 'calc(100vh - 48px)', display: 'flex', flexDirection: 'column', borderRadius: 'var(--radius-xl)', background: 'var(--bg-overlay)', boxShadow: 'var(--shadow-dialog)', animation: 'helm-in var(--dur-slow) var(--ease-out)', ...style }}>
