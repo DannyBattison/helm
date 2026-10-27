@@ -2,7 +2,8 @@ import React from 'react';
 import type { BackendInfo } from '@shared/types';
 import { api } from '../api';
 import { useApp } from '../store';
-import { Button, Dialog, Input } from '../ui';
+import { Button, Dialog } from '../ui';
+import { SignInSteps } from './SignInSteps';
 
 const errText = (e: any) => String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '');
 const text: React.CSSProperties = { margin: 0, font: '400 13px/1.55 var(--font-sans)', color: 'var(--text-2)' };
@@ -15,8 +16,8 @@ const HINT: Record<string, string> = {
 };
 
 /**
- * The whole sign-in for one agent. Claude ends with a code pasted back here; Codex shows a code to enter on the page it
- * opens, and helm notices when that is done. Calls `onDone` once the agent reports it is signed in.
+ * The whole sign-in for one agent, in the same two steps for each. Claude ends with a code pasted back here; Codex shows a code to
+ * enter on the page it opens, and helm notices when that is done. Calls `onDone` once the agent reports it is signed in.
  */
 export function AgentSignInPanel({ backend, onDone }: { backend: BackendInfo; onDone?(): void }) {
   const app = useApp();
@@ -58,28 +59,8 @@ export function AgentSignInPanel({ backend, onDone }: { backend: BackendInfo; on
       {HINT[backend.id] ? <span style={small}>{HINT[backend.id]}</span> : null}
     </>;
   }
-  if (step.needsCode) {
-    return <>
-      <p style={text}>We opened {backend.label} in a new tab. Approve the sign-in there, and it shows a code. Paste it here to finish. If the tab did not open, use the button below.</p>
-      <Button variant="secondary" fullWidth iconRight="arrow-square-out" onClick={() => api.openExternal(step.url)}>Open {backend.label} again</Button>
-      <Input mono autoFocus value={code} onChange={(e: any) => setCode(e.target.value)} onKeyDown={(e: any) => { if (e.key === 'Enter' && code.trim() && !busy) void submit(); }} placeholder="Paste the code here" />
-      <div style={{ display: 'flex', gap: 8 }}>
-        <Button variant="primary" style={{ flex: 1 }} loading={busy} disabled={!code.trim()} onClick={submit}>Continue</Button>
-        <Button variant="ghost" onClick={startOver}>Start over</Button>
-      </div>
-      {error}
-    </>;
-  }
-  return <>
-    <p style={text}>Open the page below, sign in to {backend.label}, and enter this code when it asks. This window carries on by itself once you have.</p>
-    {step.code ? (
-      <button type="button" title="Copy the code" onClick={() => void api.copyText(step.code!)} style={{ all: 'unset', cursor: 'copy', textAlign: 'center', padding: '14px 10px', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border)', font: '600 26px/1.2 var(--font-mono)', letterSpacing: '0.12em', color: 'var(--text-1)' }}>{step.code}</button>
-    ) : null}
-    <Button variant="secondary" fullWidth iconRight="arrow-square-out" onClick={() => api.openExternal(step.url)}>Open {backend.label} sign-in</Button>
-    <span style={small}>Waiting for you to finish…</span>
-    <Button variant="ghost" onClick={startOver}>Cancel</Button>
-    {error}
-  </>;
+  const paste = async () => { try { const t = (await api.readClipboard()).trim(); if (t) setCode(t); } catch { /* the browser may refuse; typing works */ } };
+  return <SignInSteps backend={backend} step={step} code={code} setCode={setCode} busy={busy} error={error} onOpen={() => void api.openExternal(step.url)} onPaste={paste} onSubmit={submit} onCancel={startOver} />;
 }
 
 /** A sign-in in a dialog, for the account rows in Settings. */
