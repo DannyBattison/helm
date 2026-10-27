@@ -5,6 +5,12 @@ import type { AuditEntry, DailyUsage, ModelAlias, PlanUsage, Session, Status } f
 export const DAY = 86_400_000;
 /** Context window assumed when working out how full a session is. */
 export const CONTEXT_WINDOW = 200_000;
+export const LONG_CONTEXT_WINDOW = 1_000_000;
+
+/** The window a session runs in: 1M when the model name says so, or when it has already used more than 200k (so it can't be in the smaller one). */
+export function contextWindow(s: { ctx: number; modelName?: string }): number {
+  return s.ctx > CONTEXT_WINDOW || /1m/i.test(s.modelName ?? '') ? LONG_CONTEXT_WINDOW : CONTEXT_WINDOW;
+}
 
 export interface ReportInput {
   sessions: Session[];
@@ -263,7 +269,7 @@ export function approvalReport(input: ReportInput): ApprovalReport {
 export interface QualityReport {
   tools: { name: string; n: number; err: number }[];
   stuck: { id: string; repoId: string; reason: string }[];
-  context: { id: string; repoId: string; ctx: number; pct: number; model: ModelAlias }[];
+  context: { id: string; repoId: string; ctx: number; window: number; pct: number; model: ModelAlias }[];
   hotFiles: { repoId: string; path: string; sessions: number; add: number; del: number; edits: number }[];
   /** Files edited many times in one session without a commit. */
   churn: { id: string; repoId: string; file: string; edits: number }[];
@@ -291,7 +297,7 @@ export function qualityReport(input: ReportInput): QualityReport {
     stuck: input.sessions.filter((s) => s.stuck && !s.archivedAt).map((s) => ({ id: s.id, repoId: s.repoId, reason: s.stuck! })),
     context: input.sessions
       .filter((s) => !s.archivedAt && s.ctx > 0)
-      .map((s) => ({ id: s.id, repoId: s.repoId, ctx: s.ctx, pct: s.ctx / CONTEXT_WINDOW, model: s.model }))
+      .map((s) => ({ id: s.id, repoId: s.repoId, ctx: s.ctx, window: contextWindow(s), pct: s.ctx / contextWindow(s), model: s.model }))
       .sort((a, b) => b.pct - a.pct)
       .slice(0, 10),
     hotFiles: [...files.values()].map((f) => ({ ...f, sessions: f.sessions.size })).sort((a, b) => b.sessions - a.sessions || b.add + b.del - (a.add + a.del)).slice(0, 15),
