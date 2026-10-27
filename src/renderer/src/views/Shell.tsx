@@ -10,6 +10,7 @@ import { fontStack } from '../fonts';
 import glyph from '../assets/helm-glyph-violet.svg';
 import { ago, elapsed, fmtTokens, isFreeGroup, lifetimeTokens, livePlan, reposWithSessions, runningSubagents, subagentTree, totals, untilReset } from '../lib';
 import { getUI, go, haltAll, isResumable, refreshExternals, resumeAll, setUI, toast, useApp, useMoney, useUI, useTranscript, type Route } from '../store';
+import { InboxPreview } from './InboxPreview';
 import { useShortcutKeys } from '../shortcuts';
 import { Avatar, Badge, Breadcrumbs, ContextMenu, Grip, Hint, IconButton, Kbd, Meter, TreeItem, useNarrow, usePaneWidth, type MenuItem } from '../ui';
 
@@ -224,7 +225,6 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
 
 export function TitleBar({ crumbs, theme, setTheme }: { crumbs: any[]; theme: 'dark' | 'light'; setTheme(t: 'dark' | 'light'): void }) {
   const app = useApp();
-  const need = app.sessions.filter((s) => s.status === 'attention').length;
   const searchKeys = useShortcutKeys('palette');
   const working = app.sessions.filter((s) => s.status === 'working').length;
   const paused = app.sessions.filter(isResumable).length;
@@ -246,7 +246,7 @@ export function TitleBar({ crumbs, theme, setTheme }: { crumbs: any[]; theme: 'd
             <IconButton size={narrow ? 'lg' : 'md'} icon="pause" label={working ? `Interrupt all agents (${working} working)` : 'Interrupt all agents: none are working'} disabled={!working} hoverColor="var(--status-error-text)" onClick={() => void haltAll()} />
           </span>
         </Hint>
-        <Hint id="inbox" title="Your inbox" text="Approvals, questions and finished work that need you collect here."><IconButton size={narrow ? 'lg' : 'md'} icon="bell" label="Inbox" badge={need > 0} onClick={() => go({ screen: 'inbox' })} /></Hint>
+        <Hint id="inbox" title="Your inbox" text="Approvals, questions and finished work that need you collect here."><InboxPreview size={narrow ? 'lg' : 'md'} /></Hint>
         {narrow ? null : <>
           <IconButton icon={theme === 'dark' ? 'sun' : 'moon'} label="Toggle theme" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
           <span style={{ width: 1, height: 16, background: 'var(--border)', margin: '0 6px' }} />
