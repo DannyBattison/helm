@@ -1,6 +1,7 @@
 # Builds the unsigned desktop installers for macOS, Windows and Linux and uploads them as workflow artifacts
 # (desktop-macos, desktop-windows, desktop-linux). Nothing is published: release.yml calls this and attaches the files to the release.
-# Run it by hand from the Actions tab to get installers for any branch (kept for 14 days).
+# Run it by hand from the Actions tab to get installers for any branch. Artifact storage is limited on a free account, so release
+# runs keep the installers for 1 day (they are on the release by then) and manual runs for 3.
 name: desktop
 on:
   workflow_call:
@@ -54,4 +55,4 @@ jobs:
             release/*.blockmap
             release/latest*.yml
           if-no-files-found: error
-          retention-days: 14
+          retention-days: ${{ inputs.ref != '' && 1 || 3 }}

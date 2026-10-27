@@ -70,7 +70,7 @@ jobs:
         with:
           name: digest-${{ matrix.name }}
           path: digest-${{ matrix.name }}
-          retention-days: 7
+          retention-days: 1
   # By hand only: name the digests after the branch that was built.
   tag:
     if: github.event_name == 'workflow_dispatch'
