@@ -165,7 +165,6 @@ export function App() {
         </div>
       </div>
       <StatusBar />
-      {narrow && !newSession && !drawer && !adding ? <button type="button" aria-label="New session" title="New session" onClick={() => { const r = getUI().route; setUI({ newSession: r.screen === 'repo' ? { repoId: r.id } : {} }); }} style={{ position: 'absolute', right: 16, bottom: 'calc(var(--statusbar-h) + 16px + env(safe-area-inset-bottom, 0px))', zIndex: 30, width: 56, height: 56, display: 'grid', placeItems: 'center', border: 'none', borderRadius: '50%', background: 'var(--accent)', color: '#fff', boxShadow: 'var(--shadow-dialog)', cursor: 'pointer' }}><i className="ph ph-plus" style={{ fontSize: 24 }} /></button> : null}
       {adding ? <AddRepo onClose={() => setUI({ adding: false })} /> : null}
       {newSession ? <NewSession repoId={newSession.repoId} initial={newSession} onClose={() => setUI({ newSession: null })} /> : null}
       {removingRepo ? <RemoveRepo key={removingRepo} id={removingRepo} onClose={() => setUI({ removingRepo: null })} /> : null}
