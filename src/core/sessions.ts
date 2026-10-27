@@ -311,6 +311,17 @@ export class SessionManager {
   }
 
   /** Takes a session out of the queue without running it. */
+  /** A queued merge could not go ahead: keep why on the session, so it shows in the inbox, and tell the user. */
+  failQueuedMerge(id: string, error: string) {
+    const s = this.get(id);
+    if (!s?.queuedMerge || s.queuedMerge.error === error) return;
+    s.queuedMerge.error = error;
+    s.queuedMerge.errorAt = Date.now();
+    this.activity(s, 'merge', 'queued merge failed', { who: 'helm', human: true, detail: error, ok: false });
+    this.hooks.notify('failed', `${s.id}: queued merge failed`, trunc(error, 120), s.id);
+    this.touch();
+  }
+
   async dequeue(id: string) {
     const s = this.get(id);
     if (!s?.queued) return;
@@ -1478,6 +1489,7 @@ export class SessionManager {
       await this.removeExtras(s, opts.branch);
       s.worktreeGone = true;
     }
+    s.queuedMerge = undefined;
     s.mergedInto = merged.into;
     s.mergedAt = merged.at ?? Date.now();
     this.activity(s, 'worktree', `cleaned up after the merge${opts.branch ? ': worktree and branch removed' : opts.worktree ? ': worktree removed' : ''}`, { who: 'helm', human: true });

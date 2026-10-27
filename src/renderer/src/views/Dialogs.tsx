@@ -419,12 +419,18 @@ export function MergePr({ target, onClose }: { target: { repoId: string; number:
   const [del, setDel] = React.useState(!!(session ? session.deleteBranchAfterMerge ?? session.removeAfterMerge : false));
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState('');
+  const [when, setWhen] = React.useState<'now' | 'checks'>('now');
   React.useEffect(() => { api.repoPulls(target.repoId).then((l) => setPr(l.find((p) => p.number === target.number) || null)).catch((e) => setErr(errText(e))); }, []);
   const run = async () => {
     setBusy(true); setErr('');
     try {
-      await api.mergePr(target.repoId, target.number, { method, deleteBranch: del });
-      toast({ tone: 'ready', title: `Merged #${target.number}`, description: pr ? `${pr.branch} into ${pr.base}` : undefined });
+      if (when === 'checks') {
+        await api.queueMerge(target.repoId, target.number, { method, deleteBranch: del });
+        toast({ tone: 'ready', title: `Merge of #${target.number} queued`, description: 'It merges when its checks pass. The session stays in the sidebar until then.' });
+      } else {
+        await api.mergePr(target.repoId, target.number, { method, deleteBranch: del });
+        toast({ tone: 'ready', title: `Merged #${target.number}`, description: pr ? `${pr.branch} into ${pr.base}` : undefined });
+      }
       onClose();
     } catch (e) { setErr(errText(e)); } finally { setBusy(false); }
   };
@@ -436,7 +442,7 @@ export function MergePr({ target, onClose }: { target: { repoId: string; number:
       footer={<>
         <span style={{ flex: 1, font: '400 12px/1.5 var(--font-sans)', color: 'var(--status-error-text)' }}>{err}</span>
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" icon="git-merge" loading={busy} disabled={!pr || pr.state !== 'open'} onClick={run}>{pr ? `Merge into ${pr.base}` : 'Merge'}</Button>
+        <Button variant="primary" icon="git-merge" loading={busy} disabled={!pr || pr.state !== 'open'} onClick={run}>{when === 'checks' ? 'Queue merge' : pr ? `Merge into ${pr.base}` : 'Merge'}</Button>
       </>}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {pr && pr.state !== 'open' ? <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>It is already {pr.state}.</span> : null}
@@ -457,6 +463,13 @@ export function MergePr({ target, onClose }: { target: { repoId: string; number:
                 </a>
               );
             })}
+          </div>
+        ) : null}
+        {session ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <span style={{ font: '500 12px/1.5 var(--font-sans)' }}>When</span>
+            <Select value={when} onChange={(e: any) => setWhen(e.target.value)} options={[{ value: 'now', label: 'Merge now' }, { value: 'checks', label: 'Queue: merge when its checks pass' }]} />
+            {when === 'checks' ? <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>helm waits for the pull request's checks. The session stays in the sidebar until it is merged, and goes to your inbox if the checks fail or the merge cannot go ahead.</span> : null}
           </div>
         ) : null}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>

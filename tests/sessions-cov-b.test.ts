@@ -1327,6 +1327,24 @@ describe('deleting and cleaning up', () => {
     expect((await sm.deleteInfo(id)).unpushed).toBe(0);
   });
 
+  it('records why a queued merge failed, once, and tells the user; finishing the merge clears the queue', async () => {
+    const id = await sm.create(input({ task: 'Queue it' }));
+    const s = sm.get(id)!;
+    sm.failQueuedMerge(id, 'no queue');
+    expect(hooks.notify).not.toHaveBeenCalledWith('failed', expect.stringContaining('queued merge'), expect.anything(), id);
+    s.queuedMerge = { method: 'squash', deleteBranch: false, since: 1 };
+    sm.failQueuedMerge(id, 'Checks failed on pull request #3: build.');
+    expect(s.queuedMerge).toMatchObject({ error: 'Checks failed on pull request #3: build.' });
+    expect(s.queuedMerge!.errorAt).toBeGreaterThan(0);
+    expect(hooks.notify).toHaveBeenCalledWith('failed', `${id}: queued merge failed`, 'Checks failed on pull request #3: build.', id);
+    hooks.notify.mockClear();
+    sm.failQueuedMerge(id, 'Checks failed on pull request #3: build.');
+    expect(hooks.notify).not.toHaveBeenCalled();
+    store.data.settings.afterMerge = 'keep';
+    await sm.finishMerged(id, { into: 'main' }, { worktree: false, branch: false });
+    expect(s.queuedMerge).toBeUndefined();
+  });
+
   it('keeps a merged session as it is, archives it, or deletes it, as the setting says', async () => {
     const mk = async (task: string) => { const id = await sm.create(input({ task })); return sm.get(id)!; };
     await sm.finishMerged('nope', { into: 'main' }, { worktree: true, branch: true });

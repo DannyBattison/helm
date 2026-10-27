@@ -2,8 +2,9 @@ import React from 'react';
 import { CopyBox } from '../ui';
 import { usePush } from './push';
 import { sessionTitle, type ActivityEvent, type ExternalSession, type Session } from '@shared/types';
+import { contextWindow } from '@shared/reports';
 import { api, platform } from '../api';
-import { ctxMax, isFreeGroup, whereLabel, ago, clock, fmtTokens, lifetimeTokens, laneAxis, laneData, LANE_MIN, livePlan, repoOf, reposWithSessions, runningSubagents, sessionTokens, totals, untilReset } from '../lib';
+import { isFreeGroup, whereLabel, ago, clock, fmtTokens, lifetimeTokens, laneAxis, laneData, LANE_MIN, livePlan, repoOf, reposWithSessions, runningSubagents, sessionTokens, totals, untilReset } from '../lib';
 import { Cmd } from '../Hl';
 import { go, setUI, useApp, useMoney, toast, useUI } from '../store';
 import { Avatar, Button, DiffStat, Hint, Meter, SegmentedControl, Stat, StatusDot, useColumns, useNarrow } from '../ui';
@@ -124,7 +125,7 @@ function SessionRow({ s, now, tpl, sub, narrow }: { s: Session; now: number; tpl
         </div>
       ) : <>
         <Lane s={s} now={now} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Meter value={s.ctx} max={ctxMax(s)} warnAt={0.75} style={{ flex: 1 }} /><span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-2)', width: 30, textAlign: 'right' }}>{fmtTokens(s.ctx)}</span></div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Meter value={s.ctx} max={contextWindow(s)} warnAt={0.75} style={{ flex: 1 }} /><span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-2)', width: 30, textAlign: 'right' }}>{fmtTokens(s.ctx)}</span></div>
         <span style={{ font: 'var(--type-data)', textAlign: 'right' }}>{fmtTokens(sessionTokens(s))}</span>
         {sub ? null : <span style={{ font: 'var(--type-data)', textAlign: 'right' }}>{fmt(s.cost)}</span>}
         <span style={{ textAlign: 'right' }}><DiffStat additions={s.add} deletions={s.del} /></span>
@@ -286,11 +287,11 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
                 { value: 'external', label: 'External', count: totalExt },
                 { value: 'archived', label: 'Archived', count: archivedTotal }]} />
               <span style={{ flex: 1 }} />
-              <SegmentedControl size="sm" value={layout} onChange={pickLayout} options={[{ value: 'list', label: 'List', icon: 'list' }, { value: 'board', label: 'Board', icon: 'kanban' }]} />
               {narrow || board ? null : [['working', 'Working'], ['attention', 'Waiting on you'], ['ready', 'Ready']].map(([k, l]) => (
                 <span key={k} style={{ display: 'flex', alignItems: 'center', gap: 5, font: '400 11px/1.5 var(--font-sans)', color: 'var(--text-3)' }}><span style={{ width: 12, height: 6, borderRadius: 2, background: LANE_COLOR[k] }} />{l}</span>
               ))}
               {narrow || board ? null : <span style={{ display: 'flex', alignItems: 'center', gap: 5, font: '400 11px/1.5 var(--font-sans)', color: 'var(--text-3)' }}><span style={{ width: 2, height: 10, borderRadius: 1, background: 'var(--text-1)' }} />Commit</span>}
+              <SegmentedControl size="sm" value={layout} onChange={pickLayout} options={[{ value: 'list', label: 'List', icon: 'list' }, { value: 'board', label: 'Board', icon: 'kanban' }]} />
             </div>
             {board ? <Board sessions={app.sessions.filter(visible)} only={filter} /> : <>
             {narrow ? null : <div style={{ display: 'grid', gridTemplateColumns: col.template, gap: 12, alignItems: 'end', padding: '6px 12px', borderTop: '1px solid var(--border)', font: '500 10.5px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>

@@ -42,3 +42,17 @@ describe('claudeEvents', () => {
     expect(claudeEvents({ type: 'stream_event' })).toEqual([]);
   });
 });
+
+import { contextWindow, windowLabel } from '../src/shared/reports';
+
+describe('context window', () => {
+  it('uses the size the agent reported, then the model name, then how much is already used', () => {
+    expect(contextWindow({ ctx: 50_000, ctxMax: 272_000 })).toBe(272_000);
+    expect(contextWindow({ ctx: 50_000, modelName: 'claude-sonnet-5-5[1m]' })).toBe(1_000_000);
+    expect(contextWindow({ ctx: 250_000 })).toBe(1_000_000);
+    expect(contextWindow({ ctx: 50_000 })).toBe(200_000);
+  });
+  it('words a size for display', () => {
+    expect([200_000, 272_000, 1_000_000, 1_500_000].map(windowLabel)).toEqual(['200k', '272k', '1M', '1.5M']);
+  });
+});
