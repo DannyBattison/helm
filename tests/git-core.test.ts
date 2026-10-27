@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { addWorktree, changes, commitDiff, dirtyFiles, fileDiff, fileExists, defaultBranch, initScratch, isGenerated, listFiles, mergeBase, parseGithubUrl, remoteSlug, removeWorktree, searchFiles, userIdentity, gitOk } from '../src/core/git';
+import { addWorktree, changes, commitDiff, dirtyFiles, fileDiff, imageVersions, fileExists, defaultBranch, initScratch, isGenerated, listFiles, mergeBase, parseGithubUrl, remoteSlug, removeWorktree, searchFiles, userIdentity, gitOk } from '../src/core/git';
 
 const g = (cwd: string, ...a: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', ...a], { cwd, encoding: 'utf8' });
 let root: string, repo: string;
@@ -68,6 +68,11 @@ describe('repository helpers', () => {
     const fresh = await fileDiff(wt, 'main', 'fresh.txt');
     expect(fresh[0].header).toMatch(/\+1,2/);
     expect(await fileDiff(wt, 'main', 'nothere.txt')).toEqual([]);
+    writeFileSync(join(wt, 'pic.png'), Buffer.from([137, 80, 78, 71, 0]));
+    expect(await imageVersions(wt, 'main', 'a.txt')).toBeNull();
+    const pic = await imageVersions(wt, 'main', 'pic.png');
+    expect(pic?.old).toBeNull();
+    expect(pic?.new).toBe('data:image/png;base64,' + Buffer.from([137, 80, 78, 71, 0]).toString('base64'));
     const sha = g(wt, 'rev-parse', 'HEAD').trim();
     expect((await commitDiff(wt, sha, 'a.txt'))[0].lines.length).toBeGreaterThan(0);
 

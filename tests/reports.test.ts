@@ -78,6 +78,9 @@ describe('spend', () => {
   it('cache hit is cache reads over all input', () => {
     expect(spendReport(input({ daily: [use(0, { input: 100, cacheRead: 300 })] })).cacheHit).toBeCloseTo(0.75);
   });
+  it('never reports negative spend', () => {
+    expect(spendReport(input({ daily: [use(0, { cost: -2 }), use(0, { cost: 1 })] })).total.cost).toBe(1);
+  });
   it('is empty without data', () => {
     const r = spendReport(input());
     expect(r.total.cost).toBe(0);

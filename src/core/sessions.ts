@@ -75,6 +75,8 @@ interface Runtime {
   asks: Map<string, AskWaiter>;
   turnCost: number;
   baseCost: number;
+  /** Session cost when this run started; the SDK's total_cost_usd counts only from there. */
+  startCost: number;
   interrupted: boolean;
   budgetPaused: boolean;
   toolStart: Map<string, { t: number; idx: number; kind: string; input: any; tkey: string; name?: string }>;
@@ -621,7 +623,7 @@ export class SessionManager {
     // A worktree made before a file was uploaded gets it when the agent next starts. Files already there are left as the agent has them.
     if (!s.free) await supplyRepoArtifacts(s.repoId, s.worktree, false);
     for (const x of s.extras || []) await supplyRepoArtifacts(x.repoId, x.worktree, false);
-    const rt: Runtime = { q: null as any, queue, abort, asks: new Map(), turnCost: 0, baseCost: s.cost, interrupted: false, budgetPaused: false, toolStart: new Map(), fails: new Map(), lastTools: new Map(), subEvent: new Map(), admitted: new Set() };
+    const rt: Runtime = { q: null as any, queue, abort, asks: new Map(), turnCost: 0, baseCost: s.cost, startCost: s.cost, interrupted: false, budgetPaused: false, toolStart: new Map(), fails: new Map(), lastTools: new Map(), subEvent: new Map(), admitted: new Set() };
     const options: any = {
       cwd: s.worktree,
       model: MODEL_ALIAS[s.model],
@@ -1125,13 +1127,17 @@ export class SessionManager {
   }
 
   private async onResult(s: Session, rt: Runtime, m: any) {
-    if (typeof m.total_cost_usd === 'number') {
-      // The SDK total is authoritative: correct the running estimate in either direction.
-      const delta = m.total_cost_usd - rt.baseCost - rt.turnCost;
+    // The SDK total counts from the start of this run (a resumed session starts again at zero), and is 0 when it reports nothing, as on a subscription. Only a positive total corrects the estimate.
+    if (typeof m.total_cost_usd === 'number' && m.total_cost_usd > 0) {
+      const target = rt.startCost + m.total_cost_usd;
+      const delta = target - rt.baseCost - rt.turnCost;
       if (Math.abs(delta) > 1e-6) { this.store.addUsage(s.repoId, delta, 0); this.store.addDaily(s.repoId, s.model, { cost: delta }); }
-      rt.baseCost = Math.max(rt.baseCost, m.total_cost_usd);
+      rt.baseCost = target;
       rt.turnCost = 0;
       s.cost = rt.baseCost;
+    } else if (typeof m.total_cost_usd === 'number') {
+      rt.baseCost += rt.turnCost;
+      rt.turnCost = 0;
     }
     rt.toolStart.clear();
     rt.lastTools.clear();
