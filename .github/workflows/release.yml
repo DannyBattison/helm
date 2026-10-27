@@ -1,6 +1,7 @@
 # Manual release: run the workflow from the Actions tab and choose a major, minor or patch bump. The version is worked out
 # from the latest v* tag (the first release is 0.1.0), tagged, built for macOS, Windows and Linux, and attached to a
-# GitHub release, which is what the app's auto-update reads. The README's release badges read from that release.
+# GitHub release, which is what the app's auto-update reads, and marked as the latest release. The hosted Docker image is
+# published from the same tag, with :latest moved to it. The README's release badges read from that release.
 #
 # Signing is optional and driven by repository secrets; without them the installers are built unsigned.
 #   macOS:   CSC_LINK (base64 .p12 of a Developer ID Application certificate), CSC_KEY_PASSWORD,
@@ -71,3 +72,18 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+  image:
+    needs: version
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/hosted-image.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+  latest:
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh release edit "v${{ needs.version.outputs.version }}" --latest --repo "$GITHUB_REPOSITORY"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
