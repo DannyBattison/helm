@@ -1,6 +1,6 @@
 import type { Session, SessionArtifact } from './types';
 
-export type InboxKind = 'approve' | 'question' | 'budget' | 'error' | 'stuck' | 'ready' | 'artifact' | 'queued';
+export type InboxKind = 'approve' | 'question' | 'budget' | 'error' | 'stuck' | 'ready' | 'artifact' | 'queued' | 'merge';
 
 export interface InboxItem {
   session: Session;
@@ -12,7 +12,7 @@ export interface InboxItem {
 }
 
 /** Oldest-first order within a kind; kinds that block an agent come before ones that only wait for you to look. */
-const RANK: Record<InboxKind, number> = { approve: 0, question: 0, budget: 1, error: 2, stuck: 3, ready: 4, artifact: 5, queued: 6 };
+const RANK: Record<InboxKind, number> = { approve: 0, question: 0, budget: 1, error: 2, merge: 2, stuck: 3, ready: 4, artifact: 5, queued: 6 };
 
 /** What tells one item from another: a session can have several artifacts waiting. */
 export const inboxKey = (i: InboxItem) => i.session.id + (i.artifact ? ':' + i.artifact.name : '');
@@ -27,6 +27,7 @@ export function inbox(sessions: Session[]): InboxItem[] {
     if (s.archivedAt || s.mergedAt) continue;
     if (s.ask) out.push({ session: s, kind: s.ask.type, since: s.ask.at });
     else if (s.status === 'error') out.push({ session: s, kind: 'error', since: s.endedAt ?? s.lastAccess });
+    else if (s.queuedMerge?.error) out.push({ session: s, kind: 'merge', since: s.queuedMerge.errorAt ?? s.queuedMerge.since });
     else if (s.stuck && s.status === 'working') out.push({ session: s, kind: 'stuck', since: s.lastAccess });
     else if (s.status === 'ready' && !s.prUrl) out.push({ session: s, kind: 'ready', since: s.endedAt ?? s.lastAccess });
     else if (s.queued) out.push({ session: s, kind: 'queued', since: s.startedAt });
@@ -37,7 +38,7 @@ export function inbox(sessions: Session[]): InboxItem[] {
 }
 
 /** What a key does on an item, or null when it does nothing there. Letters are lowercase except `A`, which is shift-a. */
-export type InboxAction = { do: 'approve' } | { do: 'always' } | { do: 'deny' } | { do: 'answer'; option: number } | { do: 'answers'; answers: Record<string, string> } | { do: 'continue' } | { do: 'open' } | { do: 'resume' } | { do: 'start' } | { do: 'download' } | { do: 'dismiss' };
+export type InboxAction = { do: 'approve' } | { do: 'always' } | { do: 'deny' } | { do: 'answer'; option: number } | { do: 'answers'; answers: Record<string, string> } | { do: 'continue' } | { do: 'open' } | { do: 'resume' } | { do: 'retryMerge' } | { do: 'cancelMerge' } | { do: 'start' } | { do: 'download' } | { do: 'dismiss' };
 
 export function keyAction(item: InboxItem, key: string): InboxAction | null {
   const k = item.kind;
@@ -58,6 +59,10 @@ export function keyAction(item: InboxItem, key: string): InboxAction | null {
   }
   if (k === 'budget' && (key === 'a' || key === 'c')) return { do: 'continue' };
   if (k === 'error' && key === 'r') return { do: 'resume' };
+  if (k === 'merge') {
+    if (key === 'r') return { do: 'retryMerge' };
+    if (key === 'x') return { do: 'cancelMerge' };
+  }
   if (k === 'queued' && key === 's') return { do: 'start' };
   return null;
 }

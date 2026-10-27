@@ -220,6 +220,11 @@ export interface Session {
   review?: SelfReview;
   /** Waiting to start: for a free slot, or for another session to be merged. It has a worktree but the agent has not run. */
   queued?: { after?: string; since: number };
+  /**
+   * The pull request will be merged as soon as its checks pass. Until then the session stays in the sidebar. A failure
+   * (failing checks, a closed pull request, GitHub refusing the merge) is kept in `error` and shows in the inbox.
+   */
+  queuedMerge?: { method: MergeMethod; deleteBranch: boolean; since: number; error?: string; errorAt?: number };
   /** Review comments on its pull request up to this time have already been sent to the agent. */
   feedbackAt?: number;
   /** Hunks the user has looked at and accepted, by hunk id (path and changed lines, not line numbers). */
@@ -999,6 +1004,12 @@ export interface HelmApi {
   createPr(input: CreatePrInput): Promise<{ url: string | null }>;
   /** Merges an open pull request on GitHub, optionally deleting its branch there. The session (if helm started it) is settled straight away. */
   mergePr(repoId: string, number: number, opts: { method: MergeMethod; deleteBranch: boolean }): Promise<void>;
+  /** Merges a session's pull request once its checks have passed, instead of now. The session stays in the sidebar until it is merged. */
+  queueMerge(repoId: string, number: number, opts: { method: MergeMethod; deleteBranch: boolean }): Promise<void>;
+  /** Drops a queued merge, or clears its failure, without merging. */
+  cancelQueuedMerge(sessionId: string): Promise<void>;
+  /** Tries a queued merge that failed again. */
+  retryQueuedMerge(sessionId: string): Promise<void>;
   /** Skips the pull request: brings the branch up to date with the base, then pushes it onto the base on GitHub. */
   mergeDirect(input: MergeInput): Promise<MergeResult>;
   commitOnly(sessionId: string, files: string[], message: string): Promise<void>;

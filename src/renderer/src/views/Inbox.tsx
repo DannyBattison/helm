@@ -16,6 +16,7 @@ export const KIND: Record<InboxKind, { label: string; icon: string; tone: string
   question: { label: 'Question', icon: 'question', tone: 'attention' },
   budget: { label: 'Limit reached', icon: 'gauge', tone: 'attention' },
   error: { label: 'Failed', icon: 'x-circle', tone: 'error' },
+  merge: { label: 'Merge failed', icon: 'git-merge', tone: 'error' },
   stuck: { label: 'Looks stuck', icon: 'warning', tone: 'attention' },
   ready: { label: 'Ready for review', icon: 'git-diff', tone: 'ready' },
   artifact: { label: 'File for you', icon: 'file-arrow-down', tone: 'ready' },
@@ -51,10 +52,12 @@ export function Inbox() {
         case 'answers': await api.resolveAsk(s.id, s.ask!.id, { answers: a.answers }); break;
         case 'continue': await api.resolveAsk(s.id, s.ask!.id, { addBudget: s.ask!.scope === 'plan' ? 0 : from(5) }); break;
         case 'resume': await api.resumeSession(s.id); break;
+        case 'retryMerge': await api.retryQueuedMerge(s.id); break;
+        case 'cancelMerge': await api.cancelQueuedMerge(s.id); break;
         case 'start': await api.startQueued(s.id); break;
         case 'download': { const art = await api.getArtifact(s.id, item.artifact!.name); if (!art || art.data == null) throw new Error(art ? 'This file is too large to download here.' : 'This file has expired.'); downloadArtifact(art); await api.dismissArtifact(s.id, item.artifact!.name); break; }
         case 'dismiss': await api.dismissArtifact(s.id, item.artifact!.name); break;
-        case 'open': go({ screen: 'session', id: s.id, tab: item.kind === 'ready' ? 'changes' : 'conversation' }); break;
+        case 'open': go({ screen: 'session', id: s.id, tab: item.kind === 'ready' || item.kind === 'merge' ? 'changes' : 'conversation' }); break;
       }
     } catch (e) { toast({ tone: 'error', title: 'That did not work', description: errText(e) }); }
   }, [from]);
@@ -158,6 +161,11 @@ export function Inbox() {
             {cur.kind === 'error' ? <>
               <div style={{ font: '400 13px/1.55 var(--font-sans)', color: 'var(--status-error-text)', whiteSpace: 'pre-wrap' }}>{s.error || s.step}</div>
               <div style={{ display: 'flex', gap: 8 }}><Button variant="primary" icon="play" kbd="r" onClick={() => void act(cur, { do: 'resume' })}>Resume</Button></div>
+            </> : null}
+
+            {cur.kind === 'merge' ? <>
+              <div style={{ font: '400 13px/1.55 var(--font-sans)', color: 'var(--status-error-text)', whiteSpace: 'pre-wrap' }}>{s.queuedMerge?.error}</div>
+              <div style={{ display: 'flex', gap: 8 }}><Button variant="primary" icon="arrow-clockwise" kbd="r" onClick={() => void act(cur, { do: 'retryMerge' })}>Try again</Button><Button variant="ghost" kbd="x" onClick={() => void act(cur, { do: 'cancelMerge' })}>Cancel the merge</Button></div>
             </> : null}
 
             {cur.kind === 'stuck' ? <div style={{ font: '400 13px/1.55 var(--font-sans)', color: 'var(--text-2)' }}>{s.stuck}. It may be going round in circles: pause it and tell it what to try instead.
