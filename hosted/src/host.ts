@@ -17,6 +17,7 @@ export function createHost(send: Host['send'], allowLogin?: Host['allowLogin']):
     requireClaudeLogin: true,
     ghConfigDir: process.env.GH_CONFIG_DIR || join(homedir(), '.config', 'gh'),
     companion: false,
+    syncServer: true,
     // No keychain on a server: the GitHub token sits in dataDir (0700) as plain text. See hosted/README.md.
     sdkClaudePath: () => undefined,
     cliClaudePath: () => undefined,

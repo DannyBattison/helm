@@ -46,6 +46,7 @@ export class Automations {
     const i = this.agents.findIndex((a) => a.id === id);
     if (i < 0) return;
     this.agents.splice(i, 1);
+    this.store.tombstone('automation', id);
     this.store.save();
     this.deps.changed();
   }

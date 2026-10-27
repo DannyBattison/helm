@@ -1444,6 +1444,7 @@ export class SessionManager {
     const s = this.get(id);
     if (!s) throw new Error('Session not found');
     if (s.worktreeGone) throw new Error('This session\'s work was merged and its worktree removed, so it cannot be continued. Start a new session.');
+    if (s.remoteOwner) throw new Error(`This session is running on ${s.remoteOwner}. It can be continued here once it stops there.`);
     let rt = this.rt.get(id);
     // Talking to a queued session starts it now.
     s.queued = undefined;
@@ -1676,6 +1677,7 @@ export class SessionManager {
     }
     this.store.data.sessions = this.store.data.sessions.filter((x) => x.id !== id);
     await this.store.deleteTranscripts(id);
+    this.store.tombstone('session', id);
     if (s.uploads) await rm(s.uploads.dir, { recursive: true, force: true }).catch(() => undefined);
     await dropArtifacts(id);
     this.touch();
