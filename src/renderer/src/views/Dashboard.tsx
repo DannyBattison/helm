@@ -149,9 +149,57 @@ function FirstRun() {
   );
 }
 
+const BOARD: [string, string, string[]][] = [['attention', 'Needs you', ['attention']], ['working', 'Working', ['working']], ['ready', 'Ready for review', ['ready']], ['idle', 'Idle', ['idle', 'error']]];
+
+function BoardCard({ s }: { s: Session }) {
+  const { fmt } = useMoney();
+  const [hover, setHover] = React.useState(false);
+  const sub = useApp().settings.billing === 'subscription';
+  return (
+    <div onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} onClick={() => go({ screen: 'session', id: s.id, tab: s.status === 'ready' ? 'changes' : 'conversation' })}
+      style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 10, borderRadius: 'var(--radius-md)', background: hover ? 'var(--bg-hover)' : 'var(--bg-raised)', boxShadow: 'inset 0 0 0 1px var(--border-subtle)', cursor: 'pointer', minWidth: 0 }}>
+      <span style={{ font: '500 13px/1.45 var(--font-sans)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{s.task}</span>
+      <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)', display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}><i className={'ph ph-' + (s.free ? 'folder' : 'git-branch')} style={{ fontSize: 11, flex: 'none' }} /><span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{whereLabel(s)}</span></span>
+      <span style={{ font: '400 12px/1.5 var(--font-sans)', color: s.status === 'attention' ? 'var(--status-attention-text)' : 'var(--text-2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.step}</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, font: 'var(--type-data)', color: 'var(--text-2)' }}>
+        {runningSubagents(s) ? <span style={{ color: 'var(--status-working-text)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><i className="ph ph-tree-structure" style={{ fontSize: 11 }} />{runningSubagents(s)}</span> : null}
+        <span title="Context">ctx {fmtTokens(s.ctx)}</span>
+        {sub ? null : <span>{fmt(s.cost)}</span>}
+        <span style={{ flex: 1 }} />
+        <DiffStat additions={s.add} deletions={s.del} />
+      </div>
+    </div>
+  );
+}
+
+/** Sessions as a kanban board: one column per state, newest activity first. */
+function Board({ sessions, only }: { sessions: Session[]; only: string }) {
+  const narrow = useNarrow();
+  const cols = BOARD.filter(([k]) => only === 'all' || only === k);
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: narrow ? 'minmax(0,1fr)' : `repeat(${cols.length}, minmax(220px, 1fr))`, gap: 12, padding: 12, borderTop: '1px solid var(--border)', overflowX: 'auto', alignItems: 'start' }}>
+      {cols.map(([k, label, states]) => {
+        const items = sessions.filter((s) => states.includes(s.status)).sort((a, b) => b.lastAccess - a.lastAccess);
+        return (
+          <div key={k} style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0, padding: 8, borderRadius: 'var(--radius-lg)', background: 'var(--bg-panel)', boxShadow: 'inset 0 0 0 1px var(--border-subtle)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 2px 4px' }}>
+              <StatusDot status={k as any} size={7} />
+              <span style={{ font: '600 12.5px/1.5 var(--font-sans)' }}>{label}</span>
+              <span style={{ font: '500 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{items.length}</span>
+            </div>
+            {items.length ? items.map((s) => <BoardCard key={s.id} s={s} />) : <div style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)', padding: '6px 2px' }}>Nothing here</div>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function Dashboard({ filter: initial }: { filter?: string }) {
   const app = useApp();
   const [filter, setFilter] = React.useState(initial || 'all');
+  const [layout, setLayout] = React.useState<string>(() => localStorage.getItem('helm-overview-layout') === 'board' ? 'board' : 'list');
+  const pickLayout = (v: string) => { setLayout(v); localStorage.setItem('helm-overview-layout', v); };
   const pushes = usePush();
   const [now, setNow] = React.useState(Date.now());
   React.useEffect(() => { const i = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(i); }, []);
@@ -172,6 +220,7 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
   const extVisible = (x: ExternalSession) => (filter === 'archived' ? x.archived : !x.archived && (filter === 'all' || filter === 'external' || (filter === 'working' && x.active)));
   const extFor = (id: string) => (externals[id] || []).filter(extVisible);
   const extShown = (id: string) => extFor(id).filter((x, i) => filter === 'external' || x.active || i < 5);
+  const board = layout === 'board' && filter !== 'external' && filter !== 'archived';
   const axis = laneAxis(now);
   const asks = app.sessions.filter((s) => s.ask).sort((a, b) => a.ask!.at - b.ask!.at);
   const cell: React.CSSProperties = { padding: narrow ? 12 : '14px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'center', borderLeft: '1px solid var(--border-subtle)' };
@@ -236,11 +285,13 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
                 { value: 'external', label: 'External', count: totalExt },
                 { value: 'archived', label: 'Archived', count: archivedTotal }]} />
               <span style={{ flex: 1 }} />
-              {narrow ? null : [['working', 'Working'], ['attention', 'Waiting on you'], ['ready', 'Ready']].map(([k, l]) => (
+              <SegmentedControl size="sm" value={layout} onChange={pickLayout} options={[{ value: 'list', label: 'List', icon: 'list' }, { value: 'board', label: 'Board', icon: 'kanban' }]} />
+              {narrow || board ? null : [['working', 'Working'], ['attention', 'Waiting on you'], ['ready', 'Ready']].map(([k, l]) => (
                 <span key={k} style={{ display: 'flex', alignItems: 'center', gap: 5, font: '400 11px/1.5 var(--font-sans)', color: 'var(--text-3)' }}><span style={{ width: 12, height: 6, borderRadius: 2, background: LANE_COLOR[k] }} />{l}</span>
               ))}
-              {narrow ? null : <span style={{ display: 'flex', alignItems: 'center', gap: 5, font: '400 11px/1.5 var(--font-sans)', color: 'var(--text-3)' }}><span style={{ width: 2, height: 10, borderRadius: 1, background: 'var(--text-1)' }} />Commit</span>}
+              {narrow || board ? null : <span style={{ display: 'flex', alignItems: 'center', gap: 5, font: '400 11px/1.5 var(--font-sans)', color: 'var(--text-3)' }}><span style={{ width: 2, height: 10, borderRadius: 1, background: 'var(--text-1)' }} />Commit</span>}
             </div>
+            {board ? <Board sessions={app.sessions.filter(visible)} only={filter} /> : <>
             {narrow ? null : <div style={{ display: 'grid', gridTemplateColumns: col.template, gap: 12, alignItems: 'end', padding: '6px 12px', borderTop: '1px solid var(--border)', font: '500 10.5px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>
               <span />{col.cell(1, 'Session')}{col.cell(2, 'Now')}
               {col.cell(3, axis.map(([m, l]) => <span key={l} style={{ position: 'absolute', left: lanePct(m), transform: 'translateX(-50%)', font: '400 10.5px/1.5 var(--font-mono)', textTransform: 'none', letterSpacing: 0, color: l === 'now' ? 'var(--text-1)' : 'var(--text-3)' }}>{l}</span>), { height: 11 })}
@@ -266,6 +317,7 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
                 {extFor(r.id).length > extShown(r.id).length ? <div onClick={() => go({ screen: 'repo', id: r.id, tab: 'external' })} className="helm-row-hover" style={{ padding: '8px 12px', borderTop: '1px solid var(--border-subtle)', font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)', cursor: 'pointer' }}>{extFor(r.id).length - extShown(r.id).length} more external sessions</div> : null}
               </div>
             ))}
+            </>}
           </section>
         ) : null}
         <LifetimeByRepo />
