@@ -2,7 +2,6 @@
 # (the owner is lower-cased for you).
 #
 #   release workflow  -> :0.2.0, :0.2 and :latest (called by release.yml once the tag exists; :latest is always the newest release)
-#   push to main      -> :main and :sha-<commit> (unreleased, never :latest)
 #   run it by hand    -> from the Actions tab, to publish whatever branch you pick (tagged with the branch name)
 #
 # Two variants are built: the slim image (the tags above) and the full one, with LibreOffice, ffmpeg, pandoc, OCR and Playwright/Chromium,
@@ -13,9 +12,6 @@
 # Pulling it on the server: docker pull ghcr.io/<owner>/helm-hosted:latest
 name: hosted-image
 on:
-  push:
-    branches: [main]
-    paths: ['hosted/**', 'src/**', 'package.json', 'package-lock.json', 'tsconfig*.json', 'desktop/tsconfig.json', '.github/workflows/hosted-image.yml']
   workflow_call:
     inputs:
       version:
@@ -69,8 +65,6 @@ jobs:
             type=raw,value=latest,enable=${{ inputs.version != '' }}
             type=semver,pattern={{version}},value=${{ inputs.version }},enable=${{ inputs.version != '' }}
             type=semver,pattern={{major}}.{{minor}},value=${{ inputs.version }},enable=${{ inputs.version != '' }}
-            type=raw,value=main,enable=${{ github.event_name == 'push' }}
-            type=sha,enable=${{ github.event_name == 'push' }}
             type=ref,event=branch,enable=${{ github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main' }}
           labels: |
             org.opencontainers.image.title=helm hosted
