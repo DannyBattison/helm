@@ -212,11 +212,9 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
   const liveSessions = app.sessions.filter((s) => !s.archivedAt).length;
   const { fmt } = useMoney();
   const sub = app.settings.billing === 'subscription';
-  const plan = livePlan(app);
-  // With more than one agent on a plan the headline is the default agent's; the others are listed beside it.
+  // One usage widget per agent on a plan, each with its own summary.
   const planAgents = planBackends(app);
-  const planName = (planAgents.find((b) => b.id === app.settings.defaultBackend) ?? planAgents[0])?.shortName ?? 'Claude';
-  const others = planAgents.filter((b) => b.shortName !== planName).map((b) => ({ name: b.shortName, weekly: livePlan(app, b.id).weekly }));
+  const widgets = sub ? (planAgents.length ? planAgents.map((b) => ({ id: b.id as string | undefined, name: planAgents.length > 1 ? b.shortName : '' })) : [{ id: undefined, name: '' }]) : [];
   const narrow = useNarrow();
   const col = useColumns(sub ? 'ledger-sub' : 'ledger-api', [
     { w: 20, min: 20, fixed: true }, { w: 270, min: 150 }, { w: 200, min: 150, flex: true }, { w: 300, min: 180 }, { w: 88, min: 60 }, { w: 56, min: 44 },
@@ -246,20 +244,24 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
           <Hint id="new-session" title="Start an agent" text="Describe a task and an agent works on it in its own branch, while you do something else."><Button variant="primary" icon="plus" kbd={narrow ? undefined : platform() === 'darwin' ? '⌘N' : 'Ctrl+N'} onClick={() => setUI({ newSession: {} })}>New session</Button></Hint>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: narrow ? 'repeat(2, minmax(0,1fr))' : 'repeat(4, minmax(0,1fr)) minmax(0,1.6fr)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-panel)', boxShadow: 'inset 0 0 0 1px var(--border)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: narrow ? 'repeat(2, minmax(0,1fr))' : `repeat(4, minmax(0,1fr)) repeat(${Math.max(widgets.length, 1)}, minmax(0,1.6fr))`, borderRadius: 'var(--radius-lg)', background: 'var(--bg-panel)', boxShadow: 'inset 0 0 0 1px var(--border)' }}>
           <div style={{ ...cell, borderLeft: 'none' }}><Stat label="Working" value={t.working} tone="working" /></div>
           <div style={cell}><Stat label="Needs you" value={t.attention} tone="attention" /></div>
           <div style={cell}><Stat label="Ready for review" value={t.ready} tone="ready" /></div>
           <div style={cell}><Stat label="Tokens today" value={fmtTokens(t.tokens)} /></div>
-          <div style={{ ...cell, gap: 10, ...(narrow ? { gridColumn: '1 / -1', borderTop: '1px solid var(--border-subtle)' } : null) }}>
-            {sub ? <>
-              <Stat label="Plan usage this week" value={plan.weekly ? Math.round(plan.weekly.util * 100) + '%' : '—'} detail={others.length ? [plan.weekly ? `${planName}: resets in ${untilReset(plan.weekly.resetsAt)}` : `${planName}: no data yet`, ...others.map((o) => `${o.name} ${o.weekly ? Math.round(o.weekly.util * 100) + '%' : '—'}`)].join(' · ') : plan.weekly ? `resets in ${untilReset(plan.weekly.resetsAt)}` : 'appears after the first message'} />
+          {sub ? widgets.map((w, i) => {
+            const plan = livePlan(app, w.id);
+            const pre = w.name ? w.name + ' · ' : '';
+            return <div key={w.id ?? 'default'} style={{ ...cell, gap: 10, ...(narrow ? { gridColumn: '1 / -1', borderTop: '1px solid var(--border-subtle)' } : null) }}>
+              <Stat label={pre + 'Plan usage this week'} value={plan.weekly ? Math.round(plan.weekly.util * 100) + '%' : '—'} detail={plan.weekly ? `resets in ${untilReset(plan.weekly.resetsAt)}` : w.name ? 'no data yet' : 'appears after the first message'} />
               <Meter value={plan.fiveHour?.util ?? 0} max={1} warnAt={app.settings.warnAt / 100} detail={plan.fiveHour ? `5-hour window ${Math.round(plan.fiveHour.util * 100)}% · resets ${untilReset(plan.fiveHour.resetsAt)}` : '5-hour window: no data yet'} />
-            </> : <>
+            </div>;
+          }) : <div style={{ ...cell, gap: 10, ...(narrow ? { gridColumn: '1 / -1', borderTop: '1px solid var(--border-subtle)' } : null) }}>
+            <>
               <Stat label="Spend this week" value={fmt(t.spent)} />
               <Meter value={t.spent} max={t.cap} warnAt={app.settings.warnAt / 100} detail={`of ${fmt(t.cap, true)} across ${app.repos.length} ${app.repos.length === 1 ? 'repository' : 'repositories'}`} />
-            </>}
-          </div>
+            </>
+          </div>}
         </div>
 
         <ForecastNotice conflicts={app.forecast || []} />
