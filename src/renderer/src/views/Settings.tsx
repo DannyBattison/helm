@@ -115,53 +115,6 @@ function TerminalShellRow({ st, set }: { st: any; set(p: any): void }) {
   );
 }
 
-/** Files uploaded to a repository: copied into every session's worktree and kept out of git (secrets, data, notes that are not committed). */
-function RepoArtifactsSection({ repos }: { repos: { id: string }[] }) {
-  const [repoId, setRepoId] = React.useState(repos[0]?.id || '');
-  const [files, setFiles] = React.useState<{ name: string; size: number }[]>([]);
-  const [sending, setSending] = React.useState('');
-  const pick = React.useRef<HTMLInputElement>(null);
-  const id = repos.some((r) => r.id === repoId) ? repoId : repos[0]?.id || '';
-  const load = React.useCallback(() => { if (id) api.listRepoArtifacts(id).then(setFiles).catch(() => setFiles([])); }, [id]);
-  React.useEffect(load, [load]);
-  const upload = async (list: FileList | null) => {
-    for (const f of Array.from(list || [])) {
-      try {
-        // Pieces of 16 MB, so a file of any size is never held whole in the browser or in one message. An interrupted upload of the same file carries on where it stopped.
-        const PIECE = 16 * 1024 * 1024;
-        const fp = `${f.size}:${f.lastModified}`;
-        const kept = await api.repoArtifactProgress(id, f.name, fp).catch(() => 0);
-        const from = kept < f.size ? kept : 0;
-        for (let at = from % PIECE === 0 ? from : 0; at === 0 || at < f.size; at += PIECE) {
-          const bytes = new Uint8Array(await f.slice(at, at + PIECE).arrayBuffer());
-          let bin = '';
-          for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-          await api.addRepoArtifactChunk(id, f.name, at, btoa(bin), at + PIECE >= f.size, fp);
-          setSending(f.size ? `${f.name} ${Math.min(100, Math.round(((at + PIECE) / f.size) * 100))}%` : '');
-        }
-      } catch (e) { toast({ tone: 'error', title: 'Could not upload artifact ' + f.name, description: errText(e) }); }
-    }
-    setSending('');
-    if (pick.current) pick.current.value = '';
-    load();
-  };
-  return (
-    <SettingRow title="Artifacts" desc="Files copied into every session of a repository, at the top of its worktree, and kept out of commits. Sessions already open get them when the agent next starts. Any size; large files are sent in pieces and cloned (not duplicated) into each worktree where the filesystem allows it.">
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
-        <Select size="sm" value={id} onChange={(e: any) => setRepoId(e.target.value)} options={repos.map((r) => ({ value: r.id, label: r.id }))} />
-        {files.map((f) => (
-          <div key={f.name} style={{ display: 'flex', gap: 8, alignItems: 'center', font: '400 12.5px/1 var(--font-mono)' }}>
-            <span>{f.name}</span><span style={{ color: 'var(--text-3)' }}>{f.size < 1024 ? f.size + ' B' : f.size < 1048576 ? Math.round(f.size / 1024) + ' KB' : (f.size / 1048576).toFixed(1) + ' MB'}</span>
-            <Button size="sm" onClick={() => void api.removeRepoArtifact(id, f.name).then(load)}>Remove</Button>
-          </div>
-        ))}
-        <input ref={pick} type="file" multiple style={{ display: 'none' }} onChange={(e) => void upload(e.target.files)} />
-        <Button size="sm" icon="upload-simple" disabled={!!sending} onClick={() => pick.current?.click()}>{sending ? 'Uploading ' + sending : 'Upload artifacts…'}</Button>
-      </div>
-    </SettingRow>
-  );
-}
-
 /** The companion website: turn it on, link this computer, see who is connected. */
 /** Outbound email: where helm sends notifications that leave the app. The password is held by the host, encrypted, and never shown again. */
 function EmailSection({ st, set, passwordSet }: { st: any; set(p: any): void; passwordSet: boolean }) {
@@ -690,7 +643,6 @@ export function Settings({ section }: { section?: string }) {
                 ))}
               </div>
             ) : null}
-            {app.repos.length ? <RepoArtifactsSection repos={app.repos} /> : null}
             <SettingRow title="Auto push" desc="Pushes the branch to GitHub, whether the agent or you made it from the Changes panel, so nothing exists only on this machine. Free agents have no remote and are not pushed. A failed push shows in the activity log and is tried again at the next commit."><Switch checked={st.autoPush} onChange={(v: boolean) => set({ autoPush: v })} /></SettingRow>
             <SettingRow title="Push" desc="When auto push is on: after every commit, or once when the session becomes ready for review."><Select value={st.pushWhen} onChange={(e: any) => set({ pushWhen: e.target.value })} options={[{ value: 'commit', label: 'After every commit' }, { value: 'ready', label: 'When ready' }]} /></SettingRow>
             <SettingRow title="Resume agents on launch" desc="When helm opens, agents that were working when it closed pick up where they left off, one after another. Agents waiting on your answer still wait for you, and archived or merged sessions stay as they are."><Switch checked={st.resumeOnLaunch} onChange={(v: boolean) => set({ resumeOnLaunch: v })} /></SettingRow>
