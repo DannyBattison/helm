@@ -4,7 +4,7 @@ import type { AutomationTrigger } from '@shared/automations';
 import { DAYS, describeTrigger, TRIGGER_LABELS, validateAgent } from '@shared/automations';
 import { api } from '../api';
 import { toast, useApp } from '../store';
-import { defaultChoice, modelChoices, splitChoice } from '../lib';
+import { billingOf, defaultChoice, modelChoices, splitChoice } from '../lib';
 import { Badge, Button, Dialog, Input, SegmentedControl, Select, Switch } from '../ui';
 
 const errText = (e: any) => String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '');
@@ -76,7 +76,7 @@ function Editor({ draft, repos, onClose }: { draft: Draft; repos: { id: string }
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           {label('Model', <Select value={`${d.backend || app.settings.defaultBackend}/${d.model}`} onChange={(e: any) => set(splitChoice(e.target.value))} options={modelChoices(app)} />)}
           {label('Permissions', <Select value={d.permMode} onChange={(e: any) => set({ permMode: e.target.value })} options={PERMS} />)}
-          {label('Budget per session', <Input mono value={String(d.budget)} onChange={(e: any) => set({ budget: Number(e.target.value) || 0 })} style={{ width: 80 }} />)}
+          {billingOf(app, d.backend || app.settings.defaultBackend) === 'subscription' ? null : label('Budget per session', <Input mono value={String(d.budget)} onChange={(e: any) => set({ budget: Number(e.target.value) || 0 })} style={{ width: 80 }} />)}
         </div>
         {d.scope === 'global' && t.type === 'schedule' ? <Badge tone="attention">A global schedule starts one session in every repository each time.</Badge> : null}
       </div>
