@@ -114,6 +114,6 @@ export function AutomationsSection() {
         <Switch checked={a.enabled} onChange={(v: boolean) => void api.saveAutomation({ ...a, enabled: v })} />
       </div>
     ))}
-    {editing ? <Editor draft={editing} repos={app.repos} onClose={() => setEditing(null)} /> : null}
+    {editing ? <Editor draft={editing} repos={app.repos.filter((r) => !r.hidden || r.id === editing.scope)} onClose={() => setEditing(null)} /> : null}
   </>;
 }

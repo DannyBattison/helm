@@ -7,6 +7,7 @@ import { CURRENCIES, rateFor } from '@shared/money';
 import { BUNDLED_FONTS, fontStack, SYSTEM_DEFAULT, systemFonts, systemUiFonts, uiStack, UI_BUNDLED_FONTS, dataStack } from '../fonts';
 import { ACCENT_SWATCHES, SCHEMES, STATUS_KEYS, STATUS_LABEL, isHex, schemeVars } from '@shared/schemes';
 import { McpServers } from './McpServers';
+import { RepoSettingsPane } from './RepoSettings';
 import { AutomationsSection } from './Automations';
 import { EFFORT_OPTIONS, VariantEditor } from './Review';
 import { toast, useApp, useMoney } from '../store';
@@ -266,7 +267,7 @@ const GOTO_PAGES: { value: GotoTarget['page']; label: string }[] = [
   { value: 'overview', label: 'Overview' }, { value: 'needsYou', label: 'Needs you' }, { value: 'inbox', label: 'Inbox' }, { value: 'activity', label: 'Activity' },
   { value: 'archive', label: 'Archive' }, { value: 'reports', label: 'Reports' }, { value: 'settings', label: 'Settings' }, { value: 'repo', label: 'A repository' }
 ];
-const REPO_TABS = [{ value: '', label: 'Its usual tab' }, { value: 'history', label: 'History' }, { value: 'code', label: 'Code' }, { value: 'external', label: 'Outside sessions' }, { value: 'memory', label: 'Memory' }, { value: 'mcp', label: 'MCP servers' }, { value: 'worktrees', label: 'Branches & worktrees' }, { value: 'issues', label: 'Issues' }, { value: 'actions', label: 'Actions' }, { value: 'prs', label: 'Pull requests' }];
+const REPO_TABS = [{ value: '', label: 'Its usual tab' }, { value: 'history', label: 'History' }, { value: 'code', label: 'Code' }, { value: 'external', label: 'Outside sessions' }, { value: 'memory', label: 'Memory' }, { value: 'mcp', label: 'MCP servers' }, { value: 'worktrees', label: 'Branches & worktrees' }, { value: 'issues', label: 'Issues' }, { value: 'actions', label: 'Actions' }, { value: 'settings', label: 'Settings' }, { value: 'prs', label: 'Pull requests' }];
 
 function LabeledField({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -453,7 +454,7 @@ function ColourRows({ st, set }: { st: SettingsT; set: (p: Partial<SettingsT>) =
   </>;
 }
 
-function SettingRow({ title, desc, children }: { title: React.ReactNode; desc?: React.ReactNode; children?: React.ReactNode }) {
+export function SettingRow({ title, desc, children }: { title: React.ReactNode; desc?: React.ReactNode; children?: React.ReactNode }) {
   return (
     <div className="helm-setting" style={{ display: 'flex', alignItems: 'center', gap: 24, padding: '14px 0', borderTop: '1px solid var(--border-subtle)' }}>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -466,13 +467,13 @@ function SettingRow({ title, desc, children }: { title: React.ReactNode; desc?: 
 }
 
 /** Text input that keeps its own draft and commits whatever parses. */
-function Field({ value, onCommit, parse = (s: string) => s, format = (v: any) => String(v), ...rest }: any) {
+export function Field({ value, onCommit, parse = (s: string) => s, format = (v: any) => String(v), ...rest }: any) {
   const [draft, setDraft] = React.useState(format(value));
   React.useEffect(() => { setDraft(format(value)); }, [value]);
   return <Input mono value={draft} onChange={(e: any) => { setDraft(e.target.value); const v = parse(e.target.value); if (v !== undefined) onCommit(v); }} {...rest} />;
 }
 
-const H = ({ children, sub }: { children: React.ReactNode; sub?: string }) => (
+export const H = ({ children, sub }: { children: React.ReactNode; sub?: string }) => (
   <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6 }}>
     <h2 style={{ margin: 0, font: '600 16px/1.5 var(--font-sans)' }}>{children}</h2>
     {sub ? <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>{sub}</span> : null}
@@ -548,10 +549,11 @@ export function Settings({ section }: { section?: string }) {
   const subCols = useColumns('subagent-repos', [{ w: 1, min: 160, flex: true }, { w: 170, min: 110, fixed: true }]);
   const pctOptions = [{ value: '0', label: 'Off' }, { value: '50', label: '50%' }, { value: '70', label: '70%' }, { value: '80', label: '80%' }, { value: '90', label: '90%' }];
   const subLimits = (extra: number[]) => [...new Set([0, 1, 2, 3, 4, 6, 8, 12, ...extra])].sort((a, b) => a - b).map((n) => ({ value: String(n), label: n === 0 ? 'Off' : String(n) }));
-  const nav = [['github', 'GitHub', 'github-logo', 1], ['claude', 'Claude Code', 'sparkle', 1], ['codex', 'Codex', 'terminal-window', 1], ['agents', 'Agents', 'robot'], ['automations', 'Automated agents', 'clock-clockwise'], ['mcp', 'MCP servers', 'plugs-connected'], ['worktrees', 'Worktrees', 'tree-structure'], ['budgets', 'Usage', 'coins'], ...(hosted ? [] : [['companion', 'Companion', 'broadcast']]), ['notifications', 'Notifications', 'bell'], ['appearance', 'Appearance', 'paint-brush'], ['shortcuts', 'Keyboard shortcuts', 'keyboard', 1], ['custom-shortcuts', 'Custom shortcuts', 'lightning', 1], ['transfer', 'Import and export', 'arrows-left-right'], ['sync', 'Sync', 'arrows-clockwise'], ['about', 'About and support', 'info']] as [string, string, string, number?][];
+  const nav = [['defaults', 'Defaults', 'sliders-horizontal'], ...app.repos.map((r) => ['repo:' + r.id, r.hidden ? r.id + ' (hidden)' : r.id, r.hidden ? 'eye-slash' : 'git-branch', 1]), ['github', 'GitHub', 'github-logo', 1], ['claude', 'Claude Code', 'sparkle', 1], ['codex', 'Codex', 'terminal-window', 1], ['agents', 'Agents', 'robot'], ['automations', 'Automated agents', 'clock-clockwise'], ['mcp', 'MCP servers', 'plugs-connected'], ['worktrees', 'Worktrees', 'tree-structure'], ['budgets', 'Usage', 'coins'], ...(hosted ? [] : [['companion', 'Companion', 'broadcast']]), ['notifications', 'Notifications', 'bell'], ['appearance', 'Appearance', 'paint-brush'], ['shortcuts', 'Keyboard shortcuts', 'keyboard', 1], ['custom-shortcuts', 'Custom shortcuts', 'lightning', 1], ['transfer', 'Import and export', 'arrows-left-right'], ['sync', 'Sync', 'arrows-clockwise'], ['about', 'About and support', 'info']] as [string, string, string, number?][];
   // Accounts and Shortcuts are nodes of their own with nothing on them: each holds its pages and folds them away when clicked.
-  const groups: Record<string, [string, string, string]> = { github: ['accounts', 'Accounts', 'user-circle'], shortcuts: ['shortcuts', 'Shortcuts', 'keyboard'] };
-  const groupOf: Record<string, string> = { github: 'accounts', claude: 'accounts', codex: 'accounts', shortcuts: 'shortcuts', 'custom-shortcuts': 'shortcuts' };
+  const repoKeys = app.repos.map((r) => 'repo:' + r.id);
+  const groups: Record<string, [string, string, string]> = { github: ['accounts', 'Accounts', 'user-circle'], shortcuts: ['shortcuts', 'Shortcuts', 'keyboard'], ...(repoKeys[0] ? { [repoKeys[0]]: ['repos', 'Repositories', 'book-bookmark'] } : {}) };
+  const groupOf: Record<string, string> = { ...Object.fromEntries(repoKeys.map((k) => [k, 'repos'])), github: 'accounts', claude: 'accounts', codex: 'accounts', shortcuts: 'shortcuts', 'custom-shortcuts': 'shortcuts' };
   const [folded, setFolded] = React.useState<string[]>([]);
   const notif = (key: 'notifyAttention' | 'notifyReady' | 'notifyFailed' | 'notifyChecks', title: string) => (
     <SettingRow title={title}>
@@ -577,6 +579,8 @@ export function Settings({ section }: { section?: string }) {
       )}
       <div style={{ flex: 1, minWidth: 0, overflow: 'auto' }}>
         <div style={{ maxWidth: 720, padding: narrow ? '16px 14px 32px' : '24px 32px 40px' }}>
+          {sec === 'defaults' ? <RepoSettingsPane repoId={null} /> : null}
+          {sec.startsWith('repo:') ? <RepoSettingsPane repoId={sec.slice(5)} /> : null}
           {sec === 'github' ? <>
             <H sub="helm signs in with GitHub. Repositories, pull requests and history all come from this account. Claude Code and Codex are signed in separately, under Accounts.">GitHub</H>
             <SettingRow title={<span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Avatar name={app.user?.login || '?'} src={app.user?.avatar || undefined} size={24} />{app.user?.name || app.user?.login} <Badge mono>@{app.user?.login}</Badge></span>} desc="Signed in with GitHub · scopes: repo, read:org, workflow">

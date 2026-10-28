@@ -86,7 +86,9 @@ export function totals(app: AppState) {
 export const whereLabel = (s: Session) => (s.free ? s.worktree.split(/[\\/]/).filter(Boolean).slice(-2).join('/') : s.branch);
 
 /** Repositories with their sessions, and first the free agents as a group of their own (which is not a repository). */
-export const reposWithSessions = (app: AppState, includeArchived = false) => [freeRepo(), ...app.repos].map((r) => ({ repo: r, sessions: app.sessions.filter((s) => s.repoId === r.id && (includeArchived || !s.archivedAt)) }));
+/** The repositories not hidden from the interface. */
+export const visibleRepos = (app: AppState) => app.repos.filter((r) => !r.hidden);
+export const reposWithSessions = (app: AppState, includeArchived = false, includeHidden = false) => [freeRepo(), ...(includeHidden ? app.repos : visibleRepos(app))].map((r) => ({ repo: r, sessions: app.sessions.filter((s) => s.repoId === r.id && (includeArchived || !s.archivedAt)) }));
 export const isFreeGroup = (r: { id: string }) => r.id === FREE_ID;
 
 export const repoOf = (app: AppState, s: Session): Repo | undefined => app.repos.find((r) => r.id === s.repoId);

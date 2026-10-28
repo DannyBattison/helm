@@ -529,6 +529,12 @@ export const api: HelmApi = {
     else store.data.settings.mcpServers = (store.data.settings.mcpServers || []).filter((x) => x.name !== name);
     store.save(); emitState();
   },
+  async setRepoHidden(id, hidden) {
+    const repo = repos.must(id);
+    if (hidden && store.data.sessions.some((s) => s.repoId === id && !s.archivedAt)) throw new Error('Archive its sessions before hiding this repository.');
+    repo.hidden = hidden || undefined;
+    store.save(); emitState();
+  },
   async setRepoSettings(id, settings) { repos.must(id).settings = cleanRepoSettings(settings); store.save(); emitState(); },
   async setRepoMaxSubagents(id, max) { repos.must(id).maxSubagents = max ?? undefined; store.save(); emitState(); },
   resolveAsk: (id, askId, answer) => sessions.resolveAsk(id, askId, answer),

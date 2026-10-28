@@ -4,7 +4,7 @@ import { usePush } from './push';
 import { sessionTitle, type ActivityEvent, type ExternalSession, type Session } from '@shared/types';
 import { contextWindow } from '@shared/reports';
 import { api, platform } from '../api';
-import { backendIdOf, planBackends, isFreeGroup, whereLabel, ago, clock, fmtTokens, lifetimeTokens, laneAxis, laneData, LANE_MIN, livePlan, repoOf, reposWithSessions, runningSubagents, sessionTokens, totals, untilReset } from '../lib';
+import { visibleRepos, backendIdOf, planBackends, isFreeGroup, whereLabel, ago, clock, fmtTokens, lifetimeTokens, laneAxis, laneData, LANE_MIN, livePlan, repoOf, reposWithSessions, runningSubagents, sessionTokens, totals, untilReset } from '../lib';
 import { Cmd } from '../Hl';
 import { go, setUI, useApp, useMoney, toast, useUI } from '../store';
 import { Avatar, Button, DiffStat, Hint, Meter, SegmentedControl, Stat, StatusDot, useColumns, useNarrow } from '../ui';
@@ -136,7 +136,7 @@ function SessionRow({ s, now, tpl, sub, narrow }: { s: Session; now: number; tpl
 
 function FirstRun() {
   const app = useApp();
-  const none = app.repos.length === 0;
+  const none = visibleRepos(app).length === 0;
   return (
     <div style={{ display: 'grid', placeItems: 'center', padding: '56px 0' }}>
       <div style={{ maxWidth: 400, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, textAlign: 'center' }}>
@@ -228,7 +228,7 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
   const axis = laneAxis(now);
   const asks = app.sessions.filter((s) => s.ask).sort((a, b) => a.ask!.at - b.ask!.at);
   const cell: React.CSSProperties = { padding: narrow ? 12 : '14px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'center', borderLeft: '1px solid var(--border-subtle)' };
-  const groups = reposWithSessions(app, true).filter(({ repo: r, sessions }) => sessions.some(visible) || extFor(r.id).length > 0);
+  const groups = reposWithSessions(app, true, true).filter(({ repo: r, sessions }) => sessions.some(visible) || extFor(r.id).length > 0);
   const date = new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
   const withSessions = new Set(app.sessions.map((s) => s.repoId)).size;
   return (
@@ -259,7 +259,7 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
           }) : <div style={{ ...cell, gap: 10, ...(narrow ? { gridColumn: '1 / -1', borderTop: '1px solid var(--border-subtle)' } : null) }}>
             <>
               <Stat label="Spend this week" value={fmt(t.spent)} />
-              <Meter value={t.spent} max={t.cap} warnAt={app.settings.warnAt / 100} detail={`of ${fmt(t.cap, true)} across ${app.repos.length} ${app.repos.length === 1 ? 'repository' : 'repositories'}`} />
+              <Meter value={t.spent} max={t.cap} warnAt={app.settings.warnAt / 100} detail={`of ${fmt(t.cap, true)} across ${visibleRepos(app).length} ${visibleRepos(app).length === 1 ? 'repository' : 'repositories'}`} />
             </>
           </div>}
         </div>
@@ -340,7 +340,7 @@ function LifetimeByRepo() {
   const narrow = useNarrow();
   const { fmt } = useMoney();
   const api = app.settings.billing === 'api';
-  const rows = app.repos.map((r) => ({ r, l: app.lifetime[r.id], n: lifetimeTokens(app.lifetime[r.id]) })).sort((a, b) => b.n - a.n);
+  const rows = visibleRepos(app).map((r) => ({ r, l: app.lifetime[r.id], n: lifetimeTokens(app.lifetime[r.id]) })).sort((a, b) => b.n - a.n);
   const max = Math.max(1, ...rows.map((x) => x.n));
   const total = rows.reduce((n, x) => n + x.n, 0);
   if (!rows.length) return null;
