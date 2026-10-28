@@ -3,9 +3,9 @@ import type { Panel, PanelMember, TranscriptEvent } from './types';
 /** Everyone in the session, the owner first. */
 export const participants = (p: Panel): string[] => [p.owner, ...p.members.map((m) => m.name)];
 
-/** A handle people can write after an @: the agent's name in lower case, numbered when another agent has it. */
-export function handleFor(shortName: string, taken: string[]): string {
-  const base = shortName.toLowerCase().replace(/[^a-z0-9]+/g, '') || 'agent';
+/** A handle people can write after an @: the model's name and version as the pickers show it (`Opus 5.5` is `opus-5-5`), numbered when another agent has it. */
+export function handleFor(modelLabel: string, taken: string[]): string {
+  const base = modelLabel.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'agent';
   if (!taken.includes(base)) return base;
   for (let n = 2; ; n++) if (!taken.includes(base + '-' + n)) return base + '-' + n;
 }

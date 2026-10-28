@@ -98,6 +98,8 @@ export interface CreateExtra {
 
 export class SessionManager {
   private rt = new Map<string, Runtime>();
+  /** Messages in a session with several agents whose replies are not all in yet. */
+  private pendingRounds = new Map<string, number>();
   /** True while helm is quitting: ending the agents must not rewrite what the sessions were doing. */
   private quitting = false;
   /** Plan windows the user chose to continue past, keyed to the window's reset time so it lapses on reset. */
@@ -1085,6 +1087,13 @@ export class SessionManager {
     }
     s.error = undefined;
     s.editing = undefined;
+    // Other agents may still have to answer this message: the session is finished when the last of them has.
+    if (s.panel && this.pendingRounds.get(s.id)) return;
+    this.settle(s);
+  }
+
+  /** The turn is over for everyone: shows the session as waiting for review, or finished. */
+  private settle(s: Session) {
     // Background subagents are still running: their notifications wake the agent, which carries on, so the session is not finished.
     const waiting = s.subagents.filter((a) => a.status === 'working' && a.background);
     if (waiting.length) {
@@ -1391,10 +1400,10 @@ export class SessionManager {
     const { be, model } = this.panelSeat(a);
     if ((s.panel?.members.length ?? 0) >= 5) throw new Error('A session holds up to six agents.');
     if (!s.panel) {
-      const owner = handleFor(this.backendOf(s).shortName, []);
+      const owner = handleFor(this.registry.model(s.backend, s.model).label, []);
       s.panel = { owner, members: [], seen: { [owner]: ownerSeen } };
     }
-    const m: PanelMember = { name: handleFor(be.shortName, participants(s.panel)), backend: be.id, model, ...(a.effort ? { effort: a.effort } : {}) };
+    const m: PanelMember = { name: handleFor(this.registry.model(be.id, model).label, participants(s.panel)), backend: be.id, model, ...(a.effort ? { effort: a.effort } : {}) };
     s.panel.members.push(m);
     s.panel.seen[m.name] = 0;
     return m;
@@ -1482,9 +1491,17 @@ export class SessionManager {
 
   private queueRound(s: Session, job: Round): Promise<void> {
     const epoch = this.epochs.get(s.id) ?? 0;
+    this.pendingRounds.set(s.id, (this.pendingRounds.get(s.id) ?? 0) + 1);
     const run = (this.rounds.get(s.id) ?? Promise.resolve())
       .then(() => this.runRound(s, job, epoch))
-      .catch(async (e: any) => { await this.push(s.id, { k: 'note', tone: 'error', text: trunc(String(e?.message || e), 300) }).catch(() => undefined); });
+      .catch(async (e: any) => { await this.push(s.id, { k: 'note', tone: 'error', text: trunc(String(e?.message || e), 300) }).catch(() => undefined); })
+      .then(() => {
+        const left = (this.pendingRounds.get(s.id) ?? 1) - 1;
+        if (left > 0) { this.pendingRounds.set(s.id, left); return; }
+        this.pendingRounds.delete(s.id);
+        // The owner's turn ended while others were still replying, so the session was kept as working. Finish it now.
+        if ((this.epochs.get(s.id) ?? 0) === epoch && this.get(s.id) === s && s.status === 'working' && !s.ask && !this.rt.get(s.id)?.budgetPaused && !this.rt.get(s.id)?.turnWaiters.length) this.settle(s);
+      });
     this.rounds.set(s.id, run);
     return run;
   }

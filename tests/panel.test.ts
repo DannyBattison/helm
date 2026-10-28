@@ -13,9 +13,9 @@ const panel: Panel = { owner: 'alpha', members: [{ name: 'beta', model: 'm' }, {
 
 describe('panel helpers', () => {
   it('names agents by handle, numbering repeats', () => {
-    expect(handleFor('Claude', [])).toBe('claude');
-    expect(handleFor('Claude', ['claude'])).toBe('claude-2');
-    expect(handleFor('Claude', ['claude', 'claude-2'])).toBe('claude-3');
+    expect(handleFor('Opus 5.5', [])).toBe('opus-5-5');
+    expect(handleFor('Opus 5.5', ['opus-5-5'])).toBe('opus-5-5-2');
+    expect(handleFor('Opus 5.5', ['opus-5-5', 'opus-5-5-2'])).toBe('opus-5-5-3');
     expect(participants(panel)).toEqual(['alpha', 'beta', 'beta-2']);
   });
   it('finds @mentions of participants only, in order, never of oneself', () => {
@@ -68,7 +68,7 @@ let script: Record<string, (text: string, n: number) => string> = {};
 
 function fakeBackend(id: string, shortName: string): AgentBackend {
   return {
-    id, label: shortName, shortName, identity: { name: id, email: 'x@y' }, models: [{ id: 'm', label: 'm', price: [0, 0] }],
+    id, label: shortName, shortName, identity: { name: id, email: 'x@y' }, models: [{ id: 'm', label: shortName, price: [0, 0] }],
     capabilities: { subagents: false, planMode: true, effort: false, fork: false, cost: false, planUsage: false },
     version: async () => '1', review: async () => ({ text: '', cost: 0, failure: '' }),
     start(opts) {
