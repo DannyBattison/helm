@@ -429,8 +429,20 @@ export const api: HelmApi = {
   async createGithubRepo(input) { const r = await repos.createRepo(input); store.log({ kind: 'git', who: me(), human: true, what: 'created the repository on GitHub', repo: r.name }); },
   async inspectClone(path) { return repos.inspect(path); },
   async addLocalRepo(path) { await repos.addFromPath(expandHome(path)); store.log({ kind: 'git', who: me(), human: true, what: `added ${path}`, repo: path.split(/[\\/]/).pop() || '' }); },
-  async removeRepo(id) {
+  async repoRemoveInfo(id) {
+    const path = repos.must(id).localPath;
+    if (!(await G.fileExists(path))) return { path, exists: false, untracked: 0, uncommitted: 0, unpushed: 0, worktrees: 0 };
+    const l = await G.localLoss(path);
+    return { path, exists: true, untracked: l.untracked, uncommitted: l.uncommitted, unpushed: l.unpushed, worktrees: l.worktrees.length };
+  },
+  async removeRepo(id, opts) {
     if (store.data.sessions.some((s) => s.repoId === id)) throw new Error('Remove or delete this repository\'s sessions first.');
+    const r = repos.must(id);
+    // Only the local clone is ever deleted; the repository on GitHub is left alone.
+    if (opts?.deleteLocal && (await G.fileExists(r.localPath))) {
+      await G.deleteClone(r.localPath);
+      store.log({ kind: 'git', who: me(), human: true, what: 'deleted the local clone', repo: r.name, detail: r.localPath });
+    }
     await repos.remove(id);
   },
   async setRepoCap(id, cap) { repos.must(id).cap = cap; store.save(); emitState(); },

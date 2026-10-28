@@ -1,5 +1,5 @@
 import React from 'react';
-import { MAX_UPLOAD_FILES, MAX_UPLOAD_TOTAL, type BaseOption, type GhRepo, type MergeMethod, type ModelAlias, type PermMode, type PullRequest, type SessionDeleteInfo } from '@shared/types';
+import { MAX_UPLOAD_FILES, MAX_UPLOAD_TOTAL, type BaseOption, type GhRepo, type MergeMethod, type ModelAlias, type PermMode, type PullRequest, type RepoRemoveInfo, type SessionDeleteInfo } from '@shared/types';
 import { api, platform } from '../api';
 import glyph from '../assets/helm-glyph-violet.svg';
 import { agentName, billingOf, defaultChoice, modelChoices, splitChoice, tilde } from '../lib';
@@ -571,29 +571,55 @@ export function RemoveRepo({ id, onClose }: { id: string; onClose(): void }) {
   const mine = app.sessions.filter((s) => s.repoId === id);
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState('');
+  const [deleteLocal, setDeleteLocal] = React.useState(false);
+  const [info, setInfo] = React.useState<RepoRemoveInfo | null>(null);
+  const [typed, setTyped] = React.useState('');
+  React.useEffect(() => { api.repoRemoveInfo(id).then(setInfo).catch((e) => setErr(errText(e))); }, [id]);
   if (!repo) return null;
+  const deleting = deleteLocal && !!info?.exists;
+  const confirmed = !deleting || typed.trim() === repo.name;
   const run = async () => {
     setBusy(true); setErr('');
     try {
-      await api.removeRepo(id);
+      await api.removeRepo(id, { deleteLocal });
       const r = getUI().route;
       if ((r.screen === 'repo' && r.id === id) || (r.screen === 'external' && r.repoId === id)) go({ screen: 'overview' });
       onClose();
     } catch (e) { setErr(errText(e)); } finally { setBusy(false); }
   };
+  const warn = (text: string) => <span style={{ display: 'flex', gap: 8, alignItems: 'flex-start', font: '400 12px/1.45 var(--font-sans)', color: 'var(--status-attention-text)' }}><i className="ph-fill ph-warning-circle" style={{ fontSize: 14, marginTop: 1, flex: 'none' }} />{text}</span>;
+  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
   return (
-    <Dialog width={480} title={`Remove ${repo.id} from helm?`} description="helm stops tracking it. The folder on disk and the repository on GitHub are not touched." onClose={onClose}
+    <Dialog width={500} title={deleting ? `Remove ${repo.id} and delete its local files?` : `Remove ${repo.id} from helm?`}
+      description="The repository on GitHub is never deleted." onClose={onClose}
       footer={<>
         <span style={{ flex: 1, font: '400 12px/1.5 var(--font-sans)', color: 'var(--status-error-text)' }}>{err}</span>
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
-        <Button variant="danger" icon="trash" loading={busy} disabled={mine.length > 0} onClick={run}>Remove repository</Button>
+        <Button variant="danger" icon="trash" loading={busy} disabled={mine.length > 0 || !confirmed || (deleteLocal && !info)} onClick={run}>{deleting ? 'Delete local files and remove' : 'Remove repository'}</Button>
       </>}>
       {mine.length ? (
         <span style={{ display: 'flex', gap: 8, alignItems: 'flex-start', font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--status-attention-text)' }}>
           <i className="ph-fill ph-warning-circle" style={{ fontSize: 14, marginTop: 2, flex: 'none' }} />
           It still has {mine.length} {mine.length === 1 ? 'session' : 'sessions'} ({mine.slice(0, 3).map((s) => s.id).join(', ')}{mine.length > 3 ? '…' : ''}). Delete {mine.length === 1 ? 'it' : 'them'} first, from the right-click menu in the left tree, so no worktrees are left behind.
         </span>
-      ) : <span style={{ font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>Its usage history is kept, so adding it again picks up where it left off. Its weekly cap goes back to the default.</span>}
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <span style={{ font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>helm stops tracking it. Its usage history is kept, so adding it again picks up where it left off. Its weekly cap goes back to the default.</span>
+          <Checkbox checked={deleteLocal} disabled={info ? !info.exists : false} onChange={(v: boolean) => { setDeleteLocal(v); setTyped(''); }} label="Also delete the local directories"
+            description={info ? (info.exists ? `${tilde(info.path, app.home)}${info.worktrees ? ` and ${plural(info.worktrees, 'worktree', 'worktrees')}` : ''}. Only on this computer.` : 'The folder is already gone from disk.') : 'Checking the folder…'} />
+          {deleting && info ? (
+            <>
+              {info.untracked > 0 ? warn(`${plural(info.untracked, 'untracked file', 'untracked files')} will be lost. Git has no copy of ${info.untracked === 1 ? 'it' : 'them'}.`) : null}
+              {info.uncommitted > 0 ? warn(`${plural(info.uncommitted, 'uncommitted change', 'uncommitted changes')} will be lost.`) : null}
+              {info.unpushed > 0 ? warn(`${plural(info.unpushed, 'commit is', 'commits are')} not pushed to GitHub, and will be lost.`) : null}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <span style={{ font: '400 12.5px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>Type <code style={{ font: 'var(--type-data)' }}>{repo.name}</code> to confirm.</span>
+                <Input value={typed} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTyped(e.target.value)} placeholder={repo.name} autoFocus mono />
+              </div>
+            </>
+          ) : null}
+        </div>
+      )}
     </Dialog>
   );
 }

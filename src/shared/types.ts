@@ -756,6 +756,19 @@ export interface BaseOption {
   local: boolean;
 }
 
+export interface RepoRemoveInfo {
+  path: string;
+  exists: boolean;
+  /** Files git does not track, across the clone and its worktrees: lost if the clone is deleted. */
+  untracked: number;
+  /** Modified or staged files that are not committed. */
+  uncommitted: number;
+  /** Commits on local branches that are on no remote. */
+  unpushed: number;
+  /** Linked worktrees of the clone, which are deleted with it. */
+  worktrees: number;
+}
+
 export interface SessionDeleteInfo {
   /** Set for a free agent: its folder is helm's own (`scratch`, which can be removed) or yours (`folder`, which never is). */
   free?: 'scratch' | 'folder';
@@ -1060,7 +1073,10 @@ export interface HelmApi {
   createGithubRepo(input: { name: string; description: string; private: boolean; owner?: string }): Promise<void>;
   inspectClone(path: string): Promise<{ ok: boolean; checks: { ok: boolean; warn?: boolean; text: string }[]; id?: string }>;
   addLocalRepo(path: string): Promise<void>;
-  removeRepo(id: string): Promise<void>;
+  /** What deleting the repository's local clone would lose. Nothing here is ever deleted on GitHub. */
+  repoRemoveInfo(id: string): Promise<RepoRemoveInfo>;
+  /** Stops tracking the repository; with `deleteLocal` also deletes its clone (and any worktrees of it) from disk. GitHub is never touched. */
+  removeRepo(id: string, opts?: { deleteLocal?: boolean }): Promise<void>;
   setRepoCap(id: string, cap: number): Promise<void>;
   chooseFolder(): Promise<string | null>;
   fetchRepo(id: string): Promise<void>;
