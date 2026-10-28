@@ -39,6 +39,7 @@ import { auditText } from '../shared/redact';
 import { prepareInputs } from '../shared/workflows';
 import { searchEvents, type SearchResults } from '../shared/search';
 import { sessionTitle } from '../shared/types';
+import { cleanRepoSettings, effectiveSettings } from '../shared/repoSettings';
 import { feedbackTask, issueTask, pullNumber } from '../shared/issues';
 import { prBody, prSummary, prTitle, replaceSummary } from '../shared/prText';
 import { auditCsv, buildReport, digestMarkdown, sessionsCsv, spendCsv, type ReportInput } from '../shared/reports';
@@ -216,8 +217,8 @@ Object.assign(companionOps, {
   resume: async (id: string) => { await sessions.send(id, 'Continue where you left off.'); },
   archive: async (id: string, archived: boolean) => { sessions.archive(id, archived); },
   createSession: async (repoId: string, task: string) => {
-    const st = store.data.settings;
     const repo = repos.must(repoId);
+    const st = effectiveSettings(store.data.settings, repo);
     await sessions.create({ repoId, base: repo.defaultBranch, task, model: st.defaultModel, budget: st.sessionBudget, permMode: st.permMode });
   },
   transcript: (key: string) => store.transcript(key),
@@ -528,6 +529,13 @@ export const api: HelmApi = {
     else store.data.settings.mcpServers = (store.data.settings.mcpServers || []).filter((x) => x.name !== name);
     store.save(); emitState();
   },
+  async setRepoHidden(id, hidden) {
+    const repo = repos.must(id);
+    if (hidden && store.data.sessions.some((s) => s.repoId === id && !s.archivedAt)) throw new Error('Archive its sessions before hiding this repository.');
+    repo.hidden = hidden || undefined;
+    store.save(); emitState();
+  },
+  async setRepoSettings(id, settings) { repos.must(id).settings = cleanRepoSettings(settings); store.save(); emitState(); },
   async setRepoMaxSubagents(id, max) { repos.must(id).maxSubagents = max ?? undefined; store.save(); emitState(); },
   resolveAsk: (id, askId, answer) => sessions.resolveAsk(id, askId, answer),
   getTranscript: (id) => store.transcript(id),
@@ -639,7 +647,8 @@ export const api: HelmApi = {
     store.log({ kind: 'commit', who: me(), human: true, what: `committed ${files.length} ${files.length === 1 ? 'file' : 'files'}: ${message.split('\n')[0].slice(0, 80)}`, repo: w.sessionId ? repoName(sessions.get(w.sessionId)?.repoId || '') : '', sessionId: w.sessionId, detail: files.join('\n') });
     const s = w.sessionId ? sessions.get(w.sessionId) : undefined;
     if (s) await sessions.refreshStats(s);
-    if (store.data.settings.autoPush && store.data.settings.pushWhen !== 'ready') {
+    const push = effectiveSettings(store.data.settings, store.data.repos.find((r) => r.id === s?.repoId));
+    if (push.autoPush && push.pushWhen !== 'ready') {
       if (s) await sessions.autoPush(s);
       else {
         // The repository's own checkout: push whatever branch is checked out, if any.
@@ -1248,17 +1257,18 @@ async function fetchTick() {
 const autoMergeTried = new Set<string>();
 /** Merges the open pull requests of sessions once they meet the auto-merge setting. Each is tried once: a refusal is logged, not retried every tick. */
 async function tickAutoMerge() {
-  const mode = store.data.settings.autoMerge;
-  if (mode === 'off') return;
+  const repoCfg = (repoId: string) => effectiveSettings(store.data.settings, store.data.repos.find((r) => r.id === repoId));
   const open = store.data.sessions.filter((s) => s.prUrl && !s.mergedAt && !s.queuedMerge && !autoMergeTried.has(s.prUrl));
   for (const s of open) {
+    const mode = repoCfg(s.repoId).autoMerge;
+    if (mode === 'off') continue;
     try {
       const pr = (await GH.listPulls(s.repoId)).find((p) => p.url === s.prUrl);
       if (!pr || pr.state !== 'open' || pr.draft || pr.checks !== 'passing') continue;
       if (!autoMergeReady(pr, mode, mode === 'approved' && approvedByReviews(await GH.pullReviews(s.repoId, pr.number)))) continue;
       autoMergeTried.add(s.prUrl!);
       try {
-        await api.mergePr(s.repoId, pr.number, { method: store.data.settings.mergeMethod, deleteBranch: s.deleteBranchAfterMerge ?? s.removeAfterMerge });
+        await api.mergePr(s.repoId, pr.number, { method: repoCfg(s.repoId).mergeMethod, deleteBranch: s.deleteBranchAfterMerge ?? s.removeAfterMerge });
       } catch (e: any) {
         store.log({ kind: 'merge', who: 'helm', human: false, what: `could not merge #${pr.number} automatically: ${String(e?.message || e)}`, repo: repoName(s.repoId), sessionId: s.id, ok: false });
         store.save();

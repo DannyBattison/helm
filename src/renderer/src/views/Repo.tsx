@@ -12,6 +12,7 @@ import { Issues } from './Issues';
 import { Actions } from './Actions';
 import { RepoMemory } from './Memory';
 import { McpServers } from './McpServers';
+import { RepoSettingsPane } from './RepoSettings';
 import { RepoFixtures } from './RepoFixtures';
 import { usePush } from './push';
 import { TranscriptList } from './TranscriptList';
@@ -513,6 +514,7 @@ export function Repo({ id, themeKey, tab: firstTab, hash, file, line }: { id: st
           { value: 'worktrees', label: 'Branches & worktrees', icon: 'tree-structure', count: wts?.length },
           { value: 'issues', label: 'Issues', icon: 'circle-dashed' },
           { value: 'actions', label: 'Actions', icon: 'lightning' },
+          { value: 'settings', label: 'Settings', icon: 'sliders-horizontal', count: Object.keys(repo.settings || {}).length || undefined },
           { value: 'prs', label: 'Pull requests', icon: 'git-pull-request', count: prs?.filter((p) => p.state === 'open').length }]} />
       </div>
       {tab === 'history' ? (
@@ -539,6 +541,7 @@ export function Repo({ id, themeKey, tab: firstTab, hash, file, line }: { id: st
         : tab === 'mcp' ? <div style={{ flex: 1, overflow: 'auto', padding: 16 }}><McpServers repoId={repo.id} servers={repo.mcpServers || []} inherited={app.settings.mcpServers || []} /></div>
         : tab === 'fixtures' ? <RepoFixtures repoId={repo.id} />
         : tab === 'issues' ? <Issues repoId={repo.id} />
+        : tab === 'settings' ? <div style={{ flex: 1, overflow: 'auto', padding: '8px 24px 32px' }}><div style={{ maxWidth: 720 }}><RepoSettingsPane repoId={repo.id} /></div></div>
         : tab === 'actions' ? <Actions repoId={repo.id} />
         : tab === 'external' ? <ExternalSessions repo={repo} onCount={setExtCount} />
         : tab === 'worktrees' ? <div style={{ flex: 1, overflow: 'auto' }}><Worktrees repo={repo} list={wts} reload={loadWts} /></div>

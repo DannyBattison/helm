@@ -8,7 +8,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import { api, on, platform, windowControls } from '../api';
 import { fontStack } from '../fonts';
 import glyph from '../assets/helm-glyph-violet.svg';
-import { ago, backendFor, billingOf, planBackends, elapsed, fmtTokens, isFreeGroup, lifetimeTokens, livePlan, reposWithSessions, runningSubagents, subagentTree, totals, untilReset } from '../lib';
+import { visibleRepos, ago, backendFor, billingOf, planBackends, elapsed, fmtTokens, isFreeGroup, lifetimeTokens, livePlan, reposWithSessions, runningSubagents, subagentTree, totals, untilReset } from '../lib';
 import { getUI, go, haltAll, isResumable, refreshExternals, resumeAll, setUI, toast, useApp, useMoney, useUI, useTranscript, type Route } from '../store';
 import { InboxPreview } from './InboxPreview';
 import { useShortcutKeys } from '../shortcuts';
@@ -181,7 +181,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
         <TreeItem icon="chart-line-up" label="Reports" selected={route.screen === 'reports'} onClick={() => go({ screen: 'reports' })} />
         <TreeItem icon="archive" label="Archive" selected={route.screen === 'archive'} onClick={() => go({ screen: 'archive' })} trailing={archivedCount ? <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{archivedCount}</span> : null} />
         <SectionLabel action={<><IconButton icon="archive" label={showArchived ? 'Hide archived sessions' : 'Show archived sessions'} size="sm" active={showArchived} onClick={toggleArchived} /><Hint id="add-repo" side="right" title="Add a repository" text="Start here: pick a GitHub repository for agents to work in."><IconButton icon="plus" label="Add repository" size="sm" onClick={() => setUI({ adding: true })} /></Hint></>}>Repositories</SectionLabel>
-        {app.repos.length === 0 ? <div style={{ padding: '4px 10px 6px', font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>No repositories yet. Use + to add one from GitHub.</div> : null}
+        {visibleRepos(app).length === 0 ? <div style={{ padding: '4px 10px 6px', font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>No repositories yet. Use + to add one from GitHub.</div> : null}
         {reposWithSessions(app, showArchived).map(({ repo: r, sessions }) => {
           const live = sessions.filter((s) => !s.archivedAt).length;
           const empty = live === 0 && !extList(r.id).length;
@@ -480,7 +480,7 @@ export function TerminalDrawer({ height: initial = 260, visible = true, onClose,
     const seen = new Set<string | null>();
     const push = (p: { label: string; hint?: string; icon: string; target: string | null }, sep = false) => { if (!seen.has(p.target)) { seen.add(p.target); out.push({ ...p, separator: sep && out.length > 0 }); } };
     if (sessionId) push({ label: 'This workspace', hint: labelFor(sessionId), icon: 'crosshair', target: sessionId });
-    app.repos.forEach((r, i) => push({ label: r.name, hint: r.owner, icon: 'git-branch', target: 'repo:' + r.id }, i === 0));
+    visibleRepos(app).forEach((r, i) => push({ label: r.name, hint: r.owner, icon: 'git-branch', target: 'repo:' + r.id }, i === 0));
     app.sessions.filter((s) => !s.archivedAt).forEach((s, i) => push({ label: sessionTitle(s), hint: s.repoId.split('/').pop(), icon: 'tree-structure', target: s.id }, i === 0));
     push({ label: 'Home folder', icon: 'house', target: null }, true);
     return out;

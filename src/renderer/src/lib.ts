@@ -1,7 +1,10 @@
+import { effectiveSettings } from '../../shared/repoSettings';
 import { freeRepo, FREE_ID, type AgentCapabilities, type AppState, type BackendInfo, type Repo, type Session, type Status } from '../../shared/types';
 
 /** The named agent backend, or the first when the name is empty or unknown (sessions saved before there were others have none). */
 export const backendFor = (app: AppState, id?: string): BackendInfo | undefined => app.backends?.find((b) => b.id === id) ?? app.backends?.[0];
+/** The settings that apply in a repository: its own over the defaults. */
+export const repoSettings = (app: AppState, repoId?: string) => effectiveSettings(app.settings, app.repos?.find((r) => r.id === repoId));
 /** Choices for a model picker, from whichever backend the session or setting uses. */
 export const modelOptions = (app: AppState, id?: string) => (backendFor(app, id)?.models ?? []).map((m) => ({ value: m.id, label: m.label }));
 /** Every model of every agent that is ready to use (signed in, installed), as one list. The value is `agent/model`. */
@@ -11,8 +14,9 @@ export const modelChoices = (app: AppState) => {
 };
 export const splitChoice = (v: string) => { const i = v.indexOf('/'); return { backend: v.slice(0, i), model: v.slice(i + 1) }; };
 /** The default agent and model from Settings, or the first thing that can be used when that agent is not ready. */
-export const defaultChoice = (app: AppState) => {
-  const want = `${app.settings.defaultBackend}/${app.settings.defaultModel}`;
+export const defaultChoice = (app: AppState, repoId?: string) => {
+  const cfg = repoSettings(app, repoId);
+  const want = `${cfg.defaultBackend}/${cfg.defaultModel}`;
   const all = modelChoices(app);
   return all.some((c) => c.value === want) ? want : all[0]?.value ?? want;
 };
@@ -82,7 +86,9 @@ export function totals(app: AppState) {
 export const whereLabel = (s: Session) => (s.free ? s.worktree.split(/[\\/]/).filter(Boolean).slice(-2).join('/') : s.branch);
 
 /** Repositories with their sessions, and first the free agents as a group of their own (which is not a repository). */
-export const reposWithSessions = (app: AppState, includeArchived = false) => [freeRepo(), ...app.repos].map((r) => ({ repo: r, sessions: app.sessions.filter((s) => s.repoId === r.id && (includeArchived || !s.archivedAt)) }));
+/** The repositories not hidden from the interface. */
+export const visibleRepos = (app: AppState) => app.repos.filter((r) => !r.hidden);
+export const reposWithSessions = (app: AppState, includeArchived = false, includeHidden = false) => [freeRepo(), ...(includeHidden ? app.repos : visibleRepos(app))].map((r) => ({ repo: r, sessions: app.sessions.filter((s) => s.repoId === r.id && (includeArchived || !s.archivedAt)) }));
 export const isFreeGroup = (r: { id: string }) => r.id === FREE_ID;
 
 export const repoOf = (app: AppState, s: Session): Repo | undefined => app.repos.find((r) => r.id === s.repoId);

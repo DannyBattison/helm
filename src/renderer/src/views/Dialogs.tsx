@@ -2,7 +2,7 @@ import React from 'react';
 import { MAX_UPLOAD_FILES, MAX_UPLOAD_TOTAL, type BaseOption, type GhRepo, type MergeMethod, type ModelAlias, type PermMode, type PullRequest, type RepoRemoveInfo, type SessionDeleteInfo } from '@shared/types';
 import { api, platform } from '../api';
 import glyph from '../assets/helm-glyph-violet.svg';
-import { agentName, billingOf, defaultChoice, modelChoices, splitChoice, tilde } from '../lib';
+import { agentName, billingOf, defaultChoice, modelChoices, repoSettings, visibleRepos, splitChoice, tilde } from '../lib';
 import { getUI, go, haltAll, resumeAll, setUI, toast, useApp, useMoney } from '../store';
 import { Badge, Button, Checkbox, Dialog, IconButton, Input, Kbd, SegmentedControl, Select, Tabs, useNarrow } from '../ui';
 import { PERM_OPTIONS } from './Settings';
@@ -249,7 +249,7 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
   const app = useApp();
   const narrow = useNarrow();
   const { sym, to, from } = useMoney();
-  const [repo, setRepo] = React.useState(repoId || app.repos[0]?.id || '@free');
+  const [repo, setRepo] = React.useState(repoId || visibleRepos(app)[0]?.id || '@free');
   const r = app.repos.find((x) => x.id === repo);
   const free = repo === '@free';
   const [bases, setBases] = React.useState<BaseOption[]>([]);
@@ -271,17 +271,17 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
   }, [task]);
   const [after, setAfter] = React.useState('');
   const known = (c?: string) => (c && modelChoices(app).some((m) => m.value === c) ? c : undefined);
-  const [choice, setChoice] = React.useState(() => known(initial?.choice) ?? defaultChoice(app));
+  const [choice, setChoice] = React.useState(() => known(initial?.choice) ?? defaultChoice(app, repo));
   const { backend, model } = splitChoice(choice);
   const sub = billingOf(app, backend) === 'subscription';
-  const [perm, setPerm] = React.useState<PermMode>(initial?.permMode ?? app.settings.permMode);
-  const [budget, setBudget] = React.useState(String(Math.round(to(initial?.budget ?? app.settings.sessionBudget) * 100) / 100));
+  const [perm, setPerm] = React.useState<PermMode>(initial?.permMode ?? repoSettings(app, repo).permMode);
+  const [budget, setBudget] = React.useState(String(Math.round(to(initial?.budget ?? repoSettings(app, repo).sessionBudget) * 100) / 100));
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState('');
   const [compare, setCompare] = React.useState(!!initial?.compare && (initial.repoId ?? '') !== '@free');
   const [folder, setFolder] = React.useState(initial?.folder || '');
   const [more, setMore] = React.useState<string[]>(initial?.extraRepos || []);
-  const others = app.repos.filter((x) => x.id !== repo);
+  const others = visibleRepos(app).filter((x) => x.id !== repo);
   const extraRepos = free ? [] : more.filter((id) => id !== repo && others.some((x) => x.id === id));
   const [uploads, setUploads] = React.useState<Upload[]>([]);
   const [joiners, setJoiners] = React.useState<string[]>(() => (initial?.joiners || []).filter((c) => known(c)));
@@ -339,7 +339,7 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
       </>}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div style={{ display: 'flex', flexDirection: narrow ? 'column' : 'row', gap: 8 }}>
-          <Select value={repo} onChange={(e: any) => { setRepo(e.target.value); if (e.target.value === '@free') setCompare(false); }} options={[...(app.settings.freeAgents || free || !app.repos.length ? [{ value: '@free', label: 'No repository (free agent)' }] : []), ...app.repos.map((x) => ({ value: x.id, label: x.id }))]} style={{ flex: narrow ? 'none' : 1, minWidth: 0 }} icon={free ? 'robot' : 'book-bookmark'} />
+          <Select value={repo} onChange={(e: any) => { setRepo(e.target.value); if (e.target.value === '@free') setCompare(false); }} options={[...(app.settings.freeAgents || free || !visibleRepos(app).length ? [{ value: '@free', label: 'No repository (free agent)' }] : []), ...app.repos.filter((x) => !x.hidden || x.id === repo).map((x) => ({ value: x.id, label: x.id }))]} style={{ flex: narrow ? 'none' : 1, minWidth: 0 }} icon={free ? 'robot' : 'book-bookmark'} />
           {free ? <Button variant="secondary" icon="folder-open" onClick={() => void api.chooseFolder().then((f) => f && setFolder(f))}>{folder ? 'Change folder…' : 'Use my own folder…'}</Button>
             : <Select value={base} onChange={(e: any) => setBase(e.target.value)} options={bases.length ? bases.map((b) => ({ value: b.ref, label: b.label })) : [base]} mono icon="git-branch" />}
         </div>
@@ -426,7 +426,7 @@ export function MergePr({ target, onClose }: { target: { repoId: string; number:
   const app = useApp();
   const session = app.sessions.find((x) => x.id === target.sessionId);
   const [pr, setPr] = React.useState<PullRequest | null>(null);
-  const [method, setMethod] = React.useState<MergeMethod>(app.settings.mergeMethod);
+  const [method, setMethod] = React.useState<MergeMethod>(repoSettings(app, target.repoId).mergeMethod);
   const [del, setDel] = React.useState(!!(session ? session.deleteBranchAfterMerge ?? session.removeAfterMerge : false));
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState('');
@@ -666,7 +666,7 @@ export function Palette({ onClose, toggleTheme }: { onClose(): void; toggleTheme
     { key: 'a-add', label: 'Add repository', icon: 'book-bookmark', run: () => setUI({ adding: true }) },
     { key: 'a-theme', label: 'Toggle theme', icon: 'sun', run: toggleTheme },
     ...app.sessions.map((s) => ({ key: 's-' + s.id, label: s.id, hint: s.task, icon: 'robot', run: () => go({ screen: 'session', id: s.id, tab: s.status === 'ready' ? 'changes' : 'conversation' }) })),
-    ...app.repos.map((r) => ({ key: 'r-' + r.id, label: r.id, hint: 'Repository', icon: 'book-bookmark', run: () => go({ screen: 'repo', id: r.id }) }))
+    ...visibleRepos(app).map((r) => ({ key: 'r-' + r.id, label: r.id, hint: 'Repository', icon: 'book-bookmark', run: () => go({ screen: 'repo', id: r.id }) }))
   ];
   const KIND_HINT = { you: 'you', claude: 'Agent', command: 'command', edit: 'edit', note: 'note' } as const;
   const deepItems: Item[] = deep ? [

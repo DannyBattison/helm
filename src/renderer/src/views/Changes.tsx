@@ -6,7 +6,7 @@ import { api, platform } from '../api';
 import { Hl } from '../Hl';
 import { langFromPath } from '../highlight';
 import { prBody, prSummary, prTitle } from '@shared/prText';
-import { CHECK_RE, agentName, relTime } from '../lib';
+import { CHECK_RE, agentName, relTime, repoSettings } from '../lib';
 import { go, setUI, toast, useApp, useTranscript } from '../store';
 import { Avatar, Badge, BranchTag, Button, Checkbox, DiffStat, Grip, IconButton, Input, SegmentedControl, Select, usePaneWidth } from '../ui';
 
@@ -154,7 +154,7 @@ function ExtraRepoPr({ s, x }: { s: Session; x: ExtraRepo }) {
   const app = useApp();
   const [sum, setSum] = React.useState<ChangesSummary | null>(null);
   const [title, setTitle] = React.useState(prTitle(s.task));
-  const [draft, setDraft] = React.useState(useApp().settings.prDraft);
+  const [draft, setDraft] = React.useState(repoSettings(app, x.repoId).prDraft);
   const [busy, setBusy] = React.useState(false);
   const base = x.base.replace(/^origin\//, '');
   React.useEffect(() => { api.extraChanges(s.id, x.repoId).then(setSum).catch(() => setSum(null)); }, [s.id, x.repoId, s.commits.length, s.pushedAt, x.prUrl]);
@@ -166,7 +166,7 @@ function ExtraRepoPr({ s, x }: { s: Session; x: ExtraRepo }) {
       const body = prBody(prSummary({ task: s.task, commits: sum.commits, files, add: sum.files.reduce((n, f) => n + f.add, 0), del: sum.files.reduce((n, f) => n + f.del, 0) }), s.id);
       const r = await api.createPr({ sessionId: s.id, extraRepoId: x.repoId, base, title, body, draft, removeAfterMerge: false, deleteBranchAfterMerge: false, files: sum.files.map((f) => f.path), message: title });
       toast({ tone: 'ready', title: 'Pull request opened', description: r.url || undefined });
-      if (r.url && app.settings.openPrAfterCreate) void api.openExternal(r.url);
+      if (r.url && repoSettings(app, x.repoId).openPrAfterCreate) void api.openExternal(r.url);
     } catch (e) { toast({ tone: 'error', title: 'That did not work', description: errText(e) }); } finally { setBusy(false); }
   };
   return (
@@ -216,10 +216,10 @@ function ChangesView({ s }: { s: Session }) {
   const [base, setBase] = React.useState(s.base.replace(/^origin\//, ''));
   const [title, setTitle] = React.useState(prTitle(s.task));
   const [body, setBody] = React.useState('');
-  const [draft, setDraft] = React.useState(useApp().settings.prDraft);
+  const [draft, setDraft] = React.useState(repoSettings(app, s.repoId).prDraft);
   const [rm, setRm] = React.useState(s.removeAfterMerge);
   const [delBranch, setDelBranch] = React.useState(s.deleteBranchAfterMerge ?? s.removeAfterMerge);
-  const [deliver, setDeliver] = React.useState<'pr' | 'merge'>(app.settings.deliver);
+  const [deliver, setDeliver] = React.useState<'pr' | 'merge'>(repoSettings(app, s.repoId).deliver);
   const prNum = s.prUrl && !s.mergedAt ? +(/\/pull\/(\d+)/.exec(s.prUrl)?.[1] || 0) || null : null;
   const openPr = deliver === 'pr' && !!prNum;
   const [armed, setArmed] = React.useState(false);
@@ -305,13 +305,13 @@ function ChangesView({ s }: { s: Session }) {
   const createPr = () => run('pr', async () => {
     const r = await api.createPr({ sessionId: s.id, base, title, body, draft, removeAfterMerge: rm, deleteBranchAfterMerge: delBranch, files: filesToStage, message: title });
     toast({ tone: 'ready', title: 'Pull request opened', description: r.url || undefined });
-    if (r.url && app.settings.openPrAfterCreate) void api.openExternal(r.url);
+    if (r.url && repoSettings(app, s.repoId).openPrAfterCreate) void api.openExternal(r.url);
   });
   const merge = () => run('merge', async () => {
     const r = await api.mergeDirect({ sessionId: s.id, base, message: title || s.task, files: filesToStage, removeAfterMerge: rm || delBranch, deleteBranchAfterMerge: delBranch });
     setArmed(false);
     toast({ tone: 'ready', title: `Merged into ${base}`, description: [`${r.sha} is on GitHub`, r.localUpdated ? `local ${base} updated` : r.localNote].filter(Boolean).join(' · ') });
-    if (rm && app.settings.afterMerge === 'delete') go({ screen: 'overview' });
+    if (rm && repoSettings(app, s.repoId).afterMerge === 'delete') go({ screen: 'overview' });
   });
   const commitOnly = () => run('commit', async () => { await api.commitOnly(s.id, filesToStage, title); toast({ tone: 'ready', title: 'Committed', description: `${filesToStage.length} files on ${s.branch}` }); });
   const requestChanges = () => run('req', async () => { await api.requestChanges(s.id, comments); setC([]); go({ screen: 'session', id: s.id, tab: 'conversation' }); });
