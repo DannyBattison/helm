@@ -40,7 +40,8 @@ export async function uploadRepoFixtures(repoId: string, list: File[]): Promise<
 /** Files uploaded to a repository: copied into every session's worktree and kept out of git (secrets, data, notes that are not committed). Files can be dropped anywhere on the tab. */
 export function RepoFixtures({ repoId }: { repoId: string }) {
   const [files, setFiles] = React.useState<RepoFixture[] | null>(null);
-  const active = useUI((u) => u.uploads.filter((x) => x.repoId === repoId));
+  const uploads = useUI((u) => u.uploads);
+  const active = React.useMemo(() => uploads.filter((x) => x.repoId === repoId), [uploads, repoId]);
   const sending = active.length ? active.map((x) => `${x.name} ${percent(x)}%`).join(', ') : '';
   const [over, setOver] = React.useState(false);
   const [busy, setBusy] = React.useState('');
