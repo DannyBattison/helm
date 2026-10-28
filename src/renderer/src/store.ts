@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import type { AppState, ExternalSession, HelmEvents, ReplyRef, Session, TranscriptEvent } from '@shared/types';
+import type { AppState, ExternalSession, HelmEvents, NewSessionPreset, ReplyRef, Session, TranscriptEvent } from '@shared/types';
 import { currencySymbol, fmtMoney, fromDisplay, toDisplay } from '@shared/money';
 import { api, on } from './api';
 
@@ -32,7 +32,7 @@ export interface UI {
   externals: Record<string, ExternalSession[]>;
   toasts: ToastItem[];
   adding: boolean;
-  newSession: { repoId?: string; task?: string; source?: Session['source']; base?: string } | null;
+  newSession: (NewSessionPreset & { source?: Session['source'] }) | null;
   /** The session whose delete dialog is open. */
   deleting: string | null;
   mergingPr: { repoId: string; number: number; sessionId?: string } | null;

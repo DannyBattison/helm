@@ -5,7 +5,8 @@ import { setTimeFormat, theme as resolveTheme } from './lib';
 import { schemeVars } from '@shared/schemes';
 import { dismissToast, getUI, go, haltAll, init, resumeAll, setUI, useUI } from './store';
 import { Button, Toast, useNarrow } from './ui';
-import { isShortcut } from './shortcuts';
+import { findCustomShortcut } from '@shared/shortcuts';
+import { isShortcut, repoHere, runCustomShortcut } from './shortcuts';
 import { Activity, Dashboard } from './views/Dashboard';
 import { AddRepo, AgentLoginGate, DeleteSession, MergePr, NewSession, Palette, RemoveRepo, RenameSession, SignIn } from './views/Dialogs';
 import { Archive } from './views/Archive';
@@ -21,15 +22,6 @@ import { Sidebar, StatusBar, TerminalDrawer, TitleBar } from './views/Shell';
 
 /** Whether the start page has been chosen yet this run. */
 let startedOn = false;
-
-/** The new session dialog's starting point for the page you are on: the repository of a repository page or of a session. */
-function repoHere(): { repoId?: string } {
-  const { route, app } = getUI();
-  if (route.screen === 'repo') return { repoId: route.id };
-  if (route.screen === 'external') return { repoId: route.repoId };
-  if (route.screen === 'session') { const s = app?.sessions.find((x) => x.id === route.id); return s && !s.free ? { repoId: s.repoId } : {}; }
-  return {};
-}
 
 /** Opens the session after (or before) the current one among those not archived; `attentionOnly` skips those that are not waiting for you. */
 function stepSession(dir: 1 | -1, attentionOnly: boolean) {
@@ -141,6 +133,7 @@ export function App() {
 
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const custom = findCustomShortcut(getUI().app?.settings.customShortcuts, e, platform() === 'darwin');
       if (isShortcut(e, 'palette')) { e.preventDefault(); setUI({ palette: true }); }
       // Browsers reserve Cmd/Ctrl+N for a new window and often never deliver it, so Alt+N also works.
       else if (isShortcut(e, 'newSession') || isShortcut(e, 'newSessionAlt')) { e.preventDefault(); const r = getUI().route; setUI({ newSession: r.screen === 'repo' ? { repoId: r.id } : {} }); }
@@ -156,6 +149,7 @@ export function App() {
       else if (isShortcut(e, 'haltAll')) { e.preventDefault(); void haltAll(); }
       else if (isShortcut(e, 'resumeAll')) { e.preventDefault(); void resumeAll(); }
       else if (isShortcut(e, 'terminal')) { e.preventDefault(); setUI({ term: !getUI().term }); }
+      else if (custom) { e.preventDefault(); runCustomShortcut(custom); }
       else if (e.key === 'Escape') setUI({ palette: false, drawer: false });
     };
     window.addEventListener('keydown', onKey);

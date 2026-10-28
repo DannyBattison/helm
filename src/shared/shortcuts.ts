@@ -1,3 +1,5 @@
+import type { CustomShortcut, GotoTarget } from './types';
+
 /**
  * Keyboard shortcuts that can be changed in Settings. A shortcut is written as a string such as `Mod+K`, `Alt+N` or `Ctrl+Shift+P`:
  * zero or more modifiers in the order Mod, Ctrl, Alt, Shift, Meta, then one key. `Mod` is Cmd on a Mac and Ctrl everywhere else, so a
@@ -84,8 +86,23 @@ export function comboProblem(combo: string): string | null {
   return null;
 }
 
-/** The other action using this shortcut, if any. */
-export function shortcutConflict(overrides: Record<string, string> | undefined, id: string, combo: string): ShortcutAction | undefined {
+/** The other action, built-in or custom, using this shortcut. `id` is the action being edited, which does not conflict with itself. */
+export function shortcutConflict(overrides: Record<string, string> | undefined, id: string, combo: string, custom: CustomShortcut[] = []): { id: string; label: string } | undefined {
   const norm = normalizeCombo(combo);
-  return SHORTCUT_ACTIONS.find((a) => a.id !== id && normalizeCombo(shortcutOf(overrides, a.id)) === norm);
+  return SHORTCUT_ACTIONS.find((a) => a.id !== id && normalizeCombo(shortcutOf(overrides, a.id)) === norm)
+    ?? custom.find((c) => c.id !== id && c.combo && normalizeCombo(c.combo) === norm);
+}
+
+/** The custom shortcut a key press triggers, if any. */
+export function findCustomShortcut(custom: CustomShortcut[] | undefined, e: Parameters<typeof comboFromEvent>[0], mac: boolean): CustomShortcut | undefined {
+  return custom?.find((c) => matchesCombo(e, c.combo, mac));
+}
+
+/** The page a "go to" target opens, as a route. A repository target without a repository gives null. */
+export function routeOfTarget(t: GotoTarget): { screen: string; [k: string]: unknown } | null {
+  switch (t.page) {
+    case 'needsYou': return { screen: 'overview', filter: 'attention' };
+    case 'repo': return t.repoId ? { screen: 'repo', id: t.repoId, ...(t.tab ? { tab: t.tab } : null) } : null;
+    default: return { screen: t.page };
+  }
 }

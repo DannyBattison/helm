@@ -13,6 +13,44 @@ export type { Workflow, WorkflowRun, Report, Conflict, Issue, SearchResults, Hea
 
 export type Status = 'working' | 'attention' | 'ready' | 'idle' | 'error';
 /** ask: approve commands; edits: edits go through, commands ask; plan: plan only; all: nothing asks. */
+/** Everything the new session dialog can be started with. Anything left out keeps the dialog's usual default. */
+export interface NewSessionPreset {
+  /** A repository id, or `@free` for a free agent. */
+  repoId?: string;
+  /** The branch to start from. */
+  base?: string;
+  task?: string;
+  /** `agent/model`, as the model picker writes it. */
+  choice?: string;
+  permMode?: PermMode;
+  /** The budget in the base currency; ignored on a subscription. */
+  budget?: number;
+  /** More repositories to work in. */
+  extraRepos?: string[];
+  /** Other agents to ask along, each as `agent/model`. */
+  joiners?: string[];
+  /** Compare several runs, each with its own model and effort. */
+  compare?: boolean;
+  variants?: { choice: string; effort: Effort | 'default' }[];
+  /** For a free agent: work in this folder instead of a scratch one. */
+  folder?: string;
+}
+
+/** Where a custom shortcut goes: a page, or a repository (optionally on one of its tabs). */
+export interface GotoTarget {
+  page: 'overview' | 'needsYou' | 'inbox' | 'activity' | 'archive' | 'reports' | 'settings' | 'repo';
+  repoId?: string;
+  tab?: string;
+}
+
+export interface CustomShortcut {
+  id: string;
+  label: string;
+  /** A shortcut in the form `shared/shortcuts.ts` describes; empty while it is not set. */
+  combo: string;
+  action: { kind: 'newSession'; preset: NewSessionPreset } | { kind: 'goto'; target: GotoTarget };
+}
+
 export type PermMode = 'ask' | 'edits' | 'plan' | 'all';
 /** A model's id as its backend knows it ('sonnet', 'gpt-5', …). Which ones exist comes from `AppState.backends`. */
 export type ModelAlias = string;
@@ -512,6 +550,8 @@ export interface Settings {
   sendKey: 'enter' | 'mod-enter';
   /** Keyboard shortcuts changed from their defaults, by action id (see `shared/shortcuts.ts`). Absent means the default. */
   shortcuts: Record<string, string>;
+  /** Shortcuts you made yourself: each opens a prefilled new session dialog or goes to a page (see `shared/shortcuts.ts`). */
+  customShortcuts: CustomShortcut[];
   /** Show the organisation or user before each repository name in the left tree (`acme/` storefront). */
   showOwner: boolean;
   /** Tutorial mode: bubbles that point out useful areas until each is dismissed. */

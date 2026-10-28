@@ -75,6 +75,7 @@ export const defaultSettings = (): Settings => ({
   terminalShellCustom: '',
   sendKey: 'mod-enter',
   shortcuts: {},
+  customShortcuts: [],
   interruptKey: 'esc',
   showOwner: true,
   freeAgents: true,
