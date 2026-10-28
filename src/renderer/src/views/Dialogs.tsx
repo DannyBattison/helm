@@ -535,7 +535,11 @@ export function DeleteSession({ id, onClose }: { id: string; onClose(): void }) 
       onClose();
     } catch (e) { setErr(errText(e)); } finally { setBusy(false); }
   };
-  if (!s) return null;
+  // With confirmation off, a session with nothing to lose is deleted at once; uncommitted or unpushed work, and your own folders, still ask.
+  const quick = !app.settings.confirmDestructive && !!info && !err && info.dirty === 0 && info.unpushed === 0 && info.free !== 'folder';
+  const started = React.useRef(false);
+  React.useEffect(() => { if (quick && s && !started.current) { started.current = true; void run(); } }, [quick]);
+  if (!s || quick) return null;
   const warn = (text: string) => <span style={{ display: 'flex', gap: 8, alignItems: 'flex-start', font: '400 12px/1.45 var(--font-sans)', color: 'var(--status-attention-text)' }}><i className="ph-fill ph-warning-circle" style={{ fontSize: 14, marginTop: 1, flex: 'none' }} />{text}</span>;
   const removing = worktree || branch;
   return (

@@ -105,13 +105,12 @@ export const defaultSettings = (): Settings => ({
   notifyPreview: true,
   startAtLogin: false,
   startMinimised: false,
-  startPage: 'overview',
+  startPage: 'last',
   confirmDestructive: true,
   collapseTools: false,
-  showThinking: true,
   uiScale: 100,
   activityDays: 0,
-  timeFormat: 'auto'
+  timeFormat: '24'
 });
 
 interface Persisted {

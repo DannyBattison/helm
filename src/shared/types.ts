@@ -566,12 +566,10 @@ export interface Settings {
   startMinimised: boolean;
   /** Page shown at launch. */
   startPage: 'overview' | 'last' | 'inbox';
-  /** Ask before deleting a session, discarding changes or removing a worktree. */
+  /** Ask before deleting a session. When off, one with nothing uncommitted or unpushed is deleted at once. */
   confirmDestructive: boolean;
   /** Fold tool calls and their output in the conversation until opened. */
   collapseTools: boolean;
-  /** Show the agent's reasoning in the conversation. */
-  showThinking: boolean;
   /** Interface zoom, percent. */
   uiScale: number;
   /** Keep the activity log for this many days. 0 keeps it for good. */
