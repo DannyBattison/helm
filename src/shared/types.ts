@@ -390,6 +390,8 @@ export interface Settings {
   defaultModel: ModelAlias;
   permMode: PermMode;
   alwaysAllow: string[];
+  /** Command patterns that always ask, even when an always-allow pattern or the read-only list would let them through. */
+  alwaysAsk: string[];
   runTests: boolean;
   /** On launch, restart agents that were working when helm closed, so quitting does not lose their place. */
   resumeOnLaunch: boolean;
