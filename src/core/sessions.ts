@@ -17,7 +17,7 @@ import * as G from './git';
 import { supplyRepoArtifacts } from './repoartifacts';
 import { checkpointParent, dropCheckpoints, listCheckpoints, restoreCheckpoint, seedFromCheckpoint, takeCheckpoint } from './review';
 import type { Store } from './store';
-import { commandPattern, expandHome, findBash, globMatch, hasShellControl, matchesAlwaysAsk, uid } from './util';
+import { commandPattern, expandHome, findBash, globMatch, hasShellControl, helmPids, killsPid, matchesAlwaysAsk, uid } from './util';
 
 export interface Hooks {
   emitState(): void;
@@ -1118,7 +1118,7 @@ export class SessionManager {
     if (COMMAND_TOOLS.has(tool)) {
       const cmd = String(input.command || '');
       const plain = !hasShellControl(cmd);
-      const mustAsk = matchesAlwaysAsk(st.alwaysAsk || [], cmd);
+      const mustAsk = matchesAlwaysAsk(st.alwaysAsk || [], cmd) || (/\bkill\b/.test(cmd) && killsPid(cmd, helmPids()));
       if (!mustAsk && plain && SAFE_CMD.test(cmd.trim())) return { behavior: 'allow', updatedInput: input };
       if (!mustAsk && plain && st.alwaysAllow.some((p) => globMatch(p, cmd))) return { behavior: 'allow', updatedInput: input };
       const pattern = mustAsk ? undefined : commandPattern(cmd);

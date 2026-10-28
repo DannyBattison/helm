@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Session } from '../src/shared/types';
 import { parseDiff, parseGithubUrl, isGenerated } from '../src/core/git';
-import { commandPattern, globMatch, DEFAULT_ALWAYS_ASK, hasShellControl, matchesAlwaysAsk, weekStart } from '../src/core/util';
+import { commandPattern, globMatch, DEFAULT_ALWAYS_ASK, hasShellControl, helmPids, killsPid, matchesAlwaysAsk, weekStart } from '../src/core/util';
 import { fmtTokens, laneData, NOW_AT } from '../src/renderer/src/lib';
 import { currencyForRegion, fmtMoney, fromDisplay, toDisplay } from '../src/shared/money';
 
@@ -112,5 +112,22 @@ describe('matchesAlwaysAsk', () => {
   it('uses the patterns it is given', () => {
     expect(matchesAlwaysAsk([], 'pkill node')).toBe(false);
     expect(matchesAlwaysAsk(['rm *'], 'ls && rm -rf x')).toBe(true);
+  });
+});
+
+describe('killsPid', () => {
+  const pids = [100, 200];
+  it('matches a kill naming a protected pid, its process group or $PPID', () => {
+    for (const c of ['kill 100', 'kill -9 200', 'kill -TERM -- -100', 'sudo kill -9 100 300', 'ls && kill "200"', 'kill $PPID', 'kill -9 ${PPID}'])
+      expect(killsPid(c, pids), c).toBe(true);
+  });
+  it('leaves other pids and other commands alone', () => {
+    for (const c of ['kill 300', 'kill -9 1000', 'echo 100', 'ls 100'])
+      expect(killsPid(c, pids), c).toBe(false);
+  });
+  it('always protects helm itself and its parent', () => {
+    const p = helmPids();
+    expect(p).toContain(process.pid);
+    expect(p).toContain(process.ppid);
   });
 });
