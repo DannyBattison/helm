@@ -575,6 +575,7 @@ export function RemoveRepo({ id, onClose }: { id: string; onClose(): void }) {
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState('');
   const [deleteLocal, setDeleteLocal] = React.useState(false);
+  const [keepArchived, setKeepArchived] = React.useState(false);
   const [info, setInfo] = React.useState<RepoRemoveInfo | null>(null);
   const [typed, setTyped] = React.useState('');
   React.useEffect(() => { api.repoRemoveInfo(id).then(setInfo).catch((e) => setErr(errText(e))); }, [id]);
@@ -584,7 +585,7 @@ export function RemoveRepo({ id, onClose }: { id: string; onClose(): void }) {
   const run = async () => {
     setBusy(true); setErr('');
     try {
-      await api.removeRepo(id, { deleteLocal });
+      await api.removeRepo(id, { deleteLocal, keepArchived: archivedCount > 0 && keepArchived });
       const r = getUI().route;
       if ((r.screen === 'repo' && r.id === id) || (r.screen === 'external' && r.repoId === id)) go({ screen: 'overview' });
       onClose();
@@ -607,7 +608,9 @@ export function RemoveRepo({ id, onClose }: { id: string; onClose(): void }) {
         </span>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <span style={{ font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>helm stops tracking it. Its usage history is kept, so adding it again picks up where it left off. Its weekly cap goes back to the default.{archivedCount ? ` Its ${plural(archivedCount, 'archived session', 'archived sessions')} and their worktrees are deleted.` : ''}</span>
+          <span style={{ font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>helm stops tracking it. Its usage history is kept, so adding it again picks up where it left off. Its weekly cap goes back to the default.</span>
+          {archivedCount ? <Checkbox checked={keepArchived} onChange={(v: boolean) => setKeepArchived(v)} label={`Keep its ${plural(archivedCount, 'archived session', 'archived sessions')}`}
+            description={keepArchived ? 'They stay in the Archive as read-only history. They can’t be restored unless the repository is added again.' : 'Otherwise they are deleted along with their worktrees.'} /> : null}
           <Checkbox checked={deleteLocal} disabled={info ? !info.exists : false} onChange={(v: boolean) => { setDeleteLocal(v); setTyped(''); }} label="Also delete the local directories"
             description={info ? (info.exists ? `${tilde(info.path, app.home)}${info.worktrees ? ` and ${plural(info.worktrees, 'worktree', 'worktrees')}` : ''}. Only on this computer.` : 'The folder is already gone from disk.') : 'Checking the folder…'} />
           {deleting && info ? (

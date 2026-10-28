@@ -1758,6 +1758,7 @@ export class SessionManager {
   archive(id: string, archived: boolean) {
     const s = this.get(id);
     if (!s) return;
+    if (!archived && !s.free && !this.repoOf(s)) throw new Error('Its repository was removed from helm. Add the repository again to restore this session.');
     if (archived && (this.rt.has(id) || s.status === 'working' || s.status === 'attention')) throw new Error('Stop the session before archiving it.');
     s.archivedAt = archived ? Date.now() : undefined;
     s.archivedAuto = undefined;
