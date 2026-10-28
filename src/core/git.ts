@@ -168,6 +168,27 @@ export async function dirtyFiles(wt: string): Promise<{ path: string; status: st
 
 export const fileExists = (p: string) => stat(p).then(() => true, () => false);
 
+/** What deleting a clone from disk would lose: files git does not track, other uncommitted changes, and commits that exist on no remote. Linked worktrees count too. */
+export async function localLoss(repoPath: string): Promise<{ untracked: number; uncommitted: number; unpushed: number; worktrees: string[] }> {
+  const lines = async (cwd: string) => (await git(cwd, 'status', '--porcelain', '-uall').catch(() => '')).split('\n').filter(Boolean);
+  const paths = (await git(repoPath, 'worktree', 'list', '--porcelain').catch(() => '')).split('\n').filter((l) => l.startsWith('worktree ')).map((l) => l.slice(9));
+  const others = paths.slice(1);
+  let untracked = 0, uncommitted = 0;
+  for (const p of [repoPath, ...others]) {
+    for (const l of await lines(p)) l.startsWith('??') ? untracked++ : uncommitted++;
+  }
+  const unpushed = +(await git(repoPath, 'rev-list', '--count', '--branches', '--not', '--remotes').catch(() => '0')).trim() || 0;
+  return { untracked, uncommitted, unpushed, worktrees: others };
+}
+
+/** Deletes a clone and the linked worktrees that hang off it. Refuses anything that does not look like a clone. */
+export async function deleteClone(repoPath: string): Promise<void> {
+  if (!(await stat(join(repoPath, '.git')).then((x) => x.isDirectory(), () => false))) throw new Error('That folder is not a Git clone, so helm will not delete it.');
+  const { worktrees } = await localLoss(repoPath);
+  for (const w of worktrees) await removeWorktree(repoPath, w);
+  await rm(repoPath, { recursive: true, force: true });
+}
+
 export async function commitDiff(repo: string, hash: string, path: string): Promise<DiffHunk[]> {
   return parseDiff(await git(repo, 'show', '-U4', '-M', '--format=', hash, '--', path));
 }

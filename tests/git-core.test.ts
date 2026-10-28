@@ -107,3 +107,26 @@ describe('repository helpers', () => {
     expect(await listFiles(plain)).toEqual(['sub/x.txt', 'y.txt']);
   });
 });
+
+describe('deleting a clone', () => {
+  it('reports what would be lost and deletes the clone with its worktrees', async () => {
+    const { localLoss, deleteClone } = await import('../src/core/git');
+    const c = join(root, 'clone');
+    mkdirSync(c);
+    g(c, 'init', '-q', '-b', 'main');
+    writeFileSync(join(c, 'a.txt'), 'x\n');
+    g(c, 'add', '.');
+    g(c, 'commit', '-q', '-m', 'init');
+    writeFileSync(join(c, 'new.txt'), 'untracked\n');
+    writeFileSync(join(c, 'a.txt'), 'changed\n');
+    const wt = join(root, 'clone-wt');
+    g(c, 'worktree', 'add', '-q', wt, '-b', 'side');
+    const loss = await localLoss(c);
+    expect(loss).toMatchObject({ untracked: 1, uncommitted: 1, unpushed: 1 });
+    expect(loss.worktrees).toHaveLength(1);
+    await deleteClone(c);
+    expect(existsSync(c)).toBe(false);
+    expect(existsSync(wt)).toBe(false);
+    await expect(deleteClone(root)).rejects.toThrow(/not a Git clone/);
+  });
+});
