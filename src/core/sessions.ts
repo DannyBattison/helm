@@ -19,7 +19,7 @@ import * as G from './git';
 import { supplyRepoArtifacts } from './repoartifacts';
 import { checkpointParent, dropCheckpoints, listCheckpoints, restoreCheckpoint, seedFromCheckpoint, takeCheckpoint } from './review';
 import type { Store } from './store';
-import { commandPattern, expandHome, findBash, globMatch, hasShellControl, uid } from './util';
+import { commandPattern, expandHome, findBash, globMatch, hasShellControl, helmPids, killsPid, matchesAlwaysAsk, uid } from './util';
 
 export interface Hooks {
   emitState(): void;
@@ -1159,11 +1159,12 @@ export class SessionManager {
     if (COMMAND_TOOLS.has(tool)) {
       const cmd = String(input.command || '');
       const plain = !hasShellControl(cmd);
-      if (plain && SAFE_CMD.test(cmd.trim())) return { behavior: 'allow', updatedInput: input };
-      if (plain && st.alwaysAllow.some((p) => globMatch(p, cmd))) return { behavior: 'allow', updatedInput: input };
-      const pattern = commandPattern(cmd);
+      const mustAsk = matchesAlwaysAsk(st.alwaysAsk || [], cmd) || (/\bkill\b/.test(cmd) && killsPid(cmd, helmPids()));
+      if (!mustAsk && plain && SAFE_CMD.test(cmd.trim())) return { behavior: 'allow', updatedInput: input };
+      if (!mustAsk && plain && st.alwaysAllow.some((p) => globMatch(p, cmd))) return { behavior: 'allow', updatedInput: input };
+      const pattern = mustAsk ? undefined : commandPattern(cmd);
       const summary = commandSummary(cmd, input.description);
-      const ask: PendingAsk = { id: uid(), type: 'approve', at: Date.now(), tool, command: cmd, summary, pattern, head: 'Wants to run a command', note: o?.decisionReason || `Runs inside ${s.worktree}. Your checkout is untouched.` };
+      const ask: PendingAsk = { id: uid(), type: 'approve', at: Date.now(), tool, command: cmd, summary, pattern, head: 'Wants to run a command', note: mustAsk ? 'Matches an always-ask command in Settings, so it needs your approval every time.' : o?.decisionReason || `Runs inside ${s.worktree}. Your checkout is untouched.` };
       await this.push(s.id, { k: 'permission', askId: ask.id, cmd, summary, tool, why: ask.note, pattern });
       return this.waitAsk(s, rt, ask, 'tool', input, tool);
     }

@@ -1,0 +1,3 @@
+## 2026-10-28 · Helm's own processes are protected from agent kills
+A command whose `kill` names helm's pid, any process above it (desktop shell, launcher, init) or any direct child of helm (the agents), or uses `$PPID`, always asks, ahead of the allow lists and with no "Always allow", the same as the always-ask list. Deeper processes, such as a dev server an agent started, stay killable by pid. This is a fixed rule, not a setting, because the pids change on every launch. Name-based kills (`pkill helm`, `killall electron`) were already covered by `2026-10-27-always-ask-commands-override-always-allow`.
+Why: killing by a literal pid slips past the name patterns, and taking down helm or its parent takes every session with it.

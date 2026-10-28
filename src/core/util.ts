@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -32,6 +32,65 @@ export function dayStart(now = Date.now()): number {
   const d = new Date(now);
   d.setHours(0, 0, 0, 0);
   return d.getTime();
+}
+
+/** Commands that always ask, whatever is allowed: they kill processes by name or in bulk, which takes down every agent helm runs. */
+export const DEFAULT_ALWAYS_ASK = ['pkill *', 'killall *', 'killall5 *', 'skill *', 'xkill *', 'taskkill *', 'kill -1 *', 'kill * -1 *', 'kill 0 *', 'kill $(*', 'kill `*', 'xargs kill *'];
+
+/** The parts of a chained command (split on `; & | newline`), each past `sudo`, env assignments and a path to the program. */
+function commandSegments(cmd: string): string[] {
+  return cmd.split(/[;&|\n]+/).map((raw) => {
+    let seg = raw.trim().replace(/^[({]\s*/, '');
+    for (;;) {
+      const next = seg.replace(/^(?:sudo|command|exec|env|nohup|time)\s+/, '').replace(/^[A-Za-z_]\w*=\S*\s+/, '').replace(/^\/\S*\//, '');
+      if (next === seg) break;
+      seg = next;
+    }
+    return seg;
+  }).filter(Boolean);
+}
+
+/**
+ * True when any part of a chained command matches one of the patterns.
+ * Checked before the allow lists, so an "always allow" pattern can never cover these.
+ */
+export function matchesAlwaysAsk(patterns: string[], cmd: string): boolean {
+  if (!patterns.length) return false;
+  return commandSegments(cmd).some((seg) => patterns.some((p) => globMatch(p, seg) || globMatch(p, seg + ' _')));
+}
+
+/** True when a `kill` in the command names one of these pids (or a process group led by one), or `$PPID`, which is the agent's own parent. */
+export function killsPid(cmd: string, pids: Iterable<number>): boolean {
+  const protectedPids = new Set(pids);
+  for (const seg of commandSegments(cmd)) {
+    const [prog, ...args] = seg.split(/\s+/);
+    if (prog !== 'kill') continue;
+    for (const a of args) {
+      if (/\$\{?PPID\b/.test(a)) return true;
+      const m = /^-*(\d+)$/.exec(a.replace(/^["']|["']$/g, ''));
+      if (m && protectedPids.has(+m[1])) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * The processes an agent must not kill by pid: helm itself, everything above it (the desktop shell, the launcher, the container's init)
+ * and its direct children, which are the agents. Deeper processes, such as a dev server an agent started, stay killable.
+ */
+export function helmPids(): number[] {
+  const pids = new Set<number>([process.pid, process.ppid]);
+  if (process.platform === 'win32') return [...pids];
+  try {
+    const parent = new Map<number, number>();
+    for (const line of execFileSync('ps', ['-axo', 'pid=,ppid='], { encoding: 'utf8', timeout: 2000 }).split('\n')) {
+      const [pid, ppid] = line.trim().split(/\s+/).map(Number);
+      if (pid && Number.isFinite(ppid)) parent.set(pid, ppid);
+    }
+    for (let p = process.ppid, i = 0; p > 1 && i < 64; i++, p = parent.get(p) ?? 0) pids.add(p);
+    for (const [pid, ppid] of parent) if (ppid === process.pid) pids.add(pid);
+  } catch { /* no ps: helm and its parent are still protected */ }
+  return [...pids];
 }
 
 /** Glob-ish match where `*` matches anything. */

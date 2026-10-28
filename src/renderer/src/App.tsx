@@ -43,6 +43,41 @@ export function App() {
   const drawer = useUI((u) => u.drawer);
   const narrow = useNarrow();
   const [sysDark, setSysDark] = React.useState(0);
+  // Edge swipe: `drag` is how far the drawer is pulled out (px) while a finger is on it, otherwise null.
+  const [drag, setDrag] = React.useState<number | null>(null);
+  const drawerW = Math.min(300, window.innerWidth * 0.86);
+  React.useEffect(() => {
+    if (!narrow) return;
+    const W = Math.min(300, window.innerWidth * 0.86);
+    let g: { x: number; y: number; open: boolean; live: boolean; last: number; t: number; v: number } | null = null;
+    const start = (e: TouchEvent) => {
+      const t = e.touches[0], open = !!getUI().drawer;
+      if (e.touches.length !== 1 || (!open && t.clientX > 24)) { g = null; return; }
+      g = { x: t.clientX, y: t.clientY, open, live: false, last: open ? W : 0, t: e.timeStamp, v: 0 };
+    };
+    const move = (e: TouchEvent) => {
+      if (!g) return;
+      const t = e.touches[0], dx = t.clientX - g.x, dy = t.clientY - g.y;
+      if (!g.live) {
+        if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { g = null; return; }
+        if (Math.abs(dx) < 10) return;
+        g.live = true;
+      }
+      const w = Math.max(0, Math.min(W, (g.open ? W : 0) + dx));
+      g.v = (w - g.last) / Math.max(1, e.timeStamp - g.t);
+      g.last = w; g.t = e.timeStamp;
+      setDrag(w);
+    };
+    const end = () => {
+      if (g?.live) setUI({ drawer: g.v > 0.3 || (Math.abs(g.v) <= 0.3 && g.last > W / 2) });
+      g = null; setDrag(null);
+    };
+    document.addEventListener('touchstart', start, { passive: true });
+    document.addEventListener('touchmove', move, { passive: true });
+    document.addEventListener('touchend', end);
+    document.addEventListener('touchcancel', end);
+    return () => { document.removeEventListener('touchstart', start); document.removeEventListener('touchmove', move); document.removeEventListener('touchend', end); document.removeEventListener('touchcancel', end); };
+  }, [narrow]);
 
   React.useEffect(() => { void init(); }, []);
   // Opening a session restarts its idle timer.
@@ -155,9 +190,9 @@ export function App() {
     <div style={{ position: 'relative', height: '100%', minWidth: 320, display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'contents' }} {...(needsClaude ? { inert: true } : {})}>
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-        {narrow ? (drawer ? <>
-          <div onClick={() => setUI({ drawer: false })} style={{ position: 'absolute', inset: 0, zIndex: 40, background: 'rgba(0,0,0,0.45)', animation: 'helm-fade-in var(--dur-slow) var(--ease-out)' }} />
-          <div style={{ position: 'absolute', top: 0, bottom: 0, left: 0, zIndex: 41, width: 'min(300px, 86vw)', display: 'flex', boxShadow: 'var(--shadow-dialog)', animation: 'helm-drawer-in var(--dur-slow) var(--ease-out)' }}><Sidebar drawer /></div>
+        {narrow ? (drawer || drag !== null ? <>
+          <div onClick={() => setUI({ drawer: false })} style={{ position: 'absolute', inset: 0, zIndex: 40, background: 'rgba(0,0,0,0.45)', ...(drag !== null ? { opacity: drag / drawerW } : { animation: 'helm-fade-in var(--dur-slow) var(--ease-out)' }) }} />
+          <div style={{ position: 'absolute', top: 0, bottom: 0, left: 0, zIndex: 41, width: drawerW, display: 'flex', boxShadow: 'var(--shadow-dialog)', ...(drag !== null ? { transform: `translateX(${drag - drawerW}px)` } : { animation: 'helm-drawer-in var(--dur-slow) var(--ease-out)' }) }}><Sidebar drawer /></div>
         </> : null) : <Sidebar />}
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg-app)' }}>
           <TitleBar crumbs={crumbs} theme={theme} setTheme={toggleTheme as any} />

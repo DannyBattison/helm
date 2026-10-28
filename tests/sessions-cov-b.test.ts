@@ -800,6 +800,30 @@ describe('permissions', () => {
     expect(s.step).toBe('Running');
   });
 
+  it('asks for an always-ask command even when an always-allow pattern covers it, and offers no always-allow', async () => {
+    const id = await sm.create(input());
+    const s = sm.get(id)!;
+    store.data.settings.alwaysAllow = ['pkill *'];
+    const p = ask('Bash', { command: 'pkill node' });
+    await until(() => s.ask);
+    expect(s.ask!.pattern).toBeUndefined();
+    expect(s.ask!.note).toContain('always-ask');
+    await sm.resolveAsk(id, s.ask!.id, { decision: 'deny', text: 'no' });
+    expect(await p).toMatchObject({ behavior: 'deny' });
+    expect(store.data.settings.alwaysAllow).toEqual(['pkill *']);
+  });
+
+  it('asks before an agent kills helm\'s own process by pid, even with an always-allow pattern', async () => {
+    const id = await sm.create(input());
+    const s = sm.get(id)!;
+    store.data.settings.alwaysAllow = ['kill *'];
+    const p = ask('Bash', { command: `kill -9 ${process.pid}` });
+    await until(() => s.ask);
+    expect(s.ask!.pattern).toBeUndefined();
+    await sm.resolveAsk(id, s.ask!.id, { decision: 'deny', text: 'no' });
+    expect(await p).toMatchObject({ behavior: 'deny' });
+  });
+
   it('does not auto-allow a compound command even if it starts with a safe one', async () => {
     const id = await sm.create(input());
     const s = sm.get(id)!;

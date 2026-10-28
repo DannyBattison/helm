@@ -1,0 +1,3 @@
+## 2026-10-27 · Always-ask commands override always-allow
+Supersedes `2026-10-27-agents-cannot-kill-processes-in-bulk`: killing is no longer refused outright. A new setting, "Always ask commands" (`alwaysAsk`, glob patterns matched against each part of a chained command), forces an approval every time, ahead of the read-only list and the always-allow patterns. It defaults to `pkill`, `killall`, `skill`, `xkill`, `taskkill`, `kill -1`/`kill 0`, `kill $(…)` and `xargs kill`. Such approvals offer no "Always allow". Hosted instances keep the setting private, like `alwaysAllow`.
+Why: an agent cleaning up with `pkill node` took down every other agent on the machine, but the user may want to approve a specific case, and some will want to add their own commands to the list.
