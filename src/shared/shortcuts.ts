@@ -1,3 +1,5 @@
+import type { CustomShortcut, GotoTarget } from './types';
+
 /**
  * Keyboard shortcuts that can be changed in Settings. A shortcut is written as a string such as `Mod+K`, `Alt+N` or `Ctrl+Shift+P`:
  * zero or more modifiers in the order Mod, Ctrl, Alt, Shift, Meta, then one key. `Mod` is Cmd on a Mac and Ctrl everywhere else, so a
@@ -14,6 +16,15 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
   { id: 'palette', label: 'Search', desc: 'Opens the search for sessions, repositories and commands.', default: 'Mod+K' },
   { id: 'newSession', label: 'New session', desc: 'Opens the new session dialog. Browsers keep Cmd/Ctrl+N for a new window, so use the alternative below there.', default: 'Mod+N' },
   { id: 'newSessionAlt', label: 'New session (alternative)', desc: 'A second shortcut for the same thing, for browsers that do not pass the first one on.', default: 'Alt+N' },
+  { id: 'newSessionHere', label: 'New session in this repository', desc: 'Opens the new session dialog for the repository of the page you are on (a repository, or one of its sessions). Elsewhere it behaves like New session.', default: 'Mod+Shift+N' },
+  { id: 'goOverview', label: 'Go to Overview', desc: 'Shows all your repositories and sessions.', default: 'Alt+1' },
+  { id: 'goInbox', label: 'Go to Inbox', desc: 'Shows the Inbox.', default: 'Alt+2' },
+  { id: 'goNeedsYou', label: 'Go to Needs you', desc: 'Shows the sessions waiting for you.', default: 'Alt+3' },
+  { id: 'goActivity', label: 'Go to Activity', desc: 'Shows the activity feed.', default: 'Alt+4' },
+  { id: 'nextAttention', label: 'Next session that needs you', desc: 'Jumps to the next session waiting for you, going round the list.', default: 'Alt+A' },
+  { id: 'prevSession', label: 'Previous session', desc: 'Opens the session above the current one in the list.', default: 'Alt+Up' },
+  { id: 'nextSession', label: 'Next session', desc: 'Opens the session below the current one in the list.', default: 'Alt+Down' },
+  { id: 'goSettings', label: 'Open Settings', desc: 'Shows Settings.', default: 'Mod+,' },
   { id: 'haltAll', label: 'Interrupt all agents', desc: 'The emergency stop (pause): interrupts every working agent at once. Queued sessions stay queued until you start or message one.', default: 'Mod+Shift+X' },
   { id: 'resumeAll', label: 'Resume all agents', desc: 'Continues every paused or halted agent and lets queued sessions start again.', default: 'Mod+Shift+E' },
   { id: 'terminal', label: 'Terminal', desc: 'Shows or hides the terminal drawer.', default: 'Ctrl+`' },
@@ -75,8 +86,23 @@ export function comboProblem(combo: string): string | null {
   return null;
 }
 
-/** The other action using this shortcut, if any. */
-export function shortcutConflict(overrides: Record<string, string> | undefined, id: string, combo: string): ShortcutAction | undefined {
+/** The other action, built-in or custom, using this shortcut. `id` is the action being edited, which does not conflict with itself. */
+export function shortcutConflict(overrides: Record<string, string> | undefined, id: string, combo: string, custom: CustomShortcut[] = []): { id: string; label: string } | undefined {
   const norm = normalizeCombo(combo);
-  return SHORTCUT_ACTIONS.find((a) => a.id !== id && normalizeCombo(shortcutOf(overrides, a.id)) === norm);
+  return SHORTCUT_ACTIONS.find((a) => a.id !== id && normalizeCombo(shortcutOf(overrides, a.id)) === norm)
+    ?? custom.find((c) => c.id !== id && c.combo && normalizeCombo(c.combo) === norm);
+}
+
+/** The custom shortcut a key press triggers, if any. */
+export function findCustomShortcut(custom: CustomShortcut[] | undefined, e: Parameters<typeof comboFromEvent>[0], mac: boolean): CustomShortcut | undefined {
+  return custom?.find((c) => matchesCombo(e, c.combo, mac));
+}
+
+/** The page a "go to" target opens, as a route. A repository target without a repository gives null. */
+export function routeOfTarget(t: GotoTarget): { screen: string; [k: string]: unknown } | null {
+  switch (t.page) {
+    case 'needsYou': return { screen: 'overview', filter: 'attention' };
+    case 'repo': return t.repoId ? { screen: 'repo', id: t.repoId, ...(t.tab ? { tab: t.tab } : null) } : null;
+    default: return { screen: t.page };
+  }
 }

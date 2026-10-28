@@ -1,5 +1,5 @@
 import React from 'react';
-import type { ModelAlias, PermMode, Settings as SettingsT } from '@shared/types';
+import type { CustomShortcut, GotoTarget, ModelAlias, NewSessionPreset, PermMode, Settings as SettingsT } from '@shared/types';
 import type { SyncStatus } from '@shared/sync';
 import { api, platform } from '../api';
 import { billingOf, defaultChoice, livePlan, modelChoices, planBackends, splitChoice, theme as resolveTheme, untilReset } from '../lib';
@@ -8,11 +8,11 @@ import { BUNDLED_FONTS, fontStack, SYSTEM_DEFAULT, systemFonts, systemUiFonts, u
 import { ACCENT_SWATCHES, SCHEMES, STATUS_KEYS, STATUS_LABEL, isHex, schemeVars } from '@shared/schemes';
 import { McpServers } from './McpServers';
 import { AutomationsSection } from './Automations';
-import { EFFORT_OPTIONS } from './Review';
+import { EFFORT_OPTIONS, VariantEditor } from './Review';
 import { toast, useApp, useMoney } from '../store';
 import { comboFromEvent, comboKeys, comboProblem, normalizeCombo, SHORTCUT_ACTIONS, shortcutConflict, shortcutOf } from '@shared/shortcuts';
 import { AgentSignInDialog } from './AgentSignIn';
-import { Avatar, Badge, Button, Dialog, Input, Kbd, Meter, SegmentedControl, Select, Switch, TreeItem, useColumns, useNarrow } from '../ui';
+import { Avatar, Badge, Button, Checkbox, Dialog, IconButton, Input, Kbd, Meter, SegmentedControl, Select, Switch, TreeItem, useColumns, useNarrow } from '../ui';
 
 const errText = (e: any) => String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '');
 const set = (patch: Partial<SettingsT>) => void api.updateSettings(patch);
@@ -242,55 +242,206 @@ function CompanionSection({ st, set, state }: { st: any; set(p: any): void; stat
   </>;
 }
 
-/** Every shortcut that can be changed. Click one, then press the new keys; Esc cancels and Backspace turns the shortcut off. */
-function ShortcutsSection({ st, set }: { st: SettingsT; set(p: Partial<SettingsT>): void }) {
+/**
+ * Click a shortcut, then press the new keys; Esc cancels and Backspace turns the shortcut off. `conflict` names another action already using the keys.
+ * Listens in the capture phase, so the keys being pressed do not also run the action they are currently set to.
+ */
+function useShortcutRecorder(commit: (id: string, combo: string) => void, conflict: (id: string, combo: string) => { label: string } | undefined) {
   const mac = platform() === 'darwin';
   const [editing, setEditing] = React.useState<string | null>(null);
   const [msg, setMsg] = React.useState<{ id: string; text: string } | null>(null);
+  const latest = React.useRef({ commit, conflict });
+  latest.current = { commit, conflict };
+  const stop = () => { setEditing(null); setMsg(null); };
+  React.useEffect(() => {
+    if (!editing) return;
+    const onKey = (e: KeyboardEvent) => {
+      e.preventDefault(); e.stopPropagation();
+      if (e.key === 'Escape') { stop(); return; }
+      if (e.key === 'Backspace' && !e.metaKey && !e.ctrlKey && !e.altKey) { latest.current.commit(editing, ''); stop(); return; }
+      const combo = comboFromEvent(e, mac);
+      if (!combo) return;
+      const problem = comboProblem(combo);
+      if (problem) { setMsg({ id: editing, text: problem }); return; }
+      const clash = latest.current.conflict(editing, combo);
+      if (clash) { setMsg({ id: editing, text: `Already used for “${clash.label}”. Change that one first.` }); return; }
+      latest.current.commit(editing, normalizeCombo(combo));
+      stop();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [editing]);
+  return { editing, msg, stop, toggle: (id: string) => { setEditing(editing === id ? null : id); setMsg(null); } };
+}
+
+/** The button that shows a shortcut and starts recording a new one. */
+function ShortcutButton({ combo, editing, label, onClick }: { combo: string; editing: boolean; label: string; onClick(): void }) {
+  const mac = platform() === 'darwin';
+  return (
+    <button type="button" onClick={onClick} aria-label={`Change the shortcut for ${label}`}
+      style={{ minWidth: 120, height: 28, padding: '0 10px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4, border: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', cursor: 'pointer', color: 'var(--text-2)', font: '400 12px/1.5 var(--font-sans)', boxShadow: editing ? 'var(--ring-focus), inset 0 0 0 1px var(--accent)' : 'inset 0 0 0 1px var(--border-strong)' }}>
+      {editing ? 'Press the keys…' : combo ? <Kbd keys={comboKeys(combo, mac)} /> : 'Not set'}
+    </button>
+  );
+}
+
+/** Every built-in shortcut that can be changed. */
+function ShortcutsSection({ st, set }: { st: SettingsT; set(p: Partial<SettingsT>): void }) {
   const mine = st.shortcuts || {};
   const save = (id: string, combo: string) => {
     const next = { ...mine };
     if (combo === SHORTCUT_ACTIONS.find((a) => a.id === id)!.default) delete next[id]; else next[id] = combo;
     set({ shortcuts: next });
   };
-  React.useEffect(() => {
-    if (!editing) return;
-    // Capture phase, so the shortcut being pressed does not also run the action it is currently set to.
-    const onKey = (e: KeyboardEvent) => {
-      e.preventDefault(); e.stopPropagation();
-      if (e.key === 'Escape') { setEditing(null); setMsg(null); return; }
-      if (e.key === 'Backspace' && !e.metaKey && !e.ctrlKey && !e.altKey) { save(editing, ''); setEditing(null); setMsg(null); return; }
-      const combo = comboFromEvent(e, mac);
-      if (!combo) return;
-      const problem = comboProblem(combo);
-      if (problem) { setMsg({ id: editing, text: problem }); return; }
-      const clash = shortcutConflict(mine, editing, combo);
-      if (clash) { setMsg({ id: editing, text: `Already used for “${clash.label}”. Change that one first.` }); return; }
-      save(editing, normalizeCombo(combo));
-      setEditing(null); setMsg(null);
-    };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [editing, mine]);
+  const rec = useShortcutRecorder(save, (id, combo) => shortcutConflict(mine, id, combo, st.customShortcuts));
   const changed = Object.keys(mine).length > 0;
   return <>
-    <H sub="Click a shortcut, then press the keys you want. Mod is Cmd on a Mac and Ctrl everywhere else.">Keyboard shortcuts</H>
-    {SHORTCUT_ACTIONS.map((a) => {
-      const combo = shortcutOf(mine, a.id);
-      const isEditing = editing === a.id;
+    <H sub="Click a shortcut, then press the keys you want. Mod is Cmd on a Mac and Ctrl everywhere else. Make your own under Custom shortcuts.">Keyboard shortcuts</H>
+    {SHORTCUT_ACTIONS.map((a) => (
+      <SettingRow key={a.id} title={a.label} desc={rec.msg?.id === a.id ? <span style={{ color: 'var(--status-attention-text)' }}>{rec.msg.text}</span> : a.desc}>
+        <ShortcutButton combo={shortcutOf(mine, a.id)} editing={rec.editing === a.id} label={a.label} onClick={() => rec.toggle(a.id)} />
+        <Button size="sm" variant="ghost" icon="arrow-counter-clockwise" disabled={!(a.id in mine)} onClick={() => { const next = { ...mine }; delete next[a.id]; set({ shortcuts: next }); }}>Reset</Button>
+      </SettingRow>
+    ))}
+    <SettingRow title="Reset all" desc="Puts every shortcut back to its default.">
+      <Button size="sm" disabled={!changed} onClick={() => { set({ shortcuts: {} }); rec.stop(); }}>Reset all shortcuts</Button>
+    </SettingRow>
+  </>;
+}
+
+const GOTO_PAGES: { value: GotoTarget['page']; label: string }[] = [
+  { value: 'overview', label: 'Overview' }, { value: 'needsYou', label: 'Needs you' }, { value: 'inbox', label: 'Inbox' }, { value: 'activity', label: 'Activity' },
+  { value: 'archive', label: 'Archive' }, { value: 'reports', label: 'Reports' }, { value: 'settings', label: 'Settings' }, { value: 'repo', label: 'A repository' }
+];
+const REPO_TABS = [{ value: '', label: 'Its usual tab' }, { value: 'history', label: 'History' }, { value: 'code', label: 'Code' }, { value: 'external', label: 'Outside sessions' }, { value: 'memory', label: 'Memory' }, { value: 'mcp', label: 'MCP servers' }, { value: 'worktrees', label: 'Branches & worktrees' }, { value: 'issues', label: 'Issues' }, { value: 'actions', label: 'Actions' }, { value: 'prs', label: 'Pull requests' }];
+
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <span style={{ font: '500 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>{label}</span>
+      {children}
+      {hint ? <span style={{ font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{hint}</span> : null}
+    </div>
+  );
+}
+
+/** What a "new session" shortcut opens the dialog with. Every field is optional; a field left empty keeps the dialog's usual default. */
+function PresetEditor({ preset, onChange }: { preset: NewSessionPreset; onChange(p: NewSessionPreset): void }) {
+  const app = useApp();
+  const { sym, to, from } = useMoney();
+  const free = preset.repoId === '@free';
+  const put = (p: Partial<NewSessionPreset>) => {
+    const next: Record<string, unknown> = { ...preset, ...p };
+    for (const k of Object.keys(next)) { const v = next[k]; if (v === '' || v === undefined || v === false || (Array.isArray(v) && !v.length)) delete next[k]; }
+    onChange(next as NewSessionPreset);
+  };
+  const models = [{ value: '', label: 'The default agent and model' }, ...modelChoices(app)];
+  const others = app.repos.filter((r) => r.id !== preset.repoId);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '4px 0 6px' }}>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ flex: 1, minWidth: 0 }}><Field label="Repository">
+          <Select value={preset.repoId || ''} onChange={(e: any) => put({ repoId: e.target.value, base: undefined, extraRepos: undefined, ...(e.target.value === '@free' ? { compare: false, variants: undefined } : { folder: undefined }) })} icon="book-bookmark"
+            options={[{ value: '', label: 'Whichever page you are on' }, { value: '@free', label: 'No repository (free agent)' }, ...app.repos.map((r) => ({ value: r.id, label: r.id }))]} />
+        </Field></div>
+        {free ? null : <div style={{ flex: 1, minWidth: 0 }}><Field label="Branch to start from">
+          <Input mono value={preset.base || ''} placeholder="The default branch" onChange={(e: any) => put({ base: e.target.value.trim() })} />
+        </Field></div>}
+      </div>
+      <Field label="Task" hint="Filled into the box so you can add to it or send it as it is. Attachments cannot be part of a shortcut.">
+        <textarea rows={3} value={preset.task || ''} onChange={(e) => put({ task: e.target.value })} placeholder="Leave empty to type it each time"
+          style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', border: 'none', outline: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border-strong)', color: 'var(--text-1)', font: '400 13px/1.5 var(--font-sans)', padding: '8px 10px' }} />
+      </Field>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 110px', gap: 8 }}>
+        <Field label="Agent and model"><Select value={preset.choice || ''} onChange={(e: any) => put({ choice: e.target.value })} options={models} /></Field>
+        <Field label="Permissions"><Select value={preset.permMode || ''} onChange={(e: any) => put({ permMode: e.target.value })} options={[{ value: '', label: 'The default' }, ...PERM_OPTIONS]} /></Field>
+        <Field label="Budget"><Input mono value={preset.budget != null ? sym + String(Math.round(to(preset.budget) * 100) / 100) : ''} placeholder="Default"
+          onChange={(e: any) => { const n = parseFloat(e.target.value.replace(/[^0-9.]/g, '')); put({ budget: Number.isFinite(n) ? from(n) : undefined }); }} /></Field>
+      </div>
+      {free ? (
+        <Field label="Folder" hint="Work directly in this folder instead of a new scratch one. There is no worktree to throw away and no checkpoints.">
+          <Input mono value={preset.folder || ''} placeholder="A new scratch folder, with git" onChange={(e: any) => put({ folder: e.target.value.trim() })} />
+        </Field>
+      ) : <>
+        {others.length ? <Field label="Also work in"><Select multiple value={(preset.extraRepos || []).filter((id) => others.some((r) => r.id === id))} onChange={(e: any) => put({ extraRepos: e.target.value })} options={others.map((r) => ({ value: r.id, label: r.id }))} placeholder="None" icon="books" /></Field> : null}
+      </>}
+      <Field label="Also ask"><Select multiple value={preset.joiners || []} onChange={(e: any) => put({ joiners: e.target.value })} options={modelChoices(app)} placeholder="No other agents" icon="users-three" /></Field>
+      {free ? null : <>
+        <Checkbox checked={!!preset.compare} onChange={(v: boolean) => put({ compare: v })} label="Compare several runs" description="Opens the dialog set up to start the same task more than once." />
+        {preset.compare ? <VariantEditor variants={preset.variants?.length ? preset.variants : defaultVariants(app)} onChange={(v) => put({ variants: v })} /> : null}
+      </>}
+    </div>
+  );
+}
+
+const defaultVariants = (app: Parameters<typeof modelChoices>[0]): { choice: string; effort: 'default' }[] => { const c = modelChoices(app); const d = defaultChoice(app); return [{ choice: d, effort: 'default' }, { choice: c.find((x) => x.value !== d)?.value ?? d, effort: 'default' }]; };
+
+function GotoEditor({ target, onChange }: { target: GotoTarget; onChange(t: GotoTarget): void }) {
+  const app = useApp();
+  return (
+    <div style={{ display: 'flex', gap: 8, padding: '4px 0 6px' }}>
+      <div style={{ flex: 1, minWidth: 0 }}><Field label="Opens">
+        <Select value={target.page} onChange={(e: any) => onChange({ page: e.target.value, repoId: e.target.value === 'repo' ? target.repoId : undefined })} options={GOTO_PAGES} icon="arrow-right" />
+      </Field></div>
+      {target.page === 'repo' ? <>
+        <div style={{ flex: 1, minWidth: 0 }}><Field label="Repository"><Select value={target.repoId || ''} onChange={(e: any) => onChange({ ...target, repoId: e.target.value })} options={[{ value: '', label: 'Choose…' }, ...app.repos.map((r) => ({ value: r.id, label: r.id }))]} icon="book-bookmark" /></Field></div>
+        <div style={{ flex: 1, minWidth: 0 }}><Field label="Tab"><Select value={target.tab || ''} onChange={(e: any) => onChange({ ...target, tab: e.target.value || undefined })} options={REPO_TABS} /></Field></div>
+      </> : null}
+    </div>
+  );
+}
+
+const summary = (c: CustomShortcut) => {
+  if (c.action.kind === 'goto') { const t = c.action.target; return t.page === 'repo' ? `Opens ${t.repoId || 'a repository'}${t.tab ? ' · ' + t.tab : ''}` : `Opens ${GOTO_PAGES.find((p) => p.value === t.page)?.label}`; }
+  const p = c.action.preset;
+  return 'New session' + (p.repoId ? ' in ' + (p.repoId === '@free' ? 'a free agent' : p.repoId) : '') + (p.task ? ': ' + p.task.slice(0, 50) : '');
+};
+
+/** Shortcuts you make yourself. Each opens the new session dialog with things already filled in, or goes to a page or repository. */
+function CustomShortcutsSection({ st, set }: { st: SettingsT; set(p: Partial<SettingsT>): void }) {
+  const list = st.customShortcuts || [];
+  const [open, setOpen] = React.useState<string | null>(null);
+  const save = (next: CustomShortcut[]) => set({ customShortcuts: next });
+  const patch = (id: string, p: Partial<CustomShortcut>) => save(list.map((c) => (c.id === id ? { ...c, ...p } : c)));
+  const rec = useShortcutRecorder((id, combo) => patch(id, { combo }), (id, combo) => shortcutConflict(st.shortcuts, id, combo, list));
+  const add = () => {
+    const c: CustomShortcut = { id: 'c' + Date.now().toString(36), label: 'New session', combo: '', action: { kind: 'newSession', preset: {} } };
+    save([...list, c]);
+    setOpen(c.id);
+  };
+  return <>
+    <H sub="Your own shortcuts. One can open the new session dialog with the repository, task, model and more already filled in; another can jump to a page or repository. They also show up in Search.">Custom shortcuts</H>
+    {list.length ? null : <div style={{ padding: '14px 0', borderTop: '1px solid var(--border-subtle)', font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>None yet.</div>}
+    {list.map((c) => {
+      const isOpen = open === c.id;
       return (
-        <SettingRow key={a.id} title={a.label} desc={msg?.id === a.id ? <span style={{ color: 'var(--status-attention-text)' }}>{msg.text}</span> : a.desc}>
-          <button type="button" onClick={() => { setEditing(isEditing ? null : a.id); setMsg(null); }} aria-label={`Change the shortcut for ${a.label}`}
-            style={{ minWidth: 120, height: 28, padding: '0 10px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4, border: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', cursor: 'pointer', color: 'var(--text-2)', font: '400 12px/1.5 var(--font-sans)', boxShadow: isEditing ? 'var(--ring-focus), inset 0 0 0 1px var(--accent)' : 'inset 0 0 0 1px var(--border-strong)' }}>
-            {isEditing ? 'Press the keys…' : combo ? <Kbd keys={comboKeys(combo, mac)} /> : 'Not set'}
-          </button>
-          <Button size="sm" variant="ghost" icon="arrow-counter-clockwise" disabled={!(a.id in mine)} onClick={() => { const next = { ...mine }; delete next[a.id]; set({ shortcuts: next }); }}>Reset</Button>
-        </SettingRow>
+        <div key={c.id} style={{ borderTop: '1px solid var(--border-subtle)', padding: '10px 0' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <button type="button" onClick={() => setOpen(isOpen ? null : c.id)} aria-expanded={isOpen} aria-label={isOpen ? 'Collapse' : 'Edit'} style={{ border: 'none', background: 'none', color: 'var(--text-3)', cursor: 'pointer', padding: 4, display: 'grid', placeItems: 'center' }}>
+              <i className={'ph ph-caret-' + (isOpen ? 'down' : 'right')} style={{ fontSize: 12 }} />
+            </button>
+            <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Input value={c.label} placeholder="Name" onChange={(e: any) => patch(c.id, { label: e.target.value })} style={{ maxWidth: 320 }} />
+              <span style={{ font: '400 12px/1.45 var(--font-sans)', color: rec.msg?.id === c.id ? 'var(--status-attention-text)' : 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{rec.msg?.id === c.id ? rec.msg.text : summary(c)}</span>
+            </div>
+            <ShortcutButton combo={c.combo} editing={rec.editing === c.id} label={c.label} onClick={() => rec.toggle(c.id)} />
+            <IconButton icon="trash" label="Delete shortcut" size="sm" onClick={() => { save(list.filter((x) => x.id !== c.id)); if (open === c.id) setOpen(null); rec.stop(); }} />
+          </div>
+          {isOpen ? (
+            <div style={{ margin: '10px 0 0 28px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <Field label="Does">
+                <SegmentedControl value={c.action.kind} onChange={(k: string) => patch(c.id, { action: k === 'goto' ? { kind: 'goto', target: { page: 'overview' } } : { kind: 'newSession', preset: {} } })}
+                  options={[{ value: 'newSession', label: 'Start a new session', icon: 'plus' }, { value: 'goto', label: 'Go to a page', icon: 'arrow-right' }]} style={{ alignSelf: 'flex-start' }} />
+              </Field>
+              {c.action.kind === 'newSession'
+                ? <PresetEditor preset={c.action.preset} onChange={(preset) => patch(c.id, { action: { kind: 'newSession', preset } })} />
+                : <GotoEditor target={c.action.target} onChange={(target) => patch(c.id, { action: { kind: 'goto', target } })} />}
+            </div>
+          ) : null}
+        </div>
       );
     })}
-    <SettingRow title="Reset all" desc="Puts every shortcut back to its default.">
-      <Button size="sm" disabled={!changed} onClick={() => { set({ shortcuts: {} }); setEditing(null); setMsg(null); }}>Reset all shortcuts</Button>
-    </SettingRow>
+    <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: 14 }}><Button size="sm" icon="plus" onClick={add}>Add a shortcut</Button></div>
   </>;
 }
 
@@ -444,9 +595,11 @@ export function Settings({ section }: { section?: string }) {
   const subCols = useColumns('subagent-repos', [{ w: 1, min: 160, flex: true }, { w: 170, min: 110, fixed: true }]);
   const pctOptions = [{ value: '0', label: 'Off' }, { value: '50', label: '50%' }, { value: '70', label: '70%' }, { value: '80', label: '80%' }, { value: '90', label: '90%' }];
   const subLimits = (extra: number[]) => [...new Set([0, 1, 2, 3, 4, 6, 8, 12, ...extra])].sort((a, b) => a - b).map((n) => ({ value: String(n), label: n === 0 ? 'Off' : String(n) }));
-  const nav = [['github', 'GitHub', 'github-logo', 1], ['claude', 'Claude Code', 'sparkle', 1], ['codex', 'Codex', 'terminal-window', 1], ['agents', 'Agents', 'robot'], ['automations', 'Automated agents', 'clock-clockwise'], ['mcp', 'MCP servers', 'plugs-connected'], ['worktrees', 'Worktrees', 'tree-structure'], ['budgets', 'Usage', 'coins'], ...(hosted ? [] : [['companion', 'Companion', 'broadcast']]), ['notifications', 'Notifications', 'bell'], ['appearance', 'Appearance', 'paint-brush'], ['shortcuts', 'Keyboard shortcuts', 'keyboard'], ['transfer', 'Import and export', 'arrows-left-right'], ['sync', 'Sync', 'arrows-clockwise'], ['about', 'About and support', 'info']] as [string, string, string, number?][];
-  // Accounts is a node of its own with nothing on it: it only holds the three accounts, always shown.
-  const groups: Record<string, string> = { github: 'Accounts' };
+  const nav = [['github', 'GitHub', 'github-logo', 1], ['claude', 'Claude Code', 'sparkle', 1], ['codex', 'Codex', 'terminal-window', 1], ['agents', 'Agents', 'robot'], ['automations', 'Automated agents', 'clock-clockwise'], ['mcp', 'MCP servers', 'plugs-connected'], ['worktrees', 'Worktrees', 'tree-structure'], ['budgets', 'Usage', 'coins'], ...(hosted ? [] : [['companion', 'Companion', 'broadcast']]), ['notifications', 'Notifications', 'bell'], ['appearance', 'Appearance', 'paint-brush'], ['shortcuts', 'Keyboard shortcuts', 'keyboard', 1], ['custom-shortcuts', 'Custom shortcuts', 'lightning', 1], ['transfer', 'Import and export', 'arrows-left-right'], ['sync', 'Sync', 'arrows-clockwise'], ['about', 'About and support', 'info']] as [string, string, string, number?][];
+  // Accounts and Shortcuts are nodes of their own with nothing on them: each holds its pages and folds them away when clicked.
+  const groups: Record<string, [string, string, string]> = { github: ['accounts', 'Accounts', 'user-circle'], shortcuts: ['shortcuts', 'Shortcuts', 'keyboard'] };
+  const groupOf: Record<string, string> = { github: 'accounts', claude: 'accounts', codex: 'accounts', shortcuts: 'shortcuts', 'custom-shortcuts': 'shortcuts' };
+  const [folded, setFolded] = React.useState<string[]>([]);
   const notif = (key: 'notifyAttention' | 'notifyReady' | 'notifyFailed' | 'notifyChecks', title: string) => (
     <SettingRow title={title}>
       <Switch checked={st[key].desktop} onChange={(v: boolean) => set({ [key]: { ...st[key], desktop: v } })} label="Desktop" />
@@ -463,8 +616,8 @@ export function Settings({ section }: { section?: string }) {
         <nav style={{ width: 200, flex: 'none', padding: '16px 8px', borderRight: '1px solid var(--border)' }}>
           {nav.map(([k, l, ic, depth]) => (
             <React.Fragment key={k}>
-              {groups[k] ? <TreeItem icon="user-circle" label={groups[k]} expandable expanded style={{ cursor: 'default' }} /> : null}
-              <TreeItem icon={ic} label={l} depth={depth || 0} selected={sec === k} onClick={() => setSec(k)} />
+              {groups[k] ? <TreeItem icon={groups[k][2]} label={groups[k][1]} expandable expanded={!folded.includes(groups[k][0])} onClick={() => setFolded((f) => (f.includes(groups[k][0]) ? f.filter((x) => x !== groups[k][0]) : [...f, groups[k][0]]))} /> : null}
+              {groupOf[k] && folded.includes(groupOf[k]) ? null : <TreeItem icon={ic} label={l} depth={depth || 0} selected={sec === k} onClick={() => setSec(k)} />}
             </React.Fragment>
           ))}
         </nav>
@@ -705,6 +858,7 @@ export function Settings({ section }: { section?: string }) {
             </>}
           </> : null}
           {sec === 'shortcuts' ? <ShortcutsSection st={st} set={set} /> : null}
+          {sec === 'custom-shortcuts' ? <CustomShortcutsSection st={st} set={set} /> : null}
           {sec === 'transfer' ? <TransferSection /> : null}
           {sec === 'sync' ? <SyncSection st={st} /> : null}
           {sec === 'about' ? <>

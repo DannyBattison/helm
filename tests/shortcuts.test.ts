@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { comboFromEvent, comboKeys, comboProblem, matchesCombo, normalizeCombo, SHORTCUT_ACTIONS, shortcutConflict, shortcutOf } from '../src/shared/shortcuts';
+import type { CustomShortcut } from '../src/shared/types';
+import { findCustomShortcut, routeOfTarget, comboFromEvent, comboKeys, comboProblem, matchesCombo, normalizeCombo, SHORTCUT_ACTIONS, shortcutConflict, shortcutOf } from '../src/shared/shortcuts';
 
 const ev = (o: Partial<Parameters<typeof comboFromEvent>[0]>) => ({ key: '', metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...o });
 
@@ -47,5 +48,28 @@ describe('shortcuts', () => {
   it('has no duplicate defaults', () => {
     const d = SHORTCUT_ACTIONS.map((a) => normalizeCombo(a.default));
     expect(new Set(d).size).toBe(d.length);
+  });
+  describe('custom shortcuts', () => {
+    const mine: CustomShortcut[] = [
+      { id: 'a', label: 'Bug in api', combo: 'Alt+B', action: { kind: 'newSession', preset: { repoId: 'o/api', task: 'Fix: ' } } },
+      { id: 'b', label: 'Docs', combo: '', action: { kind: 'goto', target: { page: 'repo', repoId: 'o/docs', tab: 'issues' } } }
+    ];
+    it('finds the shortcut a key press triggers, ignoring ones that are not set', () => {
+      expect(findCustomShortcut(mine, ev({ key: 'b', code: 'KeyB', altKey: true }), false)?.id).toBe('a');
+      expect(findCustomShortcut(mine, ev({ key: 'x', code: 'KeyX', altKey: true }), false)).toBeUndefined();
+      expect(findCustomShortcut(mine, ev({ key: '' }), false)).toBeUndefined();
+      expect(findCustomShortcut(undefined, ev({ key: 'b', code: 'KeyB', altKey: true }), false)).toBeUndefined();
+    });
+    it('conflicts with built-in and other custom shortcuts, but not with itself', () => {
+      expect(shortcutConflict({}, 'b', 'alt+b', mine)?.id).toBe('a');
+      expect(shortcutConflict({}, 'a', 'Alt+B', mine)).toBeUndefined();
+      expect(shortcutConflict({}, 'a', 'Mod+K', mine)?.id).toBe('palette');
+    });
+    it('turns a go-to target into a route', () => {
+      expect(routeOfTarget({ page: 'needsYou' })).toEqual({ screen: 'overview', filter: 'attention' });
+      expect(routeOfTarget({ page: 'inbox' })).toEqual({ screen: 'inbox' });
+      expect(routeOfTarget({ page: 'repo', repoId: 'o/docs', tab: 'issues' })).toEqual({ screen: 'repo', id: 'o/docs', tab: 'issues' });
+      expect(routeOfTarget({ page: 'repo' })).toBeNull();
+    });
   });
 });

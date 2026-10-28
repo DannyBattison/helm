@@ -5,7 +5,8 @@ import { setTimeFormat, theme as resolveTheme } from './lib';
 import { schemeVars } from '@shared/schemes';
 import { dismissToast, getUI, go, haltAll, init, resumeAll, setUI, useUI } from './store';
 import { Button, Toast, useNarrow } from './ui';
-import { isShortcut } from './shortcuts';
+import { findCustomShortcut } from '@shared/shortcuts';
+import { isShortcut, repoHere, runCustomShortcut } from './shortcuts';
 import { Activity, Dashboard } from './views/Dashboard';
 import { AddRepo, AgentLoginGate, DeleteSession, MergePr, NewSession, Palette, RemoveRepo, RenameSession, SignIn } from './views/Dialogs';
 import { Archive } from './views/Archive';
@@ -21,6 +22,16 @@ import { Sidebar, StatusBar, TerminalDrawer, TitleBar } from './views/Shell';
 
 /** Whether the start page has been chosen yet this run. */
 let startedOn = false;
+
+/** Opens the session after (or before) the current one among those not archived; `attentionOnly` skips those that are not waiting for you. */
+function stepSession(dir: 1 | -1, attentionOnly: boolean) {
+  const { route, app } = getUI();
+  const list = (app?.sessions || []).filter((s) => !s.archivedAt && (!attentionOnly || s.status === 'attention' || s.id === (route.screen === 'session' ? route.id : '')));
+  if (!list.length) return;
+  const at = route.screen === 'session' ? list.findIndex((s) => s.id === route.id) : -1;
+  const next = list[at < 0 ? (dir === 1 ? 0 : list.length - 1) : (at + dir + list.length) % list.length];
+  if (next && !(next.id === (route.screen === 'session' ? route.id : '') && list.length === 1)) go({ screen: 'session', id: next.id });
+}
 
 export function App() {
   const app = useUI((u) => u.app);
@@ -122,12 +133,23 @@ export function App() {
 
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const custom = findCustomShortcut(getUI().app?.settings.customShortcuts, e, platform() === 'darwin');
       if (isShortcut(e, 'palette')) { e.preventDefault(); setUI({ palette: true }); }
       // Browsers reserve Cmd/Ctrl+N for a new window and often never deliver it, so Alt+N also works.
       else if (isShortcut(e, 'newSession') || isShortcut(e, 'newSessionAlt')) { e.preventDefault(); const r = getUI().route; setUI({ newSession: r.screen === 'repo' ? { repoId: r.id } : {} }); }
+      else if (isShortcut(e, 'newSessionHere')) { e.preventDefault(); setUI({ newSession: repoHere() }); }
+      else if (isShortcut(e, 'goOverview')) { e.preventDefault(); go({ screen: 'overview' }); }
+      else if (isShortcut(e, 'goInbox')) { e.preventDefault(); go({ screen: 'inbox' }); }
+      else if (isShortcut(e, 'goNeedsYou')) { e.preventDefault(); go({ screen: 'overview', filter: 'attention' }); }
+      else if (isShortcut(e, 'goActivity')) { e.preventDefault(); go({ screen: 'activity' }); }
+      else if (isShortcut(e, 'goSettings')) { e.preventDefault(); go({ screen: 'settings' }); }
+      else if (isShortcut(e, 'nextAttention')) { e.preventDefault(); stepSession(1, true); }
+      else if (isShortcut(e, 'prevSession')) { e.preventDefault(); stepSession(-1, false); }
+      else if (isShortcut(e, 'nextSession')) { e.preventDefault(); stepSession(1, false); }
       else if (isShortcut(e, 'haltAll')) { e.preventDefault(); void haltAll(); }
       else if (isShortcut(e, 'resumeAll')) { e.preventDefault(); void resumeAll(); }
       else if (isShortcut(e, 'terminal')) { e.preventDefault(); setUI({ term: !getUI().term }); }
+      else if (custom) { e.preventDefault(); runCustomShortcut(custom); }
       else if (e.key === 'Escape') setUI({ palette: false, drawer: false });
     };
     window.addEventListener('keydown', onKey);

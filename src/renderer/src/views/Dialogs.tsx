@@ -7,7 +7,8 @@ import { getUI, go, haltAll, resumeAll, setUI, toast, useApp, useMoney } from '.
 import { Badge, Button, Checkbox, Dialog, IconButton, Input, Kbd, SegmentedControl, Select, Tabs, useNarrow } from '../ui';
 import { PERM_OPTIONS } from './Settings';
 import { AgentSignInPanel } from './AgentSignIn';
-import { useShortcutKeys } from '../shortcuts';
+import { comboKeys } from '@shared/shortcuts';
+import { runCustomShortcut, useShortcutKeys } from '../shortcuts';
 import { AttachmentChips, IMAGE_TYPES, readAttachments, type Draft } from './attach';
 import { VariantEditor, type Variant } from './Review';
 
@@ -244,7 +245,7 @@ const readUpload = (f: File): Promise<Upload> => new Promise((resolve, reject) =
 });
 const fmtSize = (n: number) => n < 1024 ? n + ' B' : n < 1048576 ? Math.round(n / 1024) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
 
-export function NewSession({ repoId, initial, onClose }: { repoId?: string; initial?: { task?: string; source?: import('@shared/types').Session['source']; base?: string }; onClose(): void }) {
+export function NewSession({ repoId, initial, onClose }: { repoId?: string; initial?: import('@shared/types').NewSessionPreset & { source?: import('@shared/types').Session['source'] }; onClose(): void }) {
   const app = useApp();
   const narrow = useNarrow();
   const { sym, to, from } = useMoney();
@@ -269,21 +270,22 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
     el.style.height = Math.min(el.scrollHeight, 280) + 'px';
   }, [task]);
   const [after, setAfter] = React.useState('');
-  const [choice, setChoice] = React.useState(() => defaultChoice(app));
+  const known = (c?: string) => (c && modelChoices(app).some((m) => m.value === c) ? c : undefined);
+  const [choice, setChoice] = React.useState(() => known(initial?.choice) ?? defaultChoice(app));
   const { backend, model } = splitChoice(choice);
   const sub = billingOf(app, backend) === 'subscription';
-  const [perm, setPerm] = React.useState<PermMode>(app.settings.permMode);
-  const [budget, setBudget] = React.useState(String(Math.round(to(app.settings.sessionBudget) * 100) / 100));
+  const [perm, setPerm] = React.useState<PermMode>(initial?.permMode ?? app.settings.permMode);
+  const [budget, setBudget] = React.useState(String(Math.round(to(initial?.budget ?? app.settings.sessionBudget) * 100) / 100));
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState('');
-  const [compare, setCompare] = React.useState(false);
-  const [folder, setFolder] = React.useState('');
-  const [more, setMore] = React.useState<string[]>([]);
+  const [compare, setCompare] = React.useState(!!initial?.compare && (initial.repoId ?? '') !== '@free');
+  const [folder, setFolder] = React.useState(initial?.folder || '');
+  const [more, setMore] = React.useState<string[]>(initial?.extraRepos || []);
   const others = app.repos.filter((x) => x.id !== repo);
   const extraRepos = free ? [] : more.filter((id) => id !== repo && others.some((x) => x.id === id));
   const [uploads, setUploads] = React.useState<Upload[]>([]);
-  const [joiners, setJoiners] = React.useState<string[]>([]);
-  const [variants, setVariants] = React.useState<Variant[]>(() => { const c = modelChoices(app); const d = defaultChoice(app); return [{ choice: d, effort: 'default' }, { choice: c.find((x) => x.value !== d)?.value ?? d, effort: 'default' }]; });
+  const [joiners, setJoiners] = React.useState<string[]>(() => (initial?.joiners || []).filter((c) => known(c)));
+  const [variants, setVariants] = React.useState<Variant[]>(() => { const preset = (initial?.variants || []).filter((v) => known(v.choice)); if (preset.length) return preset; const c = modelChoices(app); const d = defaultChoice(app); return [{ choice: d, effort: 'default' }, { choice: c.find((x) => x.value !== d)?.value ?? d, effort: 'default' }]; });
   React.useEffect(() => {
     if (!repo) return;
     if (repo === '@free') { setBases([]); setDirty(0); return; }
@@ -656,6 +658,7 @@ export function Palette({ onClose, toggleTheme }: { onClose(): void; toggleTheme
     { key: 'a-halt', label: 'Interrupt all agents', icon: 'pause', hint: haltKeys.join(mac() ? '' : '+'), run: () => void haltAll() },
     { key: 'a-resume', label: 'Resume all agents', icon: 'play', hint: resumeKeys.join(mac() ? '' : '+'), run: () => void resumeAll() },
     ...(app.settings.freeAgents ? [{ key: 'a-free', label: 'New free agent (no repository)', icon: 'robot', run: () => setUI({ newSession: { repoId: '@free' } }) }] : []),
+    ...(app.settings.customShortcuts || []).map((c) => ({ key: 'x-' + c.id, label: c.label || 'Custom shortcut', icon: c.action.kind === 'newSession' ? 'plus' : 'arrow-right', hint: c.combo ? comboKeys(c.combo, mac()).join(mac() ? '' : '+') : undefined, run: () => runCustomShortcut(c) })),
     { key: 'a-add', label: 'Add repository', icon: 'book-bookmark', run: () => setUI({ adding: true }) },
     { key: 'a-theme', label: 'Toggle theme', icon: 'sun', run: toggleTheme },
     ...app.sessions.map((s) => ({ key: 's-' + s.id, label: s.id, hint: s.task, icon: 'robot', run: () => go({ screen: 'session', id: s.id, tab: s.status === 'ready' ? 'changes' : 'conversation' }) })),
