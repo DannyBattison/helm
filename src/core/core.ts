@@ -17,7 +17,7 @@ import { cleanHeavy, dirSize, reclaimableBytes } from './disk';
 import { readArtifact } from './artifacts';
 import { addRepoArtifact, addRepoArtifactChunk, repoArtifactProgress, listRepoArtifacts, removeRepoArtifact, setRepoArtifactDir } from './repoartifacts';
 import { cpuTimes, cpuUse, HISTORY_LIMIT, parseLimit, type CpuTimes, type SystemPoint } from '../shared/system';
-import { queuedMergeStep } from '../shared/queue';
+import { approvedByReviews, autoMergeReady, queuedMergeStep } from '../shared/queue';
 import { SyncService } from './sync';
 import { applyImport, buildExport } from './migrate';
 import { diagnostics } from '../shared/diagnostics';
@@ -1184,6 +1184,30 @@ async function pollMerges() {
   }
 }
 
+// ------------------------------------------------------------------ automatic merges
+const autoMergeTried = new Set<string>();
+/** Merges the open pull requests of sessions once they meet the auto-merge setting. Each is tried once: a refusal is logged, not retried every tick. */
+async function tickAutoMerge() {
+  const mode = store.data.settings.autoMerge;
+  if (mode === 'off') return;
+  const open = store.data.sessions.filter((s) => s.prUrl && !s.mergedAt && !s.queuedMerge && !autoMergeTried.has(s.prUrl));
+  for (const s of open) {
+    try {
+      const pr = (await GH.listPulls(s.repoId)).find((p) => p.url === s.prUrl);
+      if (!pr || pr.state !== 'open' || pr.draft || pr.checks !== 'passing') continue;
+      if (!autoMergeReady(pr, mode, mode === 'approved' && approvedByReviews(await GH.pullReviews(s.repoId, pr.number)))) continue;
+      autoMergeTried.add(s.prUrl!);
+      try {
+        await api.mergePr(s.repoId, pr.number, { method: store.data.settings.mergeMethod, deleteBranch: s.deleteBranchAfterMerge ?? s.removeAfterMerge });
+      } catch (e: any) {
+        store.log({ kind: 'merge', who: 'helm', human: false, what: `could not merge #${pr.number} automatically: ${String(e?.message || e)}`, repo: repoName(s.repoId), sessionId: s.id, ok: false });
+        store.save();
+        emitState();
+      }
+    } catch { /* offline; tried again at the next tick */ }
+  }
+}
+
 // ------------------------------------------------------------------ queued merges
 let queuedTicking = false;
 /** Merges the pull requests of sessions whose merge was queued, once their checks have passed; flags the ones that cannot go ahead. */
@@ -1259,6 +1283,7 @@ export async function start(h: Host) {
   setInterval(() => void sampleSystem(), 5000).unref?.();
   setInterval(pollMerges, 120_000);
   setInterval(() => void tickQueuedMerges(), 30_000);
+  setInterval(() => void tickAutoMerge(), 60_000);
   setInterval(() => void automations.tick(), 60_000);
   setTimeout(() => void automations.tick(), 30_000);
   setInterval(() => void refreshForecast(), 20_000);
