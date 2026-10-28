@@ -154,7 +154,7 @@ function ExtraRepoPr({ s, x }: { s: Session; x: ExtraRepo }) {
   const app = useApp();
   const [sum, setSum] = React.useState<ChangesSummary | null>(null);
   const [title, setTitle] = React.useState(prTitle(s.task));
-  const [draft, setDraft] = React.useState(false);
+  const [draft, setDraft] = React.useState(useApp().settings.prDraft);
   const [busy, setBusy] = React.useState(false);
   const base = x.base.replace(/^origin\//, '');
   React.useEffect(() => { api.extraChanges(s.id, x.repoId).then(setSum).catch(() => setSum(null)); }, [s.id, x.repoId, s.commits.length, s.pushedAt, x.prUrl]);
@@ -216,7 +216,7 @@ function ChangesView({ s }: { s: Session }) {
   const [base, setBase] = React.useState(s.base.replace(/^origin\//, ''));
   const [title, setTitle] = React.useState(prTitle(s.task));
   const [body, setBody] = React.useState('');
-  const [draft, setDraft] = React.useState(false);
+  const [draft, setDraft] = React.useState(useApp().settings.prDraft);
   const [rm, setRm] = React.useState(s.removeAfterMerge);
   const [delBranch, setDelBranch] = React.useState(s.deleteBranchAfterMerge ?? s.removeAfterMerge);
   const [deliver, setDeliver] = React.useState<'pr' | 'merge'>(app.settings.deliver);

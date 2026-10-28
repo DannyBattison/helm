@@ -19,7 +19,7 @@ import * as G from './git';
 import { supplyRepoArtifacts } from './repoartifacts';
 import { checkpointParent, dropCheckpoints, listCheckpoints, restoreCheckpoint, seedFromCheckpoint, takeCheckpoint } from './review';
 import type { Store } from './store';
-import { commandPattern, expandHome, findBash, globMatch, hasShellControl, helmPids, killsPid, matchesAlwaysAsk, uid } from './util';
+import { commandPattern, expandHome, findBash, globMatch, hasShellControl, helmPids, killsPid, matchesAlwaysAsk, parseEnv, uid } from './util';
 
 export interface Hooks {
   emitState(): void;
@@ -224,7 +224,7 @@ export class SessionManager {
     } else {
       branch = st.branchPrefix + id;
       wt = join(expandHome(st.worktreeRoot), repo!.name, id);
-      await G.git(repo!.localPath, 'fetch', 'origin', '--prune').catch(() => undefined);
+      if (st.fetchBeforeSession) await G.git(repo!.localPath, 'fetch', 'origin', '--prune').catch(() => undefined);
       // `main` means the local branch, `origin/main` the one on GitHub. A bare name that only exists on GitHub falls back to it.
       const isLocal = !input.base.startsWith('origin/') && (await G.gitOk(repo!.localPath, 'rev-parse', '--verify', '--quiet', 'refs/heads/' + input.base));
       remoteBase = input.base.startsWith('origin/') || isLocal ? input.base : (await G.gitOk(repo!.localPath, 'rev-parse', '--verify', 'origin/' + input.base)) ? 'origin/' + input.base : input.base;
@@ -257,7 +257,7 @@ export class SessionManager {
     s.source ??= input.source;
     for (const a of input.panel || []) this.join(s, a, 0);
     s.automation = input.automation;
-    s.effort ??= input.effort;
+    s.effort ??= input.effort ?? (st.defaultEffort !== 'default' ? st.defaultEffort : undefined);
     // Wait when another session has to be merged first, or when too many sessions are already working.
     const wait = input.after ? { after: input.after, since: now } : { since: now };
     s.queued = wait;
@@ -480,8 +480,14 @@ export class SessionManager {
     void this.runReview(s, head);
   }
 
+  /** The review model from settings when this session's agent offers it, otherwise the session's own. */
+  private reviewModelOf(s: Session): string {
+    const want = this.store.data.settings.reviewModel;
+    return want && this.backendOf(s).models.some((m) => m.id === want) ? want : s.model;
+  }
+
   private async runReview(s: Session, head: string) {
-    const { structured, text, cost, failure } = await this.backendOf(s).review({ cwd: s.worktree, model: s.model, prompt: reviewPrompt(s.task, s.base), schema: REVIEW_SCHEMA });
+    const { structured, text, cost, failure } = await this.backendOf(s).review({ cwd: s.worktree, model: this.reviewModelOf(s), prompt: reviewPrompt(s.task, s.base), schema: REVIEW_SCHEMA });
     if (cost) { this.store.addUsage(s.repoId, cost, 0); this.store.addDaily(s.repoId, s.model, { cost }); }
     const parsed = failure ? null : parseReview(structured, text);
     s.review = parsed
@@ -558,16 +564,18 @@ export class SessionManager {
       `You are running inside helm, working in an isolated git worktree on branch ${s.branch} (based on ${s.base}). Stay inside this directory.`,
       others.length ? `This session spans more than one repository. Besides this one (${s.repoId}), you have a worktree in each of these, which you may read and edit and commit in (use git -C <path>):\n${others.join('\n')}\nCommit in each repository whose files you changed; each one gets its own pull request.` : '',
       'Commit as you go: make a commit each time a coherent piece of work is done and working, rather than one big commit at the end. Keep commits small with clear messages.',
-      st.commitAuthor === 'sole'
+      st.commitStyle === 'conventional' ? 'Write commit messages as conventional commits: "type(scope): summary" with a type such as feat, fix, docs, refactor, test or chore, a summary in the imperative under 72 characters, and the scope optional.' : '',
+      !st.commitTrailer ? '' : st.commitAuthor === 'sole'
         ? `End every commit message with a blank line and this trailer: "Helm-Session: ${s.id}". Do not add any Co-authored-by trailer. The commits are authored by ${this.backendOf(s).shortName} alone.`
         : `End every commit message with a blank line and this trailer: "Co-authored-by: helm session ${s.id} <noreply@helm.app>".`,
       st.autoPush && !s.free
-        ? 'Do not push and do not open pull requests. helm pushes your branch to GitHub after each commit, and the user opens the pull request from helm.'
+        ? `Do not push and do not open pull requests. helm pushes your branch to GitHub ${st.pushWhen === 'ready' ? 'when you finish' : 'after each commit'}, and the user opens the pull request from helm.`
         : 'Do not push and do not open pull requests; the user does that from helm after reviewing your changes.',
       `If you need a decision from the user, ${ask} instead of guessing.`,
       art,
       subs ? `Subagents: at most ${this.sessionLimit(s)} may run at once in this session and ${this.repoLimit(s)} across the repository. Start independent work in parallel only within those limits. ${HAND_BACK}` : '',
-      st.runTests ? 'Before you finish, run the project\'s tests (from package.json, go.mod, Makefile or equivalent) when they exist, and state the result.' : ''
+      st.runTests ? 'Before you finish, run the project\'s tests (from package.json, go.mod, Makefile or equivalent) when they exist, and state the result.' : '',
+      st.defaultInstructions.trim() ? `The user's standing instructions for every session:\n${st.defaultInstructions.trim()}` : ''
     ].filter(Boolean).join('\n');
   }
 
@@ -583,7 +591,7 @@ export class SessionManager {
       systemAppend: this.systemAppend(s, artifacts),
       resume: s.agentSessionId,
       extraDirs: [...(s.uploads ? [s.uploads.dir] : []), ...(s.extras || []).map((x) => x.worktree)],
-      env: settings.commitAuthor === 'sole' ? { GIT_AUTHOR_NAME: this.backendOf(s).identity.name, GIT_AUTHOR_EMAIL: this.backendOf(s).identity.email } : {},
+      env: { ...parseEnv(settings.agentEnv), ...(settings.commitAuthor === 'sole' ? { GIT_AUTHOR_NAME: this.backendOf(s).identity.name, GIT_AUTHOR_EMAIL: this.backendOf(s).identity.email } : {}) },
       remoteControl: settings.remoteControl,
       subagentLimit: this.sessionLimit(s),
       mcpServers: mcpConfig(settings.mcpServers, this.store.data.repos.find((r) => r.id === s.repoId)?.mcpServers),
@@ -946,7 +954,7 @@ export class SessionManager {
     this.pushEpoch++;
     await this.push(tkey, { k: 'commit', hash: m[1], msg: m[2], t: now });
     this.activity(s, 'commit', `committed ${m[1]} “${trunc(m[2], 70)}”`);
-    if (this.store.data.settings.autoPush) void this.autoPush(s);
+    if (this.store.data.settings.autoPush && this.store.data.settings.pushWhen !== 'ready') void this.autoPush(s);
     this.touch();
   }
 
@@ -1063,6 +1071,11 @@ export class SessionManager {
     // A free agent has nothing to review or merge: it is simply done.
     if (!s.free && (s.files > 0 || s.commits.length > 0)) {
       this.setStatus(s, 'ready', `${s.files} ${s.files === 1 ? 'file' : 'files'} changed · ready for review`);
+      if (this.store.data.settings.autoPush && this.store.data.settings.pushWhen === 'ready' && s.commits.length) void this.autoPush(s);
+      if (this.store.data.settings.autoReview) {
+        // Not again for a commit already reviewed.
+        void G.git(s.worktree, 'rev-parse', '--short', 'HEAD').then((h) => (s.review && s.review.head === h.trim() && s.review.state !== 'failed' ? undefined : this.review(s.id))).catch(() => undefined);
+      }
       this.activity(s, 'ready', `finished · ${s.files} files ready for review`);
       this.hooks.notify('ready', `${s.id} is ready for review`, `${this.repoOf(s).id} · ${s.files} files`, s.id);
       this.hooks.toast({ tone: 'ready', title: `${s.id} is ready for review`, description: `${this.repoOf(s).id} · ${s.files} files`, sessionId: s.id, tab: 'changes' });

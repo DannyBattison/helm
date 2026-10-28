@@ -31,7 +31,7 @@ import { forecastRepo, revertHunk } from './review';
 import { SessionManager } from './sessions';
 import { Store } from './store';
 import { shellOptions, Terminals } from './terminal';
-import { expandHome, home, run } from './util';
+import { expandHome, home, parseEnv, run } from './util';
 import { CURRENCIES, currencyForRegion, fmtMoney } from '../shared/money';
 import { notifyDecision } from '../shared/notify';
 import { dispatchOutbound, emailPasswordSet, loadOutboundSecrets, saveEmailPassword, testOutbound } from './outbound';
@@ -613,7 +613,7 @@ export const api: HelmApi = {
     store.log({ kind: 'commit', who: me(), human: true, what: `committed ${files.length} ${files.length === 1 ? 'file' : 'files'}: ${message.split('\n')[0].slice(0, 80)}`, repo: w.sessionId ? repoName(sessions.get(w.sessionId)?.repoId || '') : '', sessionId: w.sessionId, detail: files.join('\n') });
     const s = w.sessionId ? sessions.get(w.sessionId) : undefined;
     if (s) await sessions.refreshStats(s);
-    if (store.data.settings.autoPush) {
+    if (store.data.settings.autoPush && store.data.settings.pushWhen !== 'ready') {
       if (s) await sessions.autoPush(s);
       else {
         // The repository's own checkout: push whatever branch is checked out, if any.
@@ -814,7 +814,7 @@ export const api: HelmApi = {
   async termOpen(id, cols, rows) {
     const cwd = id ? ws(id).worktree : null;
     const st = store.data.settings;
-    return terms.open(cwd, cols, rows, st.terminalShell, st.terminalShellCustom);
+    return terms.open(cwd, cols, rows, st.terminalShell, st.terminalShellCustom, parseEnv(st.agentEnv));
   },
   async termWrite(id, d) { terms.write(id, d); },
   async termResize(id, c, r) { terms.resize(id, c, r); },
@@ -1133,7 +1133,8 @@ async function pushTargets(repoId?: string): Promise<import('../shared/types').P
       const dirty = (await G.git(r.localPath, 'status', '--porcelain', '--untracked-files=no').catch(() => '')).split('\n').filter(Boolean).length;
       out.push({ id: '@checkout', kind: 'checkout', repoId: r.id, branch: cur, dirty, ...(await aheadOf(r.localPath, cur)) });
     }
-    for (const s of sessions.sessions.filter((x) => x.repoId === r.id && !x.worktreeGone && !x.archivedAt)) {
+    // A merged session's branch is often gone from GitHub (deleted or pruned) while its commits live on in the default branch as a squash, which git cannot see as pushed.
+    for (const s of sessions.sessions.filter((x) => x.repoId === r.id && !x.worktreeGone && !x.archivedAt && !x.mergedAt)) {
       if (!(await G.fileExists(s.worktree))) continue;
       // Tracked files only: a full status walks every untracked file, which on a big worktree (node_modules, build output) takes seconds.
       const dirty = (await G.git(s.worktree, 'status', '--porcelain', '--untracked-files=no').catch(() => '')).split('\n').filter(Boolean).length;

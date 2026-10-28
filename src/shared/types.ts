@@ -428,6 +428,8 @@ export interface Settings {
   resumeOnLaunch: boolean;
   /** Push the branch to GitHub right after every commit, the agent's or one made from the Changes panel. */
   autoPush: boolean;
+  /** With auto push on: after every commit, or once when the session becomes ready for review. */
+  pushWhen: 'commit' | 'ready';
   /** Who the agent's commits are credited to: you, with Claude as a co-author, or Claude alone. */
   commitAuthor: 'coauthor' | 'sole';
   worktreeRoot: string;
@@ -524,6 +526,58 @@ export interface Settings {
   editorLigatures: boolean;
   density: 'Compact' | 'Comfortable';
   openIn: 'helm' | 'VS Code' | 'Cursor' | 'Zed';
+  /** Effort level new sessions start with; `default` leaves it to the agent. */
+  defaultEffort: Effort | 'default';
+  /** Rules added to every session's instructions, for example "use pnpm". */
+  defaultInstructions: string;
+  /** Environment variables for every agent and terminal, one `NAME=value` per line. */
+  agentEnv: string;
+  /** Model for the self-review; empty uses the session's own. */
+  reviewModel: ModelAlias | '';
+  /** Run the self-review when a session becomes ready for review. */
+  autoReview: boolean;
+  /** Minutes without output after which a working session is flagged as stalled. 0 is off. */
+  stallMinutes: number;
+  /** What reaching a session's budget does: pause the agent, or only warn. */
+  budgetAction: 'pause' | 'warn';
+  /** Merge a pull request by itself once its checks pass (`checks`), or once they pass and it is approved (`approved`). */
+  autoMerge: 'off' | 'checks' | 'approved';
+  /** Stop the computer sleeping while agents are working. */
+  keepAwake: boolean;
+  /** Remove the worktree of an archived session after this many days. 0 never. */
+  cleanupDays: number;
+  /** Delete ignored build output and installed packages from a worktree when its session is archived. */
+  reclaimOnArchive: boolean;
+  /** Fetch each repository in the background every this many minutes. 0 is off. */
+  fetchMinutes: number;
+  /** Fetch from GitHub before branching a new session, so it starts from the latest. */
+  fetchBeforeSession: boolean;
+  /** How commit messages are written: freely, or as conventional commits (`feat: …`). */
+  commitStyle: 'plain' | 'conventional';
+  /** Add the session trailer to commit messages. */
+  commitTrailer: boolean;
+  /** Open pull requests as drafts unless chosen otherwise. */
+  prDraft: boolean;
+  /** Put the message text in desktop notifications; off shows only the session. */
+  notifyPreview: boolean;
+  /** Start helm when you sign in to the computer. */
+  startAtLogin: boolean;
+  /** Start in the tray, without opening the window. */
+  startMinimised: boolean;
+  /** Page shown at launch. */
+  startPage: 'overview' | 'last' | 'inbox';
+  /** Ask before deleting a session, discarding changes or removing a worktree. */
+  confirmDestructive: boolean;
+  /** Fold tool calls and their output in the conversation until opened. */
+  collapseTools: boolean;
+  /** Show the agent's reasoning in the conversation. */
+  showThinking: boolean;
+  /** Interface zoom, percent. */
+  uiScale: number;
+  /** Keep the activity log for this many days. 0 keeps it for good. */
+  activityDays: number;
+  /** Clock used for times. */
+  timeFormat: 'auto' | '12' | '24';
 }
 
 export interface User {
