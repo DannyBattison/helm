@@ -49,6 +49,7 @@ let host: Host;
 let backends: import('../shared/types').BackendInfo[] = [];
 /** The settings in force for a session's repository, which decide the wording of the messages sent to its agent. */
 const msgCfg = (sessionId: string) => effectiveSettings(store.data.settings, store.data.repos.find((r) => r.id === sessions.get(sessionId)?.repoId));
+const repoCfg = (repoId: string) => effectiveSettings(store.data.settings, store.data.repos.find((r) => r.id === repoId));
 let forecast: import('../shared/forecast').Conflict[] = [];
 let lastCpu: CpuTimes | null = null;
 let lastProc: { t: number; us: number } | null = null;
@@ -1262,7 +1263,6 @@ async function fetchTick() {
 const autoMergeTried = new Set<string>();
 /** Merges the open pull requests of sessions once they meet the auto-merge setting. Each is tried once: a refusal is logged, not retried every tick. */
 async function tickAutoMerge() {
-  const repoCfg = (repoId: string) => effectiveSettings(store.data.settings, store.data.repos.find((r) => r.id === repoId));
   const open = store.data.sessions.filter((s) => s.prUrl && !s.mergedAt && !s.queuedMerge && !autoMergeTried.has(s.prUrl));
   for (const s of open) {
     const mode = repoCfg(s.repoId).autoMerge;
