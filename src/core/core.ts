@@ -436,8 +436,10 @@ export const api: HelmApi = {
     return { path, exists: true, untracked: l.untracked, uncommitted: l.uncommitted, unpushed: l.unpushed, worktrees: l.worktrees.length };
   },
   async removeRepo(id, opts) {
-    if (store.data.sessions.some((s) => s.repoId === id)) throw new Error('Remove or delete this repository\'s sessions first.');
+    if (store.data.sessions.some((s) => s.repoId === id && !s.archivedAt)) throw new Error('Remove or delete this repository\'s sessions first.');
     const r = repos.must(id);
+    // Archived sessions are hidden from the tree, so they can't be deleted by hand: they go with the repository.
+    for (const s of store.data.sessions.filter((x) => x.repoId === id && x.archivedAt)) await sessions.remove(s.id, { worktree: true, branch: false });
     // Only the local clone is ever deleted; the repository on GitHub is left alone.
     if (opts?.deleteLocal && (await G.fileExists(r.localPath))) {
       await G.deleteClone(r.localPath);
