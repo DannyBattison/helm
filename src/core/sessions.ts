@@ -30,6 +30,8 @@ export interface Hooks {
 }
 
 /** Added to the system prompt: a subagent reports to the agent that started it, which keeps going. */
+/** Starts the reason shown for a session that has gone quiet; a new event from the agent clears it. */
+const STALLED = 'No output';
 const HAND_BACK = 'A subagent hands its result back to you when it finishes: end its task with a clear final report, and when you receive a subagent\'s result, carry on from it (use it, start the next step or summarise it for the user) rather than stopping.';
 
 interface AskWaiter {
@@ -50,6 +52,8 @@ interface Runtime {
   startCost: number;
   interrupted: boolean;
   budgetPaused: boolean;
+  /** When the agent last produced any event, to notice one that has gone quiet. */
+  lastEventAt: number;
   toolStart: Map<string, { t: number; idx: number; kind: string; input: any; tkey: string; name?: string }>;
   /** Consecutive failures of the same command, to notice an agent retrying something that cannot work. */
   fails: Map<string, number>;
@@ -585,7 +589,7 @@ export class SessionManager {
     // A worktree made before a file was uploaded gets it when the agent next starts. Files already there are left as the agent has them.
     if (!s.free) await supplyRepoArtifacts(s.repoId, s.worktree, false);
     for (const x of s.extras || []) await supplyRepoArtifacts(x.repoId, x.worktree, false);
-    const rt: Runtime = { agent: null as any, asks: new Map(), turnCost: 0, baseCost: s.cost, startCost: s.cost, interrupted: false, budgetPaused: false, toolStart: new Map(), fails: new Map(), lastTools: new Map(), subEvent: new Map(), admitted: new Set(), turnText: [], lastText: -1, turnWaiters: turn?.done ? [turn.done] : [], reply: turn?.reply };
+    const rt: Runtime = { agent: null as any, asks: new Map(), turnCost: 0, baseCost: s.cost, startCost: s.cost, interrupted: false, budgetPaused: false, lastEventAt: Date.now(), toolStart: new Map(), fails: new Map(), lastTools: new Map(), subEvent: new Map(), admitted: new Set(), turnText: [], lastText: -1, turnWaiters: turn?.done ? [turn.done] : [], reply: turn?.reply };
     rt.agent = this.backendOf(s).start({
       cwd: s.worktree, model: s.model, effort: s.effort, permMode: s.permMode,
       systemAppend: this.systemAppend(s, artifacts),
@@ -627,6 +631,8 @@ export class SessionManager {
   }
 
   private async onEvent(s: Session, rt: Runtime, ev: AgentEvent) {
+    rt.lastEventAt = Date.now();
+    if (s.stuck?.startsWith(STALLED)) { s.stuck = undefined; this.touch(); }
     switch (ev.t) {
       case 'init':
         s.agentSessionId = ev.sessionId;
@@ -935,6 +941,22 @@ export class SessionManager {
     if (!ok) this.setStuck(s, stuckReason({ command: key, fails: n }));
   }
 
+  /** Flags working sessions whose agent has been silent for the configured time, as stuck so they appear under Needs you. */
+  checkStalls() {
+    const minutes = this.store.data.settings.stallMinutes;
+    if (!minutes) return;
+    for (const s of this.sessions) {
+      const rt = this.rt.get(s.id);
+      // A running command or subagent is working, not silent; only a session with nothing in flight counts.
+      if (!rt || s.status !== 'working' || s.ask || s.stuck || rt.toolStart.size || s.subagents.some((a) => a.status === 'working')) continue;
+      const quiet = Date.now() - rt.lastEventAt;
+      if (quiet >= minutes * 60_000) {
+        this.setStuck(s, `${STALLED} for ${Math.round(quiet / 60_000)} minutes`);
+        this.hooks.notify('attention', `${s.id} looks stalled`, `No output for ${Math.round(quiet / 60_000)} minutes`, s.id);
+      }
+    }
+  }
+
   private setStuck(s: Session, reason: string | undefined) {
     if (!reason || s.stuck === reason) return;
     // Say so once; later counts just update the reason shown.
@@ -1127,6 +1149,9 @@ export class SessionManager {
     }
   }
 
+  /** Sessions already warned about passing their budget, so the warning comes once. */
+  private budgetWarned = new Set<string>();
+
   private async checkBudget(s: Session, rt: Runtime) {
     if (this.billingOf(this.backendOf(s).id) !== 'api') {
       await this.enforcePlan();
@@ -1139,6 +1164,14 @@ export class SessionManager {
     if (s.budget > 0 && s.cost >= s.budget) scope = 'session';
     else if (repo && repo.cap > 0 && spent >= repo.cap) scope = 'repo';
     if (!scope) return;
+    if (scope === 'session' && this.store.data.settings.budgetAction === 'warn') {
+      // Say so once and let the agent carry on.
+      if (this.budgetWarned.has(s.id)) return;
+      this.budgetWarned.add(s.id);
+      this.activity(s, 'budget', `passed its ${this.usd(s.budget)} session budget`);
+      this.hooks.notify('failed', `${s.id} passed its budget`, `${this.usd(s.budget)} session budget reached; it is still working`, s.id);
+      return;
+    }
     rt.budgetPaused = true;
     const ask: PendingAsk = scope === 'session'
       ? { id: uid(), type: 'budget', scope, at: Date.now(), head: `Paused at its ${this.usd(s.budget)} session budget`, note: 'Raising the limit resumes where it stopped.' }

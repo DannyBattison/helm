@@ -174,6 +174,25 @@ export class Store {
     }).catch(() => undefined);
   }
 
+  /** Drops events older than `days` from the log files. Queued behind pending writes so none is lost. */
+  pruneLog(days: number): Promise<void> {
+    if (!days || !this.dir) return Promise.resolve();
+    const cutoff = Date.now() - days * 86_400_000;
+    this.logChain = this.logChain.then(async () => {
+      for (const name of ['activity.old.jsonl', 'activity.jsonl']) {
+        const file = join(this.dir, name);
+        const text = await readFile(file, 'utf8').catch(() => null);
+        if (text == null) continue;
+        const lines = text.split('\n').filter(Boolean);
+        const keep = lines.filter((l) => { try { return JSON.parse(l).t >= cutoff; } catch { return false; } });
+        if (keep.length === lines.length) continue;
+        await writeFile(file, keep.length ? keep.join('\n') + '\n' : '', 'utf8');
+      }
+      this.logSeq++;
+    }).catch(() => undefined);
+    return this.logChain;
+  }
+
   async readLog(before = Infinity, limit = 300): Promise<ActivityEvent[]> {
     await this.logChain;
     const out: ActivityEvent[] = [];

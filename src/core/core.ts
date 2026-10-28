@@ -205,7 +205,7 @@ const sessions = new SessionManager(store, {
     const ask = kind === 'attention' ? sessions.get(sessionId)?.ask : undefined;
     // A host that can show buttons on a notification lets a plain approval be answered without opening the app.
     const answer = ask?.type === 'approve' ? (decision: 'approve' | 'deny') => { if (sessions.get(sessionId)?.ask?.id === ask.id) void sessions.resolveAsk(sessionId, ask.id, { decision }); } : undefined;
-    host.notify?.({ kind, title, body, silent: !d.sound, sessionId, answer });
+    host.notify?.({ kind, title, body: st.notifyPreview ? body : '', silent: !d.sound, sessionId, answer });
   }
 }, registry);
 Object.assign(companionOps, {
@@ -353,6 +353,8 @@ export const api: HelmApi = {
     if ('syncEnabled' in patch) syncer.settingsChanged();
     if ('billing' in patch && patch.billing === 'subscription') void refreshPlan(true);
     if ('archiveAfterDays' in patch) sessions.autoArchive();
+    if ('activityDays' in patch) void store.pruneLog(store.data.settings.activityDays);
+    if ('cleanupDays' in patch || 'reclaimOnArchive' in patch) void housekeeping();
     if (('companionEnabled' in patch || 'companionUrl' in patch) && host.companion !== false) companion.apply();
     host.settingsChanged?.(patch);
     if ('planPause5h' in patch || 'planPauseWeek' in patch || 'billing' in patch) void sessions.enforcePlan();
@@ -1184,6 +1186,40 @@ async function pollMerges() {
   }
 }
 
+// ------------------------------------------------------------------ housekeeping
+const housekept = new Set<string>();
+/** Frees disk for archived sessions as the settings ask: clears build output, then removes the worktree after a while. Work not safely on GitHub is never removed. */
+async function housekeeping() {
+  const st = store.data.settings;
+  if (!st.cleanupDays && !st.reclaimOnArchive) return;
+  for (const s of [...store.data.sessions]) {
+    if (!s.archivedAt || s.worktreeGone || s.free || sessions.isRunning(s.id)) continue;
+    try {
+      if (st.cleanupDays && Date.now() - s.archivedAt > st.cleanupDays * 86_400_000) { await api.dropWorktree(s.id); continue; }
+      if (st.reclaimOnArchive && !housekept.has(s.id)) { housekept.add(s.id); await api.cleanWorktree(s.id); }
+    } catch { /* uncommitted or unpushed work stays where it is */ }
+  }
+}
+
+// ------------------------------------------------------------------ background fetch
+const fetchedAt = new Map<string, number>();
+let fetching = false;
+/** Fetches each repository every `fetchMinutes`, so GitHub's branches (and what counts as pushed) are current. */
+async function fetchTick() {
+  const every = store.data.settings.fetchMinutes * 60_000;
+  if (!every || fetching || !store.data.user) return;
+  fetching = true;
+  try {
+    let any = false;
+    for (const r of store.data.repos) {
+      if (Date.now() - (fetchedAt.get(r.id) || 0) < every) continue;
+      fetchedAt.set(r.id, Date.now());
+      if (await G.git(r.localPath, 'fetch', 'origin', '--prune').then(() => true, () => false)) any = true;
+    }
+    if (any) { sessions.pushEpoch++; emitState(); }
+  } finally { fetching = false; }
+}
+
 // ------------------------------------------------------------------ automatic merges
 const autoMergeTried = new Set<string>();
 /** Merges the open pull requests of sessions once they meet the auto-merge setting. Each is tried once: a refusal is logged, not retried every tick. */
@@ -1284,13 +1320,18 @@ export async function start(h: Host) {
   setInterval(pollMerges, 120_000);
   setInterval(() => void tickQueuedMerges(), 30_000);
   setInterval(() => void tickAutoMerge(), 60_000);
+  setInterval(() => sessions.checkStalls(), 60_000);
   setInterval(() => void automations.tick(), 60_000);
   setTimeout(() => void automations.tick(), 30_000);
   setInterval(() => void refreshForecast(), 20_000);
   setTimeout(() => void refreshForecast(), 4000);
   void detectCurrency().then(refreshRates);
   sessions.autoArchive();
-  setInterval(() => sessions.autoArchive(), 3600_000);
+  setInterval(() => { sessions.autoArchive(); void store.pruneLog(store.data.settings.activityDays); }, 3600_000);
+  void store.pruneLog(store.data.settings.activityDays);
+  setInterval(() => void housekeeping(), 10 * 60_000);
+  setTimeout(() => void housekeeping(), 60_000);
+  setInterval(() => void fetchTick(), 60_000);
   repos.setCacheDir(join(host.dataDir, 'history-cache'));
   setRepoArtifactDir(join(host.dataDir, 'repo-artifacts'));
   void refreshPlan(true);
