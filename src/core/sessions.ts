@@ -11,6 +11,7 @@ import { commandSummary } from '../shared/commandSummary';
 import { handleFor, memberOf, mentionsIn, panelDigest, panelInstructions, participants, replyLimit } from '../shared/panel';
 import { FREE_ID, freeRepo, sessionTitle, MAX_UPLOAD_FILES, MAX_UPLOAD_TOTAL, type ActivityEvent, type Checkpoint, type Effort, type ExtraRepo, type Repo, type MessageImage, type ModelAlias, type NewSessionInput, type Panel, type PanelAgentInput, type PanelMember, type PendingAsk, type PermMode, type ReplyRef, type SendOptions, type Session, type Settings, type Status, type Subagent, type TranscriptEvent } from '../shared/types';
 import { effectiveSettings } from '../shared/repoSettings';
+import { composeMessage, messageBody } from '../shared/templates';
 import { BackendRegistry, type AgentBackend, type AgentBlock, type AgentEvent, type AgentHandle, type AgentToolResult, type AgentUsage, type ToolDecision } from './backend';
 import { ClaudeBackend } from './claudeBackend';
 import { Advisor } from './advisor';
@@ -536,7 +537,7 @@ export class SessionManager {
   }
 
   private async runReview(s: Session, head: string) {
-    const { structured, text, cost, failure } = await this.backendOf(s).review({ cwd: s.worktree, model: this.reviewModelOf(s), prompt: reviewPrompt(s.task, s.base), schema: REVIEW_SCHEMA });
+    const { structured, text, cost, failure } = await this.backendOf(s).review({ cwd: s.worktree, model: this.reviewModelOf(s), prompt: reviewPrompt(s.task, s.base, messageBody(this.cfg(s.repoId), 'selfReview')), schema: REVIEW_SCHEMA });
     if (cost) { this.store.addUsage(s.repoId, cost, 0); this.store.addDaily(s.repoId, s.model, { cost }); }
     const parsed = failure ? null : parseReview(structured, text);
     s.review = parsed
@@ -1329,14 +1330,14 @@ export class SessionManager {
         this.planOverride[this.backendOf(s).id + ':' + w.planKey] = win?.resetsAt ?? Math.floor(Date.now() / 1000) + 3600;
         rt.budgetPaused = false;
         this.setStatus(s, 'working', 'Resuming');
-        rt.agent.send('You were paused at a plan usage limit the user set, and they chose to continue. Continue where you left off.');
+        rt.agent.send(composeMessage(this.cfg(s.repoId), 'planLimitContinued'));
         return;
       }
       const add = Number(answer.addBudget) || 5; // USD
       if (w.scope === 'repo') { const r = this.repoOf(s); r.cap += add; } else s.budget += add;
       rt.budgetPaused = false;
       this.setStatus(s, 'working', 'Resuming');
-      rt.agent.send('You hit a spending limit and it has been raised. Continue where you left off.');
+      rt.agent.send(composeMessage(this.cfg(s.repoId), 'budgetRaised'));
       return;
     }
 
@@ -1398,11 +1399,11 @@ export class SessionManager {
         const bid = this.backendOf(s).id, p = this.store.planOf(bid);
         if (p.fiveHour) this.planOverride[bid + ':fiveHour'] = p.fiveHour.resetsAt;
         if (p.weekly) this.planOverride[bid + ':weekly'] = p.weekly.resetsAt;
-        message = 'You were paused at a plan usage limit the user set, and they chose to continue. Continue where you left off.';
+        message = composeMessage(this.cfg(s.repoId), 'planLimitContinued');
       } else {
         const add = Number(answer.addBudget) || 5; // USD
         if (ask.scope === 'repo') this.repoOf(s).cap += add; else s.budget += add;
-        message = 'You were paused at a spending limit and it has been raised. Continue where you left off.';
+        message = composeMessage(this.cfg(s.repoId), 'budgetRaised');
       }
     } else if (ask.type === 'question') {
       const answers: Record<string, string> = answer.answers || {};
@@ -1970,13 +1971,16 @@ export class SessionManager {
     if (any) this.touch();
   }
 
+  /** The message that resumes a session, worded by its repository's settings. */
+  resumeText(id: string) { return composeMessage(this.cfg(this.get(id)?.repoId ?? ''), 'resume'); }
+
   /** Tell a running agent that the user changed a file under it. */
   async userEdited(id: string, file: string) {
     const s = this.get(id);
     const rt = this.rt.get(id);
     if (!s || !rt || s.status !== 'working') return;
     await this.push(id, { k: 'note', tone: 'neutral', text: `You edited ${file}. The agent was told.` });
-    rt.agent.send(`Note from the user: they edited ${file} directly in the worktree. Re-read it before changing it again.`);
+    rt.agent.send(composeMessage(this.cfg(s.repoId), 'userEdited', { file }));
   }
 
   /** helm is quitting: end the agent processes but leave each session as it was, so a pending approval survives to the next launch. */
@@ -2000,7 +2004,7 @@ export class SessionManager {
       if (!s || s.worktreeGone || s.archivedAt || s.mergedAt || s.status !== 'idle' || this.rt.has(id)) continue;
       try {
         this.activity(s, 'session', 'resumed automatically after helm was closed');
-        await this.send(id, 'helm was closed while you were working and has been reopened. Continue where you left off.', [], this.ownerOnly(s));
+        await this.send(id, composeMessage(this.cfg(s.repoId), 'resumeReopened'), [], this.ownerOnly(s));
       } catch (e: any) {
         this.activity(s, 'error', 'could not resume: ' + trunc(String(e?.message || e), 100), { ok: false });
       }
@@ -2054,7 +2058,7 @@ export class SessionManager {
       .filter((s) => s.status === 'idle' && !s.queued && !s.archivedAt && !s.mergedAt && !s.worktreeGone && !this.rt.has(s.id) && /^(Paused|Stopped when helm closed)/.test(s.step))
       .map((s) => s.id);
     for (const id of ids) {
-      try { await this.send(id, 'Continue where you left off.', [], this.ownerOnly(this.get(id))); }
+      try { await this.send(id, this.resumeText(id), [], this.ownerOnly(this.get(id))); }
       catch (e: any) { const s = this.get(id); if (s) this.activity(s, 'error', 'could not resume: ' + trunc(String(e?.message || e), 100), { ok: false }); }
     }
     this.touch();

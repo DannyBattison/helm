@@ -89,6 +89,8 @@ export const defaultSettings = (): Settings => ({
   openIn: 'helm',
   defaultEffort: 'default',
   defaultInstructions: '',
+  messageTemplates: {},
+  promptTemplates: [],
   agentEnv: '',
   reviewModel: '',
   autoReview: false,

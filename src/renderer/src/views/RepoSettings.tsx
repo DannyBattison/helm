@@ -6,6 +6,7 @@ import { defaultChoice, modelChoices, splitChoice } from '../lib';
 import { toast, useApp, useMoney } from '../store';
 import { Badge, Button, SegmentedControl, Select, Switch } from '../ui';
 import { EFFORT_OPTIONS } from './Review';
+import { MessageTemplatesSection, PromptTemplatesSection } from './Templates';
 import { Field, H, PERM_OPTIONS, SettingRow } from './Settings';
 
 const textarea: React.CSSProperties = { width: 280, resize: 'vertical', border: 'none', outline: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border)', color: 'var(--text-1)', font: '400 12px/1.55 var(--font-mono)', padding: '8px 10px', boxSizing: 'border-box' };
@@ -89,5 +90,8 @@ export function RepoSettingsPane({ repoId }: { repoId: string | null }) {
     <Row keys={['mergeMethod']} title="Merge pull requests by" desc="The default when you merge from helm.">{sel('mergeMethod', [{ value: 'merge', label: 'Merge commit' }, { value: 'squash', label: 'Squash and merge' }, { value: 'rebase', label: 'Rebase and merge' }])}</Row>
     <Row keys={['autoMerge']} title="Merge automatically" desc="Merges a pull request opened from helm by itself once it meets this.">{sel('autoMerge', [{ value: 'off', label: 'Off' }, { value: 'checks', label: 'When checks pass' }, { value: 'approved', label: 'When checks pass and approved' }])}</Row>
     <Row keys={['afterMerge']} title="When its work is merged" desc="What happens to the session once its work is merged.">{sel('afterMerge', [{ value: 'archive', label: 'Archive it' }, { value: 'delete', label: 'Delete it' }, { value: 'keep', label: 'Leave it' }])}</Row>
+
+    <MessageTemplatesSection repoId={repoId} />
+    <PromptTemplatesSection repoId={repoId} />
   </Overrides.Provider>;
 }

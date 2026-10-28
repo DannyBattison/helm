@@ -1,3 +1,5 @@
+import { messageTemplate, renderTemplate } from './templates';
+
 export interface Issue {
   number: number;
   title: string;
@@ -21,26 +23,26 @@ export interface Comment {
 const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
 const cleanBody = (s: string) => s.replace(/\r\n/g, '\n').replace(/<!--[\s\S]*?-->/g, '').trim();
 
-/** The task for a session that works on an issue: the issue, then the discussion, then what is expected. */
-export function issueTask(issue: Issue, comments: Comment[]): string {
-  const parts = [`Work on GitHub issue #${issue.number}: ${issue.title}`, issue.url, ''];
-  if (issue.labels.length) parts.push(`Labels: ${issue.labels.join(', ')}`, '');
-  parts.push(clip(cleanBody(issue.body) || '(no description)', 6000));
+/** The task for a session that works on an issue: the issue, then the discussion, then what is expected. `template` overrides the wording. */
+export function issueTask(issue: Issue, comments: Comment[], template = messageTemplate('issueTask')!.body): string {
   const talk = comments.filter((c) => c.body.trim()).slice(-12);
-  if (talk.length) parts.push('', '--- Discussion ---', ...talk.map((c) => `@${c.author}: ${clip(cleanBody(c.body), 1500)}`));
-  parts.push('', `Fix it as the issue describes, add or update tests where the project has them, and commit with a message that refers to #${issue.number}. If something in the issue is unclear or contradicts the code, ask before guessing.`);
-  return parts.join('\n');
+  return renderTemplate(template, {
+    number: String(issue.number), title: issue.title, url: issue.url,
+    labels: issue.labels.length ? `Labels: ${issue.labels.join(', ')}` : '',
+    body: clip(cleanBody(issue.body) || '(no description)', 6000),
+    discussion: talk.length ? ['--- Discussion ---', ...talk.map((c) => `@${c.author}: ${clip(cleanBody(c.body), 1500)}`)].join('\n') : ''
+  });
 }
 
-/** Review feedback on a pull request, as a task for an agent to address. */
-export function feedbackTask(pr: { number: number; title: string; url: string }, comments: Comment[]): string {
-  const parts = [`Address the review feedback on pull request #${pr.number}: ${pr.title}`, pr.url, ''];
+/** Review feedback on a pull request, as a task for an agent to address. `template` overrides the wording. */
+export function feedbackTask(pr: { number: number; title: string; url: string }, comments: Comment[], template = messageTemplate('feedbackTask')!.body): string {
   const inline = comments.filter((c) => c.path);
   const general = comments.filter((c) => !c.path);
-  if (inline.length) parts.push('Comments on the code:', ...inline.map((c) => `- ${c.path}${c.line ? ':' + c.line : ''} (@${c.author}): ${clip(cleanBody(c.body), 1500)}`), '');
-  if (general.length) parts.push('General comments:', ...general.map((c) => `- @${c.author}: ${clip(cleanBody(c.body), 1500)}`), '');
-  parts.push('Make the changes the reviewers ask for. Where you disagree with a comment, do not change the code; say why in your reply so the user can answer on the pull request.');
-  return parts.join('\n');
+  return renderTemplate(template, {
+    number: String(pr.number), title: pr.title, url: pr.url,
+    inline: inline.length ? ['Comments on the code:', ...inline.map((c) => `- ${c.path}${c.line ? ':' + c.line : ''} (@${c.author}): ${clip(cleanBody(c.body), 1500)}`)].join('\n') : '',
+    general: general.length ? ['General comments:', ...general.map((c) => `- @${c.author}: ${clip(cleanBody(c.body), 1500)}`)].join('\n') : ''
+  });
 }
 
 /** The pull request number in a GitHub URL, or null. */

@@ -97,7 +97,7 @@ const tray = new AppTray({
     if (!s) return;
     const ask = s.ask;
     if (action.do === 'open') { showWindow(); host.send('navigate', { screen: 'session', id: sessionId, tab: s.status === 'ready' ? 'changes' : 'conversation' }); return; }
-    if (action.do === 'resume') { void sessions.send(sessionId, 'Continue where you left off.').catch(() => undefined); return; }
+    if (action.do === 'resume') { void sessions.send(sessionId, sessions.resumeText(sessionId)).catch(() => undefined); return; }
     // The menu may be older than the question: only answer the one it was built for.
     if (!ask || ask.id !== askId) { showWindow(); host.send('navigate', { screen: 'inbox' }); return; }
     const answer = action.do === 'approve' ? { decision: 'approve' as const } : action.do === 'always' ? { decision: 'always' as const } : action.do === 'deny' ? { decision: 'deny' as const }
