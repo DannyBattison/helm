@@ -9,7 +9,8 @@ import { stuckReason } from '../shared/stuck';
 import { REVIEW_SCHEMA, parseReview, reviewPrompt } from '../shared/selfreview';
 import { commandSummary } from '../shared/commandSummary';
 import { handleFor, memberOf, mentionsIn, panelDigest, panelInstructions, participants, replyLimit } from '../shared/panel';
-import { FREE_ID, freeRepo, sessionTitle, MAX_UPLOAD_FILES, MAX_UPLOAD_TOTAL, type ActivityEvent, type Checkpoint, type Effort, type ExtraRepo, type Repo, type MessageImage, type ModelAlias, type NewSessionInput, type Panel, type PanelAgentInput, type PanelMember, type PendingAsk, type PermMode, type ReplyRef, type SendOptions, type Session, type Status, type Subagent, type TranscriptEvent } from '../shared/types';
+import { FREE_ID, freeRepo, sessionTitle, MAX_UPLOAD_FILES, MAX_UPLOAD_TOTAL, type ActivityEvent, type Checkpoint, type Effort, type ExtraRepo, type Repo, type MessageImage, type ModelAlias, type NewSessionInput, type Panel, type PanelAgentInput, type PanelMember, type PendingAsk, type PermMode, type ReplyRef, type SendOptions, type Session, type Settings, type Status, type Subagent, type TranscriptEvent } from '../shared/types';
+import { effectiveSettings } from '../shared/repoSettings';
 import { BackendRegistry, type AgentBackend, type AgentBlock, type AgentEvent, type AgentHandle, type AgentToolResult, type AgentUsage, type ToolDecision } from './backend';
 import { ClaudeBackend } from './claudeBackend';
 import { Advisor } from './advisor';
@@ -200,14 +201,15 @@ export class SessionManager {
   async create(input: NewSessionInput, extra: CreateExtra = {}): Promise<string> {
     this.held = false;
     const free = input.repoId === FREE_ID;
-    const backendId = this.registry.get(input.backend || this.store.data.settings.defaultBackend).id;
+    const cfg = this.cfg(input.repoId);
+    const backendId = this.registry.get(input.backend || cfg.defaultBackend).id;
     const on = this.store.data.settings.enabledAgents;
     if (on && !on.includes(backendId)) throw new Error(`${this.registry.get(backendId).label} is turned off. Turn it on under Settings → Agents, or pick another agent.`);
     const modelId = this.registry.model(backendId, input.model).id;
     for (const a of input.panel || []) this.panelSeat(a);
     const repo = free ? undefined : this.store.data.repos.find((r) => r.id === input.repoId);
     if (!free && !repo) throw new Error('Repository not found');
-    const st = this.store.data.settings;
+    const st = cfg;
     let id = slug(input.task);
     // Free agents are not grouped under a repository, so their names must be unique among all sessions.
     const taken = (n: string) => this.sessions.some((s) => s.id === n && (free || s.repoId === repo!.id));
@@ -431,14 +433,14 @@ export class SessionManager {
     const repo = this.store.data.repos.find((r) => r.id === repoId);
     if (!repo) throw new Error('Repository not found');
     if (!task.trim()) throw new Error('Say what the session should do next.');
-    const st0 = this.store.data.settings;
+    const st0 = this.cfg(repoId);
     const be = this.registry.get(st0.defaultBackend);
     const store = this.conversationsOf({ backend: be.id });
     const info = await store.info(externalId);
     if (!info) throw new Error('That session could not be found.');
     if (info.size > 300 * 1024 * 1024) throw new Error('That conversation file is over 300 MB, too big to copy. Start a new session and tell it what you were doing.');
     const dir = info.cwd || repo.localPath;
-    const st = this.store.data.settings;
+    const st = st0;
     // Carry on from the branch it was on when that still exists, otherwise from the default branch.
     const branch = info.branch;
     let base = repo.defaultBranch;
@@ -548,7 +550,7 @@ export class SessionManager {
   }
 
   private baseAppend(s: Session, artifacts: string): string {
-    const st = this.store.data.settings;
+    const st = this.cfg(s.repoId);
     const art = `To hand the user a file (a generated image, chart, report, export), write it to ${artifacts} (not into the worktree), then link it in your reply as [label](artifact:file.ext), using a plain file name without spaces. For an image use ![description](artifact:file.png) and helm shows it in the chat; any other file becomes a download button. These files are temporary and are deleted with the session.`;
     // Claude has a dedicated question tool and helm limits its subagents; another agent is simply told to ask, and manages its own helpers.
     const be = this.backendOf(s);
@@ -981,7 +983,8 @@ export class SessionManager {
     this.pushEpoch++;
     await this.push(tkey, { k: 'commit', hash: m[1], msg: m[2], t: now });
     this.activity(s, 'commit', `committed ${m[1]} “${trunc(m[2], 70)}”`);
-    if (this.store.data.settings.autoPush && this.store.data.settings.pushWhen !== 'ready') void this.autoPush(s);
+    const push = this.cfg(s.repoId);
+    if (push.autoPush && push.pushWhen !== 'ready') void this.autoPush(s);
     this.touch();
   }
 
@@ -1105,7 +1108,8 @@ export class SessionManager {
     // A free agent has nothing to review or merge: it is simply done.
     if (!s.free && (s.files > 0 || s.commits.length > 0)) {
       this.setStatus(s, 'ready', `${s.files} ${s.files === 1 ? 'file' : 'files'} changed · ready for review`);
-      if (this.store.data.settings.autoPush && this.store.data.settings.pushWhen === 'ready' && s.commits.length) void this.autoPush(s);
+      const push = this.cfg(s.repoId);
+      if (push.autoPush && push.pushWhen === 'ready' && s.commits.length) void this.autoPush(s);
       if (this.store.data.settings.autoReview) {
         // Not again for a commit already reviewed.
         void G.git(s.worktree, 'rev-parse', '--short', 'HEAD').then((h) => (s.review && s.review.head === h.trim() && s.review.state !== 'failed' ? undefined : this.review(s.id))).catch(() => undefined);
@@ -1743,7 +1747,7 @@ export class SessionManager {
 
   /** Once Claude Code has named the conversation, name the branch after it instead of the prompt. Only while nothing depends on the old name. */
   private async nameBranch(s: Session, title: string) {
-    const st = this.store.data.settings;
+    const st = this.cfg(s.repoId);
     if (s.free || s.branchNamed || !s.branch || !s.branch.startsWith(st.branchPrefix)) return;
     s.branchNamed = true;
     // A pushed branch may already have a pull request; the check below leaves one that is on GitHub alone.
@@ -1844,7 +1848,7 @@ export class SessionManager {
   async finishMerged(id: string, merged: { into: string; at?: number }, opts: { worktree: boolean; branch: boolean }) {
     const s = this.get(id);
     if (!s) return;
-    const record = this.store.data.settings.afterMerge;
+    const record = this.cfg(s.repoId).afterMerge;
     if (record === 'delete') return this.remove(id, opts);
     await this.refreshStats(s);
     await this.stop(id);
@@ -1891,6 +1895,8 @@ export class SessionManager {
     this.touch();
   }
 
+  /** The settings that apply to a repository's sessions: its own over the defaults. */
+  private cfg(repoId: string): Settings { return effectiveSettings(this.store.data.settings, this.store.data.repos.find((r) => r.id === repoId)); }
   sessionLimit(s: Session) { return s.maxSubagents ?? this.store.data.settings.maxSubagentsSession; }
   repoLimit(s: Session) { return this.repoOf(s)?.maxSubagents ?? this.store.data.settings.maxSubagentsRepo; }
 

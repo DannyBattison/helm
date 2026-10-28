@@ -128,6 +128,8 @@ export interface Repo {
   maxSubagents?: number;
   /** MCP servers for this repository's sessions, added to the global ones (and replacing a global one of the same name). */
   mcpServers?: McpServer[];
+  /** Settings this repository sets for itself, over the defaults (see shared/repoSettings.ts). Absent keys are inherited. */
+  settings?: import('./repoSettings').RepoSettings;
 }
 
 /** An MCP server given to sessions: a program helm starts (stdio) or one it connects to over http or sse. */
@@ -1178,6 +1180,8 @@ export interface HelmApi {
   /** Re-reads a subagent's transcript from Claude Code's session file. */
   refreshSubagent(sessionId: string, subId: string): Promise<void>;
   setRepoMaxSubagents(repoId: string, max: number | null): Promise<void>;
+  /** Replaces the settings a repository overrides. Keys left out are inherited from the defaults. */
+  setRepoSettings(repoId: string, settings: import('./repoSettings').RepoSettings): Promise<void>;
   /** Adds or replaces an MCP server (`replace` is the name it had, when renamed) for a repository, or for every session when `repoId` is null. Throws when it is not valid. */
   saveMcpServer(repoId: string | null, server: McpServer, replace?: string): Promise<void>;
   removeMcpServer(repoId: string | null, name: string): Promise<void>;

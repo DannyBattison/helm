@@ -5,6 +5,7 @@ import type { BaseOption, FileChange, HistoryCommit, Repo, Session, WorktreeInfo
 import * as G from './git';
 import * as GH from './github';
 import type { Store } from './store';
+import { effectiveSettings } from '../shared/repoSettings';
 import { expandHome } from './util';
 
 export class RepoService {
@@ -123,7 +124,7 @@ export class RepoService {
     const r = this.must(id);
     const local = await G.git(r.localPath, 'for-each-ref', '--format=%(refname:short)\t%(upstream:short)\t%(upstream:track)', 'refs/heads').catch(() => '');
     const remote = (await G.git(r.localPath, 'for-each-ref', '--format=%(refname:short)', 'refs/remotes/origin').catch(() => '')).split('\n').map((x) => x.trim()).filter((x) => x && x !== 'origin' && x !== 'origin/HEAD');
-    const prefix = this.store.data.settings.branchPrefix;
+    const prefix = effectiveSettings(this.store.data.settings, r).branchPrefix;
     const out: BaseOption[] = [];
     const covered = new Set<string>();
     for (const line of local.split('\n').filter(Boolean)) {
@@ -201,7 +202,7 @@ export class RepoService {
       }
     };
     claim(def, 'main');
-    const prefix = this.store.data.settings.branchPrefix;
+    const prefix = effectiveSettings(this.store.data.settings, r).branchPrefix;
     for (const c of commits) {
       for (const ref of c.refs) {
         const name = ref.replace(/^origin\//, '');
