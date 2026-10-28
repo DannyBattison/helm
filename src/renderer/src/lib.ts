@@ -169,7 +169,7 @@ export const planBackends = (app: AppState) => (app.backends || []).filter((b) =
 export const subagentTree = (s: Session, withArchived = false) => {
   const out: { a: Session['subagents'][number]; depth: number }[] = [];
   const walk = (parent: string | null, depth: number) => {
-    for (const a of s.subagents || []) if (a.parentId === parent && (withArchived || !a.archived)) { out.push({ a, depth }); walk(a.id, depth + 1); }
+    for (const a of s.subagents || []) if (a.parentId === parent && (withArchived || !a.archived || a.status === 'working')) { out.push({ a, depth }); walk(a.id, depth + 1); }
   };
   walk(null, 0);
   return out;

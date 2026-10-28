@@ -81,11 +81,11 @@ describe('session helpers', () => {
   it('lists subagents as a tree, hiding archived ones unless asked', () => {
     const s: any = S({ subagents: [
       { id: 'a', parentId: null, status: 'working' }, { id: 'b', parentId: 'a', status: 'idle' },
-      { id: 'c', parentId: 'a', status: 'working', archived: true }, { id: 'd', parentId: 'b', status: 'working' }
+      { id: 'c', parentId: 'a', status: 'done', archived: true }, { id: 'd', parentId: 'b', status: 'working' }
     ] });
     expect(subagentTree(s).map((x) => [x.a.id, x.depth])).toEqual([['a', 0], ['b', 1], ['d', 2]]);
     expect(subagentTree(s, true).map((x) => x.a.id)).toEqual(['a', 'b', 'd', 'c']);
-    expect(runningSubagents(s)).toBe(3);
+    expect(runningSubagents(s)).toBe(2);
     expect(subagentTree({ ...s, subagents: undefined })).toEqual([]);
     expect(runningSubagents({ ...s, subagents: undefined })).toBe(0);
   });
