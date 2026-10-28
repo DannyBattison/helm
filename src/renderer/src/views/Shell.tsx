@@ -194,7 +194,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
                 onClick={() => { if (isFreeGroup(r) || (route.screen === 'repo' && route.id === r.id)) setClosed({ ...closed, [r.id]: open }); else go({ screen: 'repo', id: r.id }); }} />
               </div>
               {open ? sessions.map((s) => {
-                const hiddenSubs = (s.subagents || []).filter((a) => a.archived).length;
+                const hiddenSubs = (s.subagents || []).filter((a) => a.archived && a.status !== 'working').length;
                 const showHidden = !!subsShown[s.id] || !!(route.screen === 'session' && route.id === s.id && route.sub && s.subagents.find((a) => a.id === route.sub && a.archived));
                 const tree = subagentTree(s, showHidden);
                 const running = runningSubagents(s);

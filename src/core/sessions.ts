@@ -909,6 +909,8 @@ export class SessionManager {
         if (a) {
           a.summary = trunc(text.trim(), 600);
           // A background subagent's result is only a placeholder; it finishes with its task notification.
+          // Claude Code reports a launch the same way when the agent definition runs in the background by itself.
+          if (!b.is_error && /^Async agent launched/i.test(text.trim())) a.background = true;
           if (a.background && !b.is_error) await this.patchSubagent(rt, a);
           else await this.finishSubagent(s, rt, a, b.is_error ? 'failed' : 'done');
         }
