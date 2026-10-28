@@ -21,7 +21,7 @@ jobs:
     outputs:
       version: ${{ steps.next.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - id: next
@@ -64,15 +64,15 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       VERSION: ${{ needs.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.sha }}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           pattern: desktop-*
           path: installers
           merge-multiple: true
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           pattern: digest-*
           merge-multiple: true
