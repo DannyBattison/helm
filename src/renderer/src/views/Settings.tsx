@@ -685,6 +685,7 @@ export function Settings({ section }: { section?: string }) {
             <SettingRow title="Still tell me when an agent is blocked" desc="During quiet hours, an approval or question still notifies you.">
               <Switch checked={st.quiet.allowAttention} onChange={(v: boolean) => set({ quiet: { ...st.quiet, allowAttention: v } })} />
             </SettingRow>
+            <SettingRow title="Show message text" desc="Desktop notifications include what the agent said or asked. Turn off to show only the session name, for example when sharing your screen."><Switch checked={st.notifyPreview} onChange={(v: boolean) => set({ notifyPreview: v })} /></SettingRow>
             <EmailSection st={st} set={set} passwordSet={app.outboundSecrets.emailPassword} />
             {app.repos.length ? <>
               <H sub="Per repository. Only things that need you leaves out finished work and failed checks.">Repositories</H>
@@ -695,14 +696,11 @@ export function Settings({ section }: { section?: string }) {
               ))}
             </> : null}
             {hosted ? null : <>
-            <SettingRow title="Show message text" desc="Desktop notifications include what the agent said or asked. Turn off to show only the session name, for example when sharing your screen."><Switch checked={st.notifyPreview} onChange={(v: boolean) => set({ notifyPreview: v })} /></SettingRow>
             <H>System</H>
             <SettingRow title="Tray icon" desc="Keep helm in the system tray or menu bar, with a count of what needs you and a menu to jump to it."><Switch checked={st.tray} onChange={(v: boolean) => set({ tray: v })} /></SettingRow>
             <SettingRow title="Keep the computer awake" desc="Stops it sleeping while agents are working, so a long run is not cut short. It sleeps normally when they are idle."><Switch checked={st.keepAwake} onChange={(v: boolean) => set({ keepAwake: v })} /></SettingRow>
             <SettingRow title="Start at login" desc="Opens helm when you sign in to this computer."><Switch checked={st.startAtLogin} onChange={(v: boolean) => set({ startAtLogin: v })} /></SettingRow>
             <SettingRow title="Start in the tray" desc="Opens without the window, leaving the tray icon. Needs the tray icon."><Switch checked={st.startMinimised} onChange={(v: boolean) => set({ startMinimised: v })} /></SettingRow>
-            <SettingRow title="Open on" desc="The page shown when helm opens."><Select value={st.startPage} onChange={(e: any) => set({ startPage: e.target.value })} options={[{ value: 'overview', label: 'Overview' }, { value: 'inbox', label: 'Needs you' }, { value: 'last', label: 'Where I left off' }]} /></SettingRow>
-            <SettingRow title="Keep the activity log for" desc="Older events are removed. The sessions and their conversations are not affected."><Select value={String(st.activityDays)} onChange={(e: any) => set({ activityDays: +e.target.value })} options={[{ value: '0', label: 'Never' }, { value: '30', label: '30 days' }, { value: '90', label: '90 days' }, { value: '180', label: '180 days' }, { value: '365', label: '365 days' }]} /></SettingRow>
             </>}
           </> : null}
           {sec === 'shortcuts' ? <ShortcutsSection st={st} set={set} /> : null}
@@ -716,6 +714,7 @@ export function Settings({ section }: { section?: string }) {
             </SettingRow>
             <SettingRow title="Update automatically" desc="Look for a new version when helm starts and every few hours, download it in the background, and install it the next time helm quits."><Switch checked={st.autoUpdate} onChange={(v: boolean) => set({ autoUpdate: v })} /></SettingRow>
             </>}
+            <SettingRow title="Keep the activity log for" desc="Older events are removed. The sessions and their conversations are not affected."><Select value={String(st.activityDays)} onChange={(e: any) => set({ activityDays: +e.target.value })} options={[{ value: '0', label: 'Never' }, { value: '30', label: '30 days' }, { value: '90', label: '90 days' }, { value: '180', label: '180 days' }, { value: '365', label: '365 days' }]} /></SettingRow>
             <SettingRow title="Diagnostics" desc="Saves versions, settings, the state of each session and the recent log as one Markdown file you can attach to a bug report. Task text, conversations, file contents and repository paths are left out, and tokens and your home folder are masked.">
               <Button icon="download-simple" onClick={() => void api.saveDiagnostics().then((f) => f && toast({ tone: 'ready', title: 'Saved diagnostics', description: f })).catch((e) => toast({ tone: 'error', title: 'Could not save', description: errText(e) }))}>Save diagnostics…</Button>
             </SettingRow>
@@ -741,7 +740,8 @@ export function Settings({ section }: { section?: string }) {
             </div>
             <SettingRow title="Editor font size"><Select value={String(st.editorFontSize)} onChange={(e: any) => set({ editorFontSize: +e.target.value })} options={['12', '12.5', '13', '14']} /></SettingRow>
             <SettingRow title="Open files in" desc="Used by Open in editor."><Select value={st.openIn} onChange={(e: any) => set({ openIn: e.target.value })} options={['helm', 'VS Code', 'Cursor', 'Zed']} /></SettingRow>
-            <SettingRow title="Interface zoom" desc="Scales the whole interface."><Select value={String(st.uiScale)} onChange={(e: any) => set({ uiScale: +e.target.value })} options={[{ value: '80', label: '80%' }, { value: '90', label: '90%' }, { value: '100', label: '100%' }, { value: '110', label: '110%' }, { value: '125', label: '125%' }, { value: '150', label: '150%' }]} /></SettingRow>
+            {hosted ? null : <SettingRow title="Interface zoom" desc="Scales the whole interface."><Select value={String(st.uiScale)} onChange={(e: any) => set({ uiScale: +e.target.value })} options={[{ value: '80', label: '80%' }, { value: '90', label: '90%' }, { value: '100', label: '100%' }, { value: '110', label: '110%' }, { value: '125', label: '125%' }, { value: '150', label: '150%' }]} /></SettingRow>}
+            <SettingRow title="Open on" desc="The page shown when helm opens."><Select value={st.startPage} onChange={(e: any) => set({ startPage: e.target.value })} options={[{ value: 'overview', label: 'Overview' }, { value: 'inbox', label: 'Needs you' }, { value: 'last', label: 'Where I left off' }]} /></SettingRow>
             <SettingRow title="Time format" desc="12 or 24 hour clock for times shown in helm. Automatic follows your computer."><Select value={st.timeFormat} onChange={(e: any) => set({ timeFormat: e.target.value })} options={[{ value: 'auto', label: 'Automatic' }, { value: '12', label: '12 hour' }, { value: '24', label: '24 hour' }]} /></SettingRow>
             <SettingRow title="Fold tool calls" desc="Shows commands, edits and reads in the conversation as one line each until you open them."><Switch checked={st.collapseTools} onChange={(v: boolean) => set({ collapseTools: v })} /></SettingRow>
             <SettingRow title="Show the agent’s reasoning" desc="Shows what the agent thought as it worked, when the agent shares it."><Switch checked={st.showThinking} onChange={(v: boolean) => set({ showThinking: v })} /></SettingRow>
