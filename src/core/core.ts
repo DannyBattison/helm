@@ -41,11 +41,14 @@ import { searchEvents, type SearchResults } from '../shared/search';
 import { sessionTitle } from '../shared/types';
 import { cleanRepoSettings, effectiveSettings } from '../shared/repoSettings';
 import { feedbackTask, issueTask, pullNumber } from '../shared/issues';
+import { cleanMessageTemplates, cleanPromptTemplates, composeMessage, messageBody } from '../shared/templates';
 import { prBody, prSummary, prTitle, replaceSummary } from '../shared/prText';
 import { auditCsv, buildReport, digestMarkdown, sessionsCsv, spendCsv, type ReportInput } from '../shared/reports';
 
 let host: Host;
 let backends: import('../shared/types').BackendInfo[] = [];
+/** The settings in force for a session's repository, which decide the wording of the messages sent to its agent. */
+const msgCfg = (sessionId: string) => effectiveSettings(store.data.settings, store.data.repos.find((r) => r.id === sessions.get(sessionId)?.repoId));
 let forecast: import('../shared/forecast').Conflict[] = [];
 let lastCpu: CpuTimes | null = null;
 let lastProc: { t: number; us: number } | null = null;
@@ -214,7 +217,7 @@ Object.assign(companionOps, {
   sendMessage: (id: string, text: string) => sessions.send(id, text),
   interrupt: (id: string) => sessions.interrupt(id),
   stop: (id: string) => sessions.stop(id),
-  resume: async (id: string) => { await sessions.send(id, 'Continue where you left off.'); },
+  resume: async (id: string) => { await sessions.send(id, composeMessage(msgCfg(id), 'resume')); },
   archive: async (id: string, archived: boolean) => { sessions.archive(id, archived); },
   createSession: async (repoId: string, task: string) => {
     const repo = repos.must(repoId);
@@ -349,6 +352,8 @@ export const api: HelmApi = {
   async reportStall(ms, where) { diag(`window stalled ${ms} ms on ${where}`); },
   async updateSettings(patch: Partial<Settings>) {
     const prevEnabled = store.data.settings.enabledAgents;
+    if ('messageTemplates' in patch) patch.messageTemplates = cleanMessageTemplates(patch.messageTemplates);
+    if ('promptTemplates' in patch) patch.promptTemplates = cleanPromptTemplates(patch.promptTemplates);
     Object.assign(store.data.settings, patch);
     if ('theme' in patch) applyTheme();
     if ('signCommits' in patch) G.setSigning(store.data.settings.signCommits);
@@ -502,7 +507,7 @@ export const api: HelmApi = {
   haltAll: () => sessions.haltAll(),
   resumeAll: () => sessions.resumeAll(),
   stopSession: (id) => sessions.stop(id),
-  async resumeSession(id) { await sessions.send(id, 'Continue where you left off.', [], sessions.ownerOnly(sessions.get(id))); },
+  async resumeSession(id) { await sessions.send(id, composeMessage(msgCfg(id), 'resume'), [], sessions.ownerOnly(sessions.get(id))); },
   sessionDeleteInfo: (id) => sessions.deleteInfo(id),
   async renameSession(id, title) { await sessions.rename(id, title); },
   async archiveSession(id, archived) { sessions.archive(id, archived); },
@@ -807,7 +812,7 @@ export const api: HelmApi = {
     return { sha, localUpdated, localNote };
   },
   async requestChanges(id, comments) {
-    const text = 'Review comments from the user. Please address each one:\n\n' + comments.map((c) => `- ${c.line ? `${c.file}:${c.line}` : c.file}: ${c.text}`).join('\n');
+    const text = composeMessage(msgCfg(id), 'requestChanges', { comments: comments.map((c) => `- ${c.line ? `${c.file}:${c.line}` : c.file}: ${c.text}`).join('\n') });
     await sessions.send(id, text);
   },
   async resolveConflict(id, against) {
@@ -818,7 +823,7 @@ export const api: HelmApi = {
     const steps = base
       ? `git fetch origin ${target}\ngit merge origin/${target}`
       : `git merge ${other!.branch}`;
-    const text = `Your branch would conflict with ${base ? against : `the branch ${other!.branch} (another session's work in progress)`}. Please resolve it now:\n\n1. Commit or set aside your uncommitted work first, so the merge can start.\n2. Run:\n${steps}\n3. Resolve every conflict, keeping the intent of both sides, then run the build and tests.\n4. Commit the merge.\n\nDo not discard either side's changes.`;
+    const text = composeMessage(msgCfg(id), 'resolveConflict', { target: base ? against : `the branch ${other!.branch} (another session's work in progress)`, steps });
     await sessions.send(s.id, text);
   },
   async openInEditor(id, path, line) {
@@ -1047,14 +1052,14 @@ export const api: HelmApi = {
   repoIssues: (id) => GH.listIssues(id),
   async issueTask(repoId, number) {
     const [issue, comments] = await Promise.all([GH.getIssue(repoId, number), GH.issueComments(repoId, number).catch(() => [])]);
-    return { task: issueTask(issue, comments), title: issue.title, url: issue.url };
+    return { task: issueTask(issue, comments, messageBody(repoCfg(repoId), 'issueTask')), title: issue.title, url: issue.url };
   },
   async feedbackTask(repoId, number) {
     const pr = (await GH.listPulls(repoId)).find((p) => p.number === number);
     if (!pr) throw new Error(`Pull request #${number} was not found.`);
     const comments = await GH.pullReviewComments(repoId, number);
     if (!comments.length) throw new Error('This pull request has no review comments yet.');
-    return { task: feedbackTask(pr, comments), base: 'origin/' + pr.branch, count: comments.length };
+    return { task: feedbackTask(pr, comments, messageBody(repoCfg(repoId), 'feedbackTask')), base: 'origin/' + pr.branch, count: comments.length };
   },
   async sendPrFeedback(id) {
     const s = sess(id);
@@ -1065,7 +1070,7 @@ export const api: HelmApi = {
     if (!fresh.length) return 0;
     s.feedbackAt = Math.max(...fresh.map((c) => Date.parse(c.at)));
     store.save();
-    await sessions.send(id, feedbackTask({ number: n, title: s.customTitle || s.title || s.task, url: s.prUrl! }, fresh));
+    await sessions.send(id, feedbackTask({ number: n, title: s.customTitle || s.title || s.task, url: s.prUrl! }, fresh, messageBody(msgCfg(id), 'feedbackTask')));
     return fresh.length;
   },
 

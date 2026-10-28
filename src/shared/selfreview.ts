@@ -1,4 +1,5 @@
 import type { SelfReview } from './types';
+import { messageTemplate, renderTemplate } from './templates';
 
 export const REVIEW_SCHEMA = {
   type: 'object',
@@ -21,16 +22,7 @@ export const REVIEW_SCHEMA = {
   required: ['summary', 'findings']
 };
 
-export function reviewPrompt(task: string, base: string): string {
-  return [
-    `You are reviewing the work on this git branch before it is merged. The task the author was given:`,
-    '', task, '',
-    `Review the change against ${base}: run \`git merge-base HEAD ${base}\`, then \`git diff <that commit>\` and \`git log\`, and read the surrounding code where you need to. You may only read: do not edit files or run anything that changes the repository.`,
-    'Look for: bugs and wrong results; missing error handling at real boundaries; tests that are missing or do not test what they claim; changes outside the scope of the task; leftover debug code, secrets, or edits to lock files, CI config or generated files that nobody asked for.',
-    'Report only what you are confident about. A blocker is something that should stop the merge. A warning is probably wrong or risky. A note is a smaller observation. If the change looks sound, say so and return no findings.',
-    'Answer with the JSON the schema asks for: a summary and a list of findings, each with a severity, the file and line when you know them, and what is wrong and why.'
-  ].join('\n');
-}
+export const reviewPrompt = (task: string, base: string, template = messageTemplate('selfReview')!.body): string => renderTemplate(template, { task, base });
 
 type Finding = SelfReview['findings'][number];
 

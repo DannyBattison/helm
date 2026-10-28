@@ -581,6 +581,10 @@ export interface Settings {
   defaultEffort: Effort | 'default';
   /** Rules added to every session's instructions, for example "use pnpm". */
   defaultInstructions: string;
+  /** Replacements for the text of messages helm sends to agents, by template id (see shared/templates). Missing ids use the built-in text. */
+  messageTemplates: Record<string, string>;
+  /** Prompts to insert into a session's message box; `{{name}}` marks a value asked for when it is used. */
+  promptTemplates: import('./templates').PromptTemplate[];
   /** Environment variables for every agent and terminal, one `NAME=value` per line. */
   agentEnv: string;
   /** Model for the self-review; empty uses the session's own. */
