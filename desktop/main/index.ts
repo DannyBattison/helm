@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Notification, nativeTheme, safeStorage, shell } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Notification, nativeTheme, powerSaveBlocker, safeStorage, shell } from 'electron';
 import { existsSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -55,8 +55,13 @@ const host: Host = {
     const r = await dialog.showOpenDialog(win!, { properties: ['openDirectory', 'createDirectory'] });
     return r.canceled ? null : r.filePaths[0];
   },
-  changed: () => tray.update(),
-  settingsChanged(patch) { if ('tray' in patch) tray.update(); },
+  changed: () => { tray.update(); syncAwake(); },
+  settingsChanged(patch) {
+    if ('tray' in patch) tray.update();
+    if ('keepAwake' in patch) syncAwake();
+    if ('startAtLogin' in patch) syncLogin();
+    if ('uiScale' in patch) syncZoom();
+  },
   updates: { status: updateStatus, check: checkForUpdates, install: installUpdate },
   appInfo: () => ({ version: app.getVersion(), electron: process.versions.electron, chrome: process.versions.chrome, packaged: app.isPackaged }),
   async saveFile(name, text) {
@@ -102,6 +107,22 @@ const tray = new AppTray({
   }
 });
 
+// Keep the computer awake while an agent is working, when asked to.
+let awake: number | null = null;
+function syncAwake() {
+  const want = store.data.settings.keepAwake && sessions.sessions.some((s) => s.status === 'working');
+  if (want && awake === null) awake = powerSaveBlocker.start('prevent-app-suspension');
+  else if (!want && awake !== null) { powerSaveBlocker.stop(awake); awake = null; }
+}
+// Only an installed build registers itself; a development run would register the electron binary.
+function syncLogin() {
+  if (!app.isPackaged) return;
+  const st = store.data.settings;
+  app.setLoginItemSettings({ openAtLogin: st.startAtLogin });
+}
+const syncZoom = () => win?.webContents.setZoomFactor(Math.min(2, Math.max(0.5, store.data.settings.uiScale / 100)));
+let firstWindow = true;
+
 function createWindow() {
   const dark = nativeTheme.shouldUseDarkColors;
   win = new BrowserWindow({
@@ -113,7 +134,13 @@ function createWindow() {
     ...(process.platform === 'darwin' ? { trafficLightPosition: { x: 14, y: 12 } } : { titleBarOverlay: { color: dark ? '#0e0e12' : '#fbfbfc', symbolColor: dark ? '#9d9dab' : '#55555f', height: 38 } }),
     webPreferences: { preload: join(__dirname, '../preload/index.js'), sandbox: false, contextIsolation: true, nodeIntegration: false }
   });
-  win.once('ready-to-show', () => win?.show());
+  win.once('ready-to-show', () => {
+    // Started to the tray: leave the window hidden until the tray (or a second launch) asks for it.
+    const quiet = firstWindow && store.data.settings.startMinimised && store.data.settings.tray;
+    firstWindow = false;
+    if (!quiet) win?.show();
+  });
+  win.webContents.on('did-finish-load', syncZoom);
   win.webContents.setWindowOpenHandler(({ url }) => { if (/^https:\/\//.test(url)) void shell.openExternal(url); return { action: 'deny' }; });
   win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('file://') && !url.startsWith(process.env['ELECTRON_RENDERER_URL'] || 'x://')) e.preventDefault(); });
   // With the tray on, closing the window hides helm and leaves the sessions running.
@@ -128,7 +155,7 @@ function createWindow() {
 const lock = app.requestSingleInstanceLock();
 if (!lock) app.quit();
 else {
-  app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
+  app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } });
   app.whenReady().then(async () => {
     if (process.platform === 'darwin') { const p = appIcon(); if (p) try { app.dock?.setIcon(p); } catch { /* optional */ } }
     await start(host);
@@ -138,6 +165,8 @@ else {
     createWindow();
     initUpdater({ enabled: () => store.data.settings.autoUpdate, changed: emitState });
     tray.update();
+    syncLogin();
+    syncAwake();
     app.on('render-process-gone', (_e, _wc, d) => logLine('error', `window process gone: ${d.reason} (exit ${d.exitCode})`));
     app.on('child-process-gone', (_e, d) => logLine('error', `${d.type} process gone: ${d.reason} (exit ${d.exitCode})`));
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
