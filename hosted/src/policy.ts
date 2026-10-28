@@ -6,7 +6,7 @@ export const BEFORE_SIGN_IN = ['getState', 'signInStart', 'signInWait', 'signInT
 export const callAllowed = (signedIn: boolean, name: unknown): boolean => signedIn || (typeof name === 'string' && (BEFORE_SIGN_IN as readonly string[]).includes(name));
 
 /** Settings that say something about the server: where it keeps things, what it runs, what it has allowed. */
-const PRIVATE_SETTINGS = ['claudePath', 'codexPath', 'worktreeRoot', 'cloneRoot', 'copyFiles', 'companionUrl', 'terminalShellCustom', 'alwaysAllow', 'alwaysAsk'];
+const PRIVATE_SETTINGS = ['claudePath', 'codexPath', 'worktreeRoot', 'cloneRoot', 'copyFiles', 'companionUrl', 'terminalShellCustom', 'alwaysAllow', 'alwaysAsk', 'agentEnv', 'defaultInstructions'];
 
 /**
  * What the sign-in screen is shown before anyone has signed in: the real state with the person, repositories, sessions, activity and

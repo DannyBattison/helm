@@ -196,6 +196,41 @@ function Rich({ text, sessionId }: { text: string; sessionId?: string }) {
 }
 
 /** A command the agent ran. One line, cut short; click it to see the whole command and what it printed. */
+/** An edit with its diff. When tool calls are folded, only the header shows until it is opened. */
+function EditCard({ m, box, session, fold }: { m: Extract<TranscriptEvent, { k: 'edit' }>; box: React.CSSProperties; session?: S | null; fold: boolean }) {
+  const [open, setOpen] = React.useState(!fold);
+  return (
+    <div style={{ marginLeft: 44, marginRight: 12, ...box }}>
+      <div onClick={fold ? () => { if (!window.getSelection()?.toString()) setOpen(!open); } : undefined} style={{ display: 'flex', alignItems: 'center', gap: 8, height: 30, padding: '0 10px', borderBottom: open ? '1px solid var(--border-subtle)' : 'none', cursor: fold ? 'pointer' : undefined }}>
+        <i className="ph ph-pencil-simple" style={{ fontSize: 13, color: 'var(--text-3)' }} />
+        <span style={{ font: '500 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>Edit</span>
+        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><FileLink session={session} path={m.file} style={{ font: '400 12px/1.5 var(--font-mono)' }} /></span>
+        <DiffStat additions={m.add} deletions={m.del} />
+      </div>
+      {open ? <pre className="selectable" style={{ margin: 0, padding: '4px 0', background: 'var(--bg-editor)', font: '400 12px/1.65 var(--font-mono)', overflow: 'auto', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+        {m.lines.map(([t, l], i) => (
+          <div key={i} style={{ display: 'grid', gridTemplateColumns: '24px minmax(0, 1fr)', background: t === '+' ? 'var(--diff-add-bg)' : t === '-' ? 'var(--diff-del-bg)' : 'transparent', color: t === ' ' ? 'var(--text-2)' : 'var(--text-1)' }}>
+            <span style={{ textAlign: 'center', color: t === '+' ? 'var(--diff-add-fg)' : t === '-' ? 'var(--diff-del-fg)' : 'var(--text-3)' }}>{t === '-' ? '−' : t}</span><Hl text={l} lang={langFromPath(m.file)} pad="  " />
+          </div>
+        ))}
+      </pre> : null}
+    </div>
+    );
+}
+
+/** Tool calls in one block. When folded, one line says how many and of what, and opens to the rows. */
+function ToolsGroup({ items, box, session, fold }: { items: [string, string, string][]; box: React.CSSProperties; session?: S | null; fold: boolean }) {
+  const [open, setOpen] = React.useState(!fold);
+  const counts = new Map<string, number>();
+  for (const t of items) counts.set(t[0], (counts.get(t[0]) || 0) + 1);
+  return (
+    <div style={{ marginLeft: 44, marginRight: 12, ...box, padding: '3px 0' }}>
+      {open ? null : <div onClick={() => setOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: 8, height: 26, padding: '0 10px', cursor: 'pointer', font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}><i className="ph ph-caret-right" style={{ fontSize: 12, color: 'var(--text-3)' }} />{items.length} tool {items.length === 1 ? 'call' : 'calls'}<span style={{ color: 'var(--text-3)', font: '400 11px/1.5 var(--font-mono)' }}>{[...counts].map(([k, n]) => n > 1 ? `${k} ×${n}` : k).join(' · ')}</span></div>}
+      {open ? items.map((t, i) => <ToolRow key={i} tool={t[0]} target={t[1]} meta={t[2]} session={session} />) : null}
+    </div>
+  );
+}
+
 function BashRow({ m, box }: { m: Extract<TranscriptEvent, { k: 'bash' }>; box: React.CSSProperties }) {
   const [open, setOpen] = React.useState(false);
   const result = m.ok && m.out === '✓' ? '✓ done' : m.out;
@@ -277,24 +312,8 @@ function TranscriptItemView({ m, s, index, onDeny }: { m: TranscriptEvent; s: S;
     </div>
     );
   }
-  if (m.k === 'tools') return <div style={{ marginLeft: 44, marginRight: 12, ...box, padding: '3px 0' }}>{m.items.map((t, i) => <ToolRow key={i} tool={t[0]} target={t[1]} meta={t[2]} session={s} />)}</div>;
-  if (m.k === 'edit') return (
-    <div style={{ marginLeft: 44, marginRight: 12, ...box }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 30, padding: '0 10px', borderBottom: '1px solid var(--border-subtle)' }}>
-        <i className="ph ph-pencil-simple" style={{ fontSize: 13, color: 'var(--text-3)' }} />
-        <span style={{ font: '500 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>Edit</span>
-        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><FileLink session={s} path={m.file} style={{ font: '400 12px/1.5 var(--font-mono)' }} /></span>
-        <DiffStat additions={m.add} deletions={m.del} />
-      </div>
-      <pre className="selectable" style={{ margin: 0, padding: '4px 0', background: 'var(--bg-editor)', font: '400 12px/1.65 var(--font-mono)', overflow: 'auto', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-        {m.lines.map(([t, l], i) => (
-          <div key={i} style={{ display: 'grid', gridTemplateColumns: '24px minmax(0, 1fr)', background: t === '+' ? 'var(--diff-add-bg)' : t === '-' ? 'var(--diff-del-bg)' : 'transparent', color: t === ' ' ? 'var(--text-2)' : 'var(--text-1)' }}>
-            <span style={{ textAlign: 'center', color: t === '+' ? 'var(--diff-add-fg)' : t === '-' ? 'var(--diff-del-fg)' : 'var(--text-3)' }}>{t === '-' ? '−' : t}</span><Hl text={l} lang={langFromPath(m.file)} pad="  " />
-          </div>
-        ))}
-      </pre>
-    </div>
-  );
+  if (m.k === 'tools') return <ToolsGroup items={m.items} box={box} session={s} fold={app.settings.collapseTools} />;
+  if (m.k === 'edit') return <EditCard m={m} box={box} session={s} fold={app.settings.collapseTools} />;
   if (m.k === 'bash') return <BashRow m={m} box={box} />;
   if (m.k === 'commit') return (
     <div style={{ marginLeft: 44, marginRight: 12, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>

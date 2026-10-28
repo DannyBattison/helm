@@ -82,7 +82,7 @@ export class Terminals {
   constructor(private onData: (id: string, d: string) => void, private onExit: (id: string) => void) {}
 
   /** `choice` is a shell id from `shellOptions`, `auto`, or `custom` (with the command in `custom`). */
-  async open(cwd: string | null, cols: number, rows: number, choice = 'auto', custom = ''): Promise<string> {
+  async open(cwd: string | null, cols: number, rows: number, choice = 'auto', custom = '', extraEnv: Record<string, string> = {}): Promise<string> {
     const id = uid();
     const dir = cwd || home;
     const shells = await detectShells();
@@ -94,7 +94,7 @@ export class Terminals {
     sh ||= shells[0] || { id: 'fallback', label: 'shell', cmd: win ? 'powershell.exe' : '/bin/sh', args: () => [] };
     const pty = loadPty();
     let why = pty ? '' : ' (the terminal module did not load)';
-    const env = { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor', CHERE_INVOKING: '1' } as Record<string, string>;
+    const env = { ...process.env, ...extraEnv, TERM: 'xterm-256color', COLORTERM: 'truecolor', CHERE_INVOKING: '1' } as Record<string, string>;
     if (pty) {
       try {
         const p = pty.spawn(sh.cmd, sh.args(dir), { name: 'xterm-256color', cols, rows, cwd: dir, env });

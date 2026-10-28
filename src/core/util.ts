@@ -130,3 +130,14 @@ export function commandPattern(cmd: string): string | undefined {
   const take = ['git', 'npm', 'pnpm', 'yarn', 'go', 'cargo', 'make', 'docker', 'terraform', 'kubectl'].includes(words[0]) ? 2 : 1;
   return words.slice(0, take).join(' ') + ' *';
 }
+
+/** `NAME=value` lines to an environment. Blank lines, `# comments` and lines without a valid name are skipped; an `export ` prefix and quotes around the value are dropped. */
+export function parseEnv(text: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const raw of (text || '').split(/\r?\n/)) {
+    const m = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/.exec(raw);
+    if (!m) continue;
+    out[m[1]] = m[2].replace(/^(['"])(.*)\1$/, '$2');
+  }
+  return out;
+}

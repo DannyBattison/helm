@@ -33,3 +33,17 @@ export function queuedMergeStep(pr: Pick<PullRequest, 'number' | 'state' | 'draf
   if (pr.checks === 'pending' || (pr.checks === 'none' && now - since < CHECKS_GRACE)) return { do: 'wait' };
   return { do: 'merge' };
 }
+
+/** Whether a pull request meets the auto-merge setting: open, not a draft, its checks passing, and for `approved` a review approving it and none asking for changes. */
+export function autoMergeReady(pr: Pick<PullRequest, 'state' | 'draft' | 'checks'>, mode: 'off' | 'checks' | 'approved', approved: boolean): boolean {
+  if (mode === 'off' || pr.state !== 'open' || pr.draft || pr.checks !== 'passing') return false;
+  return mode === 'checks' || approved;
+}
+
+/** Reviews, oldest first, to whether the pull request stands approved: each reviewer's latest verdict counts, and any asking for changes blocks it. */
+export function approvedByReviews(reviews: { user: string; state: string }[]): boolean {
+  const latest = new Map<string, string>();
+  for (const r of reviews) if (r.state === 'APPROVED' || r.state === 'CHANGES_REQUESTED' || r.state === 'DISMISSED') latest.set(r.user, r.state);
+  const states = [...latest.values()];
+  return states.includes('APPROVED') && !states.includes('CHANGES_REQUESTED');
+}

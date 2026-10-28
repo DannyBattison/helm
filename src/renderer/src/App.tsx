@@ -1,7 +1,7 @@
 import React from 'react';
 import { api, platform } from './api';
 import { dataStack, fontStack, uiStack } from './fonts';
-import { theme as resolveTheme } from './lib';
+import { setTimeFormat, theme as resolveTheme } from './lib';
 import { schemeVars } from '@shared/schemes';
 import { dismissToast, getUI, go, haltAll, init, resumeAll, setUI, useUI } from './store';
 import { Button, Toast, useNarrow } from './ui';
@@ -18,6 +18,9 @@ import { Session } from './views/Session';
 import { Settings } from './views/Settings';
 import { sessionTitle } from '@shared/types';
 import { Sidebar, StatusBar, TerminalDrawer, TitleBar } from './views/Shell';
+
+/** Whether the start page has been chosen yet this run. */
+let startedOn = false;
 
 export function App() {
   const app = useUI((u) => u.app);
@@ -102,6 +105,15 @@ export function App() {
     for (const k of Object.keys(vars)) st.setProperty(k, vars[k]);
     return () => { for (const k of Object.keys(vars)) st.removeProperty(k); };
   }, [lookKey, theme]);
+  setTimeFormat(app?.settings.timeFormat);
+  // Where helm opens: the page you left, or a chosen one. Decided once, when the settings first arrive.
+  const startPage = app?.settings.startPage;
+  React.useEffect(() => {
+    if (!startPage || startedOn) return;
+    startedOn = true;
+    if (startPage === 'overview') go({ screen: 'overview' });
+    else if (startPage === 'inbox') go({ screen: 'inbox' });
+  }, [startPage]);
   const codeFont = app?.settings.editorFont, uiFont = app?.settings.uiFont, dataFont = app?.settings.dataFont;
   React.useEffect(() => { if (codeFont) document.documentElement.style.setProperty('--font-code', fontStack(codeFont)); }, [codeFont]);
   React.useEffect(() => { if (uiFont) document.documentElement.style.setProperty('--font-sans', uiStack(uiFont)); }, [uiFont]);

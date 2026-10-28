@@ -55,7 +55,10 @@ export function ago(t: number): string {
   return Math.floor(s / 86400) + 'd';
 }
 
-export const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+/** 12 or 24 hour clock; undefined follows the computer. Set from the settings. */
+let hour12: boolean | undefined = false;
+export const setTimeFormat = (f: 'auto' | '12' | '24' | undefined) => { hour12 = f === '12' ? true : f === 'auto' ? undefined : false; };
+export const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12 });
 
 export function relTime(t: number): string {
   const d = new Date(t);

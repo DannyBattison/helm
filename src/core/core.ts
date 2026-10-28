@@ -17,7 +17,7 @@ import { cleanHeavy, dirSize, reclaimableBytes } from './disk';
 import { readArtifact } from './artifacts';
 import { addRepoArtifact, addRepoArtifactChunk, repoArtifactProgress, listRepoArtifacts, removeRepoArtifact, setRepoArtifactDir } from './repoartifacts';
 import { cpuTimes, cpuUse, HISTORY_LIMIT, parseLimit, type CpuTimes, type SystemPoint } from '../shared/system';
-import { queuedMergeStep } from '../shared/queue';
+import { approvedByReviews, autoMergeReady, queuedMergeStep } from '../shared/queue';
 import { SyncService } from './sync';
 import { applyImport, buildExport } from './migrate';
 import { diagnostics } from '../shared/diagnostics';
@@ -31,7 +31,7 @@ import { forecastRepo, revertHunk } from './review';
 import { SessionManager } from './sessions';
 import { Store } from './store';
 import { shellOptions, Terminals } from './terminal';
-import { expandHome, home, run } from './util';
+import { expandHome, home, parseEnv, run } from './util';
 import { CURRENCIES, currencyForRegion, fmtMoney } from '../shared/money';
 import { notifyDecision } from '../shared/notify';
 import { dispatchOutbound, emailPasswordSet, loadOutboundSecrets, saveEmailPassword, testOutbound } from './outbound';
@@ -205,7 +205,7 @@ const sessions = new SessionManager(store, {
     const ask = kind === 'attention' ? sessions.get(sessionId)?.ask : undefined;
     // A host that can show buttons on a notification lets a plain approval be answered without opening the app.
     const answer = ask?.type === 'approve' ? (decision: 'approve' | 'deny') => { if (sessions.get(sessionId)?.ask?.id === ask.id) void sessions.resolveAsk(sessionId, ask.id, { decision }); } : undefined;
-    host.notify?.({ kind, title, body, silent: !d.sound, sessionId, answer });
+    host.notify?.({ kind, title, body: st.notifyPreview ? body : '', silent: !d.sound, sessionId, answer });
   }
 }, registry);
 Object.assign(companionOps, {
@@ -350,9 +350,12 @@ export const api: HelmApi = {
     const prevEnabled = store.data.settings.enabledAgents;
     Object.assign(store.data.settings, patch);
     if ('theme' in patch) applyTheme();
+    if ('signCommits' in patch) G.setSigning(store.data.settings.signCommits);
     if ('syncEnabled' in patch) syncer.settingsChanged();
     if ('billing' in patch && patch.billing === 'subscription') void refreshPlan(true);
     if ('archiveAfterDays' in patch) sessions.autoArchive();
+    if ('activityDays' in patch) void store.pruneLog(store.data.settings.activityDays);
+    if ('cleanupDays' in patch || 'reclaimOnArchive' in patch) void housekeeping();
     if (('companionEnabled' in patch || 'companionUrl' in patch) && host.companion !== false) companion.apply();
     host.settingsChanged?.(patch);
     if ('planPause5h' in patch || 'planPauseWeek' in patch || 'billing' in patch) void sessions.enforcePlan();
@@ -613,7 +616,7 @@ export const api: HelmApi = {
     store.log({ kind: 'commit', who: me(), human: true, what: `committed ${files.length} ${files.length === 1 ? 'file' : 'files'}: ${message.split('\n')[0].slice(0, 80)}`, repo: w.sessionId ? repoName(sessions.get(w.sessionId)?.repoId || '') : '', sessionId: w.sessionId, detail: files.join('\n') });
     const s = w.sessionId ? sessions.get(w.sessionId) : undefined;
     if (s) await sessions.refreshStats(s);
-    if (store.data.settings.autoPush) {
+    if (store.data.settings.autoPush && store.data.settings.pushWhen !== 'ready') {
       if (s) await sessions.autoPush(s);
       else {
         // The repository's own checkout: push whatever branch is checked out, if any.
@@ -814,7 +817,7 @@ export const api: HelmApi = {
   async termOpen(id, cols, rows) {
     const cwd = id ? ws(id).worktree : null;
     const st = store.data.settings;
-    return terms.open(cwd, cols, rows, st.terminalShell, st.terminalShellCustom);
+    return terms.open(cwd, cols, rows, st.terminalShell, st.terminalShellCustom, parseEnv(st.agentEnv));
   },
   async termWrite(id, d) { terms.write(id, d); },
   async termResize(id, c, r) { terms.resize(id, c, r); },
@@ -1133,7 +1136,8 @@ async function pushTargets(repoId?: string): Promise<import('../shared/types').P
       const dirty = (await G.git(r.localPath, 'status', '--porcelain', '--untracked-files=no').catch(() => '')).split('\n').filter(Boolean).length;
       out.push({ id: '@checkout', kind: 'checkout', repoId: r.id, branch: cur, dirty, ...(await aheadOf(r.localPath, cur)) });
     }
-    for (const s of sessions.sessions.filter((x) => x.repoId === r.id && !x.worktreeGone && !x.archivedAt)) {
+    // A merged session's branch is often gone from GitHub (deleted or pruned) while its commits live on in the default branch as a squash, which git cannot see as pushed.
+    for (const s of sessions.sessions.filter((x) => x.repoId === r.id && !x.worktreeGone && !x.archivedAt && !x.mergedAt)) {
       if (!(await G.fileExists(s.worktree))) continue;
       // Tracked files only: a full status walks every untracked file, which on a big worktree (node_modules, build output) takes seconds.
       const dirty = (await G.git(s.worktree, 'status', '--porcelain', '--untracked-files=no').catch(() => '')).split('\n').filter(Boolean).length;
@@ -1180,6 +1184,64 @@ async function pollMerges() {
         }
       }
     } catch { /* offline */ }
+  }
+}
+
+// ------------------------------------------------------------------ housekeeping
+const housekept = new Set<string>();
+/** Frees disk for archived sessions as the settings ask: clears build output, then removes the worktree after a while. Work not safely on GitHub is never removed. */
+async function housekeeping() {
+  const st = store.data.settings;
+  if (!st.cleanupDays && !st.reclaimOnArchive) return;
+  for (const s of [...store.data.sessions]) {
+    if (!s.archivedAt || s.worktreeGone || s.free || sessions.isRunning(s.id)) continue;
+    try {
+      if (st.cleanupDays && Date.now() - s.archivedAt > st.cleanupDays * 86_400_000) { await api.dropWorktree(s.id); continue; }
+      if (st.reclaimOnArchive && !housekept.has(s.id)) { housekept.add(s.id); await api.cleanWorktree(s.id); }
+    } catch { /* uncommitted or unpushed work stays where it is */ }
+  }
+}
+
+// ------------------------------------------------------------------ background fetch
+const fetchedAt = new Map<string, number>();
+let fetching = false;
+/** Fetches each repository every `fetchMinutes`, so GitHub's branches (and what counts as pushed) are current. */
+async function fetchTick() {
+  const every = store.data.settings.fetchMinutes * 60_000;
+  if (!every || fetching || !store.data.user) return;
+  fetching = true;
+  try {
+    let any = false;
+    for (const r of store.data.repos) {
+      if (Date.now() - (fetchedAt.get(r.id) || 0) < every) continue;
+      fetchedAt.set(r.id, Date.now());
+      if (await G.git(r.localPath, 'fetch', 'origin', '--prune').then(() => true, () => false)) any = true;
+    }
+    if (any) { sessions.pushEpoch++; emitState(); }
+  } finally { fetching = false; }
+}
+
+// ------------------------------------------------------------------ automatic merges
+const autoMergeTried = new Set<string>();
+/** Merges the open pull requests of sessions once they meet the auto-merge setting. Each is tried once: a refusal is logged, not retried every tick. */
+async function tickAutoMerge() {
+  const mode = store.data.settings.autoMerge;
+  if (mode === 'off') return;
+  const open = store.data.sessions.filter((s) => s.prUrl && !s.mergedAt && !s.queuedMerge && !autoMergeTried.has(s.prUrl));
+  for (const s of open) {
+    try {
+      const pr = (await GH.listPulls(s.repoId)).find((p) => p.url === s.prUrl);
+      if (!pr || pr.state !== 'open' || pr.draft || pr.checks !== 'passing') continue;
+      if (!autoMergeReady(pr, mode, mode === 'approved' && approvedByReviews(await GH.pullReviews(s.repoId, pr.number)))) continue;
+      autoMergeTried.add(s.prUrl!);
+      try {
+        await api.mergePr(s.repoId, pr.number, { method: store.data.settings.mergeMethod, deleteBranch: s.deleteBranchAfterMerge ?? s.removeAfterMerge });
+      } catch (e: any) {
+        store.log({ kind: 'merge', who: 'helm', human: false, what: `could not merge #${pr.number} automatically: ${String(e?.message || e)}`, repo: repoName(s.repoId), sessionId: s.id, ok: false });
+        store.save();
+        emitState();
+      }
+    } catch { /* offline; tried again at the next tick */ }
   }
 }
 
@@ -1233,6 +1295,7 @@ export async function start(h: Host) {
   await installLogging(host.dataDir);
   startWatchdog();
   await store.load(host.dataDir);
+  G.setSigning(store.data.settings.signCommits);
   if (!process.env.HELM_DEV_NO_RECOVER) sessions.recover();
   if (host.companion !== false) void companion.loadKey().then(() => companion.apply());
   GH.setSignInGuard(host.allowLogin ?? null);
@@ -1258,13 +1321,19 @@ export async function start(h: Host) {
   setInterval(() => void sampleSystem(), 5000).unref?.();
   setInterval(pollMerges, 120_000);
   setInterval(() => void tickQueuedMerges(), 30_000);
+  setInterval(() => void tickAutoMerge(), 60_000);
+  setInterval(() => sessions.checkStalls(), 60_000);
   setInterval(() => void automations.tick(), 60_000);
   setTimeout(() => void automations.tick(), 30_000);
   setInterval(() => void refreshForecast(), 20_000);
   setTimeout(() => void refreshForecast(), 4000);
   void detectCurrency().then(refreshRates);
   sessions.autoArchive();
-  setInterval(() => sessions.autoArchive(), 3600_000);
+  setInterval(() => { sessions.autoArchive(); void store.pruneLog(store.data.settings.activityDays); }, 3600_000);
+  void store.pruneLog(store.data.settings.activityDays);
+  setInterval(() => void housekeeping(), 10 * 60_000);
+  setTimeout(() => void housekeeping(), 60_000);
+  setInterval(() => void fetchTick(), 60_000);
   repos.setCacheDir(join(host.dataDir, 'history-cache'));
   setRepoArtifactDir(join(host.dataDir, 'repo-artifacts'));
   void refreshPlan(true);

@@ -368,3 +368,9 @@ export async function getPullBody(slug: string, number: number): Promise<string>
 export async function updatePullBody(slug: string, number: number, body: string): Promise<void> {
   await gh(`/repos/${slug}/pulls/${number}`, { method: 'PATCH', body: JSON.stringify({ body }), headers: { 'Content-Type': 'application/json' } });
 }
+
+/** Every review left on a pull request, oldest first, with the verdict it gave. */
+export async function pullReviews(slug: string, number: number): Promise<{ user: string; state: string }[]> {
+  const r: any[] = await gh(`/repos/${slug}/pulls/${number}/reviews?per_page=100`);
+  return r.map((x) => ({ user: x.user?.login || '', state: String(x.state || '') }));
+}
