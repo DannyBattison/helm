@@ -1,0 +1,2 @@
+# Keep uploading coverage for the README badge, but stop the bot commenting on pull requests.
+comment: false
