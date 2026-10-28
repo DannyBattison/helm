@@ -436,11 +436,20 @@ export const api: HelmApi = {
     return { path, exists: true, untracked: l.untracked, uncommitted: l.uncommitted, unpushed: l.unpushed, worktrees: l.worktrees.length };
   },
   async removeRepo(id, opts) {
-    if (store.data.sessions.some((s) => s.repoId === id)) throw new Error('Remove or delete this repository\'s sessions first.');
+    if (store.data.sessions.some((s) => s.repoId === id && !s.archivedAt)) throw new Error('Remove or delete this repository\'s sessions first.');
     const r = repos.must(id);
+    // Archived sessions are hidden from the tree, so they can't be deleted by hand: they go with the repository, or stay as read-only history.
+    const archived = store.data.sessions.filter((x) => x.repoId === id && x.archivedAt);
+    if (opts?.keepArchived) {
+      // Free their worktrees while the repository is still known; work that isn't safely on GitHub keeps its worktree.
+      for (const s of archived) if (!s.worktreeGone && !s.free) await api.dropWorktree(s.id).catch(() => undefined);
+    } else {
+      for (const s of archived) await sessions.remove(s.id, { worktree: true, branch: false });
+    }
     // Only the local clone is ever deleted; the repository on GitHub is left alone.
     if (opts?.deleteLocal && (await G.fileExists(r.localPath))) {
       await G.deleteClone(r.localPath);
+      for (const s of store.data.sessions) if (s.repoId === id) s.worktreeGone = true;
       store.log({ kind: 'git', who: me(), human: true, what: 'deleted the local clone', repo: r.name, detail: r.localPath });
     }
     await repos.remove(id);

@@ -96,7 +96,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
       { label: s.files ? `Review changes (${s.files})` : 'Review changes', icon: 'git-diff', onClick: () => go({ screen: 'session', id: s.id, tab: 'changes' }) },
       { label: s.free ? 'Copy folder path' : 'Copy branch name', icon: 'copy', separator: true, onClick: () => void api.copyText(s.free ? s.worktree : s.branch) },
       { label: 'Rename…', icon: 'pencil-simple', onClick: () => setUI({ renaming: s.id }) },
-      { label: 'Stop session', icon: 'stop', disabled: !running, onClick: () => void api.stopSession(s.id) },
+      { label: 'Stop session', icon: 'stop', disabled: !!s.archivedAt, onClick: () => void api.stopSession(s.id) },
       { label: s.archivedAt ? 'Restore from archive' : running ? 'Archive (stop it first)' : 'Archive session', icon: s.archivedAt ? 'arrow-counter-clockwise' : 'archive', disabled: !s.archivedAt && running, onClick: () => { api.archiveSession(s.id, !s.archivedAt).catch((err) => toast({ tone: 'error', title: 'Could not archive', description: String(err?.message || err).replace(/^Error invoking remote method \'\w+\': Error: /, '') })); } },
       { label: 'Delete session…', icon: 'trash', danger: true, separator: true, onClick: () => setUI({ deleting: s.id }) }
     ] });

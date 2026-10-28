@@ -1116,7 +1116,7 @@ export interface HelmApi {
   /** What deleting the repository's local clone would lose. Nothing here is ever deleted on GitHub. */
   repoRemoveInfo(id: string): Promise<RepoRemoveInfo>;
   /** Stops tracking the repository; with `deleteLocal` also deletes its clone (and any worktrees of it) from disk. GitHub is never touched. */
-  removeRepo(id: string, opts?: { deleteLocal?: boolean }): Promise<void>;
+  removeRepo(id: string, opts?: { deleteLocal?: boolean; keepArchived?: boolean }): Promise<void>;
   setRepoCap(id: string, cap: number): Promise<void>;
   chooseFolder(): Promise<string | null>;
   fetchRepo(id: string): Promise<void>;
