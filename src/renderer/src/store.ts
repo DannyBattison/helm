@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 import type { AppState, ExternalSession, HelmEvents, NewSessionPreset, ReplyRef, Session, TranscriptEvent } from '@shared/types';
 import { currencySymbol, fmtMoney, fromDisplay, toDisplay } from '@shared/money';
 import { api, on } from './api';
+import { without, withProgress, type UploadItem } from './uploads';
 
 export type Route =
   | { screen: 'overview'; filter?: string }
@@ -26,6 +27,10 @@ export interface ToastItem {
 
 export interface UI {
   app: AppState | null;
+  /** Uploads in progress, across the app. */
+  uploads: UploadItem[];
+  /** The "uploads in progress" dialog: opened when the user tries to leave the page mid-upload. */
+  uploadsOpen: boolean;
   route: Route;
   transcripts: Record<string, TranscriptEvent[]>;
   /** Claude Code sessions helm did not start, per repository id. */
@@ -71,7 +76,7 @@ function loadRoute(): Route {
   } catch { return { screen: 'overview' }; }
 }
 
-let ui: UI = { app: null, route: loadRoute(), transcripts: {}, externals: {}, toasts: [], adding: false, newSession: null, deleting: null, mergingPr: null, renaming: null, checkpointsOf: null, restoring: null, forking: null, replying: null, addingAgent: null, continuing: null, remembering: null, removingRepo: null, showArchived: (() => { try { return localStorage.getItem('helm-show-archived') === '1'; } catch { return false; } })(), palette: false, drawer: false, term: false };
+let ui: UI = { app: null, uploads: [], uploadsOpen: false, route: loadRoute(), transcripts: {}, externals: {}, toasts: [], adding: false, newSession: null, deleting: null, mergingPr: null, renaming: null, checkpointsOf: null, restoring: null, forking: null, replying: null, addingAgent: null, continuing: null, remembering: null, removingRepo: null, showArchived: (() => { try { return localStorage.getItem('helm-show-archived') === '1'; } catch { return false; } })(), palette: false, drawer: false, term: false };
 const listeners = new Set<() => void>();
 
 export function setUI(patch: Partial<UI> | ((u: UI) => Partial<UI>)) {
@@ -87,6 +92,16 @@ export function go(route: Route) {
   try { localStorage.setItem('helm-route', JSON.stringify(route)); } catch { /* storage unavailable */ }
   setUI({ route, drawer: false });
 }
+
+let uploadSeq = 0;
+/** Starts tracking a file being uploaded; returns its key. */
+export function uploadStart(repoId: string, name: string, size: number): string {
+  const key = String(++uploadSeq);
+  setUI((u) => ({ uploads: [...u.uploads, { key, repoId, name, size, sent: 0 }] }));
+  return key;
+}
+export const uploadProgress = (key: string, sent: number) => setUI((u) => ({ uploads: withProgress(u.uploads, key, sent) }));
+export const uploadDone = (key: string) => setUI((u) => { const uploads = without(u.uploads, key); return { uploads, uploadsOpen: u.uploadsOpen && uploads.length > 0 }; });
 
 let toastId = 1;
 export function toast(t: Omit<ToastItem, 'id'>) {

@@ -2,16 +2,21 @@ import React from 'react';
 import type { RepoArtifact } from '@shared/types';
 import { api } from '../api';
 import { relTime } from '../lib';
-import { toast } from '../store';
+import { getUI, toast, uploadDone, uploadProgress, uploadStart, useUI } from '../store';
 import { Button } from '../ui';
+import { percent } from '../uploads';
 
 const errText = (e: any) => String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '');
 const size = (n: number) => (n < 1024 ? n + ' B' : n < 1048576 ? Math.round(n / 1024) + ' KB' : (n / 1048576).toFixed(1) + ' MB');
 
-/** Sends files to a repository's artifacts, one at a time, in pieces. `progress` is told how far the current file is ('' when done). Returns how many were stored. */
-export async function uploadRepoArtifacts(repoId: string, list: File[], progress: (s: string) => void = () => {}): Promise<number> {
+/** Sends files to a repository's artifacts, one at a time, in pieces. Progress is kept in the store, so it survives leaving the view. Returns how many were stored. */
+export async function uploadRepoArtifacts(repoId: string, list: File[]): Promise<number> {
   let stored = 0;
-  for (const f of list) {
+  // All files are listed up front, so a second batch started meanwhile sees them, and the same file is never sent twice at once.
+  const fresh = list.filter((f) => !getUI().uploads.some((x) => x.repoId === repoId && x.name === f.name));
+  if (fresh.length < list.length) toast({ tone: 'neutral', title: 'Already uploading', description: list.filter((f) => !fresh.includes(f)).map((f) => f.name).join(', ') });
+  const keys = fresh.map((f) => uploadStart(repoId, f.name, f.size));
+  for (const [n, f] of fresh.entries()) {
     try {
       // Pieces of 16 MB, so a file of any size is never held whole in the browser or in one message. An interrupted upload of the same file carries on where it stopped.
       const PIECE = 16 * 1024 * 1024;
@@ -23,26 +28,31 @@ export async function uploadRepoArtifacts(repoId: string, list: File[], progress
         let bin = '';
         for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
         await api.addRepoArtifactChunk(repoId, f.name, at, btoa(bin), at + PIECE >= f.size, fp);
-        progress(f.size ? `${f.name} ${Math.min(100, Math.round(((at + PIECE) / f.size) * 100))}%` : '');
+        uploadProgress(keys[n], Math.min(f.size, at + PIECE));
       }
       stored++;
     } catch (e) { toast({ tone: 'error', title: 'Could not upload artifact ' + f.name, description: errText(e) }); }
+    finally { uploadDone(keys[n]); }
   }
-  progress('');
   return stored;
 }
 
 /** Files uploaded to a repository: copied into every session's worktree and kept out of git (secrets, data, notes that are not committed). Files can be dropped anywhere on the tab. */
 export function RepoArtifacts({ repoId }: { repoId: string }) {
   const [files, setFiles] = React.useState<RepoArtifact[] | null>(null);
-  const [sending, setSending] = React.useState('');
+  const active = useUI((u) => u.uploads.filter((x) => x.repoId === repoId));
+  const sending = active.length ? active.map((x) => `${x.name} ${percent(x)}%`).join(', ') : '';
   const [over, setOver] = React.useState(false);
   const pick = React.useRef<HTMLInputElement>(null);
   const load = React.useCallback(() => { api.listRepoArtifacts(repoId).then(setFiles).catch(() => setFiles([])); }, [repoId]);
   React.useEffect(load, [load]);
+  // Uploads started before navigating here finish while this is open: refresh the list when the last one is done.
+  const busy = active.length > 0;
+  const was = React.useRef(busy);
+  React.useEffect(() => { if (was.current && !busy) load(); was.current = busy; }, [busy, load]);
   const upload = async (list: File[]) => {
-    await uploadRepoArtifacts(repoId, list, setSending);
     if (pick.current) pick.current.value = '';
+    await uploadRepoArtifacts(repoId, list);
     load();
   };
   return (
