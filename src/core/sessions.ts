@@ -1680,7 +1680,8 @@ export class SessionManager {
       this.rt.delete(id);
     }
     s.ask = undefined;
-    this.setStatus(s, 'idle', 'Stopped');
+    // A session that was only waiting (ready for review, errored) keeps that status; stopping just closes what was still open.
+    if (rt || s.status === 'working' || s.status === 'attention') this.setStatus(s, 'idle', 'Stopped');
   }
 
   async setModel(id: string, model: ModelAlias) {
