@@ -43,6 +43,13 @@ export function RepoArtifacts({ repoId }: { repoId: string }) {
   const active = useUI((u) => u.uploads.filter((x) => x.repoId === repoId));
   const sending = active.length ? active.map((x) => `${x.name} ${percent(x)}%`).join(', ') : '';
   const [over, setOver] = React.useState(false);
+  const [busy, setBusy] = React.useState('');
+  const unzip = async (name: string) => {
+    setBusy(name);
+    try { await api.unzipRepoArtifact(repoId, name); } catch (e) { toast({ tone: 'error', title: 'Could not unzip ' + name, description: errText(e) }); }
+    setBusy('');
+    load();
+  };
   const pick = React.useRef<HTMLInputElement>(null);
   const load = React.useCallback(() => { api.listRepoArtifacts(repoId).then(setFiles).catch(() => setFiles([])); }, [repoId]);
   React.useEffect(load, [load]);
@@ -67,11 +74,15 @@ export function RepoArtifacts({ repoId }: { repoId: string }) {
       <input ref={pick} type="file" multiple style={{ display: 'none' }} onChange={(e) => void upload([...(e.target.files || [])])} />
       <Button size="sm" icon="upload-simple" disabled={!!sending} onClick={() => pick.current?.click()}>{sending ? 'Uploading ' + sending : 'Upload artifacts…'}</Button>
       {over ? <div style={{ font: '500 12.5px/1.5 var(--font-sans)', color: 'var(--accent-text)' }}>Drop to upload</div> : null}
-      <div style={{ alignSelf: 'stretch', maxWidth: 640 }}>
+      <div style={{ alignSelf: 'stretch', maxWidth: 760 }}>
         {files == null ? null : files.length === 0 ? <div style={{ font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>No artifacts yet.</div> : files.map((f) => (
-          <div key={f.name} style={{ display: 'flex', gap: 12, alignItems: 'center', minHeight: 38, borderTop: '1px solid var(--border-subtle)', font: '400 12.5px/1.5 var(--font-mono)' }}>
-            <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={f.name}>{f.name}</span>
+          <div key={f.name} style={{ display: 'flex', gap: 8, alignItems: 'center', minHeight: 38, borderTop: '1px solid var(--border-subtle)', font: '400 12.5px/1.5 var(--font-mono)' }}>
+            {f.dir ? <i className="ph ph-folder" style={{ color: 'var(--text-3)' }} /> : null}
+            <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={f.name}>{f.name}{f.dir ? '/' : ''}</span>
             <span style={{ color: 'var(--text-3)' }}>{size(f.size)} · {relTime(f.modified)}</span>
+            {!f.dir && /\.zip$/i.test(f.name) ? <Button size="sm" disabled={busy === f.name} onClick={() => void unzip(f.name)}>{busy === f.name ? 'Unzipping…' : 'Unzip'}</Button> : null}
+            <Button size="sm" variant={f.shared ? 'secondary' : undefined} icon={f.shared ? 'link' : undefined} title={f.shared ? 'Linked into worktrees, read-only. Click to copy instead.' : 'Link into worktrees read-only instead of copying: instant and uses no extra disk.'}
+              onClick={() => void api.setRepoArtifactShared(repoId, f.name, !f.shared).then(load, (e) => toast({ tone: 'error', title: 'Could not change ' + f.name, description: errText(e) }))}>{f.shared ? 'Shared · read-only' : 'Share read-only'}</Button>
             <Button size="sm" onClick={() => void api.removeRepoArtifact(repoId, f.name).then(load)}>Remove</Button>
           </div>
         ))}

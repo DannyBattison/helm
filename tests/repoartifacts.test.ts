@@ -1,9 +1,9 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { addRepoArtifact, addRepoArtifactChunk, repoArtifactProgress, listRepoArtifacts, removeRepoArtifact, setRepoArtifactDir, supplyRepoArtifacts, validName } from '../src/core/repoartifacts';
+import { addRepoArtifact, addRepoArtifactChunk, repoArtifactProgress, listRepoArtifacts, removeRepoArtifact, setRepoArtifactDir, setRepoArtifactShared, supplyRepoArtifacts, unzipRepoArtifact, validName } from '../src/core/repoartifacts';
 
 const sh = (cwd: string, ...a: string[]) => execFileSync('git', a, { cwd, encoding: 'utf8' });
 
@@ -44,6 +44,18 @@ describe('repo files', () => {
     await removeRepoArtifact(repo, 'r.bin');
   });
 
+  it('reports the bytes copied and leaves no temporary file', async () => {
+    const wt = mkdtempSync(join(tmpdir(), 'helm-wt-'));
+    sh(wt, 'init', '-q');
+    await addRepoArtifact(repo, 'big.bin', Buffer.alloc(5000, 1).toString('base64'));
+    let seen = 0;
+    await supplyRepoArtifacts(repo, wt, true, (n) => { seen += n; });
+    await removeRepoArtifact(repo, 'big.bin');
+    expect(seen).toBe(5000);
+    expect(existsSync(join(wt, 'big.bin'))).toBe(true);
+    expect(existsSync(join(wt, 'big.bin.helm-copy'))).toBe(false);
+  });
+
   it('copies into a worktree and keeps them out of git', async () => {
     const wt = mkdtempSync(join(tmpdir(), 'helm-wt-'));
     sh(wt, 'init', '-q');
@@ -58,5 +70,70 @@ describe('repo files', () => {
     writeFileSync(join(wt, 'notes.md'), 'edited');
     expect(await supplyRepoArtifacts(repo, wt, false)).toEqual([]);
     expect(readFileSync(join(wt, 'notes.md'), 'utf8')).toBe('edited');
+  });
+
+  it('unpacks a zip into a folder named after it, keeping its structure and leaving out macOS junk', async () => {
+    const src = mkdtempSync(join(tmpdir(), 'helm-zip-'));
+    mkdirSync(join(src, 'data', 'deep'), { recursive: true });
+    writeFileSync(join(src, 'data', 'deep', 'a.txt'), 'A');
+    writeFileSync(join(src, 'top.txt'), 'T');
+    execFileSync('python3', ['-c', `
+import zipfile
+z = zipfile.ZipFile('${join(src, 'my-zip.zip')}', 'w')
+z.write('${join(src, 'data', 'deep', 'a.txt')}', 'data/deep/a.txt')
+z.write('${join(src, 'top.txt')}', 'top.txt')
+z.writestr('__MACOSX/junk', 'x')
+z.close()`]);
+    await addRepoArtifact(repo, 'my-zip.zip', readFileSync(join(src, 'my-zip.zip')).toString('base64'));
+    expect(await unzipRepoArtifact(repo, 'my-zip.zip')).toBe('my-zip');
+    const list = await listRepoArtifacts(repo);
+    const dir = list.find((f) => f.name === 'my-zip')!;
+    expect(dir.dir).toBe(true);
+    expect(dir.size).toBe(2);
+    await expect(unzipRepoArtifact(repo, 'my-zip.zip')).rejects.toThrow(/already exists/);
+    await expect(unzipRepoArtifact(repo, 'notes.md')).rejects.toThrow(/zip/);
+    const wt = mkdtempSync(join(tmpdir(), 'helm-wt-'));
+    sh(wt, 'init', '-q');
+    await supplyRepoArtifacts(repo, wt, true);
+    expect(readFileSync(join(wt, 'my-zip', 'data', 'deep', 'a.txt'), 'utf8')).toBe('A');
+    await removeRepoArtifact(repo, 'my-zip');
+    await removeRepoArtifact(repo, 'my-zip.zip');
+  });
+
+  it('refuses a zip with an entry that climbs out of the folder', async () => {
+    const f = join(mkdtempSync(join(tmpdir(), 'helm-zip-')), 'evil.zip');
+    execFileSync('python3', ['-c', `
+import zipfile
+z = zipfile.ZipFile('${f}', 'w')
+z.writestr('../escape.txt', 'x')
+z.close()`]);
+    await addRepoArtifact(repo, 'evil.zip', readFileSync(f).toString('base64'));
+    await expect(unzipRepoArtifact(repo, 'evil.zip')).rejects.toThrow();
+    expect((await listRepoArtifacts(repo)).some((x) => x.name === 'evil')).toBe(false);
+    await removeRepoArtifact(repo, 'evil.zip');
+  });
+
+  it('links a shared folder into worktrees, read-only, instead of copying it', async () => {
+    const src = mkdtempSync(join(tmpdir(), 'helm-zip-'));
+    writeFileSync(join(src, 'f.txt'), 'F');
+    execFileSync('python3', ['-c', `
+import zipfile
+z = zipfile.ZipFile('${join(src, 'big.zip')}', 'w')
+z.write('${join(src, 'f.txt')}', 'f.txt')
+z.close()`]);
+    await addRepoArtifact(repo, 'big.zip', readFileSync(join(src, 'big.zip')).toString('base64'));
+    await unzipRepoArtifact(repo, 'big.zip');
+    await setRepoArtifactShared(repo, 'big', true);
+    expect((await listRepoArtifacts(repo)).find((f) => f.name === 'big')!.shared).toBe(true);
+    const wt = mkdtempSync(join(tmpdir(), 'helm-wt-'));
+    sh(wt, 'init', '-q');
+    let copied = 0;
+    await supplyRepoArtifacts(repo, wt, true, (n) => { copied += n; });
+    expect(lstatSync(join(wt, 'big')).isSymbolicLink()).toBe(true);
+    expect(readFileSync(join(wt, 'big', 'f.txt'), 'utf8')).toBe('F');
+    expect(statSync(join(wt, 'big', 'f.txt')).mode & 0o222).toBe(0);
+    expect(sh(wt, 'status', '--porcelain')).not.toContain('big');
+    await removeRepoArtifact(repo, 'big');
+    await removeRepoArtifact(repo, 'big.zip');
   });
 });

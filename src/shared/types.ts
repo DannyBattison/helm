@@ -146,8 +146,13 @@ export interface McpServer {
 /** An artifact (an uploaded file) of a repository: copied into every session's worktree, never committed. */
 export interface RepoArtifact {
   name: string;
+  /** For a folder, everything in it. */
   size: number;
   modified: number;
+  /** A folder (from an unpacked zip). */
+  dir?: boolean;
+  /** Linked into worktrees, read-only, instead of copied. */
+  shared?: boolean;
 }
 
 export interface AskQuestion {
@@ -310,6 +315,8 @@ export interface Session {
   review?: SelfReview;
   /** Waiting to start: for a free slot, or for another session to be merged. It has a worktree but the agent has not run. */
   queued?: { after?: string; since: number };
+  /** The repository's artifacts are being copied into the worktree; the agent starts when this is done. */
+  preparing?: { done: number; total: number };
   /**
    * The pull request will be merged as soon as its checks pass. Until then the session stays in the sidebar. A failure
    * (failing checks, a closed pull request, GitHub refusing the merge) is kept in `error` and shows in the inbox.
@@ -1189,6 +1196,10 @@ export interface HelmApi {
   /** Bytes already kept of an interrupted upload of the same file (same fingerprint), or 0. */
   repoArtifactProgress(repoId: string, name: string, fingerprint: string): Promise<number>;
   removeRepoArtifact(repoId: string, name: string): Promise<void>;
+  /** Unpacks a .zip artifact into a folder of the same name (keeping its structure). Returns the folder's name. */
+  unzipRepoArtifact(repoId: string, name: string): Promise<string>;
+  /** Links a file or folder into worktrees, read-only, instead of copying it (or goes back to copying). Worktrees that already hold a copy keep it. */
+  setRepoArtifactShared(repoId: string, name: string, shared: boolean): Promise<void>;
   /** Creates an automated agent (no `id`), or replaces the one with that id. Returns its id. */
   saveAutomation(agent: Omit<AutomatedAgent, 'id' | 'createdAt' | 'lastRun'> & { id?: string }): Promise<string>;
   deleteAutomation(id: string): Promise<void>;

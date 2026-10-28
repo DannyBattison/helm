@@ -15,7 +15,7 @@ import { Companion } from './companion';
 import { installLogging, logFile, logLine, recentLog } from './log';
 import { cleanHeavy, dirSize, reclaimableBytes } from './disk';
 import { readArtifact } from './artifacts';
-import { addRepoArtifact, addRepoArtifactChunk, repoArtifactProgress, listRepoArtifacts, removeRepoArtifact, setRepoArtifactDir } from './repoartifacts';
+import { addRepoArtifact, addRepoArtifactChunk, repoArtifactProgress, listRepoArtifacts, removeRepoArtifact, setRepoArtifactDir, setRepoArtifactShared, unzipRepoArtifact } from './repoartifacts';
 import { cpuTimes, cpuUse, HISTORY_LIMIT, parseLimit, type CpuTimes, type SystemPoint } from '../shared/system';
 import { approvedByReviews, autoMergeReady, queuedMergeStep } from '../shared/queue';
 import { SyncService } from './sync';
@@ -538,6 +538,8 @@ export const api: HelmApi = {
   addRepoArtifactChunk: (id, name, offset, data, done, fp) => addRepoArtifactChunk(repos.must(id).id, name, offset, data, done, fp),
   repoArtifactProgress: (id, name, fp) => repoArtifactProgress(repos.must(id).id, name, fp),
   removeRepoArtifact: (id, name) => removeRepoArtifact(repos.must(id).id, name),
+  unzipRepoArtifact: (id, name) => unzipRepoArtifact(repos.must(id).id, name),
+  setRepoArtifactShared: (id, name, shared) => setRepoArtifactShared(repos.must(id).id, name, shared),
   async saveAutomation(a) { return automations.save(a); },
   async deleteAutomation(id) { automations.remove(id); },
   runAutomation: (id) => automations.runNow(id),
