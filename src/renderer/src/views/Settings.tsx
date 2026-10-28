@@ -268,7 +268,7 @@ const GOTO_PAGES: { value: GotoTarget['page']; label: string }[] = [
 ];
 const REPO_TABS = [{ value: '', label: 'Its usual tab' }, { value: 'history', label: 'History' }, { value: 'code', label: 'Code' }, { value: 'external', label: 'Outside sessions' }, { value: 'memory', label: 'Memory' }, { value: 'mcp', label: 'MCP servers' }, { value: 'worktrees', label: 'Branches & worktrees' }, { value: 'issues', label: 'Issues' }, { value: 'actions', label: 'Actions' }, { value: 'prs', label: 'Pull requests' }];
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function LabeledField({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <span style={{ font: '500 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>{label}</span>
@@ -293,32 +293,32 @@ function PresetEditor({ preset, onChange }: { preset: NewSessionPreset; onChange
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '4px 0 6px' }}>
       <div style={{ display: 'flex', gap: 8 }}>
-        <div style={{ flex: 1, minWidth: 0 }}><Field label="Repository">
+        <div style={{ flex: 1, minWidth: 0 }}><LabeledField label="Repository">
           <Select value={preset.repoId || ''} onChange={(e: any) => put({ repoId: e.target.value, base: undefined, extraRepos: undefined, ...(e.target.value === '@free' ? { compare: false, variants: undefined } : { folder: undefined }) })} icon="book-bookmark"
             options={[{ value: '', label: 'Whichever page you are on' }, { value: '@free', label: 'No repository (free agent)' }, ...app.repos.map((r) => ({ value: r.id, label: r.id }))]} />
-        </Field></div>
-        {free ? null : <div style={{ flex: 1, minWidth: 0 }}><Field label="Branch to start from">
+        </LabeledField></div>
+        {free ? null : <div style={{ flex: 1, minWidth: 0 }}><LabeledField label="Branch to start from">
           <Input mono value={preset.base || ''} placeholder="The default branch" onChange={(e: any) => put({ base: e.target.value.trim() })} />
-        </Field></div>}
+        </LabeledField></div>}
       </div>
-      <Field label="Task" hint="Filled into the box so you can add to it or send it as it is. Attachments cannot be part of a shortcut.">
+      <LabeledField label="Task" hint="Filled into the box so you can add to it or send it as it is. Attachments cannot be part of a shortcut.">
         <textarea rows={3} value={preset.task || ''} onChange={(e) => put({ task: e.target.value })} placeholder="Leave empty to type it each time"
           style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', border: 'none', outline: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border-strong)', color: 'var(--text-1)', font: '400 13px/1.5 var(--font-sans)', padding: '8px 10px' }} />
-      </Field>
+      </LabeledField>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 110px', gap: 8 }}>
-        <Field label="Agent and model"><Select value={preset.choice || ''} onChange={(e: any) => put({ choice: e.target.value })} options={models} /></Field>
-        <Field label="Permissions"><Select value={preset.permMode || ''} onChange={(e: any) => put({ permMode: e.target.value })} options={[{ value: '', label: 'The default' }, ...PERM_OPTIONS]} /></Field>
-        <Field label="Budget"><Input mono value={preset.budget != null ? sym + String(Math.round(to(preset.budget) * 100) / 100) : ''} placeholder="Default"
-          onChange={(e: any) => { const n = parseFloat(e.target.value.replace(/[^0-9.]/g, '')); put({ budget: Number.isFinite(n) ? from(n) : undefined }); }} /></Field>
+        <LabeledField label="Agent and model"><Select value={preset.choice || ''} onChange={(e: any) => put({ choice: e.target.value })} options={models} /></LabeledField>
+        <LabeledField label="Permissions"><Select value={preset.permMode || ''} onChange={(e: any) => put({ permMode: e.target.value })} options={[{ value: '', label: 'The default' }, ...PERM_OPTIONS]} /></LabeledField>
+        <LabeledField label="Budget"><Input mono value={preset.budget != null ? sym + String(Math.round(to(preset.budget) * 100) / 100) : ''} placeholder="Default"
+          onChange={(e: any) => { const n = parseFloat(e.target.value.replace(/[^0-9.]/g, '')); put({ budget: Number.isFinite(n) ? from(n) : undefined }); }} /></LabeledField>
       </div>
       {free ? (
-        <Field label="Folder" hint="Work directly in this folder instead of a new scratch one. There is no worktree to throw away and no checkpoints.">
+        <LabeledField label="Folder" hint="Work directly in this folder instead of a new scratch one. There is no worktree to throw away and no checkpoints.">
           <Input mono value={preset.folder || ''} placeholder="A new scratch folder, with git" onChange={(e: any) => put({ folder: e.target.value.trim() })} />
-        </Field>
+        </LabeledField>
       ) : <>
-        {others.length ? <Field label="Also work in"><Select multiple value={(preset.extraRepos || []).filter((id) => others.some((r) => r.id === id))} onChange={(e: any) => put({ extraRepos: e.target.value })} options={others.map((r) => ({ value: r.id, label: r.id }))} placeholder="None" icon="books" /></Field> : null}
+        {others.length ? <LabeledField label="Also work in"><Select multiple value={(preset.extraRepos || []).filter((id) => others.some((r) => r.id === id))} onChange={(e: any) => put({ extraRepos: e.target.value })} options={others.map((r) => ({ value: r.id, label: r.id }))} placeholder="None" icon="books" /></LabeledField> : null}
       </>}
-      <Field label="Also ask"><Select multiple value={preset.joiners || []} onChange={(e: any) => put({ joiners: e.target.value })} options={modelChoices(app)} placeholder="No other agents" icon="users-three" /></Field>
+      <LabeledField label="Also ask"><Select multiple value={preset.joiners || []} onChange={(e: any) => put({ joiners: e.target.value })} options={modelChoices(app)} placeholder="No other agents" icon="users-three" /></LabeledField>
       {free ? null : <>
         <Checkbox checked={!!preset.compare} onChange={(v: boolean) => put({ compare: v })} label="Compare several runs" description="Opens the dialog set up to start the same task more than once." />
         {preset.compare ? <VariantEditor variants={preset.variants?.length ? preset.variants : defaultVariants(app)} onChange={(v) => put({ variants: v })} /> : null}
@@ -333,12 +333,12 @@ function GotoEditor({ target, onChange }: { target: GotoTarget; onChange(t: Goto
   const app = useApp();
   return (
     <div style={{ display: 'flex', gap: 8, padding: '4px 0 6px' }}>
-      <div style={{ flex: 1, minWidth: 0 }}><Field label="Opens">
+      <div style={{ flex: 1, minWidth: 0 }}><LabeledField label="Opens">
         <Select value={target.page} onChange={(e: any) => onChange({ page: e.target.value, repoId: e.target.value === 'repo' ? target.repoId : undefined })} options={GOTO_PAGES} icon="arrow-right" />
-      </Field></div>
+      </LabeledField></div>
       {target.page === 'repo' ? <>
-        <div style={{ flex: 1, minWidth: 0 }}><Field label="Repository"><Select value={target.repoId || ''} onChange={(e: any) => onChange({ ...target, repoId: e.target.value })} options={[{ value: '', label: 'Choose…' }, ...app.repos.map((r) => ({ value: r.id, label: r.id }))]} icon="book-bookmark" /></Field></div>
-        <div style={{ flex: 1, minWidth: 0 }}><Field label="Tab"><Select value={target.tab || ''} onChange={(e: any) => onChange({ ...target, tab: e.target.value || undefined })} options={REPO_TABS} /></Field></div>
+        <div style={{ flex: 1, minWidth: 0 }}><LabeledField label="Repository"><Select value={target.repoId || ''} onChange={(e: any) => onChange({ ...target, repoId: e.target.value })} options={[{ value: '', label: 'Choose…' }, ...app.repos.map((r) => ({ value: r.id, label: r.id }))]} icon="book-bookmark" /></LabeledField></div>
+        <div style={{ flex: 1, minWidth: 0 }}><LabeledField label="Tab"><Select value={target.tab || ''} onChange={(e: any) => onChange({ ...target, tab: e.target.value || undefined })} options={REPO_TABS} /></LabeledField></div>
       </> : null}
     </div>
   );
@@ -382,10 +382,10 @@ function CustomShortcutsSection({ st, set }: { st: SettingsT; set(p: Partial<Set
           </div>
           {isOpen ? (
             <div style={{ margin: '10px 0 0 28px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <Field label="Does">
+              <LabeledField label="Does">
                 <SegmentedControl value={c.action.kind} onChange={(k: string) => patch(c.id, { action: k === 'goto' ? { kind: 'goto', target: { page: 'overview' } } : { kind: 'newSession', preset: {} } })}
                   options={[{ value: 'newSession', label: 'Start a new session', icon: 'plus' }, { value: 'goto', label: 'Go to a page', icon: 'arrow-right' }]} style={{ alignSelf: 'flex-start' }} />
-              </Field>
+              </LabeledField>
               {c.action.kind === 'newSession'
                 ? <PresetEditor preset={c.action.preset} onChange={(preset) => patch(c.id, { action: { kind: 'newSession', preset } })} />
                 : <GotoEditor target={c.action.target} onChange={(target) => patch(c.id, { action: { kind: 'goto', target } })} />}
