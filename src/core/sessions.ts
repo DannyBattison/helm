@@ -569,6 +569,7 @@ export class SessionManager {
       others.length ? `This session spans more than one repository. Besides this one (${s.repoId}), you have a worktree in each of these, which you may read and edit and commit in (use git -C <path>):\n${others.join('\n')}\nCommit in each repository whose files you changed; each one gets its own pull request.` : '',
       'Commit as you go: make a commit each time a coherent piece of work is done and working, rather than one big commit at the end. Keep commits small with clear messages.',
       st.commitStyle === 'conventional' ? 'Write commit messages as conventional commits: "type(scope): summary" with a type such as feat, fix, docs, refactor, test or chore, a summary in the imperative under 72 characters, and the scope optional.' : '',
+      st.signCommits === 'on' ? 'Commits are signed automatically. Never turn signing off with --no-gpg-sign; if a commit fails because it could not be signed, say so rather than working around it.' : '',
       !st.commitTrailer ? '' : st.commitAuthor === 'sole'
         ? `End every commit message with a blank line and this trailer: "Helm-Session: ${s.id}". Do not add any Co-authored-by trailer. The commits are authored by ${this.backendOf(s).shortName} alone.`
         : `End every commit message with a blank line and this trailer: "Co-authored-by: helm session ${s.id} <noreply@helm.app>".`,
@@ -595,7 +596,7 @@ export class SessionManager {
       systemAppend: this.systemAppend(s, artifacts),
       resume: s.agentSessionId,
       extraDirs: [...(s.uploads ? [s.uploads.dir] : []), ...(s.extras || []).map((x) => x.worktree)],
-      env: { ...parseEnv(settings.agentEnv), ...(settings.commitAuthor === 'sole' ? { GIT_AUTHOR_NAME: this.backendOf(s).identity.name, GIT_AUTHOR_EMAIL: this.backendOf(s).identity.email } : {}) },
+      env: { ...parseEnv(settings.agentEnv), ...(settings.signCommits === 'config' ? {} : { GIT_CONFIG_PARAMETERS: [process.env.GIT_CONFIG_PARAMETERS, ...G.signingConfig(settings.signCommits).map((c) => `'${c}'`)].filter(Boolean).join(' ') }), ...(settings.commitAuthor === 'sole' ? { GIT_AUTHOR_NAME: this.backendOf(s).identity.name, GIT_AUTHOR_EMAIL: this.backendOf(s).identity.email } : {}) },
       remoteControl: settings.remoteControl,
       subagentLimit: this.sessionLimit(s),
       mcpServers: mcpConfig(settings.mcpServers, this.store.data.repos.find((r) => r.id === s.repoId)?.mcpServers),

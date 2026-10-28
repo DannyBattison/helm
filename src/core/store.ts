@@ -101,6 +101,7 @@ export const defaultSettings = (): Settings => ({
   fetchBeforeSession: true,
   commitStyle: 'plain',
   commitTrailer: true,
+  signCommits: 'config',
   prDraft: false,
   notifyPreview: true,
   startAtLogin: false,

@@ -17,7 +17,13 @@ function env(): NodeJS.ProcessEnv {
   return e;
 }
 
-export const git = (cwd: string, ...args: string[]) => run('git', ['-c', 'core.quotepath=off', ...args], { cwd, env: env() });
+export type SignMode = 'config' | 'on' | 'off';
+/** Git's configuration entries (`-c` form) for a signing choice; none follows the user's own git configuration. */
+export const signingConfig = (mode: SignMode): string[] => mode === 'on' ? ['commit.gpgsign=true'] : mode === 'off' ? ['commit.gpgsign=false'] : [];
+let signing: SignMode = 'config';
+export const setSigning = (m: SignMode) => { signing = m; };
+
+export const git = (cwd: string, ...args: string[]) => run('git', ['-c', 'core.quotepath=off', ...signingConfig(signing).flatMap((c) => ['-c', c]), ...args], { cwd, env: env() });
 export const gitOk = (cwd: string, ...args: string[]) => git(cwd, ...args).then(() => true, () => false);
 
 export async function clone(url: string, dest: string) {

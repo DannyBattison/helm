@@ -69,3 +69,12 @@ describe('new settings defaults', () => {
     expect(d).toMatchObject({ defaultEffort: 'default', stallMinutes: 0, budgetAction: 'pause', autoMerge: 'off', pushWhen: 'commit', commitTrailer: true, fetchBeforeSession: true, timeFormat: '24', startPage: 'last', uiScale: 100, confirmDestructive: true });
   });
 });
+
+import { signingConfig } from '../src/core/git';
+describe('commit signing', () => {
+  it('maps the choice to git configuration, and leaves git’s own alone by default', () => {
+    expect(signingConfig('config')).toEqual([]);
+    expect(signingConfig('on')).toEqual(['commit.gpgsign=true']);
+    expect(signingConfig('off')).toEqual(['commit.gpgsign=false']);
+  });
+});

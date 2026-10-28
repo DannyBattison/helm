@@ -554,6 +554,8 @@ export interface Settings {
   fetchBeforeSession: boolean;
   /** How commit messages are written: freely, or as conventional commits (`feat: …`). */
   commitStyle: 'plain' | 'conventional';
+  /** Whether commits are signed: as your git configuration says, always, or never. Applies to the agent's commits and the ones helm makes. */
+  signCommits: 'config' | 'on' | 'off';
   /** Add the session trailer to commit messages. */
   commitTrailer: boolean;
   /** Open pull requests as drafts unless chosen otherwise. */

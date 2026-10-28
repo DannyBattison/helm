@@ -350,6 +350,7 @@ export const api: HelmApi = {
     const prevEnabled = store.data.settings.enabledAgents;
     Object.assign(store.data.settings, patch);
     if ('theme' in patch) applyTheme();
+    if ('signCommits' in patch) G.setSigning(store.data.settings.signCommits);
     if ('syncEnabled' in patch) syncer.settingsChanged();
     if ('billing' in patch && patch.billing === 'subscription') void refreshPlan(true);
     if ('archiveAfterDays' in patch) sessions.autoArchive();
@@ -1294,6 +1295,7 @@ export async function start(h: Host) {
   await installLogging(host.dataDir);
   startWatchdog();
   await store.load(host.dataDir);
+  G.setSigning(store.data.settings.signCommits);
   if (!process.env.HELM_DEV_NO_RECOVER) sessions.recover();
   if (host.companion !== false) void companion.loadKey().then(() => companion.apply());
   GH.setSignInGuard(host.allowLogin ?? null);
