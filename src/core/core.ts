@@ -560,7 +560,7 @@ export const api: HelmApi = {
   async listExternalSessions(repoId) {
     const r = repos.must(repoId);
     const live = await liveSessions();
-    const own = new Set(store.data.sessions.map((s) => s.agentSessionId).filter(Boolean));
+    const own = new Set(store.data.sessions.flatMap((s) => [s.agentSessionId, ...(s.panel?.members.map((m) => m.agentSessionId) ?? [])]).filter(Boolean));
     const lists = await Promise.all(registry.all().map(async (b) => ((await b.conversations?.list(r.localPath)) ?? []).map((x) => ({ x, backend: b.id }))));
     return lists.flat()
       .filter(({ x }) => !own.has(x.id))
