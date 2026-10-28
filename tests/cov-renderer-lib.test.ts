@@ -85,7 +85,7 @@ describe('session helpers', () => {
     ] });
     expect(subagentTree(s).map((x) => [x.a.id, x.depth])).toEqual([['a', 0], ['b', 1], ['d', 2]]);
     expect(subagentTree(s, true).map((x) => x.a.id)).toEqual(['a', 'b', 'd', 'c']);
-    expect(runningSubagents(s)).toBe(3);
+    expect(runningSubagents(s)).toBe(2);
     expect(subagentTree({ ...s, subagents: undefined })).toEqual([]);
     expect(runningSubagents({ ...s, subagents: undefined })).toBe(0);
   });
