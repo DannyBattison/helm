@@ -147,11 +147,16 @@ export interface McpServer {
   disabled?: boolean;
 }
 
-/** An artifact (an uploaded file) of a repository: copied into every session's worktree, never committed. */
-export interface RepoArtifact {
+/** A fixture (a file the user uploaded) of a repository: copied or linked into every session's worktree, never committed. */
+export interface RepoFixture {
   name: string;
+  /** For a folder, everything in it. */
   size: number;
   modified: number;
+  /** A folder (from an unpacked zip). */
+  dir?: boolean;
+  /** Linked into worktrees, read-only, instead of copied. */
+  shared?: boolean;
 }
 
 export interface AskQuestion {
@@ -314,6 +319,8 @@ export interface Session {
   review?: SelfReview;
   /** Waiting to start: for a free slot, or for another session to be merged. It has a worktree but the agent has not run. */
   queued?: { after?: string; since: number };
+  /** The repository's fixtures are being copied into the worktree; the agent starts when this is done. */
+  preparing?: { done: number; total: number };
   /**
    * The pull request will be merged as soon as its checks pass. Until then the session stays in the sidebar. A failure
    * (failing checks, a closed pull request, GitHub refusing the merge) is kept in `error` and shows in the inbox.
@@ -1190,13 +1197,17 @@ export interface HelmApi {
   saveMcpServer(repoId: string | null, server: McpServer, replace?: string): Promise<void>;
   removeMcpServer(repoId: string | null, name: string): Promise<void>;
   /** Files uploaded to a repository, copied into every session's worktree (new and resumed) and kept out of git. */
-  listRepoArtifacts(repoId: string): Promise<RepoArtifact[]>;
-  addRepoArtifact(repoId: string, name: string, base64: string): Promise<void>;
+  listRepoFixtures(repoId: string): Promise<RepoFixture[]>;
+  addRepoFixture(repoId: string, name: string, base64: string): Promise<void>;
   /** One piece of a file of any size; the file appears once `done`. Pieces go in order, each at the offset where the last ended. */
-  addRepoArtifactChunk(repoId: string, name: string, offset: number, base64: string, done: boolean, fingerprint?: string): Promise<void>;
+  addRepoFixtureChunk(repoId: string, name: string, offset: number, base64: string, done: boolean, fingerprint?: string): Promise<void>;
   /** Bytes already kept of an interrupted upload of the same file (same fingerprint), or 0. */
-  repoArtifactProgress(repoId: string, name: string, fingerprint: string): Promise<number>;
-  removeRepoArtifact(repoId: string, name: string): Promise<void>;
+  repoFixtureProgress(repoId: string, name: string, fingerprint: string): Promise<number>;
+  removeRepoFixture(repoId: string, name: string): Promise<void>;
+  /** Unpacks a .zip fixture into a folder of the same name (keeping its structure). Returns the folder's name. */
+  unzipRepoFixture(repoId: string, name: string): Promise<string>;
+  /** Links a file or folder into worktrees, read-only, instead of copying it (or goes back to copying). Worktrees that already hold a copy keep it. */
+  setRepoFixtureShared(repoId: string, name: string, shared: boolean): Promise<void>;
   /** Creates an automated agent (no `id`), or replaces the one with that id. Returns its id. */
   saveAutomation(agent: Omit<AutomatedAgent, 'id' | 'createdAt' | 'lastRun'> & { id?: string }): Promise<string>;
   deleteAutomation(id: string): Promise<void>;
