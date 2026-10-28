@@ -1,0 +1,3 @@
+## 2026-10-28 · Files the user uploads to a repository are "fixtures"; "artifacts" are what agents produce
+
+The repository's Artifacts tab, its API (`listRepoFixtures`, `addRepoFixtureChunk`, `unzipRepoFixture`, `setRepoFixtureShared`, …), types (`RepoFixture`) and module (`repofixtures.ts`) are renamed to fixtures, so "artifact" only means a file an agent hands back (`artifact:` links, the Inbox). The data folder on disk stays `repo-artifacts`, because sync, export/import and existing installs address files by that path. A saved repository tab of `artifacts` no longer matches and falls back to the default tab.

@@ -8,6 +8,7 @@ import { Button, Toast, useNarrow } from './ui';
 import { findCustomShortcut } from '@shared/shortcuts';
 import { isShortcut, repoHere, runCustomShortcut } from './shortcuts';
 import { Activity, Dashboard } from './views/Dashboard';
+import { UploadsGuard } from './views/UploadsGuard';
 import { AddRepo, AgentLoginGate, DeleteSession, MergePr, NewSession, Palette, RemoveRepo, RenameSession, SignIn } from './views/Dialogs';
 import { Archive } from './views/Archive';
 import { AddAgentHost } from './views/Panel';
@@ -241,6 +242,7 @@ export function App() {
       {mergingPr ? <MergePr key={mergingPr.repoId + mergingPr.number} target={mergingPr} onClose={() => setUI({ mergingPr: null })} /> : null}
       {checkpointsOf ? <CheckpointsDialog key={checkpointsOf} id={checkpointsOf} onClose={() => setUI({ checkpointsOf: null })} /> : null}
       <AddAgentHost />
+      <UploadsGuard />
       {restoring ? <RestoreDialog key={restoring.sessionId + restoring.n} target={restoring} onClose={() => setUI({ restoring: null })} /> : null}
       {forking ? <ForkDialog key={forking.sessionId + forking.index} target={forking} onClose={() => setUI({ forking: null })} /> : null}
       {remembering ? <RememberDialog key={remembering.text} target={remembering} onClose={() => setUI({ remembering: null })} /> : null}

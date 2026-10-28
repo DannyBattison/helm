@@ -714,6 +714,7 @@ export function Session({ id, tab, setTab, themeKey, sub, file, line, msg }: { i
               {s.status === 'working' ? (
                 <div style={{ marginLeft: 44, marginRight: 12, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1.5 var(--font-sans)', color: 'var(--status-working-text)' }}>
                   <i className="ph ph-circle-notch" style={{ fontSize: 14, animation: 'helm-spin .9s linear infinite' }} />{s.step}
+                  {s.preparing ? <Meter tone="accent" value={s.preparing.done} max={s.preparing.total} detail={Math.round((s.preparing.done / s.preparing.total) * 100) + '%'} style={{ width: 220 }} /> : null}
                 </div>
               ) : null}
               {s.status === 'idle' && s.step ? <div style={{ marginLeft: 44, marginRight: 12, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{s.step}</div> : null}

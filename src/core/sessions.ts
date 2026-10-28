@@ -16,7 +16,7 @@ import { Advisor } from './advisor';
 import { COMMAND_TOOLS, EDIT_TOOLS, convertMessages, rel, trunc } from './transcript';
 import { artifactDir, dropArtifacts, ensureArtifactDir } from './artifacts';
 import * as G from './git';
-import { supplyRepoArtifacts } from './repoartifacts';
+import { listRepoFixtures, supplyRepoFixtures } from './repofixtures';
 import { checkpointParent, dropCheckpoints, listCheckpoints, restoreCheckpoint, seedFromCheckpoint, takeCheckpoint } from './review';
 import type { Store } from './store';
 import { commandPattern, expandHome, findBash, globMatch, hasShellControl, helmPids, killsPid, matchesAlwaysAsk, parseEnv, uid } from './util';
@@ -146,6 +146,7 @@ export class SessionManager {
   /** Called once at startup: nothing is running, so nothing should claim to be. */
   recover() {
     for (const s of this.sessions) {
+      s.preparing = undefined;
       s.subagents ||= [];
       for (const a of s.subagents) if (a.status === 'working') { a.status = 'stopped'; a.endedAt = a.endedAt ?? Date.now(); }
       if (s.status === 'attention' && s.ask) {
@@ -237,7 +238,6 @@ export class SessionManager {
       await G.addWorktree(repo!.localPath, wt, branch, extra.seed ? await checkpointParent(repo!.localPath, extra.seed) : remoteBase);
       if (extra.seed) await seedFromCheckpoint(wt, extra.seed);
       await this.copyUntracked(repo!.localPath, wt, st.copyFiles);
-      await supplyRepoArtifacts(repo!.id, wt, true);
       try {
         for (const rid of new Set(input.extraRepos || [])) {
           if (rid === repo!.id) continue;
@@ -275,10 +275,52 @@ export class SessionManager {
     const pics = input.images?.length ? input.images : undefined;
     await this.push(id, { k: 'user', t: now, text: input.task, images: pics, cp: await this.checkpoint(s, 'Start: ' + input.task) });
     if (blocked && pics) this.queuedImages.set(id, pics);
+    // Big fixtures take a while to copy: that goes on in the background, so the session exists (and its transcript opens) at once.
+    const prep = free ? undefined : await this.prepareFixtures(s, !!blocked);
     if (blocked) { this.touch(); return id; }
     this.touch();
-    await this.kickoff(s, input.task, pics, 0);
+    if (prep) void this.kickoff(s, input.task, pics, 0).catch((e) => this.setStatus(s, 'error', trunc(String(e?.message || e), 120)));
+    else await this.kickoff(s, input.task, pics, 0);
     return id;
+  }
+
+  /** Sessions whose repository fixtures are still being copied in. The agent does not start until its entry settles. */
+  private preparing = new Map<string, Promise<void>>();
+
+  /**
+   * Copies the repositories' uploaded files into a new session's worktrees, in the background, with progress on `s.preparing`.
+   * Returns the work in progress, or nothing when there are no fixtures to copy.
+   */
+  private async prepareFixtures(s: Session, queued: boolean): Promise<Promise<void> | undefined> {
+    const targets = [{ repoId: s.repoId, wt: s.worktree }, ...(s.extras || []).map((x) => ({ repoId: x.repoId, wt: x.worktree }))];
+    const sizes = await Promise.all(targets.map(async (t) => (await listRepoFixtures(t.repoId)).reduce((n, f) => n + (f.shared ? 0 : f.size), 0)));
+    const total = sizes.reduce((n, x) => n + x, 0);
+    if (!total) {
+      // Nothing to copy; shared files are only linked, which is instant.
+      for (const t of targets) await supplyRepoFixtures(t.repoId, t.wt, true);
+      return undefined;
+    }
+    s.preparing = { done: 0, total };
+    if (!queued) s.step = 'Preparing fixtures';
+    let lastEmit = 0;
+    const run = (async () => {
+      try {
+        for (const t of targets) {
+          await supplyRepoFixtures(t.repoId, t.wt, true, (n) => {
+            s.preparing!.done = Math.max(0, Math.min(total, s.preparing!.done + n));
+            const now = Date.now();
+            if (now - lastEmit > 250) { lastEmit = now; this.hooks.emitState(); }
+          });
+        }
+      } finally {
+        s.preparing = undefined;
+        if (s.step === 'Preparing fixtures') s.step = 'Starting';
+        this.preparing.delete(s.id);
+        this.touch();
+      }
+    })();
+    this.preparing.set(s.id, run);
+    return run;
   }
 
   /** A worktree in another repository for a multi-repo session, on a branch of its own off that repository's default branch. */
@@ -288,7 +330,6 @@ export class SessionManager {
     const base = (await G.gitOk(repo.localPath, 'rev-parse', '--verify', '--quiet', 'origin/' + repo.defaultBranch)) ? 'origin/' + repo.defaultBranch : repo.defaultBranch;
     await G.addWorktree(repo.localPath, wt, branch, base);
     await this.copyUntracked(repo.localPath, wt, this.store.data.settings.copyFiles);
-    await supplyRepoArtifacts(repo.id, wt, true);
     return { repoId: repo.id, branch, base, worktree: wt };
   }
 
@@ -588,10 +629,11 @@ export class SessionManager {
 
   private async start(s: Session, first?: string, firstImages: MessageImage[] = [], turn?: { reply?: ReplyRef; done?: (r: { text: string; index: number }) => void }) {
     const settings = this.store.data.settings;
+    await this.preparing.get(s.id);
     const artifacts = await ensureArtifactDir(s.id);
     // A worktree made before a file was uploaded gets it when the agent next starts. Files already there are left as the agent has them.
-    if (!s.free) await supplyRepoArtifacts(s.repoId, s.worktree, false);
-    for (const x of s.extras || []) await supplyRepoArtifacts(x.repoId, x.worktree, false);
+    if (!s.free) await supplyRepoFixtures(s.repoId, s.worktree, false);
+    for (const x of s.extras || []) await supplyRepoFixtures(x.repoId, x.worktree, false);
     const rt: Runtime = { agent: null as any, asks: new Map(), turnCost: 0, baseCost: s.cost, startCost: s.cost, interrupted: false, budgetPaused: false, lastEventAt: Date.now(), toolStart: new Map(), fails: new Map(), lastTools: new Map(), subEvent: new Map(), admitted: new Set(), turnText: [], lastText: -1, turnWaiters: turn?.done ? [turn.done] : [], reply: turn?.reply };
     rt.agent = this.backendOf(s).start({
       cwd: s.worktree, model: s.model, effort: s.effort, permMode: s.permMode,
