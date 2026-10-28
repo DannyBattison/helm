@@ -183,13 +183,15 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
         <SectionLabel action={<><IconButton icon="archive" label={showArchived ? 'Hide archived sessions' : 'Show archived sessions'} size="sm" active={showArchived} onClick={toggleArchived} /><Hint id="add-repo" side="right" title="Add a repository" text="Start here: pick a GitHub repository for agents to work in."><IconButton icon="plus" label="Add repository" size="sm" onClick={() => setUI({ adding: true })} /></Hint></>}>Repositories</SectionLabel>
         {app.repos.length === 0 ? <div style={{ padding: '4px 10px 6px', font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>No repositories yet. Use + to add one from GitHub.</div> : null}
         {reposWithSessions(app, showArchived).map(({ repo: r, sessions }) => {
-          const open = !closed[r.id];
+          const live = sessions.filter((s) => !s.archivedAt).length;
+          const empty = live === 0 && !extList(r.id).length;
+          const open = closed[r.id] === undefined ? !empty : !closed[r.id];
           return (
             <div key={r.id} {...target('repo', r.id)} style={line(r.id)}>
               <div {...(isFreeGroup(r) ? {} : dnd('repo', r.id))} onContextMenu={(e) => { if (!isFreeGroup(r)) repoMenu(e, r); }}>
-              <TreeItem icon={isFreeGroup(r) ? 'robot' : 'book-bookmark'} expandable={sessions.length > 0} expanded={open}
+              <TreeItem icon={isFreeGroup(r) ? 'robot' : 'book-bookmark'} expandable expanded={open}
                 label={isFreeGroup(r) ? <span title="Agents that are not tied to a repository">Free agents</span> : <span>{app.settings.showOwner ? <span style={{ color: 'var(--text-3)' }}>{r.owner}/</span> : null}{r.name}</span>}
-                selected={!isFreeGroup(r) && route.screen === 'repo' && route.id === r.id} meta={sessions.length || null}
+                selected={!isFreeGroup(r) && route.screen === 'repo' && route.id === r.id} meta={live || null}
                 trailing={isFreeGroup(r) ? (app.settings.freeAgents ? <IconButton icon="plus" label="New free agent" size="sm" onClick={(e: any) => { e.stopPropagation(); setUI({ newSession: { repoId: '@free' } }); }} /> : null) : lifetimeTokens(app.lifetime[r.id]) ? <span title={`${lifetimeTokens(app.lifetime[r.id]).toLocaleString()} tokens used in ${r.name} over its lifetime, including deleted sessions`} style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)', flex: 'none', marginLeft: 6 }}>{fmtTokens(lifetimeTokens(app.lifetime[r.id]))}</span> : null}
                 onClick={() => { if (isFreeGroup(r) || (route.screen === 'repo' && route.id === r.id)) setClosed({ ...closed, [r.id]: open }); else go({ screen: 'repo', id: r.id }); }} />
               </div>
@@ -239,7 +241,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
                   {all.length > shown.length ? <div onClick={() => go({ screen: 'repo', id: r.id, tab: 'external' })} className="helm-row-hover" style={{ padding: '4px 8px 6px 40px', font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)', cursor: 'pointer', borderRadius: 4 }}>{all.length - shown.length} more external</div> : null}
                 </>;
               })() : null}
-              {sessions.length === 0 && !extList(r.id).length ? <div style={{ padding: '4px 0 6px 42px', font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>No sessions</div> : null}
+              {open && sessions.length === 0 && !extList(r.id).length ? <div style={{ padding: '4px 0 6px 42px', font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>No sessions</div> : null}
             </div>
           );
         })}
