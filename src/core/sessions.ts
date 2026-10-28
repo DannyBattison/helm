@@ -289,9 +289,9 @@ export class SessionManager {
 
   /**
    * Copies the repositories' uploaded files into a new session's worktrees, in the background, with progress on `s.preparing`.
-   * Returns the work in progress, or nothing when there are no fixtures to copy.
+   * Returns the work in progress (boxed, so awaiting this method does not wait for the copy), or nothing when there are no fixtures to copy.
    */
-  private async prepareFixtures(s: Session, queued: boolean): Promise<Promise<void> | undefined> {
+  private async prepareFixtures(s: Session, queued: boolean): Promise<{ run: Promise<void> } | undefined> {
     const targets = [{ repoId: s.repoId, wt: s.worktree }, ...(s.extras || []).map((x) => ({ repoId: x.repoId, wt: x.worktree }))];
     const sizes = await Promise.all(targets.map(async (t) => (await listRepoFixtures(t.repoId)).reduce((n, f) => n + (f.shared ? 0 : f.size), 0)));
     const total = sizes.reduce((n, x) => n + x, 0);
@@ -320,7 +320,7 @@ export class SessionManager {
       }
     })();
     this.preparing.set(s.id, run);
-    return run;
+    return { run };
   }
 
   /** A worktree in another repository for a multi-repo session, on a branch of its own off that repository's default branch. */

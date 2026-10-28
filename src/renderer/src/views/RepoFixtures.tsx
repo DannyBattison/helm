@@ -54,9 +54,9 @@ export function RepoFixtures({ repoId }: { repoId: string }) {
   const load = React.useCallback(() => { api.listRepoFixtures(repoId).then(setFiles).catch(() => setFiles([])); }, [repoId]);
   React.useEffect(load, [load]);
   // Uploads started before navigating here finish while this is open: refresh the list when the last one is done.
-  const busy = active.length > 0;
-  const was = React.useRef(busy);
-  React.useEffect(() => { if (was.current && !busy) load(); was.current = busy; }, [busy, load]);
+  const uploading = active.length > 0;
+  const was = React.useRef(uploading);
+  React.useEffect(() => { if (was.current && !uploading) load(); was.current = uploading; }, [uploading, load]);
   const upload = async (list: File[]) => {
     if (pick.current) pick.current.value = '';
     await uploadRepoFixtures(repoId, list);
