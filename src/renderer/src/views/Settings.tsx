@@ -34,7 +34,7 @@ function TransferSection() {
   };
   return <>
     <H sub="For moving helm to another computer or server.">Import and export</H>
-    <SettingRow title="Export" desc="Saves repositories, sessions, transcripts, usage history, automated agents, settings and uploaded artifacts as one file. Your GitHub and Claude sign-ins and passwords are not included, so you sign in again on the new machine. The file holds your conversations; keep it private.">
+    <SettingRow title="Export" desc="Saves repositories, sessions, transcripts, usage history, automated agents, settings and uploaded fixtures as one file. Your GitHub and Claude sign-ins and passwords are not included, so you sign in again on the new machine. The file holds your conversations; keep it private.">
       <Button icon="download-simple" disabled={busy} onClick={() => { setBusy(true); void api.exportData().then((f) => f && toast({ tone: 'ready', title: 'Exported', description: f })).catch(fail('Could not export')).finally(() => setBusy(false)); }}>Export…</Button>
     </SettingRow>
     <SettingRow title="Import" desc="Adds the contents of an export file to what is here. Anything already here is kept: sessions and repositories with the same name are not overwritten. Paths, shells and update settings stay as they are on this machine. Imported sessions come in stopped; those whose worktree is not on this machine are marked as having none.">

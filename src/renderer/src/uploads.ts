@@ -1,4 +1,4 @@
-/** A file being sent to a repository's artifacts. Kept in the store, not a view, so it keeps showing wherever you navigate. */
+/** A file being sent to a repository's fixtures. Kept in the store, not a view, so it keeps showing wherever you navigate. */
 export interface UploadItem {
   key: string;
   repoId: string;

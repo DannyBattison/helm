@@ -15,7 +15,7 @@ import { Companion } from './companion';
 import { installLogging, logFile, logLine, recentLog } from './log';
 import { cleanHeavy, dirSize, reclaimableBytes } from './disk';
 import { readArtifact } from './artifacts';
-import { addRepoArtifact, addRepoArtifactChunk, repoArtifactProgress, listRepoArtifacts, removeRepoArtifact, setRepoArtifactDir, setRepoArtifactShared, unzipRepoArtifact } from './repoartifacts';
+import { addRepoFixture, addRepoFixtureChunk, repoFixtureProgress, listRepoFixtures, removeRepoFixture, setRepoFixtureDir, setRepoFixtureShared, unzipRepoFixture } from './repofixtures';
 import { cpuTimes, cpuUse, HISTORY_LIMIT, parseLimit, type CpuTimes, type SystemPoint } from '../shared/system';
 import { approvedByReviews, autoMergeReady, queuedMergeStep } from '../shared/queue';
 import { SyncService } from './sync';
@@ -533,13 +533,13 @@ export const api: HelmApi = {
   getTranscript: (id) => store.transcript(id),
   getArtifact: (id, name) => readArtifact(id, name),
   dismissArtifact: (id, name) => sessions.dismissArtifact(id, name),
-  listRepoArtifacts: (id) => listRepoArtifacts(repos.must(id).id),
-  addRepoArtifact: (id, name, data) => addRepoArtifact(repos.must(id).id, name, data),
-  addRepoArtifactChunk: (id, name, offset, data, done, fp) => addRepoArtifactChunk(repos.must(id).id, name, offset, data, done, fp),
-  repoArtifactProgress: (id, name, fp) => repoArtifactProgress(repos.must(id).id, name, fp),
-  removeRepoArtifact: (id, name) => removeRepoArtifact(repos.must(id).id, name),
-  unzipRepoArtifact: (id, name) => unzipRepoArtifact(repos.must(id).id, name),
-  setRepoArtifactShared: (id, name, shared) => setRepoArtifactShared(repos.must(id).id, name, shared),
+  listRepoFixtures: (id) => listRepoFixtures(repos.must(id).id),
+  addRepoFixture: (id, name, data) => addRepoFixture(repos.must(id).id, name, data),
+  addRepoFixtureChunk: (id, name, offset, data, done, fp) => addRepoFixtureChunk(repos.must(id).id, name, offset, data, done, fp),
+  repoFixtureProgress: (id, name, fp) => repoFixtureProgress(repos.must(id).id, name, fp),
+  removeRepoFixture: (id, name) => removeRepoFixture(repos.must(id).id, name),
+  unzipRepoFixture: (id, name) => unzipRepoFixture(repos.must(id).id, name),
+  setRepoFixtureShared: (id, name, shared) => setRepoFixtureShared(repos.must(id).id, name, shared),
   async saveAutomation(a) { return automations.save(a); },
   async deleteAutomation(id) { automations.remove(id); },
   runAutomation: (id) => automations.runNow(id),
@@ -1358,7 +1358,7 @@ export async function start(h: Host) {
   setTimeout(() => void housekeeping(), 60_000);
   setInterval(() => void fetchTick(), 60_000);
   repos.setCacheDir(join(host.dataDir, 'history-cache'));
-  setRepoArtifactDir(join(host.dataDir, 'repo-artifacts'));
+  setRepoFixtureDir(join(host.dataDir, 'repo-artifacts'));
   void refreshPlan(true);
   setInterval(() => void refreshPlan(), 5 * 60_000);
   setInterval(refreshRates, 6 * 3600_000);

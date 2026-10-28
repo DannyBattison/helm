@@ -3,12 +3,12 @@ import { pipeline } from 'node:stream/promises';
 import { appendFile, chmod, copyFile, lstat, mkdir, open, readdir, readFile, rename, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 import yauzl from 'yauzl';
-import type { RepoArtifact } from '../shared/types';
+import type { RepoFixture } from '../shared/types';
 import * as G from './git';
 
 let root = '';
 /** Where uploaded files are kept, one folder per repository. Set once the data folder is known. */
-export const setRepoArtifactDir = (dir: string) => { root = dir; };
+export const setRepoFixtureDir = (dir: string) => { root = dir; };
 
 /** Uploads in progress are written here, so a half-sent file is never listed or copied into a worktree. */
 const PARTIAL = '.partial';
@@ -40,12 +40,12 @@ async function measure(path: string): Promise<{ size: number; modified: number; 
   return { size, modified, dir: true };
 }
 
-export async function listRepoArtifacts(repoId: string): Promise<RepoArtifact[]> {
+export async function listRepoFixtures(repoId: string): Promise<RepoFixture[]> {
   if (!root) return [];
   let names: string[];
   try { names = await readdir(folder(repoId)); } catch { return []; }
   const shared = await sharedNames(repoId);
-  const out: RepoArtifact[] = [];
+  const out: RepoFixture[] = [];
   for (const name of names.sort()) {
     if (!validName(name)) continue;
     const m = await measure(join(folder(repoId), name));
@@ -70,10 +70,10 @@ async function setWritable(path: string, writable: boolean): Promise<void> {
  * Shares a file or folder: worktrees get a link to it instead of a copy (no time, no extra disk), and it is made read-only so an
  * agent cannot change what every session sees. Worktrees that already hold a copy keep it.
  */
-export async function setRepoArtifactShared(repoId: string, name: string, shared: boolean): Promise<void> {
+export async function setRepoFixtureShared(repoId: string, name: string, shared: boolean): Promise<void> {
   if (!root || !validName(name)) throw new Error('That file name is not allowed.');
   const path = join(folder(repoId), name);
-  if (!(await lstat(path).catch(() => null))) throw new Error('That artifact no longer exists.');
+  if (!(await lstat(path).catch(() => null))) throw new Error('That fixture no longer exists.');
   const set = await sharedNames(repoId);
   if (shared) set.add(name); else set.delete(name);
   await writeFile(join(folder(repoId), SHARED_META), JSON.stringify([...set].sort()));
@@ -86,7 +86,7 @@ const isSymlinkMode = (attrs: number) => ((attrs >>> 16) & 0o170000) === 0o12000
  * Unpacks `<name>.zip` into a folder `<name>` beside it, keeping the zip's own folder structure. Entries that would land outside the
  * folder, links, and macOS resource folders are skipped. Returns the folder's name. The zip itself is kept.
  */
-export async function unzipRepoArtifact(repoId: string, name: string): Promise<string> {
+export async function unzipRepoFixture(repoId: string, name: string): Promise<string> {
   if (!root || !validName(name)) throw new Error('That file name is not allowed.');
   if (!/\.zip$/i.test(name) || name.length <= 4) throw new Error('Only .zip files can be unpacked.');
   const out = name.slice(0, -4);
@@ -129,7 +129,7 @@ export async function unzipRepoArtifact(repoId: string, name: string): Promise<s
  * is held in memory whole. The piece at offset 0 starts the file afresh; later ones must continue exactly where the last ended.
  * The file appears under its name only when `done` is set.
  */
-export async function addRepoArtifactChunk(repoId: string, name: string, offset: number, base64: string, done: boolean, fingerprint = ''): Promise<void> {
+export async function addRepoFixtureChunk(repoId: string, name: string, offset: number, base64: string, done: boolean, fingerprint = ''): Promise<void> {
   if (!root) throw new Error('Uploads are not available yet.');
   if (!validName(name)) throw new Error('That file name is not allowed.');
   const dir = join(folder(repoId), PARTIAL);
@@ -153,16 +153,16 @@ export async function addRepoArtifactChunk(repoId: string, name: string, offset:
 }
 
 /** How much of an interrupted upload of this file is already kept, so the client can carry on from there. 0 when there is none or it is of a different file. */
-export async function repoArtifactProgress(repoId: string, name: string, fingerprint: string): Promise<number> {
+export async function repoFixtureProgress(repoId: string, name: string, fingerprint: string): Promise<number> {
   if (!root || !validName(name) || !fingerprint) return 0;
   const have = await readFile(join(folder(repoId), PARTIAL_META, name), 'utf8').catch(() => null);
   if (have !== fingerprint) return 0;
   return (await stat(join(folder(repoId), PARTIAL, name)).catch(() => null))?.size ?? 0;
 }
 
-export const addRepoArtifact = (repoId: string, name: string, base64: string) => addRepoArtifactChunk(repoId, name, 0, base64, true);
+export const addRepoFixture = (repoId: string, name: string, base64: string) => addRepoFixtureChunk(repoId, name, 0, base64, true);
 
-export async function removeRepoArtifact(repoId: string, name: string): Promise<void> {
+export async function removeRepoFixture(repoId: string, name: string): Promise<void> {
   if (!root || !validName(name)) return;
   const path = join(folder(repoId), name);
   await setWritable(path, true); // a shared (read-only) folder cannot be deleted until it is unlocked
@@ -198,8 +198,8 @@ async function copyTree(src: string, dest: string, progress?: (bytes: number) =>
   for (const n of await readdir(src)) await copyTree(join(src, n), join(dest, n), progress);
 }
 
-export async function supplyRepoArtifacts(repoId: string, wt: string, overwrite: boolean, progress?: (bytes: number) => void): Promise<string[]> {
-  const files = await listRepoArtifacts(repoId);
+export async function supplyRepoFixtures(repoId: string, wt: string, overwrite: boolean, progress?: (bytes: number) => void): Promise<string[]> {
+  const files = await listRepoFixtures(repoId);
   if (!files.length) return [];
   const put: string[] = [];
   for (const f of files) {
