@@ -17,6 +17,7 @@ import { usePush } from './push';
 import { SessionConflicts } from './Review';
 import { CodeView } from './CodeView';
 import { downloadArtifact, EMBEDDABLE, fmtSize, isPreviewable } from './artifact';
+import { uploadRepoArtifacts } from './RepoArtifacts';
 import { AttachmentChips, IMAGE_TYPES, readAttachments, type Draft } from './attach';
 
 const guard = (p: Promise<any>) => p.catch((e: any) => toast({ tone: 'error', title: 'That did not work', description: String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '') }));
@@ -451,6 +452,16 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
   };
 
   const addImages = async (list: File[]) => { const d = await readAttachments(list, images.length); if (d.length) setImages((cur) => [...cur, ...d]); };
+  // Dropped images go with the message; any other file is uploaded as an artifact of the session's repository, so every agent of the project has it.
+  const dropFiles = async (list: File[]) => {
+    const pics = list.filter((f) => IMAGE_TYPES.includes(f.type));
+    const rest = list.filter((f) => !IMAGE_TYPES.includes(f.type));
+    if (pics.length) void addImages(pics);
+    if (!rest.length) return;
+    if (s.free || !s.repoId) { toast({ tone: 'neutral', title: 'Only images can be attached here', description: 'Free agents have no repository to keep artifacts in.' }); return; }
+    const n = await uploadRepoArtifacts(s.repoId, rest);
+    if (n) toast({ tone: 'ready', title: n === 1 ? `Uploaded ${rest[0].name} as an artifact` : `Uploaded ${n} artifacts`, description: `Available to every agent of ${s.repoId}; this one gets it when it next starts.` });
+  };
 
   // The @word under the caret, if any: it opens the file list.
   const track = (value: string, caret: number) => {
@@ -497,7 +508,7 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
     }
   };
 
-  const placeholder = s.ask?.type === 'question' ? 'Type your answer' : s.ask ? 'Tell the agent what to do instead, or approve above' : working ? 'Add guidance while it works' + (interruptKey === 'esc' ? ', or press Esc to interrupt' : interruptKey === 'double-esc' ? ', or press Esc twice to interrupt' : '') : 'Reply to ' + (s.customTitle || s.title || s.id) + '. @ mentions ' + (s.panel ? 'an agent or a file' : 'a file') + ', and you can paste or drop images';
+  const placeholder = s.ask?.type === 'question' ? 'Type your answer' : s.ask ? 'Tell the agent what to do instead, or approve above' : working ? 'Add guidance while it works' + (interruptKey === 'esc' ? ', or press Esc to interrupt' : interruptKey === 'double-esc' ? ', or press Esc twice to interrupt' : '') : 'Reply to ' + (s.customTitle || s.title || s.id) + '. @ mentions ' + (s.panel ? 'an agent or a file' : 'a file') + ', and you can paste or drop images or files';
   const ctxWindow = contextWindow(s);
   const ctxLabel = windowLabel(ctxWindow);
   const ctxPct = Math.round((s.ctx / ctxWindow) * 100);
@@ -508,7 +519,7 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
         onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
         onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setOver(true); } }}
         onDragLeave={() => setOver(false)}
-        onDrop={(e) => { if (e.dataTransfer.files.length) { e.preventDefault(); void addImages([...e.dataTransfer.files]); } setOver(false); }}
+        onDrop={(e) => { if (e.dataTransfer.files.length) { e.preventDefault(); void dropFiles([...e.dataTransfer.files]); } setOver(false); }}
         style={{ position: 'relative', maxWidth: 820, margin: '0 auto', borderRadius: 'var(--radius-lg)', background: 'var(--bg-input)', transition: 'box-shadow .12s',
           boxShadow: over ? 'var(--ring-focus), inset 0 0 0 1px var(--accent)' : focused ? 'var(--ring-focus), inset 0 0 0 1px var(--accent)' : 'inset 0 0 0 1px var(--border-strong)' }}>
         {mention && entries.length ? (

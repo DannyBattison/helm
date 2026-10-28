@@ -1,0 +1,4 @@
+## 2026-10-28 · Repository artifacts are managed from an Artifacts tab on the repository view
+Uploading, listing (with size and date) and removing a repository's artifacts moved from Settings to a new "Artifacts" tab beside Memory and MCP servers on the repository view, so no repository picker is needed. Behaviour is unchanged (D-133): files are copied into every session's worktree, kept out of commits, and chunked uploads resume. The Settings row was removed rather than duplicated. Typechecked, not run in the app.
+Why: user request; project-wide files belong with the other per-project things on the project view.
+Files can be dropped anywhere on the Artifacts tab, and on a session's message box: images there still attach to the message, any other file is uploaded as an artifact of the session's repository (free agents have none, so they are told). The per-repository row in Settings was removed. Not run in the app.
