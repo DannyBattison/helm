@@ -1,0 +1,9 @@
+## 2026-10-27 · Sessions can hold several agents, one of them the owner
+
+A session can have more than one agent (`Session.panel`). The session's own backend, model, effort and conversation always belong to the **owner**, the only agent that edits files, runs commands that change things and commits, so cost, review, checkpoints, queue and merge all keep working unchanged. The others (`panel.members`) are **read-only**: they run in `plan` mode, and `canUseTool` refuses edits and anything but a short list of looking commands (`readOnlyDecision` in `core/advisor.ts`, which also closes `git branch <name>`). Changing the owner swaps the session's agent fields with a member's and restarts the runtimes; each agent keeps its own conversation.
+
+Replies are run as a round per user message, one agent at a time. A message names who it is for with `@name` (or the right-click "Reply to" on an agent's message); naming no one asks everyone, the owner first. Each agent is sent a digest of what it has not yet seen (`panelDigest`), and an agent that `@mentions` another in its reply queues that one to answer next. That is how they discuss, and it ends when no one is mentioned. `Settings.panelReplyCap` (default 6, -1 unlimited) bounds the replies one user message can bring; hitting it leaves a note. Interrupt and Stop call off the round. Rounds for one session run one after another.
+
+Threading is stored on the events: agent events carry `from` (handle) and `re` (the message answered, with a snippet so it reads without the original loaded); user events carry `to` and `re`.
+
+Not done on purpose: read-only agents' tool calls are not shown in the transcript (only their replies), forks do not carry the panel, and a read-only agent that is mid-reply is not restarted when the roster changes (every digest lists the current participants instead).

@@ -20,6 +20,9 @@ export const defaultChoice = (app: AppState) => {
 export const backendIdOf = (app: AppState, s?: { backend?: string }) => backendFor(app, s?.backend)?.id ?? 'claude';
 /** What the session's agent is called: Claude, Codex. */
 export const agentName = (app: AppState, s: { backend?: string }) => backendFor(app, s.backend)?.shortName ?? 'Claude';
+/** Which agent a participant of a session with several is, by the handle people @ it with. */
+export const panelBackendId = (app: AppState, s: Pick<Session, 'backend' | 'panel'> | undefined, name?: string) =>
+  name && s?.panel && name !== s.panel.owner ? backendFor(app, s.panel.members.find((m) => m.name === name)?.backend)?.id ?? 'claude' : backendIdOf(app, s);
 /** Whether the session's backend supports something. True until the backends have loaded, so controls don't flicker away. */
 export const can = (app: AppState, s: { backend?: string }, what: keyof AgentCapabilities) => backendFor(app, s.backend)?.capabilities[what] ?? true;
 

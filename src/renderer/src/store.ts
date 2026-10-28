@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import type { AppState, ExternalSession, HelmEvents, Session, TranscriptEvent } from '@shared/types';
+import type { AppState, ExternalSession, HelmEvents, ReplyRef, Session, TranscriptEvent } from '@shared/types';
 import { currencySymbol, fmtMoney, fromDisplay, toDisplay } from '@shared/money';
 import { api, on } from './api';
 
@@ -41,6 +41,10 @@ export interface UI {
   checkpointsOf: string | null;
   restoring: { sessionId: string; n: number; label: string } | null;
   forking: { sessionId: string; index: number | null; text: string } | null;
+  /** The message the next thing typed in a session answers: set from the right-click menu on an agent's message. */
+  replying: { sessionId: string; re: ReplyRef } | null;
+  /** The session whose add-an-agent dialog is open. */
+  addingAgent: string | null;
   continuing: { repoId: string; externalId: string; title: string } | null;
   remembering: { repoId: string; text: string; agent?: string } | null;
   /** The repository whose remove dialog is open. */
@@ -67,7 +71,7 @@ function loadRoute(): Route {
   } catch { return { screen: 'overview' }; }
 }
 
-let ui: UI = { app: null, route: loadRoute(), transcripts: {}, externals: {}, toasts: [], adding: false, newSession: null, deleting: null, mergingPr: null, renaming: null, checkpointsOf: null, restoring: null, forking: null, continuing: null, remembering: null, removingRepo: null, showArchived: (() => { try { return localStorage.getItem('helm-show-archived') === '1'; } catch { return false; } })(), palette: false, drawer: false, term: false };
+let ui: UI = { app: null, route: loadRoute(), transcripts: {}, externals: {}, toasts: [], adding: false, newSession: null, deleting: null, mergingPr: null, renaming: null, checkpointsOf: null, restoring: null, forking: null, replying: null, addingAgent: null, continuing: null, remembering: null, removingRepo: null, showArchived: (() => { try { return localStorage.getItem('helm-show-archived') === '1'; } catch { return false; } })(), palette: false, drawer: false, term: false };
 const listeners = new Set<() => void>();
 
 export function setUI(patch: Partial<UI> | ((u: UI) => Partial<UI>)) {

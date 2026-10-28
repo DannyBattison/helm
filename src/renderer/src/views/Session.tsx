@@ -5,10 +5,12 @@ import { api, platform } from '../api';
 import { commandSteps } from '@shared/commandSummary';
 import { Cmd, Hl } from '../Hl';
 import { highlightBlock, langFromPath, langFromTag } from '../highlight';
-import { backendIdOf, agentName, billingOf, can, clock, elapsed, fmtTokens, modelOptions, prettyModel, runningSubagents, STATUS_LABEL, subagentTree, tilde } from '../lib';
-import { go, loadTranscript, setUI, toast, useApp, useMoney, useTranscript } from '../store';
-import { Avatar, Badge, BranchTag, Button, CopyBox, DiffStat, Grip, IconButton, Lightbox, Meter, Select, StatusDot, Tabs, Tooltip, useNarrow, usePaneWidth } from '../ui';
+import { participants } from '@shared/panel';
+import { backendIdOf, agentName, panelBackendId, billingOf, can, clock, elapsed, fmtTokens, modelOptions, prettyModel, runningSubagents, STATUS_LABEL, subagentTree, tilde } from '../lib';
+import { go, loadTranscript, setUI, toast, useApp, useMoney, useTranscript, useUI } from '../store';
+import { Avatar, Badge, BranchTag, Button, ContextMenu, CopyBox, DiffStat, Grip, IconButton, Lightbox, Meter, Select, StatusDot, Tabs, Tooltip, useNarrow, usePaneWidth } from '../ui';
 import { QuestionForm } from './QuestionForm';
+import { PanelBar, ReplyQuote } from './Panel';
 import { Changes } from './Changes';
 import { TranscriptList } from './TranscriptList';
 import { usePush } from './push';
@@ -222,6 +224,7 @@ function BashRow({ m, box }: { m: Extract<TranscriptEvent, { k: 'bash' }>; box: 
 function TranscriptItemView({ m, s, index, onDeny }: { m: TranscriptEvent; s: S; index?: number; onDeny(): void }) {
   const app = useApp();
   const [hover, setHover] = React.useState(false);
+  const [menu, setMenu] = React.useState<{ x: number; y: number } | null>(null);
   if (m.k === 'subagent') return (
     <div style={{ marginLeft: 44, marginRight: 12, ...box }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 34, padding: '4px 10px' }}>
@@ -241,6 +244,8 @@ function TranscriptItemView({ m, s, index, onDeny }: { m: TranscriptEvent; s: S;
       <Avatar agent={!!m.from} name={m.from || app.user?.login || 'you'} src={m.from ? undefined : app.user?.avatar || undefined} size={22} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
         <span style={{ font: m.from ? '500 12px/1.5 var(--font-mono)' : '500 12px/1.5 var(--font-sans)' }}>{m.from ? m.from + ' → subagent' : app.user?.login || 'you'} {m.t || m.at ? <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)', marginLeft: 6 }}>{clock(m.t || m.at!)}</span> : null}</span>
+        {m.re ? <ReplyQuote re={m.re} sessionId={s?.id} /> : null}
+        {m.to?.length ? <span style={{ font: '500 12px/1.5 var(--font-mono)', color: 'var(--accent-text)' }}>→ {m.to.map((n) => '@' + n).join(' ')}</span> : null}
         <div className="selectable" style={{ font: '400 13px/1.55 var(--font-sans)', color: 'var(--text-1)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.text}</div>
         {hover && s && !m.from && !s.worktreeGone && index != null ? (
           <div style={{ position: 'absolute', top: 6, right: 8, display: 'flex', gap: 2, background: 'var(--bg-overlay)', borderRadius: 'var(--radius-sm)', boxShadow: 'var(--shadow-popover)', padding: 2 }}>
@@ -254,15 +259,24 @@ function TranscriptItemView({ m, s, index, onDeny }: { m: TranscriptEvent; s: S;
     </div>
   );
   // Same padding as your own messages, so the text of every message starts and ends at the same place.
-  if (m.k === 'agent') return (
-    <div style={{ display: 'flex', gap: 10, padding: '10px 12px' }}>
-      <Avatar agent backend={backendIdOf(app, s)} name={agentName(app, s || {})} size={22} />
+  if (m.k === 'agent') {
+    // In a session with several agents, whose message it is, and a right-click menu to answer that agent alone.
+    const who = s?.panel ? m.from ?? s.panel.owner : undefined;
+    return (
+    <div onContextMenu={who && index != null && !s.worktreeGone ? (e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY }); } : undefined} style={{ display: 'flex', gap: 10, padding: '10px 12px' }}>
+      <Avatar agent backend={who ? panelBackendId(app, s, who) : backendIdOf(app, s)} name={who ? '@' + who : agentName(app, s || {})} size={22} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <span style={{ font: '500 12px/1.5 var(--font-sans)' }}>{agentName(app, s || {})} {m.at ? <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)', marginLeft: 6 }}>{clock(m.at)}</span> : null}</span>
+        {m.re ? <ReplyQuote re={m.re} sessionId={s?.id} /> : null}
+        <span style={{ font: who ? '500 12px/1.5 var(--font-mono)' : '500 12px/1.5 var(--font-sans)' }}>{who ? '@' + who : agentName(app, s || {})}{who && who === s.panel!.owner ? <span style={{ font: '400 11px/1.5 var(--font-sans)', color: 'var(--text-3)', marginLeft: 6 }}>owner</span> : null} {m.at ? <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)', marginLeft: 6 }}>{clock(m.at)}</span> : null}</span>
         <div className="selectable" style={{ font: '400 13px/1.6 var(--font-sans)', color: 'var(--text-1)', display: 'flex', flexDirection: 'column', gap: 6, wordBreak: 'break-word' }}><Rich text={m.text} sessionId={s?.id} /></div>
       </div>
+      {menu && who ? <ContextMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)} items={[
+        { label: `Reply to @${who}`, icon: 'arrow-bend-up-left', onClick: () => { setUI({ replying: { sessionId: s.id, re: { index: index!, who, snippet: m.text.replace(/\s+/g, ' ').trim().slice(0, 120) } } }); } },
+        { label: 'Copy message', icon: 'copy', onClick: () => void navigator.clipboard?.writeText(m.text) }
+      ]} /> : null}
     </div>
-  );
+    );
+  }
   if (m.k === 'tools') return <div style={{ marginLeft: 44, marginRight: 12, ...box, padding: '3px 0' }}>{m.items.map((t, i) => <ToolRow key={i} tool={t[0]} target={t[1]} meta={t[2]} session={s} />)}</div>;
   if (m.k === 'edit') return (
     <div style={{ marginLeft: 44, marginRight: 12, ...box }}>
@@ -392,6 +406,7 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
   const histPos = React.useRef(-1);
   const picker = React.useRef<HTMLInputElement>(null);
   const working = s.status === 'working';
+  const replying = useUI((u) => (u.replying?.sessionId === s.id ? u.replying.re : null));
   const enterSends = useApp().settings.sendKey === 'enter';
   const interruptKey = useApp().settings.interruptKey;
   const setText = (t: string) => { drafts.set(s.id, t); setTextState(t); };
@@ -412,7 +427,9 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
     histPos.current = -1;
     const pics = images.map(({ mediaType, data, name }) => ({ mediaType, data, name }));
     setText(''); setImages([]); setMention(null);
-    void guard(api.sendMessage(s.id, t, pics.length ? pics : undefined));
+    const opts = s.panel && replying ? { to: replying.who === 'you' ? undefined : [replying.who], re: replying } : undefined;
+    setUI({ replying: null });
+    void guard(api.sendMessage(s.id, t, pics.length ? pics : undefined, opts));
   };
 
   const addImages = async (list: File[]) => { const d = await readAttachments(list, images.length); if (d.length) setImages((cur) => [...cur, ...d]); };
@@ -426,6 +443,9 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
     if (!files.current) { files.current = []; api.listFiles(s.id).then((l) => { files.current = l; setMention((x) => (x ? { ...x } : x)); }).catch(() => { files.current = null; }); }
   };
   const matches = mention ? matchFiles(files.current || [], mention.q) : [];
+  // In a session with several agents the @ list starts with them.
+  const people = mention && s.panel ? ['all', ...participants(s.panel)].filter((n) => n.startsWith(mention.q.toLowerCase())) : [];
+  const entries = [...people.map((v) => ({ who: true, v })), ...matches.map((v) => ({ who: false, v }))];
   const pick = (path: string) => {
     if (!mention) return;
     const el = inputRef.current;
@@ -437,10 +457,10 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (mention && matches.length) {
-      if (e.key === 'ArrowDown') { e.preventDefault(); setHi((h) => (h + 1) % matches.length); return; }
-      if (e.key === 'ArrowUp') { e.preventDefault(); setHi((h) => (h - 1 + matches.length) % matches.length); return; }
-      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pick(matches[hi]); return; }
+    if (mention && entries.length) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setHi((h) => (h + 1) % entries.length); return; }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setHi((h) => (h - 1 + entries.length) % entries.length); return; }
+      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pick(entries[hi].v); return; }
     }
     if (mention && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); e.nativeEvent.stopImmediatePropagation(); setMention(null); return; }
     // Which key sends is a setting: Enter (Shift+Enter for a new line), or Ctrl/Cmd+Enter (Enter for a new line). Ctrl/Cmd+Enter always sends.
@@ -459,12 +479,13 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
     }
   };
 
-  const placeholder = s.ask?.type === 'question' ? 'Type your answer' : s.ask ? 'Tell the agent what to do instead, or approve above' : working ? 'Add guidance while it works' + (interruptKey === 'esc' ? ', or press Esc to interrupt' : interruptKey === 'double-esc' ? ', or press Esc twice to interrupt' : '') : 'Reply to ' + (s.customTitle || s.title || s.id) + '. @ mentions a file, and you can paste or drop images';
+  const placeholder = s.ask?.type === 'question' ? 'Type your answer' : s.ask ? 'Tell the agent what to do instead, or approve above' : working ? 'Add guidance while it works' + (interruptKey === 'esc' ? ', or press Esc to interrupt' : interruptKey === 'double-esc' ? ', or press Esc twice to interrupt' : '') : 'Reply to ' + (s.customTitle || s.title || s.id) + '. @ mentions ' + (s.panel ? 'an agent or a file' : 'a file') + ', and you can paste or drop images';
   const ctxWindow = contextWindow(s);
   const ctxLabel = windowLabel(ctxWindow);
   const ctxPct = Math.round((s.ctx / ctxWindow) * 100);
   return (
     <div style={{ flex: 'none', padding: '0 20px 16px' }}>
+      <PanelBar s={s} onMention={(n) => { const el = inputRef.current; const pre = text && !/\s$/.test(text) ? text + ' ' : text; setText(pre + '@' + n + ' '); requestAnimationFrame(() => el?.focus()); }} />
       <div
         onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
         onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setOver(true); } }}
@@ -472,10 +493,18 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
         onDrop={(e) => { if (e.dataTransfer.files.length) { e.preventDefault(); void addImages([...e.dataTransfer.files]); } setOver(false); }}
         style={{ position: 'relative', maxWidth: 820, margin: '0 auto', borderRadius: 'var(--radius-lg)', background: 'var(--bg-input)', transition: 'box-shadow .12s',
           boxShadow: over ? 'var(--ring-focus), inset 0 0 0 1px var(--accent)' : focused ? 'var(--ring-focus), inset 0 0 0 1px var(--accent)' : 'inset 0 0 0 1px var(--border-strong)' }}>
-        {mention && matches.length ? (
+        {mention && entries.length ? (
           <div role="listbox" style={{ position: 'absolute', left: 0, right: 0, bottom: 'calc(100% + 6px)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-raised)', boxShadow: 'var(--shadow-popover, 0 8px 24px rgba(0,0,0,.4)), inset 0 0 0 1px var(--border-strong)', padding: 4, zIndex: 20, maxHeight: 260, overflow: 'auto' }}>
-            {matches.map((f, i) => {
+            {entries.map(({ who, v: f }, i) => {
               const cut = f.lastIndexOf('/');
+              if (who) return (
+                <div key={'@' + f} role="option" aria-selected={i === hi} onMouseDown={(e) => { e.preventDefault(); pick(f); }} onMouseEnter={() => setHi(i)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', background: i === hi ? 'var(--bg-selected, var(--bg-hover))' : undefined }}>
+                  <i className="ph ph-at" style={{ fontSize: 13, color: 'var(--accent-text)' }} />
+                  <span style={{ font: '500 12.5px/1.5 var(--font-mono)', color: 'var(--text-1)' }}>{f}</span>
+                  <span style={{ font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{f === 'all' ? 'Everyone replies' : f === s.panel!.owner ? 'Owner: edits and runs commands' : 'Read-only'}</span>
+                </div>
+              );
               return (
                 <div key={f} role="option" aria-selected={i === hi} onMouseDown={(e) => { e.preventDefault(); pick(f); }} onMouseEnter={() => setHi(i)}
                   style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '6px 8px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', background: i === hi ? 'var(--bg-selected, var(--bg-hover))' : undefined, minWidth: 0 }}>
@@ -485,6 +514,12 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
                 </div>
               );
             })}
+          </div>
+        ) : null}
+        {replying ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 8px 0 12px' }}>
+            <div style={{ flex: 1, minWidth: 0 }}><ReplyQuote re={replying} /></div>
+            <IconButton icon="x" label="Stop replying to this message" size="sm" onClick={() => setUI({ replying: null })} />
           </div>
         ) : null}
         <AttachmentChips images={images} onRemove={(id) => setImages((c) => c.filter((x) => x.id !== id))} />
@@ -499,6 +534,7 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
           <input ref={picker} type="file" accept={IMAGE_TYPES.join(',')} multiple hidden onChange={(e) => { void addImages([...(e.target.files || [])]); e.target.value = ''; }} />
           <IconButton icon="at" label="Mention a file" size="sm" onClick={() => { const el = inputRef.current; const c = el ? el.selectionStart : text.length; const pre = text.slice(0, c); const lead = pre && !/\s$/.test(pre) ? ' ' : ''; setText(pre + lead + '@' + text.slice(c)); requestAnimationFrame(() => { el?.focus(); const p = c + lead.length + 1; el?.setSelectionRange(p, p); track(el!.value, p); }); }} />
           <IconButton icon="paperclip" label="Attach an image" size="sm" onClick={() => picker.current?.click()} />
+          {s.panel ? null : <IconButton icon="users-three" label="Bring in another agent to discuss this" size="sm" onClick={() => setUI({ addingAgent: s.id })} />}
           {narrow ? <div style={{ order: 3, flexBasis: '100%', display: 'flex', gap: 6 }}><Select size="sm" style={{ flex: 1, minWidth: 0 }} value={s.model} onChange={(e: any) => guard(api.setSessionModel(s.id, e.target.value as ModelAlias))} options={modelOptions(app, s.backend)} />{can(app, s, 'effort') ? <Select size="sm" style={{ flex: 1, minWidth: 0 }} value={s.effort || 'default'} onChange={(e: any) => guard(api.setSessionEffort(s.id, e.target.value === 'default' ? null : (e.target.value as Effort)))} options={EFFORTS} /> : null}<Select size="sm" style={{ flex: 1, minWidth: 0 }} value={s.permMode} onChange={(e: any) => guard(api.setSessionPermMode(s.id, e.target.value as PermMode))} options={[{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits' }, ...(can(app, s, 'planMode') ? [{ value: 'plan', label: 'Plan only' }] : []), { value: 'all', label: 'Allow everything' }]} /></div> : <><Select size="sm" value={s.model} onChange={(e: any) => guard(api.setSessionModel(s.id, e.target.value as ModelAlias))} options={modelOptions(app, s.backend)} />{can(app, s, 'effort') ? <Select size="sm" value={s.effort || 'default'} onChange={(e: any) => guard(api.setSessionEffort(s.id, e.target.value === 'default' ? null : (e.target.value as Effort)))} options={EFFORTS} /> : null}<Select size="sm" value={s.permMode} onChange={(e: any) => guard(api.setSessionPermMode(s.id, e.target.value as PermMode))} options={[{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits' }, ...(can(app, s, 'planMode') ? [{ value: 'plan', label: 'Plan only' }] : []), { value: 'all', label: 'Allow everything' }]} /></>}
           <span style={{ flex: 1 }} />
           {s.ctx ? <span title={`Context window: ${fmtTokens(s.ctx)} of ${ctxLabel} tokens in use`} style={{ font: '400 11.5px/1.5 var(--font-mono)', color: ctxPct >= 75 ? 'var(--status-attention-text)' : 'var(--text-3)', whiteSpace: 'nowrap' }}>{ctxPct}% context</span> : null}

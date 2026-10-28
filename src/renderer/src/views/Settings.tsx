@@ -507,6 +507,7 @@ export function Settings({ section }: { section?: string }) {
             <SettingRow title="Always allowed commands" desc="Comma separated patterns. * matches anything. Added to when you choose Always allow.">
               <Field value={st.alwaysAllow} format={(v: string[]) => v.join(', ')} parse={(s: string) => s.split(',').map((x) => x.trim()).filter(Boolean)} onCommit={(v: string[]) => set({ alwaysAllow: v })} style={{ width: 260 }} />
             </SettingRow>
+            <SettingRow title="Replies to one message" desc="With several agents in a session, the most replies one message of yours can bring, counting their answers to each other. Unlimited lets them keep going for as long as they keep mentioning each other."><Select value={String(st.panelReplyCap ?? 6)} onChange={(e: any) => set({ panelReplyCap: +e.target.value })} options={[1, 2, 3, 4, 6, 8, 12, 20, -1].map((n) => ({ value: String(n), label: n < 0 ? 'Unlimited' : String(n) }))} /></SettingRow>
             <SettingRow title="Always ask commands" desc="Comma separated patterns. * matches anything. These ask every time, even when an always-allowed pattern matches. By default: killing processes by name or in bulk, which would take down your other agents.">
               <Field value={st.alwaysAsk} format={(v: string[]) => v.join(', ')} parse={(s: string) => s.split(',').map((x) => x.trim()).filter(Boolean)} onCommit={(v: string[]) => set({ alwaysAsk: v })} style={{ width: 260 }} />
             </SettingRow>
