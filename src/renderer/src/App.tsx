@@ -22,6 +22,25 @@ import { Sidebar, StatusBar, TerminalDrawer, TitleBar } from './views/Shell';
 /** Whether the start page has been chosen yet this run. */
 let startedOn = false;
 
+/** The new session dialog's starting point for the page you are on: the repository of a repository page or of a session. */
+function repoHere(): { repoId?: string } {
+  const { route, app } = getUI();
+  if (route.screen === 'repo') return { repoId: route.id };
+  if (route.screen === 'external') return { repoId: route.repoId };
+  if (route.screen === 'session') { const s = app?.sessions.find((x) => x.id === route.id); return s && !s.free ? { repoId: s.repoId } : {}; }
+  return {};
+}
+
+/** Opens the session after (or before) the current one among those not archived; `attentionOnly` skips those that are not waiting for you. */
+function stepSession(dir: 1 | -1, attentionOnly: boolean) {
+  const { route, app } = getUI();
+  const list = (app?.sessions || []).filter((s) => !s.archivedAt && (!attentionOnly || s.status === 'attention' || s.id === (route.screen === 'session' ? route.id : '')));
+  if (!list.length) return;
+  const at = route.screen === 'session' ? list.findIndex((s) => s.id === route.id) : -1;
+  const next = list[at < 0 ? (dir === 1 ? 0 : list.length - 1) : (at + dir + list.length) % list.length];
+  if (next && !(next.id === (route.screen === 'session' ? route.id : '') && list.length === 1)) go({ screen: 'session', id: next.id });
+}
+
 export function App() {
   const app = useUI((u) => u.app);
   const fatal = useUI((u) => u.fatal);
@@ -125,6 +144,15 @@ export function App() {
       if (isShortcut(e, 'palette')) { e.preventDefault(); setUI({ palette: true }); }
       // Browsers reserve Cmd/Ctrl+N for a new window and often never deliver it, so Alt+N also works.
       else if (isShortcut(e, 'newSession') || isShortcut(e, 'newSessionAlt')) { e.preventDefault(); const r = getUI().route; setUI({ newSession: r.screen === 'repo' ? { repoId: r.id } : {} }); }
+      else if (isShortcut(e, 'newSessionHere')) { e.preventDefault(); setUI({ newSession: repoHere() }); }
+      else if (isShortcut(e, 'goOverview')) { e.preventDefault(); go({ screen: 'overview' }); }
+      else if (isShortcut(e, 'goInbox')) { e.preventDefault(); go({ screen: 'inbox' }); }
+      else if (isShortcut(e, 'goNeedsYou')) { e.preventDefault(); go({ screen: 'overview', filter: 'attention' }); }
+      else if (isShortcut(e, 'goActivity')) { e.preventDefault(); go({ screen: 'activity' }); }
+      else if (isShortcut(e, 'goSettings')) { e.preventDefault(); go({ screen: 'settings' }); }
+      else if (isShortcut(e, 'nextAttention')) { e.preventDefault(); stepSession(1, true); }
+      else if (isShortcut(e, 'prevSession')) { e.preventDefault(); stepSession(-1, false); }
+      else if (isShortcut(e, 'nextSession')) { e.preventDefault(); stepSession(1, false); }
       else if (isShortcut(e, 'haltAll')) { e.preventDefault(); void haltAll(); }
       else if (isShortcut(e, 'resumeAll')) { e.preventDefault(); void resumeAll(); }
       else if (isShortcut(e, 'terminal')) { e.preventDefault(); setUI({ term: !getUI().term }); }
