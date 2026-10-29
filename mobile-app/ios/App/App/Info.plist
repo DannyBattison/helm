@@ -43,6 +43,18 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Helm uses the camera to scan the pairing code shown in helm on your computer.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Helm connects to your computer directly when it is on the same network.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>app.helm.mobile.collect</string>
+	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
 </dict>

@@ -38,4 +38,9 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Notifications from the computers, shown by the background task and by the app (Android 13 and up asks the person). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Scanning the QR code in helm on the computer. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 </manifest>

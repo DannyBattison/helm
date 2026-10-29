@@ -16,7 +16,12 @@
     "release": "electron-vite build -c desktop/electron.vite.config.ts && electron-builder --publish always",
     "icons": "node desktop/scripts/make-icons.mjs",
     "hosted:build": "npm --prefix hosted run build",
-    "hosted:start": "npm --prefix hosted start"
+    "hosted:start": "npm --prefix hosted start",
+    "mobile:build": "npm --prefix mobile-app run build",
+    "mobile:sync": "npm --prefix mobile-app run sync",
+    "mobile:android": "npm --prefix mobile-app run android",
+    "mobile:android:apk": "npm --prefix mobile-app run android:apk",
+    "mobile:ios": "npm --prefix mobile-app run ios"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

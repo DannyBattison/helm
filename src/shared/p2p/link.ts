@@ -41,6 +41,19 @@ export const PROBE_AT = [0, 700, 1500, 2500];
 const u32 = (n: number) => { const b = new Uint8Array(4); new DataView(b.buffer).setUint32(0, n); return b; };
 const rd32 = (b: Uint8Array, at: number) => new DataView(b.buffer, b.byteOffset).getUint32(at);
 const same = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((x, i) => x === b[i]);
+/** An address in one spelling, so `2a00:1::5` and `2a00:1:0:0:0:0:0:5` are the same. Names and IPv4 addresses only lose their case. */
+export function sameHost(host: string): string {
+  const h = host.toLowerCase().replace(/^\[|\]$/g, '');
+  if (!h.includes(':')) return h;
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(h);
+  if (mapped) return mapped[1];
+  const [head, tail] = h.split('::');
+  const a = head ? head.split(':') : [];
+  const b = tail === undefined ? [] : tail ? tail.split(':') : [];
+  const groups = tail === undefined ? a : [...a, ...Array(Math.max(0, 8 - a.length - b.length)).fill('0'), ...b];
+  return groups.map((g) => (parseInt(g || '0', 16) || 0).toString(16)).join(':');
+}
+
 const idxKey = (b: Uint8Array) => b64.encode(b);
 
 /** One end of an established link. */
@@ -141,12 +154,12 @@ export function join(o: JoinOptions): Promise<Link> {
     const stop = () => { done = true; timers.forEach(clearTimeout); };
     let session: Session | null = null;
     // The addresses that were probed are the only ones an answer may come from.
-    const probed = new Set(endpoints.map((e) => `${e.host}:${e.port}`));
+    const probed = new Set(endpoints.map((e) => `${sameHost(e.host)}:${e.port}`));
     for (const at of PROBE_AT) timers.push(setTimeout(() => { if (!done) for (const e of endpoints) o.socket.send(init, e.host, e.port); }, at));
     timers.push(setTimeout(() => { if (!done) { stop(); reject(new Error('Could not reach the computer. Is helm running there, with remote connections on, and is the code current?')); } }, o.timeoutMs ?? 6000));
     o.socket.onMessage((data, host, port) => {
       if (session) { if (data[0] === DATA && rd32(data, 1) === session.localIdx) session.receive(data, { host, port }); return; }
-      if (done || data[0] !== RESP || data.length < 9 || rd32(data, 1) !== idxI || !probed.has(`${host}:${port}`)) return;
+      if (done || data[0] !== RESP || data.length < 9 || rd32(data, 1) !== idxI || !probed.has(`${sameHost(host)}:${port}`)) return;
       try {
         const r = hs.finish(data.subarray(9));
         stop();

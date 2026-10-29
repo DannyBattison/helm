@@ -9,6 +9,9 @@ The phone app: the unchanged helm renderer, holding several helm **instances** a
 
 | | |
 | --- | --- |
+| `src/main.ts`, `src/ui.ts` | The screens before helm's own UI: the list of computers and servers, adding one (scan the QR code or paste, then GitHub), and opening one. |
+| `src/native.ts` | The UDP socket (the native plugin) and the preferences the instance list is kept in. |
+| `src/headless.ts`, `collect.html` | The page the background task runs: collect and finish. |
 | `src/instances.ts` | The list of instances and where it is kept. Adding a computer takes its share code; the one-time secret is dropped once it has accepted the phone, and the phone's own key for it is saved. |
 | `src/github.ts` | GitHub sign-in on the phone (device flow, no scopes) to show the computer which GitHub user this is. The token is sent once, encrypted, when pairing, and not kept. |
 | `src/p2pConn.ts` | An encrypted link to a computer as the connection `hosted/web/bridge.ts` wants. `createConnectionBridge(connectDesktop(...))` is a `HelmBridge` over UDP; the renderer does not know the difference. |
@@ -22,11 +25,36 @@ The phone app: the unchanged helm renderer, holding several helm **instances** a
 2. Phone: Add computer → paste the code → sign in to GitHub. The desktop accepts the phone only if its GitHub user is the one signed in on the desktop.
 3. Later connections need neither the secret nor GitHub: the phone is recognised by its key, for as long as the same GitHub user is signed in on the computer. Removing the phone in the desktop's settings ends it.
 
-## Not built yet
+## Building
 
-- **The native shell and UDP plugin.** The protocol runs in TypeScript in the web view and needs only a `UdpSocket` (`send(data, host, port)`, `onMessage`, `close`) from the platform: a Capacitor plugin with a UDP socket on iOS (Network.framework or BSD sockets) and Android (`DatagramSocket`), IPv4 and IPv6, that delivers each received datagram with its sender's address. Everything else is TypeScript. None of it has run on a phone. iOS will ask for local-network permission the first time it talks to a computer on the same network.
-- **Capacitor project and instance list screens.** `scan.ts` needs the camera permission declared in the app (`NSCameraUsageDescription`, `CAMERA`), and a screen with a `<video>` to call it from.
-- **The background task that calls `collect()`.** iOS background app refresh (`BGAppRefreshTask`) and Android WorkManager decide when it runs: typically every 15 minutes or longer, and iOS may not run it at all for an app that is rarely opened. So a notification can be late, by many minutes. It needs the local notifications plugin to show them. For prompt delivery on Android, a foreground service holding the connection open is possible (a permanent notification and more battery).
+One-time: `npm ci` here, in `../hosted` and in the repository root (the page is built from the shared renderer).
+
+| Command (here, or `npm run mobile:…` from the root) | |
+| --- | --- |
+| `npm run build` | Builds the page into `www/`: the app (`index.html`) and the background page (`collect.html`). |
+| `npm run sync` | Builds, then copies it and the plugins into `android/` and `ios/`. Run after any change to the TypeScript. |
+| `npm run android` | Sync, then opens the project in Android Studio. `npm run android:run` builds and runs on a connected phone or emulator. |
+| `npm run android:apk` | Sync, then builds `android/app/build/outputs/apk/debug/app-debug.apk` with Gradle (needs a JDK 21 and the Android SDK). Install it with `adb install -r` or by copying it to the phone. |
+| `npm run ios` | Sync, then opens the project in Xcode (macOS only, with CocoaPods: run `pod install` in `ios/App` the first time). Pick your team under Signing & Capabilities and run on your phone. `npm run ios:run` builds and runs. |
+| `npm run doctor` | Capacitor's check of the setup. |
+
+No Android Studio? The **mobile-android** workflow (Actions → Run workflow) builds the debug APK on GitHub and attaches it to the run.
+
+A free Apple account can install on your own iPhone, but the app stops opening after seven days and has to be reinstalled; a paid account ($99 a year) removes that and allows TestFlight.
+
+## The native parts
+
+Everything else is TypeScript. These are written but **have never been compiled or run** (no Android SDK or Xcode where they were written), so expect to fix small build errors:
+
+- `android/app/src/main/java/app/helm/mobile/`: `HelmUdp.java` (sockets), `HelmUdpPlugin.java` (the Capacitor plugin), `CollectWorker.java` (WorkManager task that runs `collect.html` in a hidden web view and shows notifications), `MainActivity.java` (registers the plugin and schedules the task).
+- `ios/App/App/`: `HelmUdp.swift`, `HelmUdpPlugin.swift`, `ViewController.swift` (registers the plugin; the storyboard points at it), `BackgroundCollect.swift` (`BGAppRefreshTask` that runs `collect.html` in a hidden web view). The four files are added to `App.xcodeproj` by hand; if Xcode complains, remove and re-add them to the App target. `Info.plist` carries the camera, local-network and background-task entries.
+
+Notifications while the app is closed arrive when the OS runs that task, typically every 15 minutes or longer; iOS may not run it for an app that is rarely opened. While the app is open they arrive at once. The first time, the app asks for permission to notify.
+
+## Not done
+
+- Screens beyond the list and adding a computer or server (a hosted server opens in the web view at `/mobile/`, with its own sign-in; getting back is the Android back button or the ⇄ tab on the right edge).
+- Opening the session from a tapped notification (it opens the app).
 - UPnP and NAT-PMP on the desktop: the router's port can be forwarded by hand, and the port is settable.
 
 The browser-only PWA for one hosted server is `../hosted/pwa`.

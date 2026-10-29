@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { host, join } from '../src/shared/p2p/link';
+import { host, join, sameHost } from '../src/shared/p2p/link';
 import type { Link } from '../src/shared/p2p/link';
 import { generateKeyPair } from '../src/shared/p2p/noise';
 import { b64, encodeShareCode } from '../src/shared/p2p/sharecode';
@@ -48,6 +48,17 @@ const connect = async (p: ReturnType<typeof phone>, code: string, name = 'My pho
   await vi.advanceTimersByTimeAsync(7000);
   return settled as Promise<Link | Error>;
 };
+
+describe('addresses', () => {
+  it('compare equal however an IPv6 address is written', () => {
+    expect(sameHost('2A00:1::5')).toBe(sameHost('2a00:1:0:0:0:0:0:5'));
+    expect(sameHost('[2a00:1::5]')).toBe(sameHost('2a00:0001:0000:0000:0000:0000:0000:0005'));
+    expect(sameHost('::1')).toBe('0:0:0:0:0:0:0:1');
+    expect(sameHost('::ffff:192.0.2.1')).toBe('192.0.2.1');
+    expect(sameHost('Home.Example.com')).toBe('home.example.com');
+    expect(sameHost('2a00:1::5')).not.toBe(sameHost('2a00:1::6'));
+  });
+});
 
 describe('a phone and a desktop', () => {
   it('pair with the code, and carry messages both ways, large ones included', async () => {

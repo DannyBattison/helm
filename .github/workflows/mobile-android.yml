@@ -1,0 +1,30 @@
+# Builds the Android app (mobile-app/) as a debug APK you can install on a phone, with no Android Studio. Run it from the Actions tab
+# ("Run workflow"); the APK is attached to the run for 14 days. A debug build is signed with a throwaway key, which is fine for your own phone.
+# Not run on every push: it takes several minutes.
+name: mobile-android
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - run: npm --prefix hosted ci
+      - run: npm --prefix mobile-app ci
+      - run: npm --prefix mobile-app run android:apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: helm-debug-apk
+          path: mobile-app/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
