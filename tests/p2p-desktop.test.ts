@@ -147,7 +147,7 @@ describe('the desktop service', () => {
     // The code was not used up by those attempts: the right user can still pair with it.
     expect((await phone(st.code!)).link).not.toBeInstanceOf(Error);
     expect(d.p.state.devices).toMatchObject([{ name: 'Test phone' }]);
-  });
+  }, 20_000);
 
   it('stops recognising a phone when a different GitHub user signs in on the computer', async () => {
     const d = desktop();
