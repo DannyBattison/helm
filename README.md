@@ -6,21 +6,27 @@
 [![Release date](https://img.shields.io/github/release-date/DannyBattison/helm?label=released)](https://github.com/DannyBattison/helm/releases/latest)
 [![Buy me a coffee](https://img.shields.io/badge/buy%20me%20a%20coffee-%E2%98%95-yellow)](https://buymeacoffee.com/dannybattison)
 
-Supervise many Claude Code sessions across many GitHub repositories, from one window. Available as a desktop app or in your browser.
+Supervise many coding-agent sessions (Claude Code, and Codex) across many GitHub repositories, from one window. Available as a desktop app, in your browser, and as a phone app.
 
 **Website and downloads: [takethehelm.dev](https://takethehelm.dev)**
 
 ## Features
 
-- **Isolated sessions.** Each session works in its own git worktree on an `agent/<name>` branch. Your checkout is never touched.
-- **One place for everything.** Approve commands, answer questions, and watch plan usage or cost budgets across all agents.
+- **Isolated sessions.** Each session works in its own git worktree on an `agent/<name>` branch. Your checkout is never touched. helm pushes the branch after every commit (you can turn that off).
+- **Claude and Codex.** Pick the agent per session. A session can also have extra read-only agents that give a second opinion, while one owner makes the changes.
+- **One place for everything.** Approve commands, answer questions, and watch plan usage or cost budgets across all agents. Sessions show as a list or a kanban board.
 - **Inbox.** Everything waiting on you, cleared from the keyboard or from the tray menu.
-- **Review.** Diffs with hunk-level accept/ask/reject, a read-only review by Claude, and a forecast of which sessions would conflict. Open and merge pull requests.
+- **Review.** Diffs with hunk-level accept/ask/reject, a read-only review by an agent, and a forecast of which sessions would conflict. Open pull requests, see their checks, and merge (or queue a merge for when checks pass).
 - **Checkpoints.** Restore a worktree or fork a session from any of your messages. Compare runs of one task and keep the best.
-- **Code and terminal.** Browse and edit code (Monaco) in a session or your own checkout.
+- **Code and terminal.** Browse and edit code (Monaco) in a session or your own checkout, with a tabbed terminal that starts where you are.
 - **Subagents, queues and free agents.** Subagent trees, per-session limits, queued sessions, GitHub issues as sessions, and agents not tied to a repository.
-- **Reports.** Spend, throughput, approvals, an audit log and CSV export. Works with a Claude subscription or API tokens.
-- **Search.** ⌘K across sessions, conversations, commits and code.
+- **Automated agents.** Saved prompts that start sessions on a schedule or when a pull request or issue appears on GitHub.
+- **Attachments and artifacts.** Give a new session files of any type, and keep what agents produce as artifacts, optionally uploaded to the repository.
+- **MCP servers.** Configure them globally or per repository.
+- **Reports.** Spend, throughput, approvals, an audit log and CSV export. Works with a subscription or API tokens.
+- **Search.** ⌘K across sessions, conversations, commits and code. Keyboard shortcuts can be changed in Settings.
+- **Several machines.** Sync history between helm instances, or export and import it as a file.
+- **Phone app.** Reach a hosted server by URL, or your desktop directly over an encrypted peer-to-peer link (Settings → Phone app on the desktop gives a code to scan). See [mobile/README.md](mobile/README.md).
 
 ## Hosted version
 
@@ -47,15 +53,17 @@ Put TLS in front before exposing it beyond your own machine. If the image is pri
 ## Develop
 
 ```
-npm install
-npm run dev        # desktop app with hot reload
-npm run build      # production bundles
-npm run dist       # installers
-npm test           # tests
-npm run typecheck
+npm ci
+npm run dev          # desktop app with hot reload
+npm run build        # production bundles
+npm run dist         # desktop installers
+npm test             # tests
+npm run typecheck    # run this with the tests; they don't typecheck
+npm run hosted:build # browser version
+npm run mobile:sync  # phone app (see mobile/README.md)
 ```
 
-Needs Node 22+, git, and a Claude login (or `ANTHROPIC_API_KEY`). Layout: `src/core` (the app's logic, no Electron), `src/renderer` (React UI, shared), `desktop/` (Electron), `hosted/` (browser version). Decisions are logged in [decisions/](decisions/).
+Needs Node 22+, git, and a Claude login (or `ANTHROPIC_API_KEY`); Codex needs the `codex` CLI. Layout: `src/core` (the app's logic, no Electron), `src/shared` (code used by every front end), `src/renderer` (React UI, shared), `desktop/` (Electron), `hosted/` (browser version and Docker image), `mobile/` (Capacitor phone app). Releases are built by the `release` GitHub workflow. Decisions are logged one file each in [decisions/](decisions/).
 
 ## Support
 
