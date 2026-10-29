@@ -8,7 +8,7 @@ import { highlightBlock, langFromPath, langFromTag } from '../highlight';
 import { participants } from '@shared/panel';
 import { backendIdOf, agentName, panelBackendId, billingOf, can, clock, elapsed, fmtTokens, modelOptions, prettyModel, runningSubagents, STATUS_LABEL, subagentTree, tilde } from '../lib';
 import { go, loadTranscript, setUI, toast, useApp, useMoney, useTranscript, useUI } from '../store';
-import { Avatar, Badge, BranchTag, Button, ContextMenu, CopyBox, DiffStat, Grip, IconButton, Lightbox, Meter, Select, StatusDot, Tabs, Tooltip, useNarrow, usePaneWidth } from '../ui';
+import { Avatar, Badge, BranchTag, Button, ContextMenu, CopyBox, menuProps, DiffStat, Grip, IconButton, Lightbox, Meter, Select, StatusDot, Tabs, Tooltip, useNarrow, usePaneWidth } from '../ui';
 import { QuestionForm } from './QuestionForm';
 import { PanelBar, ReplyQuote } from './Panel';
 import { Changes } from './Changes';
@@ -298,7 +298,7 @@ function TranscriptItemView({ m, s, index, onDeny }: { m: TranscriptEvent; s: S;
     // In a session with several agents, whose message it is, and a right-click menu to answer that agent alone.
     const who = s?.panel ? m.from ?? s.panel.owner : undefined;
     return (
-    <div onContextMenu={who && index != null && !s.worktreeGone ? (e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY }); } : undefined} style={{ display: 'flex', gap: 10, padding: '10px 12px' }}>
+    <div {...(who && index != null && !s.worktreeGone ? menuProps((e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY }); }) : {})} style={{ display: 'flex', gap: 10, padding: '10px 12px' }}>
       <Avatar agent backend={who ? panelBackendId(app, s, who) : backendIdOf(app, s)} name={who ? '@' + who : agentName(app, s || {})} size={22} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
         {m.re ? <ReplyQuote re={m.re} sessionId={s?.id} /> : null}

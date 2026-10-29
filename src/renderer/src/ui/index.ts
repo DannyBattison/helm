@@ -26,6 +26,8 @@ export { COMPACT, Grip, PHONE, useColumns, useCompact, useNarrow, usePaneWidth }
 export type { Col } from './resize';
 export { Skeleton } from './Skeleton';
 export { ContextMenu } from './ContextMenu';
+export { menuProps } from './longPress';
+export type { PressPoint } from './longPress';
 export type { MenuItem } from './ContextMenu';
 export { Lightbox } from './Lightbox';
 export { Hint } from './Hint';

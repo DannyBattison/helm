@@ -12,7 +12,7 @@ import { visibleRepos, ago, backendFor, billingOf, planBackends, elapsed, fmtTok
 import { getUI, go, haltAll, isResumable, refreshExternals, resumeAll, setUI, toast, useApp, useMoney, useUI, useTranscript, type Route } from '../store';
 import { InboxPreview } from './InboxPreview';
 import { useShortcutKeys } from '../shortcuts';
-import { Avatar, Badge, Breadcrumbs, ContextMenu, Grip, Hint, IconButton, Kbd, Meter, TreeItem, useNarrow, usePaneWidth, type MenuItem } from '../ui';
+import { Avatar, Badge, Breadcrumbs, ContextMenu, Grip, Hint, IconButton, Kbd, Meter, TreeItem, menuProps, useNarrow, usePaneWidth, type MenuItem, type PressPoint } from '../ui';
 
 const mac = () => platform() === 'darwin';
 
@@ -86,7 +86,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
   const extList = (id: string) => (externals[id] || []).filter((x) => showArchived || !x.archived);
   const toggleArchived = () => { try { localStorage.setItem('helm-show-archived', showArchived ? '0' : '1'); } catch { /* storage unavailable */ } setUI({ showArchived: !showArchived }); };
   const [menu, setMenu] = React.useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
-  const sessionMenu = (e: React.MouseEvent, s: (typeof app.sessions)[number]) => {
+  const sessionMenu = (e: PressPoint, s: (typeof app.sessions)[number]) => {
     e.preventDefault();
     e.stopPropagation();
     const running = s.status === 'working' || s.status === 'attention';
@@ -101,7 +101,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
       { label: 'Delete session…', icon: 'trash', danger: true, separator: true, onClick: () => setUI({ deleting: s.id }) }
     ] });
   };
-  const externalMenu = (e: React.MouseEvent, repoId: string, x: (typeof externals)[string][number]) => {
+  const externalMenu = (e: PressPoint, repoId: string, x: (typeof externals)[string][number]) => {
     e.preventDefault();
     e.stopPropagation();
     setMenu({ x: e.clientX, y: e.clientY, items: [
@@ -110,7 +110,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
       { label: x.archived ? 'Restore from archive' : 'Archive', icon: x.archived ? 'arrow-counter-clockwise' : 'archive', separator: true, onClick: () => { api.archiveExternal(x.id, !x.archived).then(() => refreshExternals()); } }
     ] });
   };
-  const repoMenu = (e: React.MouseEvent, r: (typeof app.repos)[number]) => {
+  const repoMenu = (e: PressPoint, r: (typeof app.repos)[number]) => {
     e.preventDefault();
     e.stopPropagation();
     const editor = app.settings.openIn;
@@ -188,8 +188,8 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
           const open = closed[r.id] === undefined ? !empty : !closed[r.id];
           return (
             <div key={r.id} {...target('repo', r.id)} style={line(r.id)}>
-              <div {...(isFreeGroup(r) ? {} : dnd('repo', r.id))} onContextMenu={(e) => { if (!isFreeGroup(r)) repoMenu(e, r); }}>
-              <TreeItem icon={isFreeGroup(r) ? 'robot' : 'book-bookmark'} expandable expanded={open}
+              <div {...(isFreeGroup(r) ? {} : dnd('repo', r.id))} {...(isFreeGroup(r) ? {} : menuProps((e) => repoMenu(e, r)))}>
+              <TreeItem icon={isFreeGroup(r) ? 'robot' : 'book-bookmark'} expandable expanded={open} onToggle={() => setClosed({ ...closed, [r.id]: open })}
                 label={isFreeGroup(r) ? <span title="Agents that are not tied to a repository">Free agents</span> : <span>{app.settings.showOwner ? <span style={{ color: 'var(--text-3)' }}>{r.owner}/</span> : null}{r.name}</span>}
                 selected={!isFreeGroup(r) && route.screen === 'repo' && route.id === r.id} meta={live || null}
                 trailing={isFreeGroup(r) ? (app.settings.freeAgents ? <IconButton icon="plus" label="New free agent" size="sm" onClick={(e: any) => { e.stopPropagation(); setUI({ newSession: { repoId: '@free' } }); }} /> : null) : lifetimeTokens(app.lifetime[r.id]) ? <span title={`${lifetimeTokens(app.lifetime[r.id]).toLocaleString()} tokens used in ${r.name} over its lifetime, including deleted sessions`} style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)', flex: 'none', marginLeft: 6 }}>{fmtTokens(lifetimeTokens(app.lifetime[r.id]))}</span> : null}
@@ -203,8 +203,8 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
                 const subsOpen = !subsClosed[s.id];
                 return (
                   <div key={s.id} {...target('session', s.id, r.id)} style={line(s.id)}>
-                    <div {...dnd('session', s.id, r.id)} onContextMenu={(e) => sessionMenu(e, s)}>
-                    <TreeItem depth={1} status={s.status} label={sessionTitle(s)} expandable={tree.length > 0 || hiddenSubs > 0} expanded={subsOpen} style={s.archivedAt ? { opacity: 0.6 } : undefined} trailing={s.archivedAt ? <i className="ph ph-archive" title="Archived" style={{ fontSize: 12, color: 'var(--text-3)' }} /> : s.queuedMerge ? <i className="ph ph-git-merge" title={s.queuedMerge.error ? 'Queued merge failed: ' + s.queuedMerge.error : 'Merge queued: waits for its checks'} style={{ fontSize: 12, color: s.queuedMerge.error ? 'var(--status-error-text)' : 'var(--accent-text)' }} /> : s.stuck ? <i className="ph ph-warning" title={'Looks stuck: ' + s.stuck} style={{ fontSize: 12, color: 'var(--status-attention-text)' }} /> : null}
+                    <div {...dnd('session', s.id, r.id)} {...menuProps((e) => sessionMenu(e, s))}>
+                    <TreeItem depth={1} status={s.status} label={sessionTitle(s)} expandable={tree.length > 0 || hiddenSubs > 0} expanded={subsOpen} onToggle={() => setSubsClosed({ ...subsClosed, [s.id]: subsOpen })} style={s.archivedAt ? { opacity: 0.6 } : undefined} trailing={s.archivedAt ? <i className="ph ph-archive" title="Archived" style={{ fontSize: 12, color: 'var(--text-3)' }} /> : s.queuedMerge ? <i className="ph ph-git-merge" title={s.queuedMerge.error ? 'Queued merge failed: ' + s.queuedMerge.error : 'Merge queued: waits for its checks'} style={{ fontSize: 12, color: s.queuedMerge.error ? 'var(--status-error-text)' : 'var(--accent-text)' }} /> : s.stuck ? <i className="ph ph-warning" title={'Looks stuck: ' + s.stuck} style={{ fontSize: 12, color: 'var(--status-attention-text)' }} /> : null}
                       meta={running ? <span style={{ color: 'var(--status-working-text)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><i className="ph ph-tree-structure" style={{ fontSize: 11 }} />{running}</span> : elapsed(s.startedAt, s.endedAt)}
                       selected={route.screen === 'session' && route.id === s.id && !route.sub}
                       onClick={() => {
@@ -231,7 +231,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
                 const shown = all.filter((x, i) => x.active || i < 4);
                 return <>
                   {shown.map((x) => (
-                    <div key={x.id} onContextMenu={(e) => externalMenu(e, r.id, x)} style={x.archived ? { opacity: 0.6 } : undefined}><TreeItem depth={1} status={x.active ? 'working' : 'idle'}
+                    <div key={x.id} {...menuProps((e) => externalMenu(e, r.id, x))} style={x.archived ? { opacity: 0.6 } : undefined}><TreeItem depth={1} status={x.active ? 'working' : 'idle'}
                       label={<span style={{ fontStyle: 'italic' }} title={`${x.title}\nStarted outside helm. Read-only.`}>{x.title}</span>}
                       meta={x.active ? 'live' : ago(x.lastModified)}
                       trailing={<i className="ph ph-eye" title="Read-only: started outside helm" style={{ fontSize: 12, color: 'var(--text-3)' }} />}
@@ -248,6 +248,11 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
       </div>
       <div style={{ flex: 'none', padding: '10px 12px', borderTop: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: 10 }}>
         <PlanMeters />
+        {/* The header has no room for these on a narrow phone, so they live here. */}
+        <div className="helm-portrait-only" style={{ margin: '0 -6px' }}>
+          <TreeItem icon="play" label={paused ? `Continue all agents (${paused})` : 'Continue all agents'} style={paused ? undefined : { opacity: 0.45 }} onClick={() => { if (paused) void resumeAll(); }} />
+          <TreeItem icon="pause" label={working ? `Interrupt all agents (${working})` : 'Interrupt all agents'} style={working ? undefined : { opacity: 0.45 }} onClick={() => { if (working) void haltAll(); }} />
+        </div>
         <TreeItem icon="gear-six" label="Settings" selected={route.screen === 'settings'} onClick={() => go({ screen: 'settings' })} style={{ margin: '0 -6px' }} />
       </div>
       {menu ? <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} /> : null}
@@ -274,8 +279,10 @@ export function TitleBar({ crumbs, theme, setTheme }: { crumbs: any[]; theme: 'd
         <Hint id="play-pause" title="Pause and continue everything" text="Interrupt every working agent in one go, then continue them all when you are ready.">
           <span style={{ display: 'inline-flex', gap: 2 }}>
             <IconButton size={narrow ? 'lg' : 'md'} icon="plus" label="New session" glow accent onClick={() => { const r = getUI().route; setUI({ newSession: r.screen === 'repo' ? { repoId: r.id } : {} }); }} />
+            <span className="helm-hide-portrait" style={{ display: 'inline-flex', gap: 2 }}>
             <IconButton size={narrow ? 'lg' : 'md'} icon="play" glow label={paused ? `Continue all agents (${paused} interrupted)` : 'Continue all agents: none were interrupted'} disabled={!paused} hoverColor="var(--status-ready-text)" onClick={() => void resumeAll()} />
             <IconButton size={narrow ? 'lg' : 'md'} icon="pause" glow label={working ? `Interrupt all agents (${working} working)` : 'Interrupt all agents: none are working'} disabled={!working} hoverColor="var(--status-error-text)" onClick={() => void haltAll()} />
+            </span>
           </span>
         </Hint>
         <Hint id="inbox" title="Your inbox" text="Approvals, questions and finished work that need you collect here."><InboxPreview glow size={narrow ? 'lg' : 'md'} /></Hint>

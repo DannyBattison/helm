@@ -225,3 +225,17 @@ textarea {
   .helm-sess-header { padding-top: 6px !important; gap: 4px !important; }
   .helm-sess-title > :nth-child(2) { display: none !important; }
 }
+
+/* Touch screens: the caret of a tree row is its own, bigger target (tapping the row opens it; tapping the caret folds it). */
+@media (pointer: coarse) {
+  .helm-tree-caret { align-self: stretch; width: 32px !important; margin: 0 -11px 0 -9px; }
+  /* A long press opens a menu, so it must not also select text or raise the browser's own callout. */
+  [data-longpress] { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+}
+
+/* A phone held upright has no room in the header for more than a few buttons. */
+.helm-portrait-only { display: none; }
+@media (max-width: 599px) {
+  .helm-hide-portrait { display: none !important; }
+  .helm-portrait-only { display: block; }
+}
