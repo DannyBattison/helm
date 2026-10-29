@@ -109,7 +109,7 @@ jobs:
         uses: actions/download-artifact@v5
         with:
           pattern: mobile-*
-          path: mobile
+          path: mobile-assets
           merge-multiple: true
       - if: inputs.hosted
         uses: actions/download-artifact@v5
@@ -127,7 +127,7 @@ jobs:
       - name: Create the release
         run: |
           shopt -s nullglob
-          files=(installers/* mobile/*)
+          files=(installers/* mobile-assets/*)
           # A re-run after a failed upload finds the tag (and the release) already there.
           if ! git ls-remote --exit-code --tags origin "v$VERSION" >/dev/null; then
             git tag "v$VERSION"
