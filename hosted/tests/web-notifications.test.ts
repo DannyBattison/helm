@@ -31,7 +31,7 @@ afterEach(() => {
   // Consume any first-click listener a test left on window, without granting anything.
   FakeNotification.requestPermission.mockImplementation(async () => 'denied');
   permission = 'denied';
-  window.dispatchEvent(new Event('pointerdown'));
+  window.dispatchEvent(new Event('click'));
   FakeNotification.requestPermission.mockImplementation(async () => { permission = 'granted'; return 'granted'; });
   vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); history.replaceState(null, '', '/'); });
 
@@ -80,15 +80,15 @@ describe('page notifications', () => {
     permission = 'default';
     setupNotifications(fakeBridge());
     expect(FakeNotification.requestPermission).not.toHaveBeenCalled();
-    window.dispatchEvent(new Event('pointerdown'));
-    window.dispatchEvent(new Event('pointerdown'));
+    window.dispatchEvent(new Event('click'));
+    window.dispatchEvent(new Event('click'));
     expect(FakeNotification.requestPermission).toHaveBeenCalledTimes(1);
   });
 
   it('does not ask once denied', () => {
     permission = 'denied';
     setupNotifications(fakeBridge());
-    window.dispatchEvent(new Event('pointerdown'));
+    window.dispatchEvent(new Event('click'));
     expect(FakeNotification.requestPermission).not.toHaveBeenCalled();
   });
 });
@@ -213,7 +213,7 @@ describe('push', () => {
   it('enrols after permission is granted by the first click', async () => {
     permission = 'default';
     setupNotifications(fakeBridge(), { push: true });
-    window.dispatchEvent(new Event('pointerdown'));
+    window.dispatchEvent(new Event('click'));
     await vi.advanceTimersByTimeAsync(0);
     expect(sw.register).toHaveBeenCalledTimes(1);
   });

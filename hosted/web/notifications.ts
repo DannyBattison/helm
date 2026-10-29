@@ -35,7 +35,7 @@ async function enrol(): Promise<boolean> {
 
 /**
  * Notifications for a browser tab or an installed app: shown by the page while it is open and out of focus, and, with `push`, by the worker
- * when it is closed. A tapped notification takes you to its session. Permission is asked on the first click, which browsers require.
+ * when it is closed. A tapped notification takes you to its session. Permission is asked on the first click, which browsers require (iOS ignores pointerdown and touchstart for this).
  */
 export function setupNotifications(bridge: WebBridge, opts: NotifyOptions = {}) {
   let pushing = false;
@@ -47,7 +47,7 @@ export function setupNotifications(bridge: WebBridge, opts: NotifyOptions = {}) 
 
   if (typeof Notification !== 'undefined') {
     if (Notification.permission === 'granted') enable();
-    else if (Notification.permission === 'default') addEventListener('pointerdown', () => { void Notification.requestPermission().then(enable); }, { once: true });
+    else if (Notification.permission === 'default') addEventListener('click', () => { void Notification.requestPermission().then(enable); }, { once: true });
   }
   if (opts.push && 'serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', (e) => { if (e.data?.type === 'open') bridge.open(e.data.sessionId, e.data.kind); });
