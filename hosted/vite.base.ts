@@ -11,14 +11,14 @@ const shared = ['sw.js:web/worker/sw.js', 'favicon.svg:web/public/favicon.svg', 
  * `hosted/` builds to `dist/web`; an extra build (`hosted/pwa/`) passes its own folder and builds to `dist/web/<name>/` (or `out`),
  * where its server serves it, with the worker and icons from here and the manifest from its own folder.
  */
-export function webConfig(opts: { dir?: string; name?: string; out?: string } = {}) {
+export function webConfig(opts: { dir?: string; name?: string; out?: string; /** Emit the worker, icons and manifest of an installable web app. Default true for an extra build. */ pwa?: boolean } = {}) {
   const root = opts.dir ?? resolve(hosted, 'web');
   const sub = opts.name ? '/' + opts.name : '';
   return defineConfig({
     root,
     base: './',
     publicDir: opts.dir ? false : resolve(hosted, 'web/public'),
-    plugins: [react(), ...(opts.dir ? [{
+    plugins: [react(), ...(opts.dir && opts.pwa !== false ? [{
       name: 'helm-pwa-assets',
       // Added after vite has handled the page's assets: it would otherwise move the manifest into assets/ and break its relative icon paths.
       transformIndexHtml: { order: 'post' as const, handler: () => [{ tag: 'link', attrs: { rel: 'manifest', href: './manifest.webmanifest' }, injectTo: 'head' as const }] },
@@ -30,6 +30,6 @@ export function webConfig(opts: { dir?: string; name?: string; out?: string } = 
     resolve: { alias: { '@shared': resolve(hosted, '../src/shared'), '@': resolve(hosted, '../src/renderer/src') } },
     server: { fs: { allow: [resolve(hosted, '..')] } },
     worker: { format: 'es' },
-    build: { outDir: opts.out ?? resolve(hosted, 'dist/web' + sub), emptyOutDir: !opts.dir }
+    build: { outDir: opts.out ?? resolve(hosted, 'dist/web' + sub), emptyOutDir: !opts.dir || opts.pwa === false }
   });
 }

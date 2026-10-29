@@ -8,7 +8,8 @@ import type { Tombstone } from '../shared/sync';
 import { DEFAULT_ALWAYS_ASK, dayStart, home, uid, weekStart } from './util';
 
 /** helm's registered GitHub OAuth app. Client IDs are public; the device flow uses no secret. */
-export const DEFAULT_GITHUB_CLIENT_ID = 'Ov23liTYcKE5lBWCEAAV';
+import { DEFAULT_GITHUB_CLIENT_ID } from '../shared/githubApp';
+export { DEFAULT_GITHUB_CLIENT_ID };
 
 export const defaultSettings = (): Settings => ({
   mcpServers: [],
