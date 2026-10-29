@@ -161,7 +161,7 @@ function ArtifactView({ sessionId, name, label, embed }: { sessionId: string; na
   return <span style={box}>{lightbox}<i className={'ph ' + (previewable ? 'ph-image' : 'ph-file')} style={{ color: 'var(--text-3)' }} /><span onClick={previewable ? () => setZoom(true) : undefined} title={previewable ? 'Click to preview' : undefined} style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: previewable ? 'zoom-in' : undefined }}>{label || art.name}</span><span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{fmtSize(art.size)}</span>{button}</span>;
 }
 
-/** Paragraphs, bullet and numbered lists, and `inline code`. Enough for agent prose. */
+/** Paragraphs, bullet and numbered lists, tables, and `inline code`. Enough for agent prose. */
 function Rich({ text, sessionId }: { text: string; sessionId?: string }) {
   const inline = (t: string) => t.split(/(`[^`]+`|!?\[[^\]]*\]\(artifact:[^)\s]+\))/g).map((p, i) => { const a = sessionId ? p.match(/^(!?)\[([^\]]*)\]\(artifact:([^)\s]+)\)$/) : null; if (a) return <ArtifactView key={i} sessionId={sessionId!} name={safeDecode(a[3])} label={a[2]} embed={!!a[1]} />; return inlineText(p, i); });
   const inlineText = (p: string, i: number) => (p.startsWith('`') && p.endsWith('`') && p.length > 2 ? <code key={i} style={{ font: 'var(--type-data)', padding: '1px 4px', borderRadius: 3, background: 'var(--bg-active)' }}>{p.slice(1, -1)}</code> : <React.Fragment key={i}>{p.replace(/\*\*([^*]+)\*\*/g, '$1')}</React.Fragment>);
@@ -170,6 +170,23 @@ function Rich({ text, sessionId }: { text: string; sessionId?: string }) {
   let para: string[] = [];
   let fence: string[] | null = null;
   let fenceTag = '';
+  let table: string[] = [];
+  const cells = (row: string) => row.trim().replace(/^\|/, '').replace(/\|$/, '').split(/(?<!\\)\|/).map((c) => c.trim().replace(/\\\|/g, '|'));
+  const isSep = (row: string) => /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/.test(row) && row.includes('-');
+  const flushTable = () => {
+    if (!table.length) return;
+    const rows = table; table = [];
+    if (rows.length < 2 || !isSep(rows[1])) { para.push(...rows.map((r) => r.trim())); return; }
+    const align = cells(rows[1]).map((c) => (c.startsWith(':') && c.endsWith(':') ? 'center' : c.endsWith(':') ? 'right' : 'left') as 'left' | 'right' | 'center');
+    const cell: React.CSSProperties = { padding: '4px 10px', borderBottom: '1px solid var(--border-subtle)', verticalAlign: 'top' };
+    blocks.push(
+      <div key={blocks.length} className="helm-hscroll" style={{ overflowX: 'auto', maxWidth: '100%' }}>
+        <table style={{ borderCollapse: 'collapse', font: '400 12.5px/1.5 var(--font-sans)', boxShadow: 'inset 0 0 0 1px var(--border)', borderRadius: 'var(--radius-sm)' }}>
+          <thead><tr>{cells(rows[0]).map((c, i) => <th key={i} style={{ ...cell, textAlign: align[i], fontWeight: 600, background: 'var(--bg-raised)', whiteSpace: 'nowrap' }}>{inline(c)}</th>)}</tr></thead>
+          <tbody>{rows.slice(2).map((r, ri) => <tr key={ri}>{cells(r).map((c, i) => <td key={i} style={{ ...cell, textAlign: align[i] }}>{inline(c)}</td>)}</tr>)}</tbody>
+        </table>
+      </div>);
+  };
   const codeBlock = (lines: string[], tag: string, key: number) => {
     const hb = highlightBlock(lines.join('\n'), langFromTag(tag));
     const st: React.CSSProperties = { margin: 0, padding: '8px 10px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-editor)', boxShadow: 'inset 0 0 0 1px var(--border-subtle)', font: 'var(--type-data)', overflow: 'auto', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' };
@@ -181,17 +198,19 @@ function Rich({ text, sessionId }: { text: string; sessionId?: string }) {
   for (const line of text.split('\n')) {
     if (line.trim().startsWith('```')) {
       if (fence) { blocks.push(codeBlock(fence, fenceTag, blocks.length)); fence = null; }
-      else { flushPara(); flushList(); fence = []; fenceTag = line.trim().slice(3); }
+      else { flushPara(); flushList(); flushTable(); fence = []; fenceTag = line.trim().slice(3); }
       continue;
     }
     if (fence) { fence.push(line); continue; }
+    if (line.trim().startsWith('|')) { flushPara(); flushList(); table.push(line); continue; }
+    flushTable();
     const m = line.match(/^\s*(?:([-*•])|(\d+)[.)])\s+(.*)$/);
     if (m) { flushPara(); const ordered = !!m[2]; if (list && list.ordered !== ordered) flushList(); list = list || { ordered, items: [] }; list.items.push(m[3]); }
     else if (!line.trim()) { flushPara(); flushList(); }
     else { flushList(); para.push(line.trim().replace(/^#+\s*/, '')); }
   }
   if (fence) blocks.push(codeBlock(fence, fenceTag, blocks.length));
-  flushPara(); flushList();
+  flushTable(); flushPara(); flushList();
   return <>{blocks}</>;
 }
 
