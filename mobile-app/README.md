@@ -27,7 +27,7 @@ The phone app: the unchanged helm renderer, holding several helm **instances** a
 
 ## Building
 
-One-time: `npm ci` here, in `../hosted` and in the repository root (the page is built from the shared renderer).
+One-time: **Node 22 or newer** (`node -v`; with nvm, `nvm install` in the repository root reads `.nvmrc`; with Homebrew, `brew install node@22`). Older Node fails with errors like `'node:util' does not provide an export named 'styleText'`. Then `npm ci` here, in `../hosted` and in the repository root (the page is built from the shared renderer).
 
 | Command (here, or `npm run mobile:…` from the root) | |
 | --- | --- |
