@@ -28,6 +28,10 @@ Supervise many coding-agent sessions (Claude Code, and Codex) across many GitHub
 - **Several machines.** Sync history between helm instances, or export and import it as a file.
 - **Phone app.** Reach a hosted server by URL, or your desktop directly over an encrypted peer-to-peer link (Settings → Phone app on the desktop gives a code to scan). See [mobile/README.md](mobile/README.md).
 
+## Documentation
+
+A guide to every view and feature, for newcomers, developers and power users, is in [docs/](docs/Home.md) and the repository's wiki.
+
 ## Hosted version
 
 Run helm on a server and use it from a browser:
