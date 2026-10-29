@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, statSync } from 'node:fs';
+import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -47,6 +47,45 @@ describe('push subscriptions', () => {
   });
 });
 
+describe('push edge cases', () => {
+  it('rejects subscriptions with oversized or non-string keys', () => {
+    expect(validSub({ endpoint: 'https://x', keys: { p256dh: 'p'.repeat(200), auth: 'a' } })).toBe(false);
+    expect(validSub({ endpoint: 'https://x', keys: { p256dh: 'p', auth: 'a'.repeat(100) } })).toBe(false);
+    expect(validSub({ endpoint: 5, keys: { p256dh: 'p', auth: 'a' } })).toBe(false);
+  });
+
+  it('starts fresh from a corrupt file and does not rewrite the file when nothing was removed', () => {
+    const dir = fresh();
+    writeFileSync(join(dir, 'push.json'), 'not json');
+    const p = createPush(dir);
+    expect(p.count()).toBe(0);
+    p.subscribe(sub(1));
+    const before = readFileSync(join(dir, 'push.json'), 'utf8');
+    writeFileSync(join(dir, 'push.json'), 'marker');
+    p.unsubscribe('https://push.example/unknown');
+    expect(readFileSync(join(dir, 'push.json'), 'utf8')).toBe('marker');
+    p.unsubscribe(sub(1).endpoint);
+    expect(readFileSync(join(dir, 'push.json'), 'utf8')).not.toBe(before);
+  });
+
+  it('sends the silent flag and the configured contact, and keeps devices on other errors', async () => {
+    const send = vi.fn(async (_s: any, _b?: string, _o?: any) => ({}) as any);
+    const p = createPush(fresh(), 'mailto:me@x.y', send as any, 'other.json');
+    p.subscribe(sub(1));
+    await p.notify({ ...note, silent: true });
+    expect(JSON.parse(send.mock.calls[0][1] as string).silent).toBe(true);
+    expect(send.mock.calls[0][2].vapidDetails.subject).toBe('mailto:me@x.y');
+    await p.notify(note);
+    expect(JSON.parse(send.mock.calls[1][1] as string).silent).toBe(false);
+  });
+
+  it('defaults the contact from the environment', () => {
+    vi.stubEnv('HELM_HOSTED_PUSH_CONTACT', 'mailto:env@x.y');
+    expect(createPush(fresh()).publicKey).toBeTruthy();
+    vi.unstubAllEnvs();
+  });
+});
+
 describe('/push routes', () => {
   let close: () => void = () => undefined;
   afterEach(() => close());
@@ -82,6 +121,27 @@ describe('/push routes', () => {
     expect((await post('/push/subscribe', 'nope')).status).toBe(400);
     expect((await post('/push/subscribe', 'x'.repeat(5000))).status).toBe(413);
     expect(push.count()).toBe(0);
+  });
+
+  it('answers 404 to unknown push paths and methods, and 401 when a per-person lookup finds nobody', async () => {
+    const { base } = await serve(true);
+    expect((await fetch(base + '/push/nothing')).status).toBe(404);
+    expect((await fetch(base + '/push/subscribe')).status).toBe(404);
+    const push = createPush(fresh());
+    const srv = createServer(async (req, res) => { if (!(await pushRoute(req, res, () => (req.headers['x-who'] === 'me' ? push : null), () => true))) res.writeHead(404).end(); });
+    await new Promise<void>((r) => srv.listen(0, '127.0.0.1', r));
+    close = () => srv.close();
+    const url = `http://127.0.0.1:${(srv.address() as AddressInfo).port}/push/key`;
+    expect((await fetch(url)).status).toBe(401);
+    expect(await (await fetch(url, { headers: { 'x-who': 'me' } })).json()).toEqual({ key: push.publicKey });
+  });
+
+  it('ignores an unsubscribe without an endpoint string', async () => {
+    const { post, push } = await serve(true);
+    push.subscribe(sub(1));
+    expect((await post('/push/unsubscribe', { endpoint: 5 })).status).toBe(200);
+    expect((await post('/push/unsubscribe', 'null')).status).toBe(200);
+    expect(push.count()).toBe(1);
   });
 
   it('leaves other paths to the caller', async () => {

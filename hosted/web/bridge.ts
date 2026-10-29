@@ -79,7 +79,8 @@ export function createConnectionBridge(connect: () => Promise<Conn>, extra: Reco
     for (const q of queued) c.send(q);
     queued = [];
     // Whatever happened while we were away: the UI replaces its state with a fresh copy.
-    if (reconnect) void bridge.invoke('getState').then((s) => emit('state', s));
+    // If the connection drops again before it answers, the next reconnect asks again: nothing to report here.
+    if (reconnect) void bridge.invoke('getState').then((s) => emit('state', s), () => undefined);
   }
   void open(false);
 

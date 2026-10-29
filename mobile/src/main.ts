@@ -141,16 +141,17 @@ function addServer() {
     el('button', 'Back', '', () => void home()));
 }
 
-function addComputer() {
+/** `problem` is shown under the paste box: why the last attempt (a camera scan) did not work. */
+function addComputer(problem = '') {
   sub = true;
   const paste = el('textarea'); paste.placeholder = 'HELM1-…';
-  const err = el('p', '', 'err');
+  const err = el('p', problem, 'err');
   const go = (code: string) => void pair(code).catch((e) => { show(el('h1', 'Could not add it'), el('p', String(e?.message || e), 'err'), el('button', 'Try again', 'primary', () => addComputer()), el('button', 'Back', '', () => void home())); });
   const scan = el('button', 'Scan the QR code', 'primary', () => {
     const video = document.createElement('video');
     const cancel = new AbortController();
     show(el('h1', 'Scan the code'), 'Point the camera at the QR code in helm on your computer: Settings → Phone app.', video, el('button', 'Cancel', '', () => { cancel.abort(); addComputer(); }));
-    scanShareCode(video, cancel.signal).then(go, (e) => { if (!cancel.signal.aborted) { err.textContent = String(e?.message || e); addComputer(); } });
+    scanShareCode(video, cancel.signal).then(go, (e) => { if (!cancel.signal.aborted) addComputer(String(e?.message || e)); });
   });
   show(el('h1', 'Add a computer'), 'In helm on your computer, open Settings → Phone app and turn it on.', scan, 'Or paste the code:', paste, err,
     el('button', 'Continue', '', () => { try { decodeShareCode(paste.value); go(paste.value); } catch (e: any) { err.textContent = String(e?.message || e); } }),
