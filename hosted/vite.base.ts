@@ -4,7 +4,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 const hosted = __dirname;
-const shared = ['sw.js:web/worker/sw.js', 'favicon.svg:web/public/favicon.svg', 'apple-touch-icon.png:web/public/apple-touch-icon.png'];
+const shared = ['sw.js:web/worker/sw.js', 'favicon.svg:web/public/favicon.svg', 'apple-touch-icon.png:web/public/apple-touch-icon.png', 'icon-192.png:web/public/icon-192.png', 'icon-512.png:web/public/icon-512.png', 'icon-maskable-512.png:web/public/icon-maskable-512.png'];
 
 /**
  * The vite config every web build shares: the desktop renderer, unmodified, mounted from an entry that only differs per build.
