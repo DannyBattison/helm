@@ -1,4 +1,4 @@
-# Builds the phone app (mobile-app/) for Android and/or iOS and uploads the files as workflow artifacts (mobile-android, mobile-ios). Nothing
+# Builds the phone app (mobile/) for Android and/or iOS and uploads the files as workflow artifacts (mobile-android, mobile-ios). Nothing
 # is published: release.yml calls this and attaches the files to the release. Run it by hand from the Actions tab (tick the platforms) to get
 # builds of any branch.
 #
@@ -77,11 +77,11 @@ jobs:
           java-version: 21
       - run: npm ci
       - run: npm --prefix hosted ci
-      - run: npm --prefix mobile-app ci
+      - run: npm --prefix mobile ci
       - name: Build the web app and sync it into the Android project
-        run: npm --prefix mobile-app run sync
+        run: npm --prefix mobile run sync
       - name: Build the release APK
-        working-directory: mobile-app/android
+        working-directory: mobile/android
         run: ./gradlew assembleRelease -PhelmVersionCode=${{ github.run_number }} -PhelmVersionName=${{ env.VERSION }}
       - name: Align and sign
         env:
@@ -92,7 +92,7 @@ jobs:
         run: |
           set -euo pipefail
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
-          IN=mobile-app/android/app/build/outputs/apk/release/app-release-unsigned.apk
+          IN=mobile/android/app/build/outputs/apk/release/app-release-unsigned.apk
           OUT="helm-android-$VERSION.apk"
           "$BT/zipalign" -p -f 4 "$IN" aligned.apk
           if [ -n "$KEYSTORE_BASE64" ]; then
@@ -128,11 +128,11 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm --prefix hosted ci
-      - run: npm --prefix mobile-app ci
+      - run: npm --prefix mobile ci
       - name: Build the web app and sync it into the iOS project (installs the pods)
-        run: npm --prefix mobile-app run sync
+        run: npm --prefix mobile run sync
       - name: Archive, unsigned
-        working-directory: mobile-app/ios/App
+        working-directory: mobile/ios/App
         run: |
           set -euo pipefail
           xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -sdk iphoneos \

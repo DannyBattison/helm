@@ -118,7 +118,7 @@ public class CollectWorker extends Worker {
                 JSONObject n = new JSONObject(json);
                 NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
                 if (Build.VERSION.SDK_INT >= 26) manager.createNotificationChannel(new NotificationChannel(CHANNEL, "Agents", NotificationManager.IMPORTANCE_DEFAULT));
-                // Tapping opens the app on the session: a link the app handles (see openUrl in mobile-app/src/open.ts).
+                // Tapping opens the app on the session: a link the app handles (see openUrl in mobile/src/open.ts).
                 Uri link = new Uri.Builder().scheme("helm").authority("open")
                     .appendQueryParameter("instance", n.optString("instanceId"))
                     .appendQueryParameter("session", n.optString("sessionId"))

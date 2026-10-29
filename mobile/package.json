@@ -1,14 +1,14 @@
 {
-  "name": "helm-mobile-app",
+  "name": "helm-mobile",
   "version": "0.1.0",
   "private": true,
   "description": "helm on a phone: the renderer in a Capacitor shell, holding several helm instances",
   "scripts": {
-    "build": "cd ../hosted && vite build -c ../mobile-app/vite.config.ts",
+    "build": "cd ../hosted && vite build -c ../mobile/vite.config.ts",
     "sync": "npm run build && cap sync",
     "android": "npm run sync && cap open android",
     "android:run": "npm run sync && cap run android",
-    "android:apk": "npm run sync && cd android && ./gradlew assembleDebug && echo && echo \"APK: mobile-app/android/app/build/outputs/apk/debug/app-debug.apk\"",
+    "android:apk": "npm run sync && cd android && ./gradlew assembleDebug && echo && echo \"APK: mobile/android/app/build/outputs/apk/debug/app-debug.apk\"",
     "ios": "npm run sync && cap open ios",
     "ios:run": "npm run sync && cap run ios",
     "doctor": "cap doctor",

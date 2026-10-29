@@ -210,7 +210,7 @@ export class P2P {
 
   /**
    * A notification for the phones. Each paired phone gets it now if it is connected, and in any case it is kept for that phone until it
-   * says it has shown it: a phone that is closed collects what it missed in a short background connection (see mobile-app/src/notices.ts).
+   * says it has shown it: a phone that is closed collects what it missed in a short background connection (see mobile/src/notices.ts).
    */
   notify(n: Omit<Notice, 'id' | 'at'>) {
     const saved = this.saved;

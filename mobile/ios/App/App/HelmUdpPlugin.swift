@@ -1,7 +1,7 @@
 import Capacitor
 import Foundation
 
-/// The page's UDP socket (see mobile-app/src/native.ts). Datagrams arrive as "message" events with base64 data.
+/// The page's UDP socket (see mobile/src/native.ts). Datagrams arrive as "message" events with base64 data.
 @objc(HelmUdpPlugin)
 public class HelmUdpPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "HelmUdpPlugin"

@@ -121,7 +121,7 @@ private final class CollectRun: NSObject, WKScriptMessageHandler {
                 content.title = n["title"] as? String ?? "helm"
                 content.body = n["body"] as? String ?? ""
                 content.subtitle = n["instanceName"] as? String ?? ""
-                // Capacitor's notification plugin reports a tap with this as its `extra` (mobile-app/src/open.ts reads it).
+                // Capacitor's notification plugin reports a tap with this as its `extra` (mobile/src/open.ts reads it).
                 content.userInfo = ["instance": n["instanceId"] as? String ?? "", "session": n["sessionId"] as? String ?? "", "kind": n["kind"] as? String ?? ""]
                 if (n["silent"] as? Bool) != true { content.sound = .default }
                 UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: n["id"] as? String ?? UUID().uuidString, content: content, trigger: nil))

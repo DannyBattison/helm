@@ -111,7 +111,7 @@ writeFileSync(join(pub, 'icon-maskable-512.png'), await png(shapes.square, 512))
 writeFileSync(join(pub, 'apple-touch-icon.png'), await flat(await png(shapes.square, 180)));
 
 // ---------------------------------------------------------------------------------------------------- iOS
-const ios = join(repo, 'mobile-app', 'ios', 'App', 'App', 'Assets.xcassets');
+const ios = join(repo, 'mobile', 'ios', 'App', 'App', 'Assets.xcassets');
 if (existsSync(ios)) {
   writeFileSync(join(ios, 'AppIcon.appiconset', 'AppIcon-512@2x.png'), await flat(await png(shapes.square, 1024)));
   const set = join(ios, 'Splash.imageset');
@@ -122,7 +122,7 @@ if (existsSync(ios)) {
 }
 
 // ---------------------------------------------------------------------------------------------------- Android
-const res = join(repo, 'mobile-app', 'android', 'app', 'src', 'main', 'res');
+const res = join(repo, 'mobile', 'android', 'app', 'src', 'main', 'res');
 if (existsSync(res)) {
   // Launcher icons: round, as the app's icon is on Android. The adaptive icon (API 26+) is the wheel on the dark colour, which the launcher masks.
   for (const [d, px, fg] of [['mdpi', 48, 108], ['hdpi', 72, 162], ['xhdpi', 96, 216], ['xxhdpi', 144, 324], ['xxxhdpi', 192, 432]]) {

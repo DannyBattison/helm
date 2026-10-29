@@ -9,7 +9,7 @@
     "dev": "electron-vite dev -c desktop/electron.vite.config.ts",
     "build": "electron-vite build -c desktop/electron.vite.config.ts",
     "start": "electron-vite preview -c desktop/electron.vite.config.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p desktop/tsconfig.json && tsc --noEmit -p hosted/tsconfig.server.json && tsc --noEmit -p hosted/tsconfig.web.json && tsc --noEmit -p mobile-app/tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p desktop/tsconfig.json && tsc --noEmit -p hosted/tsconfig.server.json && tsc --noEmit -p hosted/tsconfig.web.json && tsc --noEmit -p mobile/tsconfig.json",
     "test": "vitest run",
     "dist": "electron-vite build -c desktop/electron.vite.config.ts && electron-builder",
     "pack": "electron-vite build -c desktop/electron.vite.config.ts && electron-builder --dir",
@@ -17,11 +17,11 @@
     "icons": "node desktop/scripts/make-icons.mjs",
     "hosted:build": "npm --prefix hosted run build",
     "hosted:start": "npm --prefix hosted start",
-    "mobile:build": "npm --prefix mobile-app run build",
-    "mobile:sync": "npm --prefix mobile-app run sync",
-    "mobile:android": "npm --prefix mobile-app run android",
-    "mobile:android:apk": "npm --prefix mobile-app run android:apk",
-    "mobile:ios": "npm --prefix mobile-app run ios"
+    "mobile:build": "npm --prefix mobile run build",
+    "mobile:sync": "npm --prefix mobile run sync",
+    "mobile:android": "npm --prefix mobile run android",
+    "mobile:android:apk": "npm --prefix mobile run android:apk",
+    "mobile:ios": "npm --prefix mobile run ios"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

@@ -7,7 +7,7 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
-/** The page's UDP socket (see mobile-app/src/native.ts). Datagrams arrive as "message" events with base64 data. */
+/** The page's UDP socket (see mobile/src/native.ts). Datagrams arrive as "message" events with base64 data. */
 @CapacitorPlugin(name = "HelmUdp")
 public class HelmUdpPlugin extends Plugin {
     private HelmUdp udp;

@@ -24,7 +24,7 @@ describe('app icons', () => {
   });
 
   it('iOS and the apple-touch icon are full-bleed squares with no transparency, for iOS to round', async () => {
-    for (const [f, size] of [['mobile-app/ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png', 1024], ['hosted/web/public/apple-touch-icon.png', 180]] as const) {
+    for (const [f, size] of [['mobile/ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png', 1024], ['hosted/web/public/apple-touch-icon.png', 180]] as const) {
       const p = await pixel(f, 0, 0);
       expect([p.width, p.height], f).toEqual([size, size]);
       expect(p.channels, f).toBe(3);
@@ -40,7 +40,7 @@ describe('app icons', () => {
   });
 
   it('Android launcher icons are round at every density, and the adaptive foreground has room around the wheel', async () => {
-    const res = 'mobile-app/android/app/src/main/res';
+    const res = 'mobile/android/app/src/main/res';
     for (const [d, px, fg] of [['mdpi', 48, 108], ['hdpi', 72, 162], ['xhdpi', 96, 216], ['xxhdpi', 144, 324], ['xxxhdpi', 192, 432]] as const) {
       for (const name of ['ic_launcher.png', 'ic_launcher_round.png']) {
         const f = join(res, `mipmap-${d}`, name);
@@ -59,9 +59,9 @@ describe('app icons', () => {
 
   it('splash screens are the dark colour with the wheel in the middle, at the sizes the projects use', async () => {
     const found: string[] = [];
-    const res = 'mobile-app/android/app/src/main/res';
+    const res = 'mobile/android/app/src/main/res';
     for (const d of readdirSync(res).filter((n) => n.startsWith('drawable') && existsSync(join(res, n, 'splash.png')))) found.push(join(res, d, 'splash.png'));
-    const set = 'mobile-app/ios/App/App/Assets.xcassets/Splash.imageset';
+    const set = 'mobile/ios/App/App/Assets.xcassets/Splash.imageset';
     for (const n of readdirSync(set).filter((x) => x.endsWith('.png'))) found.push(join(set, n));
     expect(found.length).toBeGreaterThanOrEqual(13);
     for (const f of found) {

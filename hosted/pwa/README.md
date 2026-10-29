@@ -1,6 +1,6 @@
 # helm hosted PWA
 
-helm on a phone, as an installable app (a PWA) served by your hosted helm at `/mobile/`. Nothing runs on the phone but the page: it talks to the server over the same WebSocket as the browser client, so it never calls anything local. It is for one hosted server, the one it is served from; the native app in `../../mobile-app` is the one that can hold several instances.
+helm on a phone, as an installable app (a PWA) served by your hosted helm at `/mobile/`. Nothing runs on the phone but the page: it talks to the server over the same WebSocket as the browser client, so it never calls anything local. It is for one hosted server, the one it is served from; the native app in `../../mobile` is the one that can hold several instances.
 
 It uses the phone layout (drawer, one column) on any touch screen, including tablets, and gets push notifications with the app closed.
 
