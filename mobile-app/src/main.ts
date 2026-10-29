@@ -17,7 +17,9 @@ import type { Target } from './open';
 import { scanShareCode } from './scan';
 import { Account } from './session';
 import type { Signed } from './session';
-import { el, hide, show } from './ui';
+import { back, tapTab } from './nav';
+import type { View } from './nav';
+import { el, hide, hideTabs, show, showTabs } from './ui';
 
 const instances = new Instances(preferences);
 const account = new Account(secrets, DEFAULT_GITHUB_CLIENT_ID);
@@ -26,6 +28,26 @@ document.body.style.background = '#0e0e12';
 /** Puts a notification on the screen. */
 async function notify(n: Notice & { instanceId?: string }) {
   await LocalNotifications.schedule({ notifications: [{ id: Math.floor(Math.random() * 2 ** 30), title: n.title, body: n.body, extra: { instance: n.instanceId, session: n.sessionId, kind: n.kind }, schedule: { at: new Date(Date.now() + 100) } }] });
+}
+
+// ------------------------------------------------------------------------------------------------ where we are
+let view: View = 'servers';
+/** True on the screens inside Servers (adding a computer, connecting): the back button goes out of them first. */
+let sub = false;
+
+/** Shows the right screen for `v` and lights its tab. A computer's own UI is the page's `#root`; the other screens are drawn over it. */
+function enter(v: View) {
+  view = v;
+  const root = document.getElementById('root');
+  if (root) root.style.display = v === 'instance' ? '' : 'none';
+  if (v === 'instance') hide();
+  showTabs(v === 'settings' ? 'settings' : 'servers', (t) => {
+    const m = tapTab(view, t, openNow !== null && openBridge !== null);
+    if (m.reload) { location.reload(); return; }
+    if (m.view === 'instance') enter('instance');
+    else if (m.view === 'settings') void settings();
+    else void home();
+  });
 }
 
 // ------------------------------------------------------------------------------------------------ a tapped notification
@@ -37,7 +59,7 @@ async function goTo(t: Target) {
   const known = await instances.list();
   const what = plan(t, known, openNow);
   if (what === 'ignore') return;
-  if (what === 'go') { openBridge?.open(t.session, t.kind); return; }
+  if (what === 'go') { enter('instance'); openBridge?.open(t.session, t.kind); return; }
   const inst = known.find((i) => i.id === t.instance)!;
   if (openNow) { sessionStorage.setItem('helm.pendingOpen', JSON.stringify(t)); location.reload(); return; }
   await openInstance(inst, t);
@@ -64,25 +86,53 @@ async function signIn(): Promise<Signed> {
 /** The signed-in account, signing in first if there is none. */
 async function who(): Promise<Signed> { return (await account.current()) ?? (await signIn()); }
 
-// ------------------------------------------------------------------------------------------------ the list
+// ------------------------------------------------------------------------------------------------ servers
 async function home() {
+  sub = false;
+  enter('servers');
   const all = await instances.list();
   const rows = all.map((i) => {
     const open = el('button', `${i.name}`, '', () => void openInstance(i));
     const kind = el('p', i.kind === 'desktop' ? 'Computer, direct' : new URL(i.url).host);
     kind.style.fontSize = '12px';
     open.append(document.createElement('br'), kind);
-    const row = el('div', '', 'row');
-    row.append(open, el('button', '✕', '', async () => { if (confirm(`Remove ${i.name}?`)) { await instances.remove(i.id); void home(); } }));
+    return open;
+  });
+  show(el('h1', 'Servers'), all.length ? '' : 'Add your computer, or a helm server, to begin.', ...rows, el('button', 'Add a computer', 'primary', () => addComputer()), el('button', 'Add a helm server', '', () => addServer()));
+}
+
+// ------------------------------------------------------------------------------------------------ settings: connections, and logging out
+async function settings() {
+  sub = false;
+  enter('settings');
+  const all = await instances.list();
+  const me = await account.current();
+  const items = all.map((i) => {
+    const text = el('div', i.name);
+    text.append(el('small', i.kind === 'desktop' ? 'Computer, direct' : new URL(i.url).host));
+    const row = el('div', '', 'item');
+    row.append(text, el('button', 'Remove', 'danger', async () => {
+      if (!confirm(`Remove ${i.name}? You can add it again with a new code.`)) return;
+      await instances.remove(i.id);
+      if (openNow === i.id) { location.reload(); return; }
+      void settings();
+    }));
     return row;
   });
-  const me = await account.current();
-  show(el('h1', 'helm'), all.length ? '' : 'Add your computer, or a helm server, to begin.', ...rows, el('button', 'Add a computer', 'primary', () => addComputer()), el('button', 'Add a helm server', '', () => addServer()),
-    el('button', me ? `Signed in as ${me.login} · Sign out` : 'Sign in to GitHub', '', async () => { if (me) { if (confirm('Sign out of GitHub? You will need to sign in again to add a computer.')) { await account.signOut(); void home(); } } else { await signIn(); void home(); } }));
+  show(el('h1', 'Settings'), el('p', 'Account', 'sec'),
+    el('div', me ? `Signed in to GitHub as ${me.login}` : 'Not signed in to GitHub', 'item'),
+    el('button', 'Log out', 'danger', async () => {
+      if (!confirm('Log out of GitHub? You will need to sign in again to use the app.')) return;
+      await account.signOut();
+      // A computer that is open stays connected until the page restarts; restarting lands on the sign-in screen.
+      location.reload();
+    }),
+    el('p', 'Connections', 'sec'), ...(items.length ? items : ['No computers or servers yet.']));
 }
 
 // ------------------------------------------------------------------------------------------------ adding
 function addServer() {
+  sub = true;
   const name = el('input'); name.placeholder = 'Name';
   const url = el('input'); url.placeholder = 'helm.example.com'; url.inputMode = 'url'; url.autocapitalize = 'off';
   const err = el('p', '', 'err');
@@ -92,6 +142,7 @@ function addServer() {
 }
 
 function addComputer() {
+  sub = true;
   const paste = el('textarea'); paste.placeholder = 'HELM1-…';
   const err = el('p', '', 'err');
   const go = (code: string) => void pair(code).catch((e) => { show(el('h1', 'Could not add it'), el('p', String(e?.message || e), 'err'), el('button', 'Try again', 'primary', () => addComputer()), el('button', 'Back', '', () => void home())); });
@@ -122,7 +173,9 @@ const deviceName = async () => (await Device.getInfo()).name || 'Phone';
 
 // ------------------------------------------------------------------------------------------------ opening
 async function openInstance(i: Instance, then?: Target) {
-  if (i.kind === 'hosted') { location.href = `${i.url}/mobile/`; return; }
+  // A hosted server keeps its own sign-in (cookies), so it opens in the system's in-app browser; Done comes back here, tabs and all.
+  if (i.kind === 'hosted') { await Browser.open({ url: `${i.url}/mobile/` }); return; }
+  sub = true;
   show(el('h1', i.name), 'Connecting…', el('button', 'Back', '', () => location.reload()));
   const seen = await loadSeen(preferences);
   const bridge = createConnectionBridge(connectDesktop(capacitorUdp, { code: i.code, identity: instances.identityOf(i), name: 'Phone' }, {
@@ -138,16 +191,18 @@ async function openInstance(i: Instance, then?: Target) {
       el('button', 'Keep trying', 'primary', () => void bridge.ready.then(() => location.reload())), el('button', 'Back', '', () => location.reload()));
     return;
   }
-  hide();
+  sub = false;
+  enter('instance');
   await import('../../src/renderer/src/main');
   if (then) bridge.open(then.session, then.kind);
-  // A way back to the list. Helm's own screens use the whole window.
-  const chip = el('button', '⇄', 'chip', () => location.reload());
-  chip.setAttribute('aria-label', 'Switch computer');
-  document.body.append(chip);
 }
 
-void App.addListener('backButton', () => { if (!document.getElementById('helm-screen')) location.reload(); else void home(); });
+void App.addListener('backButton', () => {
+  const m = back(view, openNow !== null, sub);
+  if (m === 'minimize') { void App.minimizeApp(); return; }
+  if (m.reload) { location.reload(); return; }
+  if (m.view === 'instance') enter('instance'); else if (m.view === 'settings') void settings(); else void home();
+});
 // Android's background task puts a link in its notification; both platforms' notifications put the same fields in `extra`.
 void App.addListener('appUrlOpen', (e) => { const t = parseOpenUrl(e.url); if (t) void goTo(t); });
 void LocalNotifications.addListener('localNotificationActionPerformed', (e) => { const t = fromExtra(e.notification.extra); if (t) void goTo(t); });

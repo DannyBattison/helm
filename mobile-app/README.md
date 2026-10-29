@@ -9,7 +9,7 @@ The phone app: the unchanged helm renderer, holding several helm **instances** a
 
 | | |
 | --- | --- |
-| `src/main.ts`, `src/ui.ts` | The screens before helm's own UI: the list of computers and servers, adding one (scan the QR code or paste, then GitHub), and opening one. |
+| `src/main.ts`, `src/ui.ts`, `src/nav.ts` | The app's own screens and the two tabs, always visible. **Servers**: the list of computers and servers, adding one (scan the QR code or paste), and opening one, which shows helm's UI above the tabs. **Settings**: your GitHub account with Log out, and the connections with Remove. |
 | `src/native.ts` | The UDP socket (the native plugin) and the preferences the instance list is kept in. |
 | `src/headless.ts`, `collect.html` | The page the background task runs: collect and finish. |
 | `src/instances.ts` | The list of instances and where it is kept. Adding a computer takes its share code; the one-time secret is dropped once it has accepted the phone, and the phone's own key for it is saved. |
@@ -57,6 +57,6 @@ Tapping a notification opens the app on that session: on Android the background 
 
 ## Not done
 
-- Screens beyond the list and adding a computer or server (a hosted server opens in the web view at `/mobile/`, with its own sign-in; getting back is the Android back button or the ⇄ tab on the right edge).
+- A hosted server opens in the system's in-app browser at its `/mobile/` page (it keeps its own cookie sign-in); Done returns to the app.
 
 The browser-only PWA for one hosted server is `../hosted/pwa`.
