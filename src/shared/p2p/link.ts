@@ -11,7 +11,7 @@ import type { Endpoint } from './sharecode';
  * Packets (the first byte says which):
  *   1 INIT  [idxI u32][noise message 1]            joiner → host, sent to every address at once; this is also the probe
  *   2 RESP  [idxI u32][idxR u32][noise message 2]  host → joiner, only for an INIT it accepts
- *   3 DATA  [idx u32][counter u64][encrypted: kind u8, body]   kind 0 = a reliable segment, 1 = keep-alive
+ *   3 DATA  [idx u32][counter u64][encrypted: kind u8, body]   kind 0 = a reliable segment, 1 = keep-alive, 2 = goodbye
  *
  * A host never answers a packet it cannot decrypt, or one from a device it does not accept, so the port shows nothing to a scan. After the
  * handshake a device is known by its key, not its address: a valid packet from a new address moves the link there (a phone changing network).
@@ -35,7 +35,7 @@ const INIT = 1;
 const RESP = 2;
 const DATA = 3;
 const KEEPALIVE_MS = 25_000;
-const DEAD_MS = 180_000;
+const DEAD_MS = 75_000;
 export const PROBE_AT = [0, 700, 1500, 2500];
 
 const u32 = (n: number) => { const b = new Uint8Array(4); new DataView(b.buffer).setUint32(0, n); return b; };
@@ -74,6 +74,8 @@ class Session implements Link {
   onClose(cb: () => void) { this.closers.push(cb); }
   close() {
     if (this.closed) return;
+    // Tell the other end, once and without waiting: if the packet is lost it finds out from the silence instead.
+    this.transmit(2, new Uint8Array(0));
     this.closed = true;
     clearInterval(this.keep);
     this.rel.close();
@@ -102,6 +104,7 @@ class Session implements Link {
     // Authenticated, so the sender is who it says: follow it if it has moved.
     if (from.host !== this.remote.host || from.port !== this.remote.port) this.remote = from;
     if (plain[0] === 0) this.rel.receive(plain.subarray(1));
+    else if (plain[0] === 2) this.close();
     return true;
   }
 }

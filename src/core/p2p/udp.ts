@@ -43,5 +43,11 @@ export class NodeUdp implements UdpSocket {
     try { s?.send(data, port, host, () => undefined); } catch { /* unreachable or closed */ }
   }
   onMessage(cb: (d: Uint8Array, h: string, p: number) => void) { this.cb = cb; }
-  close() { for (const s of [this.v4, this.v6]) { try { s?.close(); } catch { /* already closed */ } } this.v6 = null; }
+  /** Closes after a moment, so the goodbye packets that were just sent get out. */
+  close() {
+    const socks = [this.v4, this.v6];
+    this.v6 = null;
+    this.cb = null;
+    setTimeout(() => { for (const s of socks) { try { s?.close(); } catch { /* already closed */ } } }, 100).unref?.();
+  }
 }

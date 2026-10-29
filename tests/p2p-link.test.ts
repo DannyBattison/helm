@@ -180,8 +180,12 @@ describe('a phone and a desktop', () => {
     const link = await connect(phone(net), d.code()) as Link;
     let closed = 0;
     d.links[0].link.onClose(() => closed++);
+    let phoneSaw = 0;
+    link.onClose(() => phoneSaw++);
     d.h.drop(d.links[0].key);
     expect(closed).toBe(1);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(phoneSaw).toBe(1);
     expect(d.h.links).toBe(0);
   });
 });

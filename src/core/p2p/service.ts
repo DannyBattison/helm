@@ -107,7 +107,15 @@ export class P2P {
     const udp = new NodeUdp((d) => this.stun?.handle(d));
     // The same port every time, so a code stays useful: the one chosen in settings, else the one picked the first time.
     const want = this.s.p2pPort || saved.port;
-    const port = await udp.bind(want).catch(() => (want && !this.s.p2pPort ? udp.bind(0) : Promise.reject(new Error(`Port ${want} is already in use. Choose another in Settings.`))));
+    // A port that was just let go (turning the setting off and on) may take a moment to come free.
+    let port = 0;
+    for (let attempt = 0; ; attempt++) {
+      try { port = await udp.bind(want); break; } catch (e) {
+        if (attempt < 8 && want) { await new Promise((r) => setTimeout(r, 100)); continue; }
+        if (want && !this.s.p2pPort) { port = await udp.bind(0); break; }
+        throw e;
+      }
+    }
     if (gen !== this.generation) { udp.close(); return; }
     if (!this.s.p2pPort && saved.port !== port) { saved.port = port; await this.save(); }
     this.udp = udp;
