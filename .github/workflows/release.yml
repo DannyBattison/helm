@@ -130,8 +130,12 @@ jobs:
           files=(installers/* mobile/*)
           git tag "v$VERSION"
           git push origin "v$VERSION"
+          # GitHub's generated notes, with each item cut down to the pull request title
+          # ("* Title by @user in https://…/pull/1" becomes "* Title").
+          gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="v$VERSION" \
+            --jq .body | sed -E 's/ by @[^ ]+ in https:\/\/[^ ]+$//' > notes.md
           gh release create "v$VERSION" "${files[@]}" --repo "$GITHUB_REPOSITORY" \
-            --title "v$VERSION" --generate-notes --latest="${{ inputs.desktop }}"
+            --title "v$VERSION" --notes-file notes.md --latest="${{ inputs.desktop }}"
       - name: Tag the images
         if: inputs.hosted
         run: |
