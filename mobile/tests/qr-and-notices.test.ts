@@ -106,7 +106,7 @@ describe('notifications for a phone that is closed', () => {
     const { p, dir, store } = desktop();
     const { link } = await pairedPhone(p);
     p.notify(note('Kept'));
-    p.shutdown();
+    await p.shutdown();
     const again = new P2P(store, async () => null, () => undefined, () => ({ dataDir: dir }), async () => 'alice');
     closers.push(() => again.shutdown());
     again.apply();

@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, rename, writeFile } from 'node:fs/promises';
 import { hostname } from 'node:os';
 import { join } from 'node:path';
 import { host as listen } from '../../shared/p2p/link';
@@ -79,10 +79,24 @@ export class P2P {
     if (!this.saved?.secretKey) { this.saved = { secretKey: hex(generateKeyPair().secretKey), devices: [], port: 0 }; await this.save(); }
     return this.saved;
   }
-  private async save() {
-    const v = this.vault();
-    const text = JSON.stringify(this.saved);
-    await writeFile(this.file(), v.encrypt ? v.encrypt(text) : Buffer.from(text), { mode: 0o600 });
+  /** The end of the writes so far: each save waits for the one before it, so two never overlap. */
+  private writing: Promise<unknown> = Promise.resolve();
+
+  /**
+   * Saves the identity, devices and notices. One write at a time, each of what is current when it runs, into a temporary file that is then
+   * renamed over the real one: overlapping writes could leave a file that no longer parses, which loses the identity and every pairing.
+   */
+  private save(): Promise<void> {
+    const run = async () => {
+      const v = this.vault();
+      const text = JSON.stringify(this.saved);
+      const tmp = this.file() + '.tmp';
+      await writeFile(tmp, v.encrypt ? v.encrypt(text) : Buffer.from(text), { mode: 0o600 });
+      await rename(tmp, this.file());
+    };
+    const next = this.writing.then(run, run);
+    this.writing = next.catch(() => undefined);
+    return next;
   }
 
   /** Brings the listener in line with the settings. Called at start-up and whenever they change. */
@@ -90,7 +104,7 @@ export class P2P {
     const gen = ++this.generation;
     void this.stop()?.unmap();
     if (this.s.p2pEnabled && !this.store.data.user?.login) { this.set({ state: 'error', error: 'Sign in to GitHub in helm first: a phone is paired with the same GitHub account.', code: undefined, addresses: [], port: undefined }); return; }
-    if (!this.s.p2pEnabled) { this.set({ state: 'off', error: undefined, code: undefined, addresses: [], mapped: undefined, nat: undefined, port: undefined }); return; }
+    if (!this.s.p2pEnabled) { this.set({ state: 'off', error: undefined, code: undefined, addresses: [], mapped: undefined, nat: undefined, port: undefined, portMap: undefined }); return; }
     this.set({ state: 'starting', error: undefined });
     void this.start(gen).catch((e) => { if (gen === this.generation) this.set({ state: 'error', error: String(e?.code === 'EADDRINUSE' ? `Port ${this.s.p2pPort} is already in use. Choose another in Settings.` : e?.message || e) }); });
   }
@@ -256,13 +270,18 @@ export class P2P {
         const a = await this.stun.query(ip, p || 3478);
         // The same port asked of a second server: a different answer means the router picks a new public port per destination, which no
         // phone can be told about in advance, so a direct connection will not work (unless there is another address to use).
-        const b = a && gen === this.generation ? await this.stun.query((await lookup('stun.l.google.com', { family: 4 })).address, 19302).catch(() => null) : null;
+        const b = a && gen === this.generation ? await this.secondOpinion() : null;
         if (gen !== this.generation) return;
         this.mapped = a;
         this.set({ nat: !a ? 'unknown' : b && (b.host !== a.host || b.port !== a.port) ? 'symmetric' : 'cone', mapped: a ? `${a.host}:${a.port}` : undefined });
       } catch { if (gen === this.generation) { this.mapped = null; this.set({ nat: 'unknown', mapped: undefined }); } }
     }
     if (gen === this.generation) this.refreshState();
+  }
+
+  /** What a second STUN server sees. Null if it cannot be reached or looked up: that must not throw away the first answer. */
+  private async secondOpinion(): Promise<{ host: string; port: number } | null> {
+    try { return (await this.stun?.query((await lookup('stun.l.google.com', { family: 4 })).address, 19302)) ?? null; } catch { return null; }
   }
 
   private candidates(): string[] {
@@ -312,9 +331,11 @@ export class P2P {
     this.refreshState();
   }
 
-  /** Stops listening and takes the router forwarding away. Resolves once the router has been told. */
+  /** Stops listening and takes the router forwarding away. Resolves once the router has been told and the last save is on disk. */
   async shutdown() {
     this.generation++;
     await this.stop()?.unmap().catch(() => undefined);
+    // What was changed last (a device, the notices) is on disk before the app quits or the service starts again.
+    await this.writing;
   }
 }

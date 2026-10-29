@@ -109,7 +109,7 @@ describe('the desktop service', () => {
     const first = await ready(d.p);
     const id = generateKeyPair();
     expect((await phone(first.code!, id)).link).not.toBeInstanceOf(Error);
-    d.p.shutdown();
+    await d.p.shutdown();
 
     // A new service over the same files: same key, same port, same device list.
     const again = new P2P(d.store, () => Promise.resolve(null), () => undefined, () => ({ dataDir: d.dir }), whoIs);
