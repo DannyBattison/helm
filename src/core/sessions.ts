@@ -213,8 +213,8 @@ export class SessionManager {
     if (!free && !repo) throw new Error('Repository not found');
     const st = cfg;
     let id = slug(input.task);
-    // Free agents are not grouped under a repository, so their names must be unique among all sessions.
-    const taken = (n: string) => this.sessions.some((s) => s.id === n && (free || s.repoId === repo!.id));
+    // Transcripts and uploads are saved by id alone, so a name must be unique among all sessions, not just those of one repository.
+    const taken = (n: string) => this.sessions.some((s) => s.id === n);
     for (let n = 2; taken(id); n++) id = slug(input.task) + '-' + n;
     // First, so a file that is refused stops the session before any worktree is made.
     const uploads = await this.saveUploads(id, input.files);
