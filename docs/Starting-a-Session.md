@@ -51,7 +51,7 @@ Once a session is open, the message box has a prompt picker that inserts one of 
 
 - Images attach to the message.
 - Other files of any type are uploaded for this agent. There is no size limit beyond what the connection allows.
-- Files for a whole repository are kept on the repository page, under **Artifacts**. See [Repository page](Repository-Page.md#artifacts-fixtures).
+- Files for a whole repository are kept on the repository page, under **Artifacts**. See [Repository page](Repository-Page.md#fixtures).
 
 ## Session names
 

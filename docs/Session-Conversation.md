@@ -24,7 +24,7 @@ The header shows the session name, branch (with a **Copy branch name** button), 
 
 - Type and send. By default **Enter** sends and **Shift+Enter** adds a new line; you can switch to **Cmd/Ctrl+Enter** in [Settings](Settings.md#agents).
 - **@** mentions a file. Start typing a name and choose from the list.
-- The paperclip or paste attaches an image. Other files dropped here become [artifacts](Repository-Page.md#artifacts-fixtures) of the repository.
+- The paperclip or paste attaches an image. Other files dropped here become [artifacts](Repository-Page.md#fixtures) of the repository.
 - The up arrow brings back your last message. Drafts are kept when you switch away.
 - Pick the **model**, **effort**, and **permission mode** for this session from the controls under the box.
 - The **Context window** meter shows how full the agent's memory of this conversation is. The **Session budget** meter appears when you pay per token.
