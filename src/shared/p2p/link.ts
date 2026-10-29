@@ -76,7 +76,7 @@ class Session implements Link {
       dead: () => this.close()
     });
     this.keep = setInterval(() => {
-      if (Date.now() - this.lastRx > DEAD_MS) return this.close();
+      if (Date.now() - this.lastRx >= DEAD_MS) return this.close();
       this.transmit(1, new Uint8Array(0));
     }, KEEPALIVE_MS);
     (this.keep as any).unref?.();
@@ -227,7 +227,8 @@ export function host(o: HostOptions) {
     try { said = JSON.parse(new TextDecoder().decode(hs.payload)) || {}; } catch { return; }
     if (deciding.has(dedupe)) return;
     deciding.add(dedupe);
-    void Promise.resolve(o.authorize(hs.remoteStatic, said)).catch(() => false as const).then((ok) => {
+    // `new Promise` so that a decision that throws straight away is refused like one that rejects, instead of escaping the socket callback.
+    void new Promise<{ name: string } | false>((resolve) => resolve(o.authorize(hs.remoteStatic, said))).catch(() => false as const).then((ok) => {
       deciding.delete(dedupe);
       if (ok) establish(ok, hs, data.slice(0, 5), from, dedupe);
     });

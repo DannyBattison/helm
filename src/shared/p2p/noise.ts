@@ -38,7 +38,7 @@ export function aead(key: Uint8Array, counter: number, aad: Uint8Array) {
   return chacha20poly1305(key, nonce, aad);
 }
 
-class Symmetric {
+export class Symmetric {
   ck: Uint8Array;
   h: Uint8Array;
   k: Uint8Array | null = null;
@@ -47,6 +47,12 @@ class Symmetric {
     this.h = NAME.length <= 32 ? concatBytes(NAME, new Uint8Array(32 - NAME.length)) : hash(NAME);
     this.ck = this.h;
     this.mixHash(prologue);
+  }
+  /** A copy to try something on: a handshake message that turns out not to be valid must not change the real state. */
+  clone(): Symmetric {
+    const c = Object.create(Symmetric.prototype) as Symmetric;
+    c.ck = this.ck; c.h = this.h; c.k = this.k; c.n = this.n;
+    return c;
   }
   mixHash(d: Uint8Array) { this.h = hash(this.h, d); }
   mixKey(ikm: Uint8Array) { const [ck, k] = hkdf2(this.ck, ikm); this.ck = ck; this.k = k; this.n = 0; }
@@ -81,13 +87,15 @@ export function initiate(s: KeyPair, rs: Uint8Array, payload: Uint8Array, prolog
     /** Reads the responder's answer. Throws if it is not one. */
     finish(msg2: Uint8Array): { keys: TransportKeys; payload: Uint8Array } {
       if (msg2.length < 32 + 16) throw new Error('short');
+      // On a copy: a damaged answer (or one forged by someone who guessed the index) must leave this able to read the real one.
+      const t = sym.clone();
       const re = msg2.subarray(0, 32);
-      sym.mixHash(re);
-      sym.mixKey(dh(e.secretKey, re));
-      sym.mixKey(dh(s.secretKey, re));
-      const out = sym.decryptAndHash(msg2.subarray(32));
-      const [k1, k2] = sym.split();
-      return { keys: { send: k1, recv: k2, handshakeHash: sym.h }, payload: out };
+      t.mixHash(re);
+      t.mixKey(dh(e.secretKey, re));
+      t.mixKey(dh(s.secretKey, re));
+      const out = t.decryptAndHash(msg2.subarray(32));
+      const [k1, k2] = t.split();
+      return { keys: { send: k1, recv: k2, handshakeHash: t.h }, payload: out };
     }
   };
 }
