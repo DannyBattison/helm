@@ -216,6 +216,7 @@ const sessions = new SessionManager(store, {
     // A host that can show buttons on a notification lets a plain approval be answered without opening the app.
     const answer = ask?.type === 'approve' ? (decision: 'approve' | 'deny') => { if (sessions.get(sessionId)?.ask?.id === ask.id) void sessions.resolveAsk(sessionId, ask.id, { decision }); } : undefined;
     host.notify?.({ kind, title, body: st.notifyPreview ? body : '', silent: !d.sound, sessionId, answer });
+    if (host.companion !== false) p2p.notify({ kind, title, body: st.notifyPreview ? body : '', silent: !d.sound, sessionId });
   }
 }, registry);
 Object.assign(companionOps, {

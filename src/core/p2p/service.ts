@@ -28,7 +28,11 @@ async function githubLogin(token: string): Promise<string | null> {
 }
 
 interface Device { id: string; name: string; addedAt: number; lastSeen: number; /** The GitHub user who was signed in here, and on the phone, when it was paired. */ login?: string }
-interface Saved { secretKey: string; devices: Device[]; port: number }
+/** A notification waiting for a phone to collect it. */
+export interface Notice { id: string; at: number; kind: 'attention' | 'ready' | 'failed'; title: string; body: string; silent: boolean; sessionId: string }
+interface Saved { secretKey: string; devices: Device[]; port: number; /** Notices not yet acknowledged, by device id. */ queue?: Record<string, Notice[]> }
+const KEEP_NOTICES = 50;
+const NOTICE_TTL_MS = 3 * 24 * 3600_000;
 
 /**
  * Lets the phone app reach this app directly. helm opens one UDP port, works out the addresses it can be reached at (its own interfaces, and
@@ -166,14 +170,46 @@ export class P2P {
     const dev = this.saved!.devices.find((d) => d.id === id);
     if (dev) { dev.lastSeen = Date.now(); void this.save(); }
     link.onClose(() => { if (this.links.get(id) === link) this.links.delete(id); this.refreshState(); });
-    link.onMessage((raw) => void this.run(link, raw));
+    link.onMessage((raw) => void this.run(link, raw, id));
     this.refreshState();
     link.send(new TextEncoder().encode(JSON.stringify({ t: 'hello', name: hostname() })));
+    // Whatever happened while this phone was away.
+    const waiting = this.waiting(id);
+    if (waiting.length) link.send(new TextEncoder().encode(JSON.stringify({ t: 'notices', items: waiting })));
   }
 
-  private async run(link: Link, raw: Uint8Array) {
+  private waiting(id: string): Notice[] {
+    const q = this.saved?.queue?.[id];
+    if (!q) return [];
+    const fresh = q.filter((n) => Date.now() - n.at < NOTICE_TTL_MS);
+    if (fresh.length !== q.length) { this.saved!.queue![id] = fresh; void this.save(); }
+    return fresh;
+  }
+
+  /**
+   * A notification for the phones. Each paired phone gets it now if it is connected, and in any case it is kept for that phone until it
+   * says it has shown it: a phone that is closed collects what it missed in a short background connection (see mobile-app/src/notices.ts).
+   */
+  notify(n: Omit<Notice, 'id' | 'at'>) {
+    const saved = this.saved;
+    if (this.state.state !== 'ready' || !saved?.devices.length) return;
+    const notice: Notice = { ...n, id: randomBytes(8).toString('hex'), at: Date.now() };
+    saved.queue ??= {};
+    for (const d of saved.devices) {
+      saved.queue[d.id] = [...this.waiting(d.id), notice].slice(-KEEP_NOTICES);
+      this.links.get(d.id)?.send(new TextEncoder().encode(JSON.stringify({ t: 'notices', items: [notice] })));
+    }
+    void this.save();
+  }
+
+  private async run(link: Link, raw: Uint8Array, deviceId: string) {
     let m: any;
     try { m = JSON.parse(new TextDecoder().decode(raw)); } catch { return; }
+    if (m?.t === 'ack' && Array.isArray(m.ids)) {
+      const q = this.saved?.queue?.[deviceId];
+      if (q) { this.saved!.queue![deviceId] = q.filter((n) => !m.ids.includes(n.id)); void this.save(); }
+      return;
+    }
     if (m?.t !== 'call' || typeof m.name !== 'string') return;
     const reply = (o: unknown) => link.send(new TextEncoder().encode(JSON.stringify({ t: 'result', id: m.id, ...(o as object) })));
     try { reply({ ok: true, value: (await this.call(m.name, m.args)) ?? null }); } catch (e: any) { reply({ ok: false, error: String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '').slice(0, 500) }); }
@@ -244,6 +280,7 @@ export class P2P {
   async revoke(id: string) {
     const saved = await this.load();
     saved.devices = saved.devices.filter((d) => d.id !== id);
+    if (saved.queue) delete saved.queue[id];
     await this.save();
     this.links.get(id)?.close();
     this.links.delete(id);

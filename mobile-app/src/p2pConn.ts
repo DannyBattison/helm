@@ -1,6 +1,7 @@
 import type { Conn } from '../../hosted/web/bridge';
 import { join } from '../../src/shared/p2p/link';
 import type { UdpSocket } from '../../src/shared/p2p/link';
+import type { Notice } from '../../src/core/p2p/service';
 import type { KeyPair } from '../../src/shared/p2p/noise';
 
 export interface DesktopLink {
@@ -14,7 +15,7 @@ export interface DesktopLink {
 }
 
 /** Opens an encrypted link to a desktop and presents it as the connection the web bridge wants: JSON messages. */
-export function connectDesktop(socket: () => UdpSocket, d: DesktopLink, hooks: { candidates?(port: number, addresses: string[]): void } = {}): () => Promise<Conn> {
+export function connectDesktop(socket: () => UdpSocket, d: DesktopLink, hooks: { candidates?(port: number, addresses: string[]): void; notices?(items: Notice[], ack: (ids: string[]) => void): void } = {}): () => Promise<Conn> {
   return async () => {
     const s = socket();
     let link;
@@ -24,6 +25,7 @@ export function connectDesktop(socket: () => UdpSocket, d: DesktopLink, hooks: {
       let m: any;
       try { m = JSON.parse(new TextDecoder().decode(raw)); } catch { return; }
       if (m?.t === 'candidates') hooks.candidates?.(m.p, m.c);
+      else if (m?.t === 'notices') hooks.notices?.(m.items ?? [], (ids) => link.send(new TextEncoder().encode(JSON.stringify({ t: 'ack', ids }))));
       else if (m?.t !== 'hello') cb(m);
     });
     return {

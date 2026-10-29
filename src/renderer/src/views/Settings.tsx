@@ -12,6 +12,7 @@ import { AutomationsSection } from './Automations';
 import { EFFORT_OPTIONS, VariantEditor } from './Review';
 import { toast, useApp, useMoney } from '../store';
 import { comboFromEvent, comboKeys, comboProblem, normalizeCombo, SHORTCUT_ACTIONS, shortcutConflict, shortcutOf } from '@shared/shortcuts';
+import { qrSvg } from '@shared/qr';
 import { AgentSignInDialog } from './AgentSignIn';
 import { Avatar, Badge, Button, Checkbox, Dialog, IconButton, Input, Kbd, Meter, SegmentedControl, Select, Switch, TreeItem, useColumns, useNarrow } from '../ui';
 
@@ -216,8 +217,9 @@ function PhoneSection({ st, set, state }: { st: any; set(p: any): void; state: a
     {state.code ? (
       <div style={{ margin: '4px 0 12px', padding: 14, borderRadius: 'var(--radius-md)', background: 'var(--bg-panel)', boxShadow: 'inset 0 0 0 1px var(--border)', display: 'flex', flexDirection: 'column', gap: 10 }}>
         <span style={{ font: '500 13px/1.5 var(--font-sans)' }}>Pair a phone</span>
-        <span style={{ font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>In the phone app choose Add computer and paste this code, then sign in to GitHub as {st.githubUser || 'the same account as here'}. The code pairs one phone, once, within ten minutes. It holds addresses of this computer, so share it only with yourself.</span>
-        <span className="selectable" style={{ font: '400 11.5px/1.5 var(--font-mono)', wordBreak: 'break-all', maxHeight: 72, overflow: 'auto', color: 'var(--text-2)' }}>{state.code}</span>
+        <span style={{ font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>In the phone app choose Add computer and scan this code (or paste it), then sign in to GitHub as {st.githubUser || 'the same account as here'}. The code pairs one phone, once, within ten minutes. It holds addresses of this computer, so share it only with yourself.</span>
+        <div role="img" aria-label="QR code with the share code" style={{ width: 200, height: 200, borderRadius: 8, overflow: 'hidden', alignSelf: 'flex-start' }} dangerouslySetInnerHTML={{ __html: qrSvg(state.code) }} />
+        <span className="selectable" style={{ font: '400 11.5px/1.5 var(--font-mono)', wordBreak: 'break-all', maxHeight: 48, overflow: 'auto', color: 'var(--text-3)' }}>{state.code}</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Button size="sm" icon="copy" onClick={() => api.copyText(state.code)}>Copy code</Button>
           <Button size="sm" variant="ghost" icon="arrows-clockwise" onClick={() => api.p2pNewCode()}>New code</Button>
