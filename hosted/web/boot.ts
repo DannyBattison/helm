@@ -10,8 +10,8 @@ export interface BootOptions {
 }
 
 /**
- * Starts a web build: the desktop renderer, talking to the server over `HelmBridge`. Every build (`hosted/web/main.ts`, `mobile-app`,
- * `web-companion`) is this with different options, so what is unique to a build is its entry, manifest and options, nothing more.
+ * Starts a web build: the desktop renderer, talking to the server over `HelmBridge`. Every build (`hosted/web/main.ts`, `hosted/pwa`)
+ * is this with different options, so what is unique to a build is its entry, manifest and options, nothing more.
  */
 export async function boot(o: BootOptions) {
   document.body.style.background = '#0e0e12';

@@ -1,23 +1,10 @@
-# helm mobile app
+# helm mobile app (native)
 
-helm on a phone, as an installable app (a PWA) served by your hosted helm at `/mobile/`. Nothing runs on the phone but the page: it talks to the server over the same WebSocket as the browser client, so it never calls anything local (no folders, no VS Code, no clipboard beyond the browser's).
+Planned, not built yet. A native shell (Capacitor) around the unchanged helm renderer that can hold several helm instances and switch between them:
 
-It uses the phone layout (drawer, one column) on any screen, including tablets, and gets push notifications with the app closed.
+- a **hosted** instance: a URL plus a token from a pairing code, over WebSocket;
+- a **desktop** instance: reached peer to peer, with no server of ours in between. The desktop opens one UDP port, learns its reachable addresses (router port forward if enabled, STUN, local and IPv6 and VPN addresses) and shows them as a share code; the phone probes all of them and talks to whichever answers first, over an encrypted, authenticated channel pinned to the desktop's key.
 
-## Install
+The p2p protocol is written once in TypeScript against a small `UdpSocket` interface (Node's `dgram` on the desktop, a thin native plugin on the phone), so it is shared and testable. The desktop side lives in `src/core/`.
 
-1. Serve hosted helm over HTTPS (see `hosted/README.md`). Push and installing both need it.
-2. Open `https://your-server/mobile/` on the phone and sign in.
-3. Android (Chrome): menu → **Install app**. iPhone/iPad (Safari): Share → **Add to Home Screen**, then open it from the home screen (iOS only allows push for installed apps, 16.4 or later).
-4. Tap anywhere once and allow notifications. The app tells the server where to reach the phone.
-
-Tapping a notification opens the session it is about. While the app is open and in view, the page shows notifications itself and the worker stays quiet.
-
-## What is in this folder
-
-Only what differs from the other web builds: `main.ts` (the options: `layout: 'phone'`, `push: true`), `index.html`, `manifest.webmanifest` and `vite.config.ts`. Everything else is shared from `hosted/`:
-
-- `hosted/web/boot.ts`: starting a web build.
-- `hosted/web/notifications.ts`, `hosted/web/pwa/sw.js`, `hosted/src/push.ts`: notifications and Web Push.
-- `hosted/web/layout.ts`: the phone layout on wide screens.
-- `hosted/vite.base.ts`: the build; `npm run build` in `hosted/` builds this app to `hosted/dist/web/mobile`.
+The browser-only PWA for a single hosted server is `../hosted/pwa`.

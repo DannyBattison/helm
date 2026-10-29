@@ -22,7 +22,6 @@ COPY tsconfig.json tsconfig.node.json tsconfig.web.json ./
 COPY desktop/tsconfig.json desktop/
 COPY src src
 COPY hosted hosted
-COPY mobile-app mobile-app
 RUN cd hosted && npm run build
 
 # ---- run

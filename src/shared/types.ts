@@ -553,10 +553,6 @@ export interface Settings {
   companionUrl: string;
   /** Let the website approve commands, answer questions, message, pause and stop agents, and start sessions. Off leaves it read-only. */
   companionControl: boolean;
-  /** Let a browser on another device reach this app through a relay (`web-companion/`), paired with a code. Off until turned on. */
-  tunnelEnabled: boolean;
-  /** The relay, for example `https://companion.example.com`. */
-  tunnelUrl: string;
   /** The shell in the terminal: `auto` (zsh if installed, then Git Bash, WSL, PowerShell), an id from `listShells`, or `custom`. */
   terminalShell: string;
   /** The command to run for the `custom` shell, for example `wsl.exe -d Ubuntu -e zsh`. */
@@ -743,7 +739,6 @@ export interface AppState {
   /** Claude's, kept for the parts that predate other agents. */
   plan: PlanUsage;
   companion: CompanionState;
-  tunnel: TunnelState;
   /** USD to other currencies. */
   rates: Record<string, number>;
   platform: string;
@@ -1058,16 +1053,6 @@ export interface CompanionState {
   viewers: number;
 }
 
-/** Where the tunnel to a browser companion stands. */
-export interface TunnelState {
-  state: 'off' | 'connecting' | 'ready' | 'error';
-  error?: string;
-  /** The code to enter in the companion to pair it. Single use; a new one replaces it once used or after ten minutes. */
-  code?: string;
-  /** Browsers connected through the relay right now. */
-  clients: number;
-}
-
 /** The small picture of helm that goes to the companion website: no code, no file contents, only what a phone screen needs. */
 export interface CompanionSnapshot {
   at: number;
@@ -1121,8 +1106,6 @@ export interface HelmApi {
   getState(): Promise<AppState>;
   /** Forgets this computer's link to the companion server. Turning the companion on again links it afresh. */
   companionUnlink(): Promise<void>;
-  /** Disconnects every paired browser and makes a new pairing code. */
-  tunnelRevoke(): Promise<void>;
   /** Stores (or with an empty string clears) the SMTP password for outbound email, encrypted by the host. */
   setEmailPassword(password: string): Promise<void>;
   /** Sends a test message through a channel with its current settings. Resolves to an error message, or null when it went out. */

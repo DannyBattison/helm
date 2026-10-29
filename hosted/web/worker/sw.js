@@ -1,5 +1,5 @@
 // helm's service worker: it exists to show push notifications while the app is closed, and to take you to the session when one is tapped.
-// Shared by every build that wants push (mobile-app, web-companion); each gets its own copy and scope. It caches nothing: the app always comes from the server.
+// Shared by every build that wants push (`hosted/pwa`); each build gets its own copy and scope. It caches nothing: the app always comes from the server.
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
 

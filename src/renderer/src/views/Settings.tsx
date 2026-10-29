@@ -196,39 +196,6 @@ function CompanionSection({ st, set, state }: { st: any; set(p: any): void; stat
   </>;
 }
 
-/** The browser companion: pair a browser on another device with this app, through a relay. */
-function TunnelSection({ st, set, state }: { st: any; set(p: any): void; state: any }) {
-  const label = ({ off: 'Off', connecting: 'Connecting to the relay…', ready: 'Ready to pair', error: 'Not connected' } as any)[state.state] || state.state;
-  const tone = state.state === 'ready' ? 'var(--status-ready-text, var(--status-ready))' : state.state === 'error' ? 'var(--status-error-text)' : 'var(--text-3)';
-  return <>
-    <H sub="Use helm from a browser on another device, such as a phone or a laptop, while this app keeps running here. Off by default: nothing leaves this computer until you turn it on.">Browser companion</H>
-    <SettingRow title="Enable browser companion" desc="Connects this app out to your relay and keeps it connected while helm is open. Nothing needs to be reachable from outside.">
-      <Switch checked={st.tunnelEnabled} onChange={(v: boolean) => set({ tunnelEnabled: v })} />
-    </SettingRow>
-    <SettingRow title="Relay" desc="The address of your helm companion relay (web-companion in the helm repository). It carries everything the browser sees and does, so run your own.">
-      <Field value={st.tunnelUrl} onCommit={(v: string) => set({ tunnelUrl: v.trim() })} placeholder="https://companion.example.com" style={{ width: 280 }} />
-    </SettingRow>
-    <SettingRow title="Status" desc={state.state === 'ready' ? (state.clients ? `${state.clients} ${state.clients === 1 ? 'browser is' : 'browsers are'} connected.` : 'No browser is connected.') : state.error}>
-      <span style={{ font: '500 12.5px/1.5 var(--font-sans)', color: tone, display: 'inline-flex', alignItems: 'center', gap: 6 }}><i className={'ph-fill ph-circle'} style={{ fontSize: 8 }} />{label}</span>
-      {st.tunnelUrl && state.state === 'ready' ? <Button size="sm" variant="ghost" iconRight="arrow-square-out" onClick={() => api.openExternal(st.tunnelUrl)}>Open companion</Button> : null}
-    </SettingRow>
-    {state.code ? (
-      <div style={{ margin: '4px 0 12px', padding: 14, borderRadius: 'var(--radius-md)', background: 'var(--bg-panel)', boxShadow: 'inset 0 0 0 1px var(--border)', display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <span style={{ font: '500 13px/1.5 var(--font-sans)' }}>Pair a browser</span>
-        <span style={{ font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>Open the companion, sign in with GitHub as the account you use here, and enter this code. It works once and for ten minutes; a new one appears after it is used.</span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span className="selectable" style={{ font: '700 22px/1.5 var(--font-mono)', letterSpacing: '.12em' }}>{state.code}</span>
-          <Button size="sm" icon="copy" onClick={() => api.copyText(state.code)}>Copy</Button>
-        </div>
-      </div>
-    ) : null}
-    <SettingRow title="What the browser can do" desc="Everything this window can: read and answer agents, run commands in the terminal, change settings. Not the things that act on this computer, such as opening a folder. Your GitHub token stays here." />
-    <SettingRow title="Sign out all browsers" desc="Disconnects every paired browser and makes a new code. They have to pair again.">
-      <Button size="sm" variant="ghost" icon="link-break" disabled={state.state !== 'ready'} onClick={() => api.tunnelRevoke()}>Sign out</Button>
-    </SettingRow>
-  </>;
-}
-
 /**
  * Click a shortcut, then press the new keys; Esc cancels and Backspace turns the shortcut off. `conflict` names another action already using the keys.
  * Listens in the capture phase, so the keys being pressed do not also run the action they are currently set to.
@@ -582,7 +549,7 @@ export function Settings({ section }: { section?: string }) {
   const subCols = useColumns('subagent-repos', [{ w: 1, min: 160, flex: true }, { w: 170, min: 110, fixed: true }]);
   const pctOptions = [{ value: '0', label: 'Off' }, { value: '50', label: '50%' }, { value: '70', label: '70%' }, { value: '80', label: '80%' }, { value: '90', label: '90%' }];
   const subLimits = (extra: number[]) => [...new Set([0, 1, 2, 3, 4, 6, 8, 12, ...extra])].sort((a, b) => a - b).map((n) => ({ value: String(n), label: n === 0 ? 'Off' : String(n) }));
-  const nav = [['defaults', 'Defaults', 'sliders-horizontal'], ...app.repos.map((r) => ['repo:' + r.id, r.hidden ? r.id + ' (hidden)' : r.id, r.hidden ? 'eye-slash' : 'git-branch', 1]), ['github', 'GitHub', 'github-logo', 1], ['claude', 'Claude Code', 'sparkle', 1], ['codex', 'Codex', 'terminal-window', 1], ['agents', 'Agents', 'robot'], ['automations', 'Automated agents', 'clock-clockwise'], ['mcp', 'MCP servers', 'plugs-connected'], ['worktrees', 'Worktrees', 'tree-structure'], ['budgets', 'Usage', 'coins'], ...(hosted ? [] : [['companion', 'Companion', 'broadcast'], ['tunnel', 'Browser companion', 'browser']]), ['notifications', 'Notifications', 'bell'], ['appearance', 'Appearance', 'paint-brush'], ['shortcuts', 'Keyboard shortcuts', 'keyboard', 1], ['custom-shortcuts', 'Custom shortcuts', 'lightning', 1], ['transfer', 'Import and export', 'arrows-left-right'], ['sync', 'Sync', 'arrows-clockwise'], ['about', 'About and support', 'info']] as [string, string, string, number?][];
+  const nav = [['defaults', 'Defaults', 'sliders-horizontal'], ...app.repos.map((r) => ['repo:' + r.id, r.hidden ? r.id + ' (hidden)' : r.id, r.hidden ? 'eye-slash' : 'git-branch', 1]), ['github', 'GitHub', 'github-logo', 1], ['claude', 'Claude Code', 'sparkle', 1], ['codex', 'Codex', 'terminal-window', 1], ['agents', 'Agents', 'robot'], ['automations', 'Automated agents', 'clock-clockwise'], ['mcp', 'MCP servers', 'plugs-connected'], ['worktrees', 'Worktrees', 'tree-structure'], ['budgets', 'Usage', 'coins'], ...(hosted ? [] : [['companion', 'Companion', 'broadcast']]), ['notifications', 'Notifications', 'bell'], ['appearance', 'Appearance', 'paint-brush'], ['shortcuts', 'Keyboard shortcuts', 'keyboard', 1], ['custom-shortcuts', 'Custom shortcuts', 'lightning', 1], ['transfer', 'Import and export', 'arrows-left-right'], ['sync', 'Sync', 'arrows-clockwise'], ['about', 'About and support', 'info']] as [string, string, string, number?][];
   // Accounts and Shortcuts are nodes of their own with nothing on them: each holds its pages and folds them away when clicked.
   const repoKeys = app.repos.map((r) => 'repo:' + r.id);
   const groups: Record<string, [string, string, string]> = { github: ['accounts', 'Accounts', 'user-circle'], shortcuts: ['shortcuts', 'Shortcuts', 'keyboard'], ...(repoKeys[0] ? { [repoKeys[0]]: ['repos', 'Repositories', 'book-bookmark'] } : {}) };
@@ -813,7 +780,6 @@ export function Settings({ section }: { section?: string }) {
           </>; })() : null}
           {sec === 'automations' ? <AutomationsSection /> : null}
           {sec === 'mcp' ? <><H sub="Tools and data sources Claude can use in every repository. Add one to a single repository from its MCP tab.">MCP servers</H><McpServers repoId={null} servers={st.mcpServers || []} /></> : null}
-          {sec === 'tunnel' ? <TunnelSection st={st} set={set} state={app.tunnel} /> : null}
           {sec === 'companion' ? <CompanionSection st={st} set={set} state={app.companion} /> : null}
           {sec === 'notifications' ? <>
             <H sub="Desktop notifications are shown when helm is not the focused window. The taskbar or dock badge counts sessions that need you.">Notifications</H>
