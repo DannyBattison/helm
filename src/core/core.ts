@@ -372,7 +372,7 @@ export const api: HelmApi = {
     if ('activityDays' in patch) void store.pruneLog(store.data.settings.activityDays);
     if ('cleanupDays' in patch || 'reclaimOnArchive' in patch) void housekeeping();
     if (('companionEnabled' in patch || 'companionUrl' in patch) && host.companion !== false) companion.apply();
-    if (('p2pEnabled' in patch || 'p2pPort' in patch || 'p2pStun' in patch || 'p2pAddress' in patch) && host.companion !== false) p2p.apply();
+    if (('p2pEnabled' in patch || 'p2pPort' in patch || 'p2pStun' in patch || 'p2pAddress' in patch || 'p2pPortMap' in patch) && host.companion !== false) p2p.apply();
     host.settingsChanged?.(patch);
     if ('planPause5h' in patch || 'planPauseWeek' in patch || 'billing' in patch) void sessions.enforcePlan();
     if ('enabledAgents' in patch) {
@@ -1398,7 +1398,7 @@ export async function shutdown() {
   syncer.stop();
   terms.closeAll();
   companion.shutdown();
-  p2p.shutdown();
+  await p2p.shutdown();
   sessions.shutdown();
   await store.flushAll().catch(() => undefined);
 }

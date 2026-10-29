@@ -12,6 +12,8 @@ import type { HelmEvents, P2PState } from '../../shared/types';
 import type { Host } from '../host';
 import type { Store } from '../store';
 import { forCode, rankCandidates } from './addresses';
+import { PortMapper } from './portmap';
+import type { Mapping } from './portmap';
 import { StunClient } from './stun';
 import { NodeUdp } from './udp';
 
@@ -54,12 +56,14 @@ export class P2P {
   private links = new Map<string, Link>();
   private mapped: { host: string; port: number } | null = null;
   private lastCandidates = '';
+  private portmap: PortMapper | null = null;
+  private mapping: Mapping | null = null;
 
   /**
    * `call` runs an API call by name and refuses what belongs to this computer. `vault` is where this app keeps its files. `whoIs` says which
    * GitHub user a token belongs to (null if it is not valid); the default asks GitHub.
    */
-  constructor(private store: Store, private call: (name: string, args: unknown[]) => Promise<unknown>, private onChange: () => void, private vault: () => Pick<Host, 'dataDir' | 'encrypt' | 'decrypt'>, private whoIs: (token: string) => Promise<string | null> = githubLogin) {}
+  constructor(private store: Store, private call: (name: string, args: unknown[]) => Promise<unknown>, private onChange: () => void, private vault: () => Pick<Host, 'dataDir' | 'encrypt' | 'decrypt'>, private whoIs: (token: string) => Promise<string | null> = githubLogin, private makePortMapper: () => PortMapper = () => new PortMapper()) {}
 
   private get s() { return this.store.data.settings; }
   private file() { return join(this.vault().dataDir, 'p2p.bin'); }
@@ -84,14 +88,15 @@ export class P2P {
   /** Brings the listener in line with the settings. Called at start-up and whenever they change. */
   apply() {
     const gen = ++this.generation;
-    this.stop();
+    void this.stop()?.unmap();
     if (this.s.p2pEnabled && !this.store.data.user?.login) { this.set({ state: 'error', error: 'Sign in to GitHub in helm first: a phone is paired with the same GitHub account.', code: undefined, addresses: [], port: undefined }); return; }
     if (!this.s.p2pEnabled) { this.set({ state: 'off', error: undefined, code: undefined, addresses: [], mapped: undefined, nat: undefined, port: undefined }); return; }
     this.set({ state: 'starting', error: undefined });
     void this.start(gen).catch((e) => { if (gen === this.generation) this.set({ state: 'error', error: String(e?.code === 'EADDRINUSE' ? `Port ${this.s.p2pPort} is already in use. Choose another in Settings.` : e?.message || e) }); });
   }
 
-  private stop() {
+  /** Stops everything; returns the router forwarding, if there was one, for the caller to take away. */
+  private stop(): PortMapper | null {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     this.listener?.close();
@@ -99,9 +104,13 @@ export class P2P {
     this.listener = null;
     this.udp = null;
     this.stun = null;
+    const mapper = this.portmap;
+    this.portmap = null;
+    this.mapping = null;
     this.links.clear();
     this.mapped = null;
     this.lastCandidates = '';
+    return mapper;
   }
 
   private async start(gen: number) {
@@ -130,9 +139,22 @@ export class P2P {
       authorize: (key, said) => this.authorize(key, said),
       onLink: (link, device) => this.attach(link, device.key, device.name)
     });
-    this.set({ state: 'ready', port, error: undefined });
+    this.set({ state: 'ready', port, error: undefined, portMap: { state: this.s.p2pPortMap ? 'trying' : 'off' } });
+    if (this.s.p2pPortMap) void this.forwardPort(gen, port);
     await this.refresh();
     if (gen === this.generation) { this.timer = setInterval(() => void this.refresh(), STUN_EVERY_MS); (this.timer as any).unref?.(); }
+  }
+
+  /** Asks the router to forward the port; the address it gives goes first in the code. */
+  private async forwardPort(gen: number, port: number) {
+    const mapper = this.makePortMapper();
+    this.portmap = mapper;
+    mapper.onRenewed = (m) => { if (gen === this.generation) { this.mapping = m; this.refreshState(); } };
+    const r = await mapper.map(port).catch(() => ({ mapping: null, note: 'The router could not be asked.' }));
+    if (gen !== this.generation) { void mapper.unmap(); return; }
+    this.mapping = r.mapping;
+    this.set({ portMap: r.mapping ? { state: 'mapped', method: r.mapping.method, address: `${r.mapping.externalIp}:${r.mapping.externalPort}` } : { state: 'failed', note: (r as any).note } });
+    this.refreshState();
   }
 
   // ------------------------------------------------------------ who may connect
@@ -248,6 +270,8 @@ export class P2P {
     const out: string[] = [];
     const extra = this.s.p2pAddress.trim();
     if (extra) out.push(extra);
+    // The address the router forwarded for us is the surest way in: first.
+    if (this.mapping) out.push(forCode(this.mapping.externalIp, this.mapping.externalPort !== port ? this.mapping.externalPort : undefined));
     // Where the router sends traffic for this port, when STUN found it and the NAT keeps one answer: ahead of the private addresses.
     if (this.mapped && this.state.nat !== 'symmetric') out.push(forCode(this.mapped.host, this.mapped.port !== port ? this.mapped.port : undefined));
     for (const c of rankCandidates()) out.push(forCode(c.address));
@@ -288,5 +312,9 @@ export class P2P {
     this.refreshState();
   }
 
-  shutdown() { this.generation++; this.stop(); }
+  /** Stops listening and takes the router forwarding away. Resolves once the router has been told. */
+  async shutdown() {
+    this.generation++;
+    await this.stop()?.unmap().catch(() => undefined);
+  }
 }

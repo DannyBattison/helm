@@ -51,10 +51,12 @@ Everything else is TypeScript. These are written but **have never been compiled 
 
 Notifications while the app is closed arrive when the OS runs that task, typically every 15 minutes or longer; iOS may not run it for an app that is rarely opened. While the app is open they arrive at once. The first time, the app asks for permission to notify.
 
+## Notifications and opening a session
+
+Tapping a notification opens the app on that session: on Android the background task's notification carries a `helm://open?instance=…&session=…` link (an intent filter in the manifest), on iOS Capacitor's notification plugin reports the `instance`, `session` and `kind` fields the task put in the notification, and notifications the app shows itself carry the same fields. If that computer is already open it goes straight there; otherwise the app opens it first. See `src/open.ts`.
+
 ## Not done
 
 - Screens beyond the list and adding a computer or server (a hosted server opens in the web view at `/mobile/`, with its own sign-in; getting back is the Android back button or the ⇄ tab on the right edge).
-- Opening the session from a tapped notification (it opens the app).
-- UPnP and NAT-PMP on the desktop: the router's port can be forwarded by hand, and the port is settable.
 
 The browser-only PWA for one hosted server is `../hosted/pwa`.

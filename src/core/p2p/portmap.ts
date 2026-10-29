@@ -24,6 +24,8 @@ export interface PortMapOptions {
   leaseSeconds?: number;
   /** How long to wait for a router to answer. */
   waitMs?: number;
+  /** How long between renewals; half the lease unless set (tests). */
+  renewMs?: number;
 }
 
 const SEARCH_TARGETS = ['urn:schemas-upnp-org:device:InternetGatewayDevice:1', 'urn:schemas-upnp-org:device:InternetGatewayDevice:2'];
@@ -111,7 +113,7 @@ export class PortMapper {
   private stopped = false;
 
   constructor(o: PortMapOptions = {}) {
-    this.opts = { ssdpHost: o.ssdpHost ?? '239.255.255.250', ssdpPort: o.ssdpPort ?? 1900, natpmpPort: o.natpmpPort ?? 5351, gateway: o.gateway ?? defaultGateway, localAddresses: o.localAddresses ?? lanAddresses, leaseSeconds: o.leaseSeconds ?? 3600, waitMs: o.waitMs ?? 2000 };
+    this.opts = { ssdpHost: o.ssdpHost ?? '239.255.255.250', ssdpPort: o.ssdpPort ?? 1900, natpmpPort: o.natpmpPort ?? 5351, gateway: o.gateway ?? defaultGateway, localAddresses: o.localAddresses ?? lanAddresses, leaseSeconds: o.leaseSeconds ?? 3600, waitMs: o.waitMs ?? 2000, renewMs: o.renewMs ?? 0 };
   }
 
   /** Forwards `port` (UDP) to this computer. Null if no router agreed, or if the address it reports is not one the internet can reach. */
@@ -201,7 +203,7 @@ export class PortMapper {
   // ---- keeping it, and giving it back
   private renewLater() {
     if (this.timer) clearTimeout(this.timer);
-    const wait = Math.max(30, this.opts.leaseSeconds / 2) * 1000;
+    const wait = this.opts.renewMs || Math.max(30, this.opts.leaseSeconds / 2) * 1000;
     this.timer = setTimeout(() => void this.renew(), wait);
     (this.timer as any).unref?.();
   }

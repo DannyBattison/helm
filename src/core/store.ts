@@ -76,6 +76,7 @@ export const defaultSettings = (): Settings => ({
   p2pPort: 0,
   p2pStun: 'stun.cloudflare.com:3478',
   p2pAddress: '',
+  p2pPortMap: false,
   terminalShell: 'auto',
   terminalShellCustom: '',
   sendKey: 'mod-enter',

@@ -561,6 +561,8 @@ export interface Settings {
   p2pStun: string;
   /** An address to add to the share code that does not change, such as a dynamic DNS name. */
   p2pAddress: string;
+  /** Ask the router to forward the port (UPnP, then NAT-PMP), and give it back when helm stops. Off until turned on: it changes the router. */
+  p2pPortMap: boolean;
   /** The shell in the terminal: `auto` (zsh if installed, then Git Bash, WSL, PowerShell), an id from `listShells`, or `custom`. */
   terminalShell: string;
   /** The command to run for the `custom` shell, for example `wsl.exe -d Ubuntu -e zsh`. */
@@ -1071,6 +1073,8 @@ export interface P2PState {
   nat?: 'cone' | 'symmetric' | 'unknown';
   /** The public address STUN saw, if it answered. */
   mapped?: string;
+  /** Whether the router was asked to forward the port, and what it said. */
+  portMap?: { state: 'off' | 'trying' | 'mapped' | 'failed'; method?: 'upnp' | 'natpmp'; address?: string; note?: string };
   /** The share code to give a phone: single use for a new device, good for ten minutes. */
   code?: string;
   /** The addresses in the code, best first. */
