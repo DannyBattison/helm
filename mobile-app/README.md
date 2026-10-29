@@ -13,7 +13,7 @@ The phone app: the unchanged helm renderer, holding several helm **instances** a
 | `src/native.ts` | The UDP socket (the native plugin) and the preferences the instance list is kept in. |
 | `src/headless.ts`, `collect.html` | The page the background task runs: collect and finish. |
 | `src/instances.ts` | The list of instances and where it is kept. Adding a computer takes its share code; the one-time secret is dropped once it has accepted the phone, and the phone's own key for it is saved. |
-| `src/github.ts` | GitHub sign-in on the phone (device flow, no scopes) to show the computer which GitHub user this is. The token is sent once, encrypted, when pairing, and not kept. |
+| `src/github.ts`, `src/session.ts` | GitHub sign-in on the phone (device flow, no scopes), done when the app first starts, with a button to copy the code. The token is kept in the Keychain / Keystore and sent to a computer once, encrypted, when pairing with it, so it can check this is the same GitHub user as the one signed in there. It is never sent when reconnecting. Signing out (on the list screen) deletes it. |
 | `src/p2pConn.ts` | An encrypted link to a computer as the connection `hosted/web/bridge.ts` wants. `createConnectionBridge(connectDesktop(...))` is a `HelmBridge` over UDP; the renderer does not know the difference. |
 | `src/notices.ts` | Notifications with the app closed: `collect()` connects to each computer for a moment, shows what is waiting as local notifications, acknowledges it and leaves. Meant to be run by the OS's background task. |
 | `src/scan.ts` | Reads a share code from the camera (`getUserMedia` and jsQR, in the web view; no native plugin). |

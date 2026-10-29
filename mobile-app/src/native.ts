@@ -1,6 +1,8 @@
 import { registerPlugin } from '@capacitor/core';
+import { SecureStorage } from '@aparajita/capacitor-secure-storage';
 import { Preferences } from '@capacitor/preferences';
 import type { UdpSocket } from '../../src/shared/p2p/link';
+import type { Secrets } from './session';
 import type { Storage } from './instances';
 
 /**
@@ -39,4 +41,11 @@ export function capacitorUdp(): UdpSocket {
 export const preferences: Storage = {
   get: async (key) => (await Preferences.get({ key })).value,
   set: async (key, value) => { await Preferences.set({ key, value }); }
+};
+
+/** The Keychain / Keystore. Not synced to iCloud: this token belongs to this phone. */
+export const secrets: Secrets = {
+  get: async (key) => { await SecureStorage.setSynchronize(false); const v = await SecureStorage.get(key); return typeof v === 'string' ? v : null; },
+  set: async (key, value) => { await SecureStorage.setSynchronize(false); await SecureStorage.set(key, value); },
+  remove: async (key) => { await SecureStorage.setSynchronize(false); await SecureStorage.remove(key); }
 };

@@ -29,3 +29,12 @@ export async function waitForToken(clientId: string, d: DeviceCode, f: Fetch = f
   }
   throw new Error('The sign-in code expired. Try again.');
 }
+
+/** The GitHub user a token belongs to: their login, or null if GitHub says the token is no good (revoked, or never valid). Throws if GitHub could not be reached. */
+export async function githubLogin(token: string, f: Fetch = fetch): Promise<string | null> {
+  const r = await f('https://api.github.com/user', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' } });
+  if (r.status === 401 || r.status === 403) return null;
+  if (!r.ok) throw new Error(`GitHub answered ${r.status}`);
+  const j: any = await r.json();
+  return typeof j?.login === 'string' ? j.login : null;
+}

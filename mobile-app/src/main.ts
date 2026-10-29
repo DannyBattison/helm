@@ -1,23 +1,26 @@
 import { App } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
+import { Clipboard } from '@capacitor/clipboard';
 import { Device } from '@capacitor/device';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { createConnectionBridge } from '../../hosted/web/bridge';
 import { DEFAULT_GITHUB_CLIENT_ID } from '../../src/shared/githubApp';
 import { decodeShareCode } from '../../src/shared/p2p/sharecode';
-import { startDeviceFlow, waitForToken } from './github';
 import { Instances } from './instances';
 import type { Instance } from './instances';
-import { capacitorUdp, preferences } from './native';
+import { capacitorUdp, preferences, secrets } from './native';
 import { loadSeen, saveSeen, showNew } from './notices';
 import type { Notice } from './notices';
 import { connectDesktop } from './p2pConn';
 import { fromExtra, parseOpenUrl, plan } from './open';
 import type { Target } from './open';
 import { scanShareCode } from './scan';
+import { Account } from './session';
+import type { Signed } from './session';
 import { el, hide, show } from './ui';
 
 const instances = new Instances(preferences);
+const account = new Account(secrets, DEFAULT_GITHUB_CLIENT_ID);
 document.body.style.background = '#0e0e12';
 
 /** Puts a notification on the screen. */
@@ -40,6 +43,27 @@ async function goTo(t: Target) {
   await openInstance(inst, t);
 }
 
+// ------------------------------------------------------------------------------------------------ GitHub, once
+/** Signs in to GitHub and keeps it. The code can be copied; GitHub's page asks for it. */
+async function signIn(): Promise<Signed> {
+  for (;;) {
+    show(el('h1', 'Sign in to GitHub'), 'Helm uses your GitHub account to make sure only you can connect to your computers. It asks for no permissions: it only learns your username.', 'Contacting GitHub…');
+    try {
+      return await account.signIn((flow) => {
+        const copied = el('p', '');
+        show(el('h1', 'Sign in to GitHub'), 'Copy this code, then open GitHub and paste it.', el('div', flow.userCode, 'code'),
+          el('button', 'Copy code', '', async () => { await Clipboard.write({ string: flow.userCode }); copied.textContent = 'Copied.'; }),
+          el('button', 'Open GitHub', 'primary', () => void Browser.open({ url: flow.verificationUri })), copied, 'Waiting for you to approve…');
+      });
+    } catch (e: any) {
+      await new Promise<void>((retry) => show(el('h1', 'Could not sign in'), el('p', String(e?.message || e), 'err'), el('button', 'Try again', 'primary', () => retry())));
+    }
+  }
+}
+
+/** The signed-in account, signing in first if there is none. */
+async function who(): Promise<Signed> { return (await account.current()) ?? (await signIn()); }
+
 // ------------------------------------------------------------------------------------------------ the list
 async function home() {
   const all = await instances.list();
@@ -52,7 +76,9 @@ async function home() {
     row.append(open, el('button', '✕', '', async () => { if (confirm(`Remove ${i.name}?`)) { await instances.remove(i.id); void home(); } }));
     return row;
   });
-  show(el('h1', 'helm'), all.length ? '' : 'Add your computer, or a helm server, to begin.', ...rows, el('button', 'Add a computer', 'primary', () => addComputer()), el('button', 'Add a helm server', '', () => addServer()));
+  const me = await account.current();
+  show(el('h1', 'helm'), all.length ? '' : 'Add your computer, or a helm server, to begin.', ...rows, el('button', 'Add a computer', 'primary', () => addComputer()), el('button', 'Add a helm server', '', () => addServer()),
+    el('button', me ? `Signed in as ${me.login} · Sign out` : 'Sign in to GitHub', '', async () => { if (me) { if (confirm('Sign out of GitHub? You will need to sign in again to add a computer.')) { await account.signOut(); void home(); } } else { await signIn(); void home(); } }));
 }
 
 // ------------------------------------------------------------------------------------------------ adding
@@ -80,16 +106,13 @@ function addComputer() {
     el('button', 'Back', '', () => void home()));
 }
 
-/** GitHub sign-in to prove this is the same person as the one signed in on the computer, then the first connection that pairs the phone. */
+/** The first connection to a computer, which pairs this phone with it: it needs the GitHub sign-in, to show the computer who this is. */
 async function pair(code: string) {
   const prepared = instances.prepareDesktop(code);
   await LocalNotifications.requestPermissions().catch(() => undefined);
-  show(el('h1', 'Sign in to GitHub'), 'Use the same GitHub account as on your computer. This asks for no permissions: it only shows your computer who you are.', 'Contacting GitHub…');
-  const flow = await startDeviceFlow(DEFAULT_GITHUB_CLIENT_ID);
-  show(el('h1', 'Sign in to GitHub'), 'Open GitHub and enter this code.', el('div', flow.userCode, 'code'), el('button', 'Open GitHub', 'primary', () => void Browser.open({ url: flow.verificationUri })));
-  const token = await waitForToken(DEFAULT_GITHUB_CLIENT_ID, flow);
-  show(el('h1', 'Connecting…'), `Reaching ${prepared.name}.`);
-  const conn = await connectDesktop(capacitorUdp, { code: prepared.code, identity: prepared.identity, name: await deviceName(), githubToken: token })();
+  const me = await who();
+  show(el('h1', 'Connecting…'), `Reaching ${prepared.name} as ${me.login}.`);
+  const conn = await connectDesktop(capacitorUdp, { code: prepared.code, identity: prepared.identity, name: await deviceName(), githubToken: me.token })();
   conn.close();
   await instances.finishDesktop(prepared);
   void home();
@@ -130,6 +153,8 @@ void App.addListener('appUrlOpen', (e) => { const t = parseOpenUrl(e.url); if (t
 void LocalNotifications.addListener('localNotificationActionPerformed', (e) => { const t = fromExtra(e.notification.extra); if (t) void goTo(t); });
 
 void (async () => {
+  // Signing in comes first: nothing here works without it.
+  await who();
   await home();
   // A page reload to switch computers leaves the target here; a launch by tapping a notification leaves it as the launch link.
   const pending = sessionStorage.getItem('helm.pendingOpen');
