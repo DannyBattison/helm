@@ -16,6 +16,12 @@ The relay is a small Node server in `relay/` that you run somewhere both can rea
    cd web-companion && npm ci && npm run build
    HELM_RELAY_SECRET=$(openssl rand -hex 32) npm start     # listens on 127.0.0.1:8788
    ```
+      Or in Docker (the image holds only the relay and the page, about 200 MB, with no agents or tools):
+   ```
+   cd web-companion
+   echo "HELM_RELAY_SECRET=$(openssl rand -hex 32)" > .env
+   docker compose up --build -d                  # 127.0.0.1:8788; push subscriptions are kept in the relay-data volume
+   ```
    Put a TLS reverse proxy in front of it (Caddy: `companion.example.com { reverse_proxy 127.0.0.1:8788 }`). Websockets must pass through and the `Host` header must be kept. Keep `HELM_RELAY_SECRET` stable, or everyone is signed out and unpaired on restart.
 2. In the desktop app: **Settings → Browser companion**, turn it on and enter the relay's address. A pairing code appears.
 3. In the browser, open the relay's address, **Sign in with GitHub** (as the account helm is signed in with; no permissions are requested, it only learns the username), and enter the code. It works once and for ten minutes, then a new one appears.
@@ -32,7 +38,7 @@ A reload goes straight in. **Sign out all browsers** in the desktop settings end
 
 ## What is in this folder
 
-Only what belongs to this build: `relay/` (the server), `pairing.ts` (sign-in and code screen), `main.ts`, `index.html`, `manifest.webmanifest`, `vite.config.ts`. The desktop side is `src/core/tunnel.ts`. Shared with the other web builds, in `hosted/`: the web client's start-up (`web/boot.ts`), notifications and the service worker, the Web Push store (`src/push.ts`), static serving and cookies (`src/static.ts`, `src/gate.ts`), and the vite config (`vite.base.ts`).
+Only what belongs to this build: `relay/` (the server), `Dockerfile` and `docker-compose.yml`, `pairing.ts` (sign-in and code screen), `main.ts`, `index.html`, `manifest.webmanifest`, `vite.config.ts`. The desktop side is `src/core/tunnel.ts`. Shared with the other web builds, in `hosted/`: the web client's start-up (`web/boot.ts`), notifications and the service worker, the Web Push store (`src/push.ts`), static serving and cookies (`src/static.ts`, `src/gate.ts`), and the vite config (`vite.base.ts`).
 
 | Variable | Meaning |
 | --- | --- |
