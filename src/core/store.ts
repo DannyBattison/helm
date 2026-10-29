@@ -8,7 +8,8 @@ import type { Tombstone } from '../shared/sync';
 import { DEFAULT_ALWAYS_ASK, dayStart, home, uid, weekStart } from './util';
 
 /** helm's registered GitHub OAuth app. Client IDs are public; the device flow uses no secret. */
-export const DEFAULT_GITHUB_CLIENT_ID = 'Ov23liTYcKE5lBWCEAAV';
+import { DEFAULT_GITHUB_CLIENT_ID } from '../shared/githubApp';
+export { DEFAULT_GITHUB_CLIENT_ID };
 
 export const defaultSettings = (): Settings => ({
   mcpServers: [],
@@ -71,6 +72,11 @@ export const defaultSettings = (): Settings => ({
   companionEnabled: false,
   companionUrl: 'http://localhost:8787',
   companionControl: true,
+  p2pEnabled: false,
+  p2pPort: 0,
+  p2pStun: 'stun.cloudflare.com:3478',
+  p2pAddress: '',
+  p2pPortMap: false,
   terminalShell: 'auto',
   terminalShellCustom: '',
   sendKey: 'mod-enter',

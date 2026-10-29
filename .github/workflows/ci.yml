@@ -21,6 +21,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm --prefix hosted ci
+      - run: npm --prefix mobile ci
       - run: npm run typecheck
   test:
     runs-on: ubuntu-latest
@@ -33,6 +34,9 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # The phone app's and the hosted server's packages are installed apart from the root's, and their tests import them.
+      - run: npm --prefix hosted ci
+      - run: npm --prefix mobile ci
       - run: npx vitest run --coverage --coverage.reporter=lcov --coverage.reporter=text-summary
       # A release run is not a code change, so it sends no coverage (its caller is a workflow_dispatch).
       - uses: codecov/codecov-action@v5

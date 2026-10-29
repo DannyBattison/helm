@@ -21,81 +21,84 @@ function download({ name, text }: HelmEvents['download']) {
   setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
 }
 
-/** Shows a notification from the server unless this tab is being looked at. Needs permission, which a browser only grants after a click. */
-function notify(n: HelmEvents['notify'], open: (sessionId: string, kind: string) => void) {
-  if (typeof Notification === 'undefined' || Notification.permission !== 'granted' || document.hasFocus()) return;
-  // The tag makes several open tabs show one notification between them.
-  const note = new Notification(n.title, { body: n.body, silent: n.silent, tag: `helm-${n.sessionId}-${n.kind}`, icon: '/apple-touch-icon.png' });
-  note.onclick = () => { window.focus(); open(n.sessionId, n.kind); note.close(); };
-}
+const clientPlatform = () => (typeof navigator === 'undefined' ? 'linux' : /Mac/i.test(navigator.platform) ? 'darwin' : /Win/i.test(navigator.platform) ? 'win32' : 'linux');
 
-if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-  addEventListener('pointerdown', () => { void Notification.requestPermission(); }, { once: true });
-}
+export type WebBridge = HelmBridge & { ready: Promise<void>; /** Goes to a session, as tapping its notification does. Waits for the UI to be listening. */ open(sessionId: string, kind: string): void };
 
-const clientPlatform = () => (/Mac/i.test(navigator.platform) ? 'darwin' : /Win/i.test(navigator.platform) ? 'win32' : 'linux');
+/** One live connection to whatever runs helm: a WebSocket to a hosted server, or an encrypted UDP link to a desktop app. */
+export interface Conn {
+  send(m: ClientMessage): void;
+  /** Called with every message that is not the connection's own housekeeping. */
+  onMessage(cb: (m: ServerMessage) => void): void;
+  onClose(cb: () => void): void;
+  close(): void;
+}
 
 /**
- * The same `HelmBridge` Electron's preload provides, over a WebSocket. Reconnects by itself. Before sign-in the server only answers helm's
- * own sign-in screen; once that succeeds it tells this page to collect a cookie, so a reload does not mean signing in again.
+ * The same `HelmBridge` Electron's preload provides, over any connection. `connect` opens one and resolves when it is usable; this reconnects
+ * by itself with a growing wait, holds calls made while there is no connection, fails the ones in flight when it drops, and asks for a fresh
+ * copy of the state when it is back, since events were missed.
  */
-export function createBridge(url: string): HelmBridge & { ready: Promise<void> } {
+export function createConnectionBridge(connect: () => Promise<Conn>, extra: Record<string, (...a: any[]) => unknown> = {}): WebBridge {
   const listeners = new Map<string, Set<(p: any) => void>>();
   const pending = new Map<number, Pending>();
-  let ws: WebSocket;
+  let conn: Conn | null = null;
   let nextId = 1;
   let retry = 500;
   let firstReady: () => void;
   const ready = new Promise<void>((r) => { firstReady = r; });
-  let isReady = false;
   let queued: ClientMessage[] = [];
 
   const emit = (channel: string, payload: unknown) => listeners.get(channel)?.forEach((cb) => cb(payload));
-  const post = (m: ClientMessage) => (isReady ? ws.send(JSON.stringify(m)) : queued.push(m));
+  const post = (m: ClientMessage) => (conn ? conn.send(m) : queued.push(m));
 
-  function connect(reconnect: boolean) {
-    ws = new WebSocket(url);
-    ws.onmessage = (e) => {
-      const m = JSON.parse(e.data) as ServerMessage;
-      if (m.t === 'ready') {
-        isReady = true;
-        retry = 500;
-        firstReady();
-        for (const q of queued) ws.send(JSON.stringify(q));
-        queued = [];
-        // Whatever happened while we were away: the UI replaces its state with a fresh copy.
-        if (reconnect) void bridge.invoke('getState').then((s) => emit('state', s));
-      } else if (m.t === 'result') {
+  async function open(reconnect: boolean) {
+    let c: Conn;
+    try { c = await connect(); } catch { setTimeout(() => void open(true), retry); retry = Math.min(retry * 2, 10_000); return; }
+    conn = c;
+    retry = 500;
+    c.onMessage((m: any) => {
+      if (m.t === 'result') {
         const p = pending.get(m.id);
         pending.delete(m.id);
         if (p) { if (m.ok === true) p.resolve(m.value); else p.reject(new Error(m.error)); }
-      } else if (m.t === 'session') {
-        void fetch('/auth/claim', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ claim: m.claim }), credentials: 'same-origin' }).catch(() => undefined);
       } else if (m.t === 'event') {
         if (m.channel === 'download') download(m.payload as HelmEvents['download']);
-        else {
-          if (m.channel === 'notify') notify(m.payload as HelmEvents['notify'], (id, kind) => emit('navigate', { screen: 'session', id, tab: kind === 'ready' ? 'changes' : 'conversation' }));
-          emit(m.channel, m.payload);
-        }
+        else emit(m.channel, m.payload);
       }
-    };
-    ws.onclose = () => {
-      isReady = false;
+    });
+    c.onClose(() => {
+      if (conn !== c) return;
+      conn = null;
       for (const p of pending.values()) p.reject(new Error('Connection to the server was lost'));
       pending.clear();
-      setTimeout(() => connect(true), retry);
+      setTimeout(() => void open(true), retry);
       retry = Math.min(retry * 2, 10_000);
-    };
+    });
+    firstReady();
+    for (const q of queued) c.send(q);
+    queued = [];
+    // Whatever happened while we were away: the UI replaces its state with a fresh copy.
+    // If the connection drops again before it answers, the next reconnect asks again: nothing to report here.
+    if (reconnect) void bridge.invoke('getState').then((s) => emit('state', s), () => undefined);
   }
-  connect(false);
+  void open(false);
 
-  const bridge: HelmBridge & { ready: Promise<void> } = {
+  const bridge: WebBridge = {
     ready,
+    open(id, kind) {
+      const go = () => emit('navigate', { screen: 'session', id, tab: kind === 'ready' ? 'changes' : 'conversation' });
+      // The UI subscribes a moment after it loads; a tap that launched the app arrives before that.
+      let tries = 0;
+      const wait = () => (listeners.get('navigate')?.size ? go() : tries++ < 100 && setTimeout(wait, 100));
+      wait();
+    },
     platform: clientPlatform(),
     windowControls: 'none',
     hosted: true,
     invoke(channel, ...args) {
       if (channel in local) return Promise.resolve(local[channel](...args));
+      if (channel in extra) return Promise.resolve(extra[channel](...args));
       return new Promise((resolve, reject) => {
         const id = nextId++;
         pending.set(id, { resolve, reject });
@@ -110,4 +113,27 @@ export function createBridge(url: string): HelmBridge & { ready: Promise<void> }
     }
   };
   return bridge;
+}
+
+/**
+ * To a hosted server: a WebSocket at `url`. Before sign-in the server only answers helm's own sign-in screen; once that succeeds it tells
+ * this page to collect a cookie, so a reload does not mean signing in again.
+ */
+export function createBridge(url: string): WebBridge {
+  return createConnectionBridge(() => new Promise<Conn>((resolve, reject) => {
+    const ws = new WebSocket(url);
+    let cb: (m: ServerMessage) => void = () => undefined;
+    let closed = () => undefined as void;
+    let isReady = false;
+    ws.onmessage = (e) => {
+      const m = JSON.parse(e.data) as ServerMessage;
+      if (m.t === 'ready') {
+        isReady = true;
+        resolve({ send: (x) => ws.send(JSON.stringify(x)), onMessage: (f) => { cb = f; }, onClose: (f) => { closed = f; }, close: () => ws.close() });
+      } else if (m.t === 'session') {
+        void fetch('/auth/claim', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ claim: m.claim }), credentials: 'same-origin' }).catch(() => undefined);
+      } else cb(m);
+    };
+    ws.onclose = () => { if (isReady) closed(); else reject(new Error('closed')); };
+  }));
 }

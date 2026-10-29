@@ -9,14 +9,19 @@
     "dev": "electron-vite dev -c desktop/electron.vite.config.ts",
     "build": "electron-vite build -c desktop/electron.vite.config.ts",
     "start": "electron-vite preview -c desktop/electron.vite.config.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p desktop/tsconfig.json && tsc --noEmit -p hosted/tsconfig.server.json && tsc --noEmit -p hosted/tsconfig.web.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p desktop/tsconfig.json && tsc --noEmit -p hosted/tsconfig.server.json && tsc --noEmit -p hosted/tsconfig.web.json && tsc --noEmit -p mobile/tsconfig.json",
     "test": "vitest run",
     "dist": "electron-vite build -c desktop/electron.vite.config.ts && electron-builder",
     "pack": "electron-vite build -c desktop/electron.vite.config.ts && electron-builder --dir",
     "release": "electron-vite build -c desktop/electron.vite.config.ts && electron-builder --publish always",
     "icons": "node desktop/scripts/make-icons.mjs",
     "hosted:build": "npm --prefix hosted run build",
-    "hosted:start": "npm --prefix hosted start"
+    "hosted:start": "npm --prefix hosted start",
+    "mobile:build": "npm --prefix mobile run build",
+    "mobile:sync": "npm --prefix mobile run sync",
+    "mobile:android": "npm --prefix mobile run android",
+    "mobile:android:apk": "npm --prefix mobile run android:apk",
+    "mobile:ios": "npm --prefix mobile run ios"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
@@ -28,6 +33,8 @@
     "electron": "^45.0.0",
     "electron-builder": "^26.15.3",
     "electron-vite": "^6.0.0",
+    "jsdom": "^30.1.3",
+    "sharp": "^0.35.5",
     "typescript": "^7.0.2",
     "vite": "^8.3.5",
     "vitest": "^5.0.5"
@@ -47,6 +54,9 @@
     "@fontsource/source-code-pro": "^5.3.1",
     "@fontsource/source-sans-3": "^5.3.1",
     "@homebridge/node-pty-prebuilt-multiarch": "^0.14.1",
+    "@noble/ciphers": "^2.4.0",
+    "@noble/curves": "^2.4.0",
+    "@noble/hashes": "^2.4.0",
     "@phosphor-icons/web": "^2.1.2",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-search": "^0.16.0",
@@ -54,7 +64,9 @@
     "@xterm/xterm": "^6.0.0",
     "electron-updater": "^6.8.9",
     "highlight.js": "^11.12.0",
+    "jsqr": "^1.4.0",
     "monaco-editor": "^0.57.0",
+    "qrcode-generator": "^2.0.4",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-virtuoso": "^4.18.19",
@@ -136,5 +148,8 @@
         "releaseType": "release"
       }
     ]
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

@@ -553,6 +553,16 @@ export interface Settings {
   companionUrl: string;
   /** Let the website approve commands, answer questions, message, pause and stop agents, and start sessions. Off leaves it read-only. */
   companionControl: boolean;
+  /** Let the phone app reach this computer directly (no server between), with a share code. Off until turned on. */
+  p2pEnabled: boolean;
+  /** The UDP port for it; 0 picks one the first time and keeps it. */
+  p2pPort: number;
+  /** The STUN server that tells this computer which public address its port has, as `host:port`. Empty to not ask. */
+  p2pStun: string;
+  /** An address to add to the share code that does not change, such as a dynamic DNS name. */
+  p2pAddress: string;
+  /** Ask the router to forward the port (UPnP, then NAT-PMP), and give it back when helm stops. Off until turned on: it changes the router. */
+  p2pPortMap: boolean;
   /** The shell in the terminal: `auto` (zsh if installed, then Git Bash, WSL, PowerShell), an id from `listShells`, or `custom`. */
   terminalShell: string;
   /** The command to run for the `custom` shell, for example `wsl.exe -d Ubuntu -e zsh`. */
@@ -739,6 +749,7 @@ export interface AppState {
   /** Claude's, kept for the parts that predate other agents. */
   plan: PlanUsage;
   companion: CompanionState;
+  p2p: P2PState;
   /** USD to other currencies. */
   rates: Record<string, number>;
   platform: string;
@@ -1053,6 +1064,24 @@ export interface CompanionState {
   viewers: number;
 }
 
+/** Where the direct link to the phone app stands. */
+export interface P2PState {
+  state: 'off' | 'starting' | 'ready' | 'error';
+  error?: string;
+  port?: number;
+  /** What the STUN server said about the NAT in front of this computer: `cone` can be reached directly, `symmetric` cannot. */
+  nat?: 'cone' | 'symmetric' | 'unknown';
+  /** The public address STUN saw, if it answered. */
+  mapped?: string;
+  /** Whether the router was asked to forward the port, and what it said. */
+  portMap?: { state: 'off' | 'trying' | 'mapped' | 'failed'; method?: 'upnp' | 'natpmp'; address?: string; note?: string };
+  /** The share code to give a phone: single use for a new device, good for ten minutes. */
+  code?: string;
+  /** The addresses in the code, best first. */
+  addresses: string[];
+  devices: { id: string; name: string; addedAt: number; lastSeen: number; connected: boolean }[];
+}
+
 /** The small picture of helm that goes to the companion website: no code, no file contents, only what a phone screen needs. */
 export interface CompanionSnapshot {
   at: number;
@@ -1106,6 +1135,10 @@ export interface HelmApi {
   getState(): Promise<AppState>;
   /** Forgets this computer's link to the companion server. Turning the companion on again links it afresh. */
   companionUnlink(): Promise<void>;
+  /** Makes a new share code for pairing a phone; the old one stops working. */
+  p2pNewCode(): Promise<void>;
+  /** Forgets a paired phone and ends its connection. */
+  p2pRevoke(id: string): Promise<void>;
   /** Stores (or with an empty string clears) the SMTP password for outbound email, encrypted by the host. */
   setEmailPassword(password: string): Promise<void>;
   /** Sends a test message through a channel with its current settings. Resolves to an error message, or null when it went out. */
