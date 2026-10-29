@@ -1,0 +1,7 @@
+## 2026-10-29 · The companion relay ships as a self-hosted Docker image, and only for self-hosting
+
+`web-companion/Dockerfile` (built from the repository root, like hosted's) builds the companion page, installs production dependencies only and runs `relay/server.ts` with tsx as a non-root user behind tini. The image has only the relay, the page and the few folders of source the relay imports (`hosted/src`, `src/core`, `src/shared`); no agents, git or tools. `docker-compose.yml` publishes it on 127.0.0.1:8788 with one volume for push subscriptions. tsx moved to the relay's dependencies so the image can leave dev dependencies out.
+
+The relay is documented as for self-hosting by the person whose desktop connects: whoever runs it can read all traffic and drive every connected desktop (see [2026-10-29-web-companion-tunnels-to-the-desktop-app-through-a-relay](2026-10-29-web-companion-tunnels-to-the-desktop-app-through-a-relay.md)). A relay run for other people would need end-to-end encryption first (a signalling-only relay with WebRTC and pinned keys was the design discussed). The image is not published by any workflow yet; hosted's image is built only by releases and this should follow the same rule when it is added.
+
+Why: user request, after concluding a shared relay is not safe to offer. Not tested with a real `docker build` (no Docker here); the same file set, installed with `--omit=dev`, was run with tsx and served the page.

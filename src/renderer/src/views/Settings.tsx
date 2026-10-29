@@ -12,6 +12,7 @@ import { AutomationsSection } from './Automations';
 import { EFFORT_OPTIONS, VariantEditor } from './Review';
 import { toast, useApp, useMoney } from '../store';
 import { comboFromEvent, comboKeys, comboProblem, normalizeCombo, SHORTCUT_ACTIONS, shortcutConflict, shortcutOf } from '@shared/shortcuts';
+import { qrSvg } from '@shared/qr';
 import { AgentSignInDialog } from './AgentSignIn';
 import { Avatar, Badge, Button, Checkbox, Dialog, IconButton, Input, Kbd, Meter, SegmentedControl, Select, Switch, TreeItem, useColumns, useNarrow } from '../ui';
 
@@ -193,6 +194,51 @@ function CompanionSection({ st, set, state }: { st: any; set(p: any): void; stat
     <SettingRow title="Unlink this computer" desc="Forget the link. Turning the companion on again signs in to GitHub afresh.">
       <Button size="sm" variant="ghost" icon="link-break" disabled={state.state === 'off' && !st.companionEnabled} onClick={() => api.companionUnlink()}>Unlink</Button>
     </SettingRow>
+  </>;
+}
+
+/** The phone app: turn on a direct link, get a share code, see and remove paired phones. */
+function PhoneSection({ st, set, state }: { st: any; set(p: any): void; state: any }) {
+  const label = ({ off: 'Off', starting: 'Starting…', ready: 'Listening', error: 'Not running' } as any)[state.state] || state.state;
+  const tone = state.state === 'ready' ? 'var(--status-ready-text, var(--status-ready))' : state.state === 'error' ? 'var(--status-error-text)' : 'var(--text-3)';
+  const nat = state.nat === 'symmetric'
+    ? 'Your router gives this port a different public address for each destination (symmetric NAT or carrier-grade NAT), so a phone outside your network cannot be told where to connect. It can still connect over your home network, IPv6 or a VPN such as Tailscale, or you can forward the port on your router.'
+    : state.nat === 'cone' ? 'Your router keeps one public address for this port, so a phone elsewhere can usually connect. If it cannot, forward the port on your router.'
+    : state.nat === 'unknown' && st.p2pStun ? 'The STUN server did not answer, so the public address is not known. Local, IPv6 and VPN addresses still work.' : undefined;
+  return <>
+    <H sub="Use helm from the phone app, straight to this computer, with no server in between. Off by default: nothing listens until you turn it on.">Phone app</H>
+    <SettingRow title="Allow the phone app" desc="Opens one UDP port. Nothing answers a packet that is not from a phone you have paired, so the port shows nothing to a scan.">
+      <Switch checked={st.p2pEnabled} onChange={(v: boolean) => set({ p2pEnabled: v })} />
+    </SettingRow>
+    <SettingRow title="Status" desc={state.state === 'ready' ? `UDP port ${state.port}${state.mapped ? `, seen from outside as ${state.mapped}` : ''}.` : state.error}>
+      <span style={{ font: '500 12.5px/1.5 var(--font-sans)', color: tone, display: 'inline-flex', alignItems: 'center', gap: 6 }}><i className={'ph-fill ph-circle'} style={{ fontSize: 8 }} />{label}</span>
+    </SettingRow>
+    {state.state === 'ready' && nat ? <SettingRow title="Reachability" desc={nat} /> : null}
+    {state.code ? (
+      <div style={{ margin: '4px 0 12px', padding: 14, borderRadius: 'var(--radius-md)', background: 'var(--bg-panel)', boxShadow: 'inset 0 0 0 1px var(--border)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <span style={{ font: '500 13px/1.5 var(--font-sans)' }}>Pair a phone</span>
+        <span style={{ font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>In the phone app choose Add computer and scan this code (or paste it), then sign in to GitHub as {st.githubUser || 'the same account as here'}. The code pairs one phone, once, within ten minutes. It holds addresses of this computer, so share it only with yourself.</span>
+        <div role="img" aria-label="QR code with the share code" style={{ width: 200, height: 200, borderRadius: 8, overflow: 'hidden', alignSelf: 'flex-start' }} dangerouslySetInnerHTML={{ __html: qrSvg(state.code) }} />
+        <span className="selectable" style={{ font: '400 11.5px/1.5 var(--font-mono)', wordBreak: 'break-all', maxHeight: 48, overflow: 'auto', color: 'var(--text-3)' }}>{state.code}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Button size="sm" icon="copy" onClick={() => api.copyText(state.code)}>Copy code</Button>
+          <Button size="sm" variant="ghost" icon="arrows-clockwise" onClick={() => api.p2pNewCode()}>New code</Button>
+        </div>
+      </div>
+    ) : null}
+    <SettingRow title="Paired phones" desc={state.devices.length ? undefined : 'No phone is paired.'} />
+    {state.devices.map((d: any) => (
+      <SettingRow key={d.id} title={d.name} desc={`${d.connected ? 'Connected now. ' : ''}Paired ${new Date(d.addedAt).toLocaleDateString()}, last seen ${new Date(d.lastSeen).toLocaleString()}.`}>
+        <Button size="sm" variant="ghost" icon="trash" onClick={() => api.p2pRevoke(d.id)}>Remove</Button>
+      </SettingRow>
+    ))}
+    <SettingRow title="What a phone can do" desc="Everything this window can: read and answer agents, run commands in the terminal, change settings. Not the things that act on this computer, such as opening a folder. Your GitHub token stays here. Pairing needs the phone's user to be the GitHub account signed in on this computer." />
+    <SettingRow title="UDP port" desc="0 picks a free port the first time and keeps it. If you forward a port on your router, set it here to the one you forwarded."><Field value={st.p2pPort} onCommit={(v: number) => set({ p2pPort: v })} parse={(x: string) => (/^\d+$/.test(x.trim()) && +x <= 65535 ? Number(x) : undefined)} style={{ width: 90 }} /></SettingRow>
+    <SettingRow title="Open the port on my router" desc={state.portMap?.state === 'mapped' ? `Forwarded with ${state.portMap.method === 'upnp' ? 'UPnP' : 'NAT-PMP'}: phones elsewhere can reach ${state.portMap.address}. The forwarding is renewed while helm runs and removed when it quits.` : state.portMap?.state === 'failed' ? state.portMap.note : state.portMap?.state === 'trying' ? 'Asking the router…' : 'Asks the router (UPnP, then NAT-PMP) to forward this UDP port to this computer so a phone away from home can connect. It changes your router\'s settings while helm runs, and puts them back when it quits.'}>
+      <Switch checked={st.p2pPortMap} onChange={(v: boolean) => set({ p2pPortMap: v })} />
+    </SettingRow>
+    <SettingRow title="Fixed address" desc="Something that does not change, such as a dynamic DNS name, added to the code so a paired phone can still find this computer when its public address changes."><Field value={st.p2pAddress} onCommit={(v: string) => set({ p2pAddress: v.trim() })} placeholder="home.example.com" style={{ width: 220 }} /></SettingRow>
+    <SettingRow title="STUN server" desc="Tells this computer which public address its port has. Only the port's address is sent. Leave empty to not ask."><Field value={st.p2pStun} onCommit={(v: string) => set({ p2pStun: v.trim() })} placeholder="stun.cloudflare.com:3478" style={{ width: 220 }} /></SettingRow>
   </>;
 }
 
@@ -549,7 +595,7 @@ export function Settings({ section }: { section?: string }) {
   const subCols = useColumns('subagent-repos', [{ w: 1, min: 160, flex: true }, { w: 170, min: 110, fixed: true }]);
   const pctOptions = [{ value: '0', label: 'Off' }, { value: '50', label: '50%' }, { value: '70', label: '70%' }, { value: '80', label: '80%' }, { value: '90', label: '90%' }];
   const subLimits = (extra: number[]) => [...new Set([0, 1, 2, 3, 4, 6, 8, 12, ...extra])].sort((a, b) => a - b).map((n) => ({ value: String(n), label: n === 0 ? 'Off' : String(n) }));
-  const nav = [['defaults', 'Defaults', 'sliders-horizontal'], ...app.repos.map((r) => ['repo:' + r.id, r.hidden ? r.id + ' (hidden)' : r.id, r.hidden ? 'eye-slash' : 'git-branch', 1]), ['github', 'GitHub', 'github-logo', 1], ['claude', 'Claude Code', 'sparkle', 1], ['codex', 'Codex', 'terminal-window', 1], ['agents', 'Agents', 'robot'], ['automations', 'Automated agents', 'clock-clockwise'], ['mcp', 'MCP servers', 'plugs-connected'], ['worktrees', 'Worktrees', 'tree-structure'], ['budgets', 'Usage', 'coins'], ...(hosted ? [] : [['companion', 'Companion', 'broadcast']]), ['notifications', 'Notifications', 'bell'], ['appearance', 'Appearance', 'paint-brush'], ['shortcuts', 'Keyboard shortcuts', 'keyboard', 1], ['custom-shortcuts', 'Custom shortcuts', 'lightning', 1], ['transfer', 'Import and export', 'arrows-left-right'], ['sync', 'Sync', 'arrows-clockwise'], ['about', 'About and support', 'info']] as [string, string, string, number?][];
+  const nav = [['defaults', 'Defaults', 'sliders-horizontal'], ...app.repos.map((r) => ['repo:' + r.id, r.hidden ? r.id + ' (hidden)' : r.id, r.hidden ? 'eye-slash' : 'git-branch', 1]), ['github', 'GitHub', 'github-logo', 1], ['claude', 'Claude Code', 'sparkle', 1], ['codex', 'Codex', 'terminal-window', 1], ['agents', 'Agents', 'robot'], ['automations', 'Automated agents', 'clock-clockwise'], ['mcp', 'MCP servers', 'plugs-connected'], ['worktrees', 'Worktrees', 'tree-structure'], ['budgets', 'Usage', 'coins'], ...(hosted ? [] : [['companion', 'Companion', 'broadcast'], ['phone', 'Phone app', 'device-mobile']]), ['notifications', 'Notifications', 'bell'], ['appearance', 'Appearance', 'paint-brush'], ['shortcuts', 'Keyboard shortcuts', 'keyboard', 1], ['custom-shortcuts', 'Custom shortcuts', 'lightning', 1], ['transfer', 'Import and export', 'arrows-left-right'], ['sync', 'Sync', 'arrows-clockwise'], ['about', 'About and support', 'info']] as [string, string, string, number?][];
   // Accounts and Shortcuts are nodes of their own with nothing on them: each holds its pages and folds them away when clicked.
   const repoKeys = app.repos.map((r) => 'repo:' + r.id);
   const groups: Record<string, [string, string, string]> = { github: ['accounts', 'Accounts', 'user-circle'], shortcuts: ['shortcuts', 'Shortcuts', 'keyboard'], ...(repoKeys[0] ? { [repoKeys[0]]: ['repos', 'Repositories', 'book-bookmark'] } : {}) };
@@ -780,6 +826,7 @@ export function Settings({ section }: { section?: string }) {
           </>; })() : null}
           {sec === 'automations' ? <AutomationsSection /> : null}
           {sec === 'mcp' ? <><H sub="Tools and data sources Claude can use in every repository. Add one to a single repository from its MCP tab.">MCP servers</H><McpServers repoId={null} servers={st.mcpServers || []} /></> : null}
+          {sec === 'phone' ? <PhoneSection st={{ ...st, githubUser: app.user?.login }} set={set} state={app.p2p} /> : null}
           {sec === 'companion' ? <CompanionSection st={st} set={set} state={app.companion} /> : null}
           {sec === 'notifications' ? <>
             <H sub="Desktop notifications are shown when helm is not the focused window. The taskbar or dock badge counts sessions that need you.">Notifications</H>
