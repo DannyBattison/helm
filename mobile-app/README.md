@@ -38,7 +38,7 @@ One-time: **Node 22 or newer** (`node -v`; with nvm, `nvm install` in the reposi
 | `npm run ios` | Sync, then opens the project in Xcode (macOS only, with CocoaPods: run `pod install` in `ios/App` the first time). Pick your team under Signing & Capabilities and run on your phone. `npm run ios:run` builds and runs. |
 | `npm run doctor` | Capacitor's check of the setup. |
 
-No Android Studio? The **mobile-android** workflow (Actions → Run workflow) builds the debug APK on GitHub and attaches it to the run.
+No Android Studio or Xcode? GitHub builds it: **Actions → mobile → Run workflow** (tick Android and/or iOS) attaches an APK and/or IPA to the run, and **Actions → release → Run workflow** builds the phone apps along with the desktop installers and hosted images (tick Android and iOS there; the files are attached to the release). The Android build is signed with your keystore if the `ANDROID_*` secrets are set (see the comment at the top of `.github/workflows/mobile.yml`) and otherwise with a throwaway key; the iOS build is unsigned (install with Sideloadly or AltStore) unless the `IOS_*` secrets are set. These workflows have not been run yet.
 
 A free Apple account can install on your own iPhone, but the app stops opening after seven days and has to be reinstalled; a paid account ($99 a year) removes that and allows TestFlight.
 
