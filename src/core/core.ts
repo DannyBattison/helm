@@ -15,7 +15,7 @@ import { Companion } from './companion';
 import { installLogging, logFile, logLine, recentLog } from './log';
 import { cleanHeavy, dirSize, reclaimableBytes } from './disk';
 import { readArtifact } from './artifacts';
-import { addRepoFixture, addRepoFixtureChunk, repoFixtureProgress, listRepoFixtures, removeRepoFixture, setRepoFixtureDir, setRepoFixtureShared, unzipRepoFixture } from './repofixtures';
+import { addRepoFixture, addRepoFixtureChunk, repoFixtureProgress, listRepoFixtureFolder, listRepoFixtures, removeRepoFixture, setRepoFixtureDir, setRepoFixtureShared, unzipRepoFixture } from './repofixtures';
 import { cpuTimes, cpuUse, HISTORY_LIMIT, parseLimit, type CpuTimes, type SystemPoint } from '../shared/system';
 import { approvedByReviews, autoMergeReady, queuedMergeStep } from '../shared/queue';
 import { SyncService } from './sync';
@@ -551,7 +551,12 @@ export const api: HelmApi = {
   addRepoFixture: (id, name, data) => addRepoFixture(repos.must(id).id, name, data),
   addRepoFixtureChunk: (id, name, offset, data, done, fp) => addRepoFixtureChunk(repos.must(id).id, name, offset, data, done, fp),
   repoFixtureProgress: (id, name, fp) => repoFixtureProgress(repos.must(id).id, name, fp),
-  removeRepoFixture: (id, name) => removeRepoFixture(repos.must(id).id, name),
+  removeRepoFixture: (id, name) => {
+    const rid = repos.must(id).id;
+    const wts = store.data.sessions.flatMap((s) => s.free ? [] : [...(s.repoId === rid ? [s.worktree] : []), ...(s.extras || []).filter((x) => x.repoId === rid).map((x) => x.worktree)]).filter((w) => w);
+    return removeRepoFixture(rid, name, [...new Set(wts)]);
+  },
+  listRepoFixtureFolder: (id, path) => listRepoFixtureFolder(repos.must(id).id, path),
   unzipRepoFixture: (id, name) => unzipRepoFixture(repos.must(id).id, name),
   setRepoFixtureShared: (id, name, shared) => setRepoFixtureShared(repos.must(id).id, name, shared),
   async saveAutomation(a) { return automations.save(a); },

@@ -1207,7 +1207,10 @@ export interface HelmApi {
   addRepoFixtureChunk(repoId: string, name: string, offset: number, base64: string, done: boolean, fingerprint?: string): Promise<void>;
   /** Bytes already kept of an interrupted upload of the same file (same fingerprint), or 0. */
   repoFixtureProgress(repoId: string, name: string, fingerprint: string): Promise<number>;
+  /** Deletes a fixture from the store and from the worktrees of the repository's sessions. */
   removeRepoFixture(repoId: string, name: string): Promise<void>;
+  /** What is directly inside a folder fixture; `path` is relative to the fixtures (`data/images`). */
+  listRepoFixtureFolder(repoId: string, path: string): Promise<RepoFixture[]>;
   /** Unpacks a .zip fixture into a folder of the same name (keeping its structure). Returns the folder's name. */
   unzipRepoFixture(repoId: string, name: string): Promise<string>;
   /** Links a file or folder into worktrees, read-only, instead of copying it (or goes back to copying). Worktrees that already hold a copy keep it. */
