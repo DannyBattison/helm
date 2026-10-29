@@ -4,5 +4,5 @@
     "strict": false, "noImplicitAny": false, "skipLibCheck": true, "esModuleInterop": true, "noEmit": true,
     "types": ["vite/client"], "paths": { "@shared/*": ["../src/shared/*"], "@/*": ["../src/renderer/src/*"] }
   },
-  "include": ["web/**/*", "src/protocol.ts", "../src/renderer/**/*", "../src/shared/**/*", "../src/renderer/src/env.d.ts"]
+  "include": ["web/**/*", "../mobile-app/**/*.ts", "../web-companion/**/*.ts", "vite.base.ts", "src/protocol.ts", "../src/renderer/**/*", "../src/shared/**/*", "../src/renderer/src/env.d.ts"]
 }

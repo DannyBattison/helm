@@ -4,15 +4,17 @@
   "private": true,
   "description": "helm in a browser: the desktop app's main process on a server, its renderer in a web page",
   "scripts": {
-    "build": "vite build",
+    "build": "vite build && vite build -c ../mobile-app/vite.config.ts && vite build -c ../web-companion/vite.config.ts",
     "start": "tsx src/server.ts",
     "dev": "vite build --watch & tsx watch src/server.ts",
     "typecheck": "tsc --noEmit -p tsconfig.server.json && tsc --noEmit -p tsconfig.web.json"
   },
   "dependencies": {
+    "web-push": "^3.6.7",
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@types/web-push": "^3.6.4",
     "@types/ws": "^8.5.12",
     "tsx": "^4.19.0"
   }

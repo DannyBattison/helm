@@ -8,7 +8,8 @@ import { api, shutdown, start, syncHttp } from '../../src/core/core';
 import { originAllowed } from './auth';
 import { dispatch } from './dispatch';
 import { createGate, parseUser } from './gate';
-import { createHost } from './host';
+import { createHost, dataDirectory } from './host';
+import { createPush, pushRoute } from './push';
 import { callAllowed, signedOutState, signInLimiter } from './policy';
 import type { ServerMessage } from './protocol';
 
@@ -40,9 +41,11 @@ const gate = createGate({
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml',
-  '.woff': 'font/woff', '.woff2': 'font/woff2', '.json': 'application/json', '.map': 'application/json', '.png': 'image/png', '.ico': 'image/x-icon'
+  '.woff': 'font/woff', '.woff2': 'font/woff2', '.json': 'application/json', '.map': 'application/json', '.png': 'image/png', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json'
 };
 const CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://avatars.githubusercontent.com; font-src 'self' data:; worker-src 'self' blob:; connect-src 'self'";
+
+const push = createPush(dataDirectory());
 
 const SYNC_BODY_LIMIT = 512 * 1024 * 1024;
 const maySyncAttempt = signInLimiter(30);
@@ -71,6 +74,7 @@ const http = createServer(async (req, res) => {
   res.setHeader('Referrer-Policy', 'no-referrer');
   if ((req.url || '').startsWith('/api/sync/')) { await syncRoute(req, res).catch(() => { if (!res.headersSent) res.writeHead(500).end(); }); return; }
   if (await gate.handle(req, res).catch(() => { res.writeHead(500).end(); return true; })) return;
+  if (await pushRoute(req, res, push, (r) => !!gate.identity(r)).catch(() => { res.writeHead(500).end(); return true; })) return;
   const url = new URL(req.url || '/', 'http://x');
   let rel = decodeURIComponent(url.pathname);
   if (rel.endsWith('/')) rel += 'index.html';
@@ -80,7 +84,8 @@ const http = createServer(async (req, res) => {
     res.writeHead(404, { 'Content-Type': 'text/plain' }).end('Not found');
     return;
   }
-  res.writeHead(200, { 'Content-Type': MIME[extname(file)] || 'application/octet-stream', 'Content-Security-Policy': CSP, 'X-Frame-Options': 'DENY' });
+  // A worker is checked for a new version on every launch; caching it would keep old apps on old code.
+  res.writeHead(200, { 'Content-Type': MIME[extname(file)] || 'application/octet-stream', 'Content-Security-Policy': CSP, 'X-Frame-Options': 'DENY', ...(file.endsWith('sw.js') ? { 'Cache-Control': 'no-cache' } : {}) });
   createReadStream(file).pipe(res);
 });
 
@@ -190,7 +195,7 @@ async function main() {
     if (!clients.size) return;
     const text = JSON.stringify({ t: 'event', channel, payload } satisfies ServerMessage);
     for (const ws of clients) if (ws.readyState === WebSocket.OPEN) ws.send(text);
-  }, (login) => login.toLowerCase() === ALLOWED));
+  }, (login) => login.toLowerCase() === ALLOWED, push));
   http.listen(PORT, BIND, () => console.log(`helm hosted on http://${BIND}:${PORT} for ${ALLOWED}${existsSync(WEB) ? '' : '  (no web client yet: run `npm run build` in hosted)'}`));
 }
 

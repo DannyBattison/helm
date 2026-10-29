@@ -21,25 +21,15 @@ function download({ name, text }: HelmEvents['download']) {
   setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
 }
 
-/** Shows a notification from the server unless this tab is being looked at. Needs permission, which a browser only grants after a click. */
-function notify(n: HelmEvents['notify'], open: (sessionId: string, kind: string) => void) {
-  if (typeof Notification === 'undefined' || Notification.permission !== 'granted' || document.hasFocus()) return;
-  // The tag makes several open tabs show one notification between them.
-  const note = new Notification(n.title, { body: n.body, silent: n.silent, tag: `helm-${n.sessionId}-${n.kind}`, icon: '/apple-touch-icon.png' });
-  note.onclick = () => { window.focus(); open(n.sessionId, n.kind); note.close(); };
-}
-
-if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-  addEventListener('pointerdown', () => { void Notification.requestPermission(); }, { once: true });
-}
-
 const clientPlatform = () => (/Mac/i.test(navigator.platform) ? 'darwin' : /Win/i.test(navigator.platform) ? 'win32' : 'linux');
 
 /**
  * The same `HelmBridge` Electron's preload provides, over a WebSocket. Reconnects by itself. Before sign-in the server only answers helm's
  * own sign-in screen; once that succeeds it tells this page to collect a cookie, so a reload does not mean signing in again.
  */
-export function createBridge(url: string): HelmBridge & { ready: Promise<void> } {
+export type WebBridge = HelmBridge & { ready: Promise<void>; /** Goes to a session, as tapping its notification does. Waits for the UI to be listening. */ open(sessionId: string, kind: string): void };
+
+export function createBridge(url: string): WebBridge {
   const listeners = new Map<string, Set<(p: any) => void>>();
   const pending = new Map<number, Pending>();
   let ws: WebSocket;
@@ -74,7 +64,6 @@ export function createBridge(url: string): HelmBridge & { ready: Promise<void> }
       } else if (m.t === 'event') {
         if (m.channel === 'download') download(m.payload as HelmEvents['download']);
         else {
-          if (m.channel === 'notify') notify(m.payload as HelmEvents['notify'], (id, kind) => emit('navigate', { screen: 'session', id, tab: kind === 'ready' ? 'changes' : 'conversation' }));
           emit(m.channel, m.payload);
         }
       }
@@ -89,8 +78,15 @@ export function createBridge(url: string): HelmBridge & { ready: Promise<void> }
   }
   connect(false);
 
-  const bridge: HelmBridge & { ready: Promise<void> } = {
+  const bridge: WebBridge = {
     ready,
+    open(id, kind) {
+      const go = () => emit('navigate', { screen: 'session', id, tab: kind === 'ready' ? 'changes' : 'conversation' });
+      // The UI subscribes a moment after it loads; a tap that launched the app arrives before that.
+      let tries = 0;
+      const wait = () => (listeners.get('navigate')?.size ? go() : tries++ < 100 && setTimeout(wait, 100));
+      wait();
+    },
     platform: clientPlatform(),
     windowControls: 'none',
     hosted: true,

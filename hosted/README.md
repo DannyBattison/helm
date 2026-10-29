@@ -129,6 +129,10 @@ Things to know:
 
 The server sends each notification to connected browsers, which show it when the tab is not focused. No server config is needed, but the browser must allow it: click anywhere in helm once and accept the permission prompt. Browsers only offer notifications on HTTPS (or `localhost`), so serve helm over TLS. There are no Approve/Deny buttons and no badge in the browser.
 
+## Apps: phone and desktop window
+
+The same server also serves two installable builds that add push notifications, which arrive with the app closed: the [mobile app](../mobile-app/README.md) at `/mobile/` (always the phone layout) and the [web companion](../web-companion/README.md) at `/companion/` (a desktop window). The server keeps a Web Push key and the subscribed devices in its data directory (`push.json`); set `HELM_HOSTED_PUSH_CONTACT` to a `mailto:` or `https:` address if you want push services to be able to reach you about it. Shared code is in `web/` (`boot.ts`, `notifications.ts`, `layout.ts`, `pwa/sw.js`) and `src/push.ts`; each build's own folder holds only its entry, manifest and options.
+
 ## Not safe yet
 
 - The allowed user has a shell. Agents run any command as the server's user, and the terminal tab is a shell on the server.
