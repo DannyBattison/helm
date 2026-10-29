@@ -14,6 +14,7 @@ import { collect } from '../src/notices';
 import type { Notice } from '../src/notices';
 import { connectDesktop } from '../src/p2pConn';
 import { findShareCode } from '../src/scan';
+import { fromExtra, openUrl, parseOpenUrl, plan } from '../src/open';
 
 /** What a camera would see: the QR drawn at `scale` pixels a module, with a border, as RGBA. */
 function picture(text: string, scale = 6, border = 4) {
@@ -80,12 +81,12 @@ describe('notifications for a phone that is closed', () => {
 
     const shown: string[] = [];
     const storage = memory();
-    const n1 = await collect([{ name: 'Desk', link }], udp, async (n) => { shown.push(n.title + '@' + n.instanceName); }, storage, 800);
+    const n1 = await collect([{ id: 'i1', name: 'Desk', link }], udp, async (n) => { shown.push(n.title + '@' + n.instanceName); }, storage, 800);
     expect(shown).toEqual(['First@Desk', 'Second@Desk']);
     expect(n1).toBe(2);
 
     // Collected and acknowledged: the next background run finds nothing.
-    const n2 = await collect([{ name: 'Desk', link }], udp, async () => { shown.push('again'); }, storage, 800);
+    const n2 = await collect([{ id: 'i1', name: 'Desk', link }], udp, async () => { shown.push('again'); }, storage, 800);
     expect(n2).toBe(0);
     expect(shown).toHaveLength(2);
   });
@@ -114,7 +115,7 @@ describe('notifications for a phone that is closed', () => {
     const shown: string[] = [];
     const storage = memory();
     // The phone collects but the "ack" never reaches the computer (simulated by not acknowledging).
-    await collect([{ name: 'Desk', link }], udp, async (n) => { shown.push(n.title); }, storage, 800);
+    await collect([{ id: 'i1', name: 'Desk', link }], udp, async (n) => { shown.push(n.title); }, storage, 800);
     expect(shown).toEqual(['Kept']);
     const queue = (again as any).saved.queue;
     expect(Object.values(queue).flat()).toHaveLength(0);
@@ -130,5 +131,26 @@ describe('notifications for a phone that is closed', () => {
     await p.revoke(p.state.devices[0].id);
     expect(Object.values((p as any).saved.queue ?? {}).flat()).toHaveLength(0);
     void link; void generateKeyPair;
+  });
+});
+
+describe('opening a session from a notification', () => {
+  const t = { instance: 'inst-1', session: 's/1&x', kind: 'attention' };
+  it('round-trips through the link, and reads the extra both platforms give', () => {
+    expect(parseOpenUrl(openUrl(t))).toEqual(t);
+    expect(fromExtra({ instance: 'a', session: 'b', kind: 'ready' })).toEqual({ instance: 'a', session: 'b', kind: 'ready' });
+    expect(fromExtra({ instanceId: 'a', sessionId: 'b' })).toEqual({ instance: 'a', session: 'b', kind: '' });
+  });
+  it('ignores a link that is not one, or has no session', () => {
+    for (const bad of ['', 'https://open?instance=a&session=b', 'helm://other?instance=a&session=b', 'helm://open?instance=a', 'nonsense']) expect(parseOpenUrl(bad)).toBeNull();
+    expect(fromExtra(undefined)).toBeNull();
+  });
+  it('goes straight there if that computer is open, switches if another is, and drops one that was removed', () => {
+    const known = [{ id: 'inst-1', kind: 'desktop' }, { id: 'srv', kind: 'hosted' }];
+    expect(plan(t, known, 'inst-1')).toBe('go');
+    expect(plan(t, known, null)).toBe('switch');
+    expect(plan(t, known, 'other')).toBe('switch');
+    expect(plan({ ...t, instance: 'gone' }, known, null)).toBe('ignore');
+    expect(plan({ ...t, instance: 'srv' }, known, null)).toBe('ignore');
   });
 });

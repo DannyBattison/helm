@@ -36,7 +36,7 @@ const socket = (): UdpSocket => {
 void (async () => {
   let shown = 0;
   try {
-    const computers = (await new Instances(storage).list()).flatMap((i) => i.kind === 'desktop' ? [{ name: i.name, link: { code: i.code, identity: new Instances(storage).identityOf(i), name: 'Phone' } }] : []);
+    const computers = (await new Instances(storage).list()).flatMap((i) => i.kind === 'desktop' ? [{ id: i.id, name: i.name, link: { code: i.code, identity: new Instances(storage).identityOf(i), name: 'Phone' } }] : []);
     shown = computers.length ? await collect(computers, socket, async (n) => native.notify(JSON.stringify(n)), storage, 2500) : 0;
   } finally { native.done(shown); }
 })();

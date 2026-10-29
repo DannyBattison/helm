@@ -7,7 +7,7 @@ import type { Storage } from './instances';
 export type { Notice };
 
 /** Puts a notification on the phone's screen: a Capacitor local notification in the app. */
-export type Show = (n: Notice & { instanceName: string }) => Promise<void>;
+export type Show = (n: Notice & { instanceName: string; instanceId: string }) => Promise<void>;
 
 const SEEN = 'helm.seenNotices';
 
@@ -29,7 +29,7 @@ export const saveSeen = (storage: Storage, seen: Set<string>) => storage.set(SEE
  * computer so, and leaves. While the app is open a computer sends them as they happen.
  */
 export async function collect(
-  computers: { name: string; link: DesktopLink }[],
+  computers: { id: string; name: string; link: DesktopLink }[],
   socket: () => UdpSocket,
   show: Show,
   storage: Storage,
@@ -40,7 +40,7 @@ export async function collect(
   await Promise.all(computers.map(async (c) => {
     try {
       const conn = await connectDesktop(socket, c.link, {
-        notices: async (items, ack) => { const k = await showNew(items, ack, (n) => show({ ...n, instanceName: c.name }), seen); shown += k; }
+        notices: async (items, ack) => { const k = await showNew(items, ack, (n) => show({ ...n, instanceName: c.name, instanceId: c.id }), seen); shown += k; }
       })();
       await new Promise((r) => setTimeout(r, settleMs));
       conn.close();

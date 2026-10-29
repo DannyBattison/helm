@@ -12,6 +12,8 @@ import { capacitorUdp, preferences } from './native';
 import { loadSeen, saveSeen, showNew } from './notices';
 import type { Notice } from './notices';
 import { connectDesktop } from './p2pConn';
+import { fromExtra, parseOpenUrl, plan } from './open';
+import type { Target } from './open';
 import { scanShareCode } from './scan';
 import { el, hide, show } from './ui';
 
@@ -19,8 +21,23 @@ const instances = new Instances(preferences);
 document.body.style.background = '#0e0e12';
 
 /** Puts a notification on the screen. */
-async function notify(n: Notice & { instanceName?: string }) {
-  await LocalNotifications.schedule({ notifications: [{ id: Math.floor(Math.random() * 2 ** 30), title: n.title, body: n.body, extra: { sessionId: n.sessionId, instance: n.instanceName }, schedule: { at: new Date(Date.now() + 100) } }] });
+async function notify(n: Notice & { instanceId?: string }) {
+  await LocalNotifications.schedule({ notifications: [{ id: Math.floor(Math.random() * 2 ** 30), title: n.title, body: n.body, extra: { instance: n.instanceId, session: n.sessionId, kind: n.kind }, schedule: { at: new Date(Date.now() + 100) } }] });
+}
+
+// ------------------------------------------------------------------------------------------------ a tapped notification
+let openNow: string | null = null;
+let openBridge: { open(session: string, kind: string): void } | null = null;
+
+/** Takes you to the session a notification was about: now if that computer is already open, else after opening it. */
+async function goTo(t: Target) {
+  const known = await instances.list();
+  const what = plan(t, known, openNow);
+  if (what === 'ignore') return;
+  if (what === 'go') { openBridge?.open(t.session, t.kind); return; }
+  const inst = known.find((i) => i.id === t.instance)!;
+  if (openNow) { sessionStorage.setItem('helm.pendingOpen', JSON.stringify(t)); location.reload(); return; }
+  await openInstance(inst, t);
 }
 
 // ------------------------------------------------------------------------------------------------ the list
@@ -81,15 +98,17 @@ async function pair(code: string) {
 const deviceName = async () => (await Device.getInfo()).name || 'Phone';
 
 // ------------------------------------------------------------------------------------------------ opening
-async function openInstance(i: Instance) {
+async function openInstance(i: Instance, then?: Target) {
   if (i.kind === 'hosted') { location.href = `${i.url}/mobile/`; return; }
   show(el('h1', i.name), 'Connecting…', el('button', 'Back', '', () => location.reload()));
   const seen = await loadSeen(preferences);
   const bridge = createConnectionBridge(connectDesktop(capacitorUdp, { code: i.code, identity: instances.identityOf(i), name: 'Phone' }, {
     candidates: (p, c) => void instances.updateAddresses(i.id, p, c),
-    notices: (items, ack) => void showNew(items, ack, (n) => notify({ ...n, instanceName: i.name }), seen).then(() => saveSeen(preferences, seen))
+    notices: (items, ack) => void showNew(items, ack, (n) => notify({ ...n, instanceId: i.id }), seen).then(() => saveSeen(preferences, seen))
   }));
   (window as any).helmBridge = bridge;
+  openNow = i.id;
+  openBridge = bridge;
   const reached = await Promise.race([bridge.ready.then(() => true), new Promise<boolean>((r) => setTimeout(() => r(false), 12_000))]);
   if (!reached) {
     show(el('h1', 'Cannot reach it'), `${i.name} did not answer. Is helm running there with Phone app turned on, and is the phone on a network that can reach it? If its address changed, add it again with a new code.`,
@@ -98,6 +117,7 @@ async function openInstance(i: Instance) {
   }
   hide();
   await import('../../src/renderer/src/main');
+  if (then) bridge.open(then.session, then.kind);
   // A way back to the list. Helm's own screens use the whole window.
   const chip = el('button', '⇄', 'chip', () => location.reload());
   chip.setAttribute('aria-label', 'Switch computer');
@@ -105,4 +125,15 @@ async function openInstance(i: Instance) {
 }
 
 void App.addListener('backButton', () => { if (!document.getElementById('helm-screen')) location.reload(); else void home(); });
-void home();
+// Android's background task puts a link in its notification; both platforms' notifications put the same fields in `extra`.
+void App.addListener('appUrlOpen', (e) => { const t = parseOpenUrl(e.url); if (t) void goTo(t); });
+void LocalNotifications.addListener('localNotificationActionPerformed', (e) => { const t = fromExtra(e.notification.extra); if (t) void goTo(t); });
+
+void (async () => {
+  await home();
+  // A page reload to switch computers leaves the target here; a launch by tapping a notification leaves it as the launch link.
+  const pending = sessionStorage.getItem('helm.pendingOpen');
+  sessionStorage.removeItem('helm.pendingOpen');
+  const t = pending ? (JSON.parse(pending) as Target) : parseOpenUrl((await App.getLaunchUrl())?.url);
+  if (t) await goTo(t);
+})();

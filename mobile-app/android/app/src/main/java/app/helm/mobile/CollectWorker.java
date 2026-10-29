@@ -8,6 +8,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -117,8 +118,13 @@ public class CollectWorker extends Worker {
                 JSONObject n = new JSONObject(json);
                 NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
                 if (Build.VERSION.SDK_INT >= 26) manager.createNotificationChannel(new NotificationChannel(CHANNEL, "Agents", NotificationManager.IMPORTANCE_DEFAULT));
-                Intent open = new Intent(context, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-                PendingIntent tap = PendingIntent.getActivity(context, 0, open, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+                // Tapping opens the app on the session: a link the app handles (see openUrl in mobile-app/src/open.ts).
+                Uri link = new Uri.Builder().scheme("helm").authority("open")
+                    .appendQueryParameter("instance", n.optString("instanceId"))
+                    .appendQueryParameter("session", n.optString("sessionId"))
+                    .appendQueryParameter("kind", n.optString("kind")).build();
+                Intent open = new Intent(Intent.ACTION_VIEW, link, context, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                PendingIntent tap = PendingIntent.getActivity(context, n.optString("id").hashCode(), open, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
                 NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL)
                     .setSmallIcon(R.drawable.ic_stat_helm)
                     .setContentTitle(n.optString("title"))
