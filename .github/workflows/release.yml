@@ -128,14 +128,30 @@ jobs:
         run: |
           shopt -s nullglob
           files=(installers/* mobile/*)
-          git tag "v$VERSION"
-          git push origin "v$VERSION"
+          # A re-run after a failed upload finds the tag (and the release) already there.
+          if ! git ls-remote --exit-code --tags origin "v$VERSION" >/dev/null; then
+            git tag "v$VERSION"
+            git push origin "v$VERSION"
+          fi
           # GitHub's generated notes, with each item cut down to the pull request title
           # ("* Title by @user in https://…/pull/1" becomes "* Title").
           gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="v$VERSION" \
             --jq .body | sed -E 's/ by @[^ ]+ in https:\/\/[^ ]+$//' > notes.md
-          gh release create "v$VERSION" "${files[@]}" --repo "$GITHUB_REPOSITORY" \
-            --title "v$VERSION" --notes-file notes.md --latest="${{ inputs.desktop }}"
+          # Create the release as a draft and upload each asset on its own with retries
+          # (big uploads sometimes time out with HTTP 408), then publish once all are there.
+          if ! gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --draft \
+              --title "v$VERSION" --notes-file notes.md
+          fi
+          for f in "${files[@]}"; do
+            for attempt in 1 2 3 4 5; do
+              gh release upload "v$VERSION" "$f" --repo "$GITHUB_REPOSITORY" --clobber && break
+              if [ "$attempt" = 5 ]; then echo "Uploading $f failed" >&2; exit 1; fi
+              sleep $((attempt * 10))
+            done
+          done
+          gh release edit "v$VERSION" --repo "$GITHUB_REPOSITORY" --draft=false \
+            --latest="${{ inputs.desktop }}"
       - name: Tag the images
         if: inputs.hosted
         run: |
