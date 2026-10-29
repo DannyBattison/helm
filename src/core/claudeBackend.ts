@@ -230,7 +230,7 @@ export class ClaudeBackend implements AgentBackend {
           matcher: 'Agent|Task',
           hooks: [async (input: any) => {
             const reason = await o.admitSubagent(String(input?.tool_use_id || ''));
-            return reason ? { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason + ' Wait for one to finish, or do this work yourself.' } } : {};
+            return reason ? { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason + ' This is helm’s limit, not something the user declined. Wait for one to finish, or do this work yourself.' } } : {};
           }]
         }]
       },

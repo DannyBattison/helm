@@ -275,6 +275,17 @@ describe('tool results', () => {
     expect(s.editing).toBeUndefined();
   });
 
+  it('ignores a tool result whose transcript position was rewritten to another kind of event', async () => {
+    const id = await sm.create(input());
+    const s = sm.get(id)!;
+    const rt = rtOf(id);
+    const t = await store.transcript(id);
+    t.length = 0;
+    t.push({ k: 'note', tone: 'neutral', text: 'rebuilt' } as any);
+    rt.toolStart.set('r1', { t: Date.now(), idx: 0, kind: 'tool', input: {}, tkey: id, name: 'Read' });
+    await expect(priv().onToolResults(s, rt, (claudeEvents(result('r1', 'a\nb'))[0] as any).results)).resolves.toBeUndefined();
+  });
+
   it('settles a subagent from its tool result, except a background one that finishes by notification', async () => {
     const id = await sm.create(input());
     const s = sm.get(id)!;
