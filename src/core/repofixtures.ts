@@ -162,13 +162,41 @@ export async function repoFixtureProgress(repoId: string, name: string, fingerpr
 
 export const addRepoFixture = (repoId: string, name: string, base64: string) => addRepoFixtureChunk(repoId, name, 0, base64, true);
 
-export async function removeRepoFixture(repoId: string, name: string): Promise<void> {
+/**
+ * Deletes a fixture from the store and from the given worktrees, where it was copied or linked in. A path the repository tracks is
+ * left alone, so a committed file of the same name is never lost.
+ */
+export async function removeRepoFixture(repoId: string, name: string, worktrees: string[] = []): Promise<void> {
   if (!root || !validName(name)) return;
   const path = join(folder(repoId), name);
   await setWritable(path, true); // a shared (read-only) folder cannot be deleted until it is unlocked
   await rm(path, { recursive: true, force: true });
   const shared = await sharedNames(repoId);
   if (shared.delete(name)) await writeFile(join(folder(repoId), SHARED_META), JSON.stringify([...shared].sort()));
+  for (const wt of worktrees) {
+    try {
+      const dest = join(wt, name);
+      if (!(await lstat(dest).catch(() => null))) continue;
+      if (await G.gitOk(wt, 'ls-files', '--error-unmatch', '--', name)) continue;
+      await setWritable(dest, true); // a copy of a shared folder may still be locked
+      await rm(dest, { recursive: true, force: true });
+    } catch { /* a worktree that is gone or busy must not stop the others */ }
+  }
+}
+
+/** What is directly inside a folder fixture (`path` is relative to the repository's fixtures, e.g. `data/images`). */
+export async function listRepoFixtureFolder(repoId: string, path: string): Promise<RepoFixture[]> {
+  if (!root) return [];
+  const parts = path.split('/');
+  if (!parts.length || !validName(parts[0]) || parts.some((p) => !p || p === '.' || p === '..' || p.includes('\\') || p.includes('\0'))) return [];
+  const dir = join(folder(repoId), ...parts);
+  if (!(await lstat(dir).catch(() => null))?.isDirectory()) return [];
+  const out: RepoFixture[] = [];
+  for (const name of (await readdir(dir).catch(() => [] as string[])).sort()) {
+    const m = await measure(join(dir, name));
+    if (m) out.push({ name, size: m.size, modified: m.modified, dir: m.dir || undefined });
+  }
+  return out;
 }
 
 /**

@@ -3,7 +3,7 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, statSync, 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { addRepoFixture, addRepoFixtureChunk, repoFixtureProgress, listRepoFixtures, removeRepoFixture, setRepoFixtureDir, setRepoFixtureShared, supplyRepoFixtures, unzipRepoFixture, validName } from '../src/core/repofixtures';
+import { addRepoFixture, addRepoFixtureChunk, repoFixtureProgress, listRepoFixtureFolder, listRepoFixtures, removeRepoFixture, setRepoFixtureDir, setRepoFixtureShared, supplyRepoFixtures, unzipRepoFixture, validName } from '../src/core/repofixtures';
 
 const sh = (cwd: string, ...a: string[]) => execFileSync('git', a, { cwd, encoding: 'utf8' });
 
@@ -135,5 +135,33 @@ z.close()`]);
     expect(sh(wt, 'status', '--porcelain')).not.toContain('big');
     await removeRepoFixture(repo, 'big');
     await removeRepoFixture(repo, 'big.zip');
+  });
+
+  it('removing a fixture also clears it from worktrees, and lists a folder one level at a time', async () => {
+    const src = mkdtempSync(join(tmpdir(), 'helm-zip-'));
+    mkdirSync(join(src, 'd'));
+    writeFileSync(join(src, 'd', 'f.txt'), 'F');
+    execFileSync('python3', ['-c', `
+import zipfile
+z = zipfile.ZipFile('${join(src, 'tree.zip')}', 'w')
+z.write('${join(src, 'd', 'f.txt')}', 'd/f.txt')
+z.close()`]);
+    await addRepoFixture(repo, 'tree.zip', readFileSync(join(src, 'tree.zip')).toString('base64'));
+    await unzipRepoFixture(repo, 'tree.zip');
+    expect((await listRepoFixtureFolder(repo, 'tree')).map((f) => [f.name, !!f.dir])).toEqual([['d', true]]);
+    expect((await listRepoFixtureFolder(repo, 'tree/d')).map((f) => f.name)).toEqual(['f.txt']);
+    expect(await listRepoFixtureFolder(repo, 'tree/../..')).toEqual([]);
+    await setRepoFixtureShared(repo, 'tree', true);
+    const copy = mkdtempSync(join(tmpdir(), 'helm-wt-'));
+    const link = mkdtempSync(join(tmpdir(), 'helm-wt-'));
+    sh(copy, 'init', '-q'); sh(link, 'init', '-q');
+    await supplyRepoFixtures(repo, link, true);
+    await setRepoFixtureShared(repo, 'tree', false);
+    await supplyRepoFixtures(repo, copy, true);
+    await removeRepoFixture(repo, 'tree', [copy, link]);
+    expect(existsSync(join(copy, 'tree'))).toBe(false);
+    expect(() => lstatSync(join(link, 'tree'))).toThrow();
+    expect((await listRepoFixtures(repo)).some((f) => f.name === 'tree')).toBe(false);
+    await removeRepoFixture(repo, 'tree.zip');
   });
 });

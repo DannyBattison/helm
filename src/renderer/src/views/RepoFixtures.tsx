@@ -37,6 +37,32 @@ export async function uploadRepoFixtures(repoId: string, list: File[]): Promise<
   return stored;
 }
 
+/** One fixture; a folder opens to show what is in it (loaded when first opened), and its folders open the same way. */
+function FixtureRow({ f, path, depth, actions, list }: { f: RepoFixture; path: string; depth: number; actions?: React.ReactNode; list: (path: string) => Promise<RepoFixture[]> }) {
+  const [open, setOpen] = React.useState(false);
+  const [kids, setKids] = React.useState<RepoFixture[] | null>(null);
+  const toggle = () => {
+    if (!open && kids == null) list(path).then(setKids, () => setKids([]));
+    setOpen(!open);
+  };
+  return (
+    <>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', minHeight: 38, paddingLeft: depth * 18, borderTop: '1px solid var(--border-subtle)', font: '400 12.5px/1.5 var(--font-mono)' }}>
+        {f.dir
+          ? <i className={'ph ph-caret-' + (open ? 'down' : 'right')} role="button" aria-label={open ? 'Collapse' : 'Expand'} onClick={toggle} style={{ cursor: 'pointer', fontSize: 12, color: 'var(--text-3)', width: 14 }} />
+          : <span style={{ width: 14 }} />}
+        <i className={'ph ' + (f.dir ? (open ? 'ph-folder-open' : 'ph-folder') : 'ph-file')} style={{ color: 'var(--text-3)' }} />
+        <span onClick={f.dir ? toggle : undefined} style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: f.dir ? 'pointer' : undefined }} title={f.name}>{f.name}{f.dir ? '/' : ''}</span>
+        <span style={{ color: 'var(--text-3)' }}>{size(f.size)} · {relTime(f.modified)}</span>
+        {actions}
+      </div>
+      {open ? (kids == null ? <div style={{ paddingLeft: (depth + 1) * 18 + 22, minHeight: 28, color: 'var(--text-3)', font: '400 12px/28px var(--font-sans)' }}>Loading…</div>
+        : kids.length === 0 ? <div style={{ paddingLeft: (depth + 1) * 18 + 22, minHeight: 28, color: 'var(--text-3)', font: '400 12px/28px var(--font-sans)' }}>Empty</div>
+        : kids.map((k) => <FixtureRow key={k.name} f={k} path={path + '/' + k.name} depth={depth + 1} list={list} />)) : null}
+    </>
+  );
+}
+
 /** Files uploaded to a repository: copied into every session's worktree and kept out of git (secrets, data, notes that are not committed). Files can be dropped anywhere on the tab. */
 export function RepoFixtures({ repoId }: { repoId: string }) {
   const [files, setFiles] = React.useState<RepoFixture[] | null>(null);
@@ -46,8 +72,15 @@ export function RepoFixtures({ repoId }: { repoId: string }) {
   const [over, setOver] = React.useState(false);
   const [busy, setBusy] = React.useState('');
   const unzip = async (name: string) => {
-    setBusy(name);
+    setBusy('unzip:' + name);
     try { await api.unzipRepoFixture(repoId, name); } catch (e) { toast({ tone: 'error', title: 'Could not unzip ' + name, description: errText(e) }); }
+    setBusy('');
+    load();
+  };
+  /** Runs a slow change on one fixture, showing what is going on while it does, then refreshes the list. */
+  const work = async (key: string, job: Promise<unknown>, failure: string) => {
+    setBusy(key);
+    try { await job; } catch (e) { toast({ tone: 'error', title: failure, description: errText(e) }); }
     setBusy('');
     load();
   };
@@ -77,15 +110,16 @@ export function RepoFixtures({ repoId }: { repoId: string }) {
       {over ? <div style={{ font: '500 12.5px/1.5 var(--font-sans)', color: 'var(--accent-text)' }}>Drop to upload</div> : null}
       <div style={{ alignSelf: 'stretch', maxWidth: 760 }}>
         {files == null ? null : files.length === 0 ? <div style={{ font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>No fixtures yet.</div> : files.map((f) => (
-          <div key={f.name} style={{ display: 'flex', gap: 8, alignItems: 'center', minHeight: 38, borderTop: '1px solid var(--border-subtle)', font: '400 12.5px/1.5 var(--font-mono)' }}>
-            {f.dir ? <i className="ph ph-folder" style={{ color: 'var(--text-3)' }} /> : null}
-            <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={f.name}>{f.name}{f.dir ? '/' : ''}</span>
-            <span style={{ color: 'var(--text-3)' }}>{size(f.size)} · {relTime(f.modified)}</span>
-            {!f.dir && /\.zip$/i.test(f.name) ? <Button size="sm" disabled={busy === f.name} onClick={() => void unzip(f.name)}>{busy === f.name ? 'Unzipping…' : 'Unzip'}</Button> : null}
-            <Button size="sm" variant={f.shared ? 'secondary' : undefined} icon={f.shared ? 'link' : undefined} title={f.shared ? 'Linked into worktrees, read-only. Click to copy instead.' : 'Link into worktrees read-only instead of copying: instant and uses no extra disk.'}
-              onClick={() => void api.setRepoFixtureShared(repoId, f.name, !f.shared).then(load, (e) => toast({ tone: 'error', title: 'Could not change ' + f.name, description: errText(e) }))}>{f.shared ? 'Shared · read-only' : 'Share read-only'}</Button>
-            <Button size="sm" onClick={() => void api.removeRepoFixture(repoId, f.name).then(load)}>Remove</Button>
-          </div>
+          <FixtureRow key={f.name} f={f} path={f.name} depth={0}
+            actions={<>
+              {!f.dir && /\.zip$/i.test(f.name) ? <Button size="sm" disabled={busy.slice(busy.indexOf(':') + 1) === f.name && !!busy} onClick={() => void unzip(f.name)}>{busy === 'unzip:' + f.name ? 'Unzipping…' : 'Unzip'}</Button> : null}
+              <Button size="sm" variant={f.shared ? 'secondary' : undefined} icon={busy === 'share:' + f.name ? 'circle-notch' : f.shared ? 'link' : undefined} disabled={busy.slice(busy.indexOf(':') + 1) === f.name && !!busy}
+                title={f.shared ? 'Linked into worktrees, read-only. Click to copy instead.' : 'Link into worktrees read-only instead of copying: instant and uses no extra disk.'}
+                onClick={() => void work('share:' + f.name, api.setRepoFixtureShared(repoId, f.name, !f.shared), 'Could not change ' + f.name)}>
+                {busy === 'share:' + f.name ? (f.shared ? 'Unlocking…' : 'Sharing…') : f.shared ? 'Shared · read-only' : 'Share read-only'}</Button>
+              <Button size="sm" disabled={busy.slice(busy.indexOf(':') + 1) === f.name && !!busy} onClick={() => void work('remove:' + f.name, api.removeRepoFixture(repoId, f.name), 'Could not remove ' + f.name)}>{busy === 'remove:' + f.name ? 'Removing…' : 'Remove'}</Button>
+            </>}
+            list={(path) => api.listRepoFixtureFolder(repoId, path)} />
         ))}
       </div>
     </div>
