@@ -20,8 +20,8 @@ export function validSub(s: any): s is PushSub {
  * Web Push for phones that have helm installed: the server keeps a VAPID key and the list of subscribed devices in `dataDir`, and sends each
  * notification to all of them, so one arrives with the app closed. The key is made on first use and survives restarts.
  */
-export function createPush(dataDir: string, contact = process.env.HELM_HOSTED_PUSH_CONTACT || 'mailto:helm@localhost', send: typeof webpush.sendNotification = webpush.sendNotification) {
-  const file = join(dataDir, 'push.json');
+export function createPush(dataDir: string, contact = process.env.HELM_HOSTED_PUSH_CONTACT || 'mailto:helm@localhost', send: typeof webpush.sendNotification = webpush.sendNotification, fileName = 'push.json') {
+  const file = join(dataDir, fileName);
   let data: { keys: { publicKey: string; privateKey: string }; subs: PushSub[] };
   try { data = JSON.parse(readFileSync(file, 'utf8')); } catch { data = { keys: webpush.generateVAPIDKeys(), subs: [] }; }
   const save = () => writeFileSync(file, JSON.stringify(data), { mode: 0o600 });
@@ -57,11 +57,15 @@ export type Push = ReturnType<typeof createPush>;
  * Handles /push/*: `GET key` (the public key a browser subscribes with), `POST subscribe` and `POST unsubscribe`. Only the signed-in person
  * may use them; the cookie is SameSite=Strict, so another site cannot either. Returns false for any other path.
  */
-export async function pushRoute(req: IncomingMessage, res: ServerResponse, push: Push, signedIn: (req: IncomingMessage) => boolean): Promise<boolean> {
+export async function pushRoute(req: IncomingMessage, res: ServerResponse, push: Push | ((req: IncomingMessage) => Push | null), signedIn: (req: IncomingMessage) => boolean): Promise<boolean> {
   const path = new URL(req.url || '/', 'http://x').pathname;
   if (!path.startsWith('/push/')) return false;
   const reply = (status: number, body: unknown) => { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(body)); return true; };
   if (!signedIn(req)) return reply(401, { error: 'signed out' });
+  // A server with several people (the companion relay) keeps a list of devices for each.
+  const mine = typeof push === 'function' ? push(req) : push;
+  if (!mine) return reply(401, { error: 'signed out' });
+  push = mine;
   if (path === '/push/key' && req.method === 'GET') return reply(200, { key: push.publicKey });
   if (req.method !== 'POST' || (path !== '/push/subscribe' && path !== '/push/unsubscribe')) return reply(404, { error: 'not found' });
   let text = '';

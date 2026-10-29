@@ -8,10 +8,10 @@ const shared = ['sw.js:web/pwa/sw.js', 'favicon.svg:web/public/favicon.svg', 'ap
 
 /**
  * The vite config every web build shares: the desktop renderer, unmodified, mounted from an entry that only differs per build.
- * `hosted/` builds to `dist/web`; a companion build (`mobile-app/`, `web-companion/`) passes its own folder and builds to `dist/web/<name>/`,
- * where the server serves it, with the worker and icons from here and the manifest from its own folder.
+ * `hosted/` builds to `dist/web`; a companion build (`mobile-app/`, `web-companion/`) passes its own folder and builds to `dist/web/<name>/` (or `out`),
+ * where its server serves it, with the worker and icons from here and the manifest from its own folder.
  */
-export function webConfig(opts: { dir?: string; name?: string } = {}) {
+export function webConfig(opts: { dir?: string; name?: string; out?: string } = {}) {
   const root = opts.dir ?? resolve(hosted, 'web');
   const sub = opts.name ? '/' + opts.name : '';
   return defineConfig({
@@ -30,6 +30,6 @@ export function webConfig(opts: { dir?: string; name?: string } = {}) {
     resolve: { alias: { '@shared': resolve(hosted, '../src/shared'), '@': resolve(hosted, '../src/renderer/src') } },
     server: { fs: { allow: [resolve(hosted, '..')] } },
     worker: { format: 'es' },
-    build: { outDir: resolve(hosted, 'dist/web' + sub), emptyOutDir: !opts.dir }
+    build: { outDir: opts.out ?? resolve(hosted, 'dist/web' + sub), emptyOutDir: !opts.dir }
   });
 }

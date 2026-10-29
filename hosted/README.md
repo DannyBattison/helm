@@ -131,7 +131,7 @@ The server sends each notification to connected browsers, which show it when the
 
 ## Apps: phone and desktop window
 
-The same server also serves two installable builds that add push notifications, which arrive with the app closed: the [mobile app](../mobile-app/README.md) at `/mobile/` (always the phone layout) and the [web companion](../web-companion/README.md) at `/companion/` (a desktop window). The server keeps a Web Push key and the subscribed devices in its data directory (`push.json`); set `HELM_HOSTED_PUSH_CONTACT` to a `mailto:` or `https:` address if you want push services to be able to reach you about it. Shared code is in `web/` (`boot.ts`, `notifications.ts`, `layout.ts`, `pwa/sw.js`) and `src/push.ts`; each build's own folder holds only its entry, manifest and options.
+The same server also serves an installable build that adds push notifications, which arrive with the app closed: the [mobile app](../mobile-app/README.md) at `/mobile/` (always the phone layout). The [web companion](../web-companion/README.md) is the same idea for the desktop app instead of this server, through a relay of its own. The server keeps a Web Push key and the subscribed devices in its data directory (`push.json`); set `HELM_HOSTED_PUSH_CONTACT` to a `mailto:` or `https:` address if you want push services to be able to reach you about it. Shared code (also used by the web companion) is in `web/` (`boot.ts`, `notifications.ts`, `layout.ts`, `pwa/sw.js`) and `src/push.ts`; each build's own folder holds only its entry, manifest and options.
 
 ## Not safe yet
 

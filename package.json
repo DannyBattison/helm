@@ -9,7 +9,7 @@
     "dev": "electron-vite dev -c desktop/electron.vite.config.ts",
     "build": "electron-vite build -c desktop/electron.vite.config.ts",
     "start": "electron-vite preview -c desktop/electron.vite.config.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p desktop/tsconfig.json && tsc --noEmit -p hosted/tsconfig.server.json && tsc --noEmit -p hosted/tsconfig.web.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p desktop/tsconfig.json && tsc --noEmit -p hosted/tsconfig.server.json && tsc --noEmit -p hosted/tsconfig.web.json && tsc --noEmit -p web-companion/tsconfig.json",
     "test": "vitest run",
     "dist": "electron-vite build -c desktop/electron.vite.config.ts && electron-builder",
     "pack": "electron-vite build -c desktop/electron.vite.config.ts && electron-builder --dir",

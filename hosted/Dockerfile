@@ -23,7 +23,6 @@ COPY desktop/tsconfig.json desktop/
 COPY src src
 COPY hosted hosted
 COPY mobile-app mobile-app
-COPY web-companion web-companion
 RUN cd hosted && npm run build
 
 # ---- run

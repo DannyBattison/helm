@@ -4,7 +4,7 @@
   "private": true,
   "description": "helm in a browser: the desktop app's main process on a server, its renderer in a web page",
   "scripts": {
-    "build": "vite build && vite build -c ../mobile-app/vite.config.ts && vite build -c ../web-companion/vite.config.ts",
+    "build": "vite build && vite build -c ../mobile-app/vite.config.ts",
     "start": "tsx src/server.ts",
     "dev": "vite build --watch & tsx watch src/server.ts",
     "typecheck": "tsc --noEmit -p tsconfig.server.json && tsc --noEmit -p tsconfig.web.json"

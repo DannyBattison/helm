@@ -1,8 +1,8 @@
 import { randomBytes } from 'node:crypto';
-import { createReadStream, existsSync, statSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { extname, join, normalize, resolve, sep } from 'node:path';
+import { resolve } from 'node:path';
 import { WebSocket, WebSocketServer } from 'ws';
 import { api, shutdown, start, syncHttp } from '../../src/core/core';
 import { originAllowed } from './auth';
@@ -10,6 +10,7 @@ import { dispatch } from './dispatch';
 import { createGate, parseUser } from './gate';
 import { createHost, dataDirectory } from './host';
 import { createPush, pushRoute } from './push';
+import { serveStatic } from './static';
 import { callAllowed, signedOutState, signInLimiter } from './policy';
 import type { ServerMessage } from './protocol';
 
@@ -38,12 +39,6 @@ const gate = createGate({
   secret: SECRET,
   secureCookie: process.env.HELM_HOSTED_SECURE_COOKIE ? process.env.HELM_HOSTED_SECURE_COOKIE === '1' : undefined
 });
-
-const MIME: Record<string, string> = {
-  '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml',
-  '.woff': 'font/woff', '.woff2': 'font/woff2', '.json': 'application/json', '.map': 'application/json', '.png': 'image/png', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json'
-};
-const CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://avatars.githubusercontent.com; font-src 'self' data:; worker-src 'self' blob:; connect-src 'self'";
 
 const push = createPush(dataDirectory());
 
@@ -75,18 +70,8 @@ const http = createServer(async (req, res) => {
   if ((req.url || '').startsWith('/api/sync/')) { await syncRoute(req, res).catch(() => { if (!res.headersSent) res.writeHead(500).end(); }); return; }
   if (await gate.handle(req, res).catch(() => { res.writeHead(500).end(); return true; })) return;
   if (await pushRoute(req, res, push, (r) => !!gate.identity(r)).catch(() => { res.writeHead(500).end(); return true; })) return;
-  const url = new URL(req.url || '/', 'http://x');
-  let rel = decodeURIComponent(url.pathname);
-  if (rel.endsWith('/')) rel += 'index.html';
-  const file = normalize(join(WEB, rel));
   // The built client is public (it has to be, to show the sign-in screen); everything that matters is behind the cookie.
-  if ((file !== WEB && !file.startsWith(WEB + sep)) || !existsSync(file) || !statSync(file).isFile()) {
-    res.writeHead(404, { 'Content-Type': 'text/plain' }).end('Not found');
-    return;
-  }
-  // A worker is checked for a new version on every launch; caching it would keep old apps on old code.
-  res.writeHead(200, { 'Content-Type': MIME[extname(file)] || 'application/octet-stream', 'Content-Security-Policy': CSP, 'X-Frame-Options': 'DENY', ...(file.endsWith('sw.js') ? { 'Cache-Control': 'no-cache' } : {}) });
-  createReadStream(file).pipe(res);
+  serveStatic(WEB, req, res);
 });
 
 const wss = new WebSocketServer({ noServer: true, maxPayload: 512 * 1024 * 1024 });

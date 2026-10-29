@@ -71,6 +71,8 @@ export const defaultSettings = (): Settings => ({
   companionEnabled: false,
   companionUrl: 'http://localhost:8787',
   companionControl: true,
+  tunnelEnabled: false,
+  tunnelUrl: '',
   terminalShell: 'auto',
   terminalShellCustom: '',
   sendKey: 'mod-enter',

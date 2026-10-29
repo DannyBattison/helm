@@ -12,6 +12,8 @@ import { CodexBackend } from './codexBackend';
 import * as G from './git';
 import * as GH from './github';
 import { Companion } from './companion';
+import { dispatch } from './dispatch';
+import { Tunnel } from './tunnel';
 import { installLogging, logFile, logLine, recentLog } from './log';
 import { cleanHeavy, dirSize, reclaimableBytes } from './disk';
 import { readArtifact } from './artifacts';
@@ -87,6 +89,7 @@ const store = new Store();
 
 function send<K extends keyof HelmEvents>(channel: K, payload: HelmEvents[K]) {
   host.send(channel, payload);
+  tunnel.forward(channel, payload);
 }
 
 // ------------------------------------------------------------------ state
@@ -101,6 +104,7 @@ function buildState(): AppState {
     activity: store.data.activity,
     activitySeq: store.logSeq,
     companion: companion.state,
+    tunnel: tunnel.state,
     settings: store.data.settings,
     outboundSecrets: { emailPassword: emailPasswordSet() },
     automations: store.data.automations,
@@ -188,6 +192,7 @@ const repos = new RepoService(store, emitState);
 // operations are filled in once they exist.
 const companionOps: import('./companion').CompanionOps = {} as any;
 const syncer = new SyncService(store, () => host, { isRunning: (id) => sessions.isRunning(id), changed: () => emitState(), canServe: () => !!host.syncServer, emitTranscript: (sessionId, index, event) => send('transcript', { sessionId, index, event }), name: () => os.hostname() });
+const tunnel = new Tunnel(store, (name, args) => dispatch(api as any, name, args), () => emitState(), () => host);
 const companion = new Companion(store, companionOps, () => emitState(), () => host);
 const registry = new BackendRegistry([
   new ClaudeBackend({
@@ -211,6 +216,7 @@ const sessions = new SessionManager(store, {
     // A host that can show buttons on a notification lets a plain approval be answered without opening the app.
     const answer = ask?.type === 'approve' ? (decision: 'approve' | 'deny') => { if (sessions.get(sessionId)?.ask?.id === ask.id) void sessions.resolveAsk(sessionId, ask.id, { decision }); } : undefined;
     host.notify?.({ kind, title, body: st.notifyPreview ? body : '', silent: !d.sound, sessionId, answer });
+    tunnel.notify({ kind, title, body: st.notifyPreview ? body : '', silent: !d.sound, sessionId });
   }
 }, registry);
 Object.assign(companionOps, {
@@ -349,6 +355,7 @@ export const api: HelmApi = {
   activityLog: (opts) => store.readLog(opts?.before, opts?.limit),
   async setEmailPassword(password) { await saveEmailPassword(password); emitState(); },
   testOutbound: (channel) => testOutbound(store.data.settings, channel),
+  async tunnelRevoke() { if (host.companion !== false) await tunnel.revoke(); },
   async companionUnlink() { if (host.companion !== false) await companion.unlink(); },
   async reportStall(ms, where) { diag(`window stalled ${ms} ms on ${where}`); },
   async updateSettings(patch: Partial<Settings>) {
@@ -364,6 +371,7 @@ export const api: HelmApi = {
     if ('activityDays' in patch) void store.pruneLog(store.data.settings.activityDays);
     if ('cleanupDays' in patch || 'reclaimOnArchive' in patch) void housekeeping();
     if (('companionEnabled' in patch || 'companionUrl' in patch) && host.companion !== false) companion.apply();
+    if (('tunnelEnabled' in patch || 'tunnelUrl' in patch) && host.companion !== false) tunnel.apply();
     host.settingsChanged?.(patch);
     if ('planPause5h' in patch || 'planPauseWeek' in patch || 'billing' in patch) void sessions.enforcePlan();
     if ('enabledAgents' in patch) {
@@ -1336,6 +1344,7 @@ export async function start(h: Host) {
   G.setSigning(store.data.settings.signCommits);
   if (!process.env.HELM_DEV_NO_RECOVER) sessions.recover();
   if (host.companion !== false) void companion.loadKey().then(() => companion.apply());
+  if (host.companion !== false) tunnel.apply();
   GH.setSignInGuard(host.allowLogin ?? null);
   GH.watchAuth(() => G.setGitToken(GH.getToken()), () => { G.setGitToken(null); store.data.user = null; store.save(); emitState(); logLine('warn', 'GitHub rejected the sign-in and it could not be renewed; signed out'); });
   await loadOutboundSecrets(host);
@@ -1385,6 +1394,7 @@ export async function shutdown() {
   syncer.stop();
   terms.closeAll();
   companion.shutdown();
+  tunnel.shutdown();
   sessions.shutdown();
   await store.flushAll().catch(() => undefined);
 }
