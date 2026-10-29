@@ -20,8 +20,13 @@ export async function waitForToken(clientId: string, d: DeviceCode, f: Fetch = f
   let wait = Math.max(d.interval, 1) * 1000;
   while (Date.now() < until) {
     await sleep(wait);
-    const r = await f('https://github.com/login/oauth/access_token', { method: 'POST', headers: json, body: JSON.stringify({ client_id: clientId, device_code: d.deviceCode, grant_type: 'urn:ietf:params:oauth:grant-type:device_code' }) });
-    const j: any = await r.json();
+    let j: any;
+    try {
+      const r = await f('https://github.com/login/oauth/access_token', { method: 'POST', headers: json, body: JSON.stringify({ client_id: clientId, device_code: d.deviceCode, grant_type: 'urn:ietf:params:oauth:grant-type:device_code' }) });
+      j = await r.json();
+    } catch {
+      continue; // a dropped lookup or connection mid-wait is not the end of the sign-in; ask again until the code expires
+    }
     if (j.access_token) return j.access_token;
     if (j.error === 'slow_down') wait += 5000;
     else if (j.error === 'access_denied') throw new Error('The sign-in was declined.');
