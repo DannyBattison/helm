@@ -249,11 +249,14 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
       <div style={{ flex: 'none', padding: '10px 12px', borderTop: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: 10 }}>
         <PlanMeters />
         {/* The header has no room for these on a narrow phone, so they live here. */}
-        <div className="helm-portrait-only" style={{ margin: '0 -6px' }}>
-          <TreeItem icon="play" label={paused ? `Continue all agents (${paused})` : 'Continue all agents'} style={paused ? undefined : { opacity: 0.45 }} onClick={() => { if (paused) void resumeAll(); }} />
-          <TreeItem icon="pause" label={working ? `Interrupt all agents (${working})` : 'Interrupt all agents'} style={working ? undefined : { opacity: 0.45 }} onClick={() => { if (working) void haltAll(); }} />
+        <div className="helm-portrait-only"><div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center' }}>
+          <IconButton size="lg" icon="play" label={paused ? `Continue all agents (${paused})` : 'Continue all agents'} disabled={!paused} onClick={() => void resumeAll()} />
+          <IconButton size="lg" icon="pause" label={working ? `Interrupt all agents (${working})` : 'Interrupt all agents'} disabled={!working} onClick={() => void haltAll()} />
+          <IconButton size="lg" icon="gear-six" label="Settings" active={route.screen === 'settings'} onClick={() => go({ screen: 'settings' })} />
+        </div></div>
+        <div className="helm-hide-portrait" style={{ margin: '0 -6px' }}>
+          <TreeItem icon="gear-six" label="Settings" selected={route.screen === 'settings'} onClick={() => go({ screen: 'settings' })} />
         </div>
-        <TreeItem icon="gear-six" label="Settings" selected={route.screen === 'settings'} onClick={() => go({ screen: 'settings' })} style={{ margin: '0 -6px' }} />
       </div>
       {menu ? <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} /> : null}
     </aside>

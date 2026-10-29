@@ -35,6 +35,7 @@ function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string
   const app = useApp();
   const sub = billingOf(app, s.backend) === 'subscription';
   const push = usePush(s.repoId, s.id);
+  const narrow = useNarrow();
   return (
     <div className="helm-sess-header" style={{ flex: 'none', padding: '14px 20px 0', display: 'flex', flexDirection: 'column', gap: 12, borderBottom: '1px solid var(--border)' }}>
       <div className="helm-sess-head" style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
@@ -63,12 +64,12 @@ function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string
         </> : null}
         {s.queued ? <><Button variant="primary" icon="play" onClick={() => guard(api.startQueued(s.id))}>Start now</Button><Button variant="ghost" onClick={() => guard(api.cancelQueued(s.id))}>Cancel</Button></> : null}
         {s.status === 'idle' && /^Stopped/.test(s.step) ? <Button variant="secondary" icon="play" onClick={() => guard(api.resumeSession(s.id))}>Resume</Button> : null}
-        {s.status === 'working' ? <Tooltip side="bottom" wide content="Halt the agent's current turn but keep the session open, so you can redirect it with a new message."><Button variant="ghost" icon="pause" onClick={() => guard(api.interrupt(s.id))}>Pause</Button></Tooltip> : null}
-        {!s.archivedAt ? <Tooltip side="bottom" wide content="End the session entirely, discarding any pending prompts. You'd need to Resume to start it again."><Button variant="ghost" icon="stop" onClick={() => guard(api.stopSession(s.id))}>Stop</Button></Tooltip> : null}
+        {s.status === 'working' ? <Tooltip side="bottom" wide content="Halt the agent's current turn but keep the session open, so you can redirect it with a new message.">{narrow ? <IconButton icon="pause" label="Pause" onClick={() => guard(api.interrupt(s.id))} /> : <Button variant="ghost" icon="pause" onClick={() => guard(api.interrupt(s.id))}>Pause</Button>}</Tooltip> : null}
+        {!s.archivedAt ? <Tooltip side="bottom" wide content="End the session entirely, discarding any pending prompts. You'd need to Resume to start it again.">{narrow ? <IconButton icon="stop" label="Stop" onClick={() => guard(api.stopSession(s.id))} /> : <Button variant="ghost" icon="stop" onClick={() => guard(api.stopSession(s.id))}>Stop</Button>}</Tooltip> : null}
         {push.commits && !s.worktreeGone ? <span title={push.tip}><Button variant="secondary" icon="cloud-arrow-up" loading={push.busy} onClick={push.push}>Push · {push.commits}</Button></span> : null}
         {!s.worktreeGone && !(s.free && !s.free.managed) ? <IconButton icon="clock-counter-clockwise" label="Checkpoints" onClick={() => setUI({ checkpointsOf: s.id })} /> : null}
         {s.agentSessionId && can(app, s, 'fork') && !s.worktreeGone && !s.free ? <IconButton icon="git-fork" label="Fork this session" onClick={() => setUI({ forking: { sessionId: s.id, index: null, text: '' } })} /> : null}
-        <Button variant="secondary" icon="arrow-square-out" onClick={() => guard(api.openInEditor(s.id))}>Open in editor</Button>
+        {narrow ? <IconButton icon="arrow-square-out" label="Open in editor" onClick={() => guard(api.openInEditor(s.id))} /> : <Button variant="secondary" icon="arrow-square-out" onClick={() => guard(api.openInEditor(s.id))}>Open in editor</Button>}
         {s.free ? <Button variant="secondary" icon="git-diff" disabled={!s.free.managed} title={s.free.managed ? undefined : 'Changes are tracked only in folders helm made'} onClick={() => setTab('changes')}>Changes</Button> : <>
         {s.mergedAt ? <Badge tone="ready">Merged into {s.mergedInto}</Badge> : null}
         </>}
