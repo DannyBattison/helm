@@ -128,6 +128,20 @@ describe('starting a session', () => {
     expect(await sm.create(input())).toBe('fix-the-thing-2');
   });
 
+  it('does not reuse the name of a session in another repository, so it starts with an empty transcript', async () => {
+    const first = await sm.create(input());
+    const other = join(root, 'other' + n);
+    mkdirSync(other);
+    g(other, 'init', '-q', '-b', 'main');
+    writeFileSync(join(other, 'b.txt'), 'two\n');
+    g(other, 'add', '.');
+    g(other, 'commit', '-q', '-m', 'init');
+    store.data.repos.push({ id: 'o/other', owner: 'o', name: 'other', private: false, lang: null, defaultBranch: 'main', localPath: other, cap: 0, addedAt: 0 });
+    const second = await sm.create(input({ repoId: 'o/other' }));
+    expect(second).not.toBe(first);
+    expect((await transcript(second)).filter((e) => e.k === 'user')).toHaveLength(1);
+  });
+
   it('rejects an unknown repository and starts nothing', async () => {
     await expect(sm.create(input({ repoId: 'x/y' }))).rejects.toThrow(/not found/);
   });
