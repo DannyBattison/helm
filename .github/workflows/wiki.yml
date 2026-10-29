@@ -1,0 +1,50 @@
+# Publishes docs/ to the repository's GitHub wiki. Runs on every push to main that changes docs/ or this script, and by hand from the Actions tab.
+# The wiki is overwritten each time: edit docs/, never the wiki. See docs/Contributing-to-the-Docs.md.
+#
+# One-time setup: GitHub only creates a wiki's git repository once it has a first page. Turn on Wikis in the repository's settings, open the
+# Wiki tab and create any page, then run this workflow.
+name: wiki
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - '.github/scripts/prepare-wiki.mjs'
+      - '.github/workflows/wiki.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: wiki
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Prepare the pages (also checks every link)
+        run: node .github/scripts/prepare-wiki.mjs docs "$RUNNER_TEMP/wiki-pages"
+      - name: Check out the wiki
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ github.repository }}.wiki
+          path: wiki
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish
+        working-directory: wiki
+        run: |
+          # Replace the wiki's pages with the prepared ones, keeping .git.
+          find . -mindepth 1 -maxdepth 1 -not -name .git -exec rm -rf {} +
+          cp -r "$RUNNER_TEMP"/wiki-pages/. .
+          git add -A
+          if git diff --cached --quiet; then
+            echo "The wiki is already up to date."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Publish docs from ${GITHUB_SHA::7}"
+          git push
