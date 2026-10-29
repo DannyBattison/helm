@@ -159,7 +159,7 @@ textarea {
 .hljs-strong { font-weight: 600; }
 
 /* Phones: multi-column grids fold. Inline grid templates need !important to be overridden. */
-@media (max-width: 767px) {
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
   .helm-stack { grid-template-columns: minmax(0, 1fr) !important; }
   .helm-grid2 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   /* A name, a bar and a figure: the bar drops under the name and figure. */
@@ -169,25 +169,25 @@ textarea {
   .helm-setting { flex-direction: column !important; align-items: stretch !important; gap: 10px !important; }
   .helm-setting > :last-child { flex-wrap: wrap; }
 }
-@media (max-width: 767px) {
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
   .helm-setting input, .helm-setting textarea { width: 100% !important; box-sizing: border-box; }
   .helm-setting > :last-child > * { max-width: 100%; }
 }
 
 /* Phones: side-by-side panes (file list and diff, list and detail) stack and the page scrolls. */
-@media (max-width: 767px) {
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
   .helm-split { flex-direction: column !important; overflow-y: auto !important; overflow-x: hidden !important; }
   .helm-split > * { flex: none !important; width: 100% !important; min-width: 0; box-sizing: border-box; border-left: none !important; border-right: none !important; border-bottom: 1px solid var(--border); }
   .helm-split > .helm-list { max-height: 36dvh; }
   .helm-split > .helm-main { height: 72dvh; }
   .helm-split [role='separator'] { display: none !important; }
 }
-@media (max-width: 767px) {
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
   .helm-hide-phone { display: none !important; }
 }
 
 /* Phones: a taller header; the icon buttons in it grow with it. */
-@media (max-width: 767px) {
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
   :root { --titlebar-h: 60px; }
   .drag .helm-tap-icon { min-width: 48px !important; min-height: 48px !important; }
   .drag .helm-tap-icon > i { font-size: 24px !important; }
@@ -199,4 +199,29 @@ textarea {
    The inline `font` shorthand sets that line-height, so only !important beats it. 1.5 matches --type-label. */
 [style*='text-overflow: ellipsis'] {
   line-height: 1.5 !important;
+}
+
+/* Phones: a session's title takes the first line and its buttons wrap underneath, instead of running off the edge. */
+@media (max-width: 767px) {
+  .helm-sess-head { flex-wrap: wrap !important; row-gap: 8px !important; }
+  .helm-sess-title { flex: 1 1 calc(100% - 40px) !important; }
+}
+
+/* A phone on its side is wide enough for the desktop layout but only ~400px tall: it gets the phone layout, with a slimmer header. */
+@media (pointer: coarse) and (max-height: 500px) {
+  :root { --titlebar-h: 44px; }
+  .drag .helm-tap-icon { min-width: 44px !important; min-height: 40px !important; }
+  .drag .helm-tap-icon > i { font-size: 20px !important; }
+  .helm-split > .helm-list { max-height: 60dvh; }
+  .helm-split > .helm-main { height: 90dvh; }
+}
+@media (pointer: coarse) and (max-height: 500px) and (min-width: 768px) {
+  /* Wide enough to keep the composer's pickers on the same line as the buttons. */
+  .helm-comp-sel { order: 0 !important; flex: 0 1 auto !important; flex-basis: auto !important; }
+  .helm-comp-sel > * { flex: 0 1 150px !important; }
+}
+@media (pointer: coarse) and (max-height: 500px) {
+  /* Every pixel of height counts: the session header drops its second line and tightens up. */
+  .helm-sess-header { padding-top: 6px !important; gap: 4px !important; }
+  .helm-sess-title > :nth-child(2) { display: none !important; }
 }
