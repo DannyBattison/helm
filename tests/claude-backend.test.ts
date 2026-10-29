@@ -141,7 +141,7 @@ describe('a Claude session', () => {
     expect(hook.matcher).toBe('Agent|Task');
     expect(await hook.hooks[0]({ tool_use_id: 'ok' })).toEqual({});
     expect(await hook.hooks[0]({})).toEqual({});
-    expect(await hook.hooks[0]({ tool_use_id: 'no' })).toEqual({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'Too many. Wait for one to finish, or do this work yourself.' } });
+    expect(await hook.hooks[0]({ tool_use_id: 'no' })).toEqual({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'Too many. This is helm’s limit, not something the user declined. Wait for one to finish, or do this work yourself.' } });
   });
   it('turns messages into events, passes controls to the SDK, and swallows a control that fails', async () => {
     h.sdk.messages = [{ type: 'result', is_error: false, result: 'done', total_cost_usd: 1 }];

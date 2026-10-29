@@ -18,6 +18,7 @@ import { Advisor } from './advisor';
 import { COMMAND_TOOLS, EDIT_TOOLS, convertMessages, rel, trunc } from './transcript';
 import { artifactDir, dropArtifacts, ensureArtifactDir } from './artifacts';
 import * as G from './git';
+import { logLine } from './log';
 import { listRepoFixtures, supplyRepoFixtures } from './repofixtures';
 import { checkpointParent, dropCheckpoints, listCheckpoints, restoreCheckpoint, seedFromCheckpoint, takeCheckpoint } from './review';
 import type { Store } from './store';
@@ -661,6 +662,7 @@ export class SessionManager {
     } catch (e: any) {
       if (!rt.agent.closed) {
         s.error = String(e?.message || e);
+        logLine('error', `session ${s.id} failed: ${e?.stack || s.error}`);
         await this.push(s.id, { k: 'note', tone: 'error', text: s.error! });
         this.setStatus(s, 'error', trunc(s.error!, 120));
         this.activity(s, 'error', 'failed: ' + trunc(s.error!, 80));
@@ -963,7 +965,8 @@ export class SessionManager {
         const ti = Math.floor(start.idx / 1000), ii = start.idx % 1000;
         const t = await this.store.transcript(start.tkey);
         const cur = t[ti] as Extract<TranscriptEvent, { k: 'tools' }>;
-        if (cur && cur.items[ii]) {
+        // The saved transcript of a subagent is rebuilt while it runs, so the event at this position may no longer be this tool group.
+        if (cur?.k === 'tools' && cur.items[ii]) {
           const n = text.split('\n').filter(Boolean).length;
           cur.items[ii][2] = b.is_error ? 'failed' : cur.items[ii][0] === 'Read' ? `${text.split('\n').length} lines` : cur.items[ii][0] === 'Grep' || cur.items[ii][0] === 'Glob' ? `${n} ${n === 1 ? 'match' : 'matches'}` : meta;
           await this.patch(start.tkey, ti, cur);
