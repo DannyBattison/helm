@@ -100,5 +100,8 @@ describe('GitHub sign-in on the phone', () => {
     expect(d.userCode).toBe('AB-12');
     expect(await waitForToken('cid', d, f, async () => undefined)).toBe('gho_abc');
     await expect(waitForToken('cid', d, (async () => ({ json: async () => ({ error: 'access_denied' }) })) as any, async () => undefined)).rejects.toThrow(/declined/);
+    const flaky = [new Error('Unable to resolve host'), { access_token: 'gho_def' }];
+    const g = (async () => { const a = flaky.shift()!; if (a instanceof Error) throw a; return { json: async () => a } as any; }) as any;
+    expect(await waitForToken('cid', d, g, async () => undefined)).toBe('gho_def');
   });
 });
