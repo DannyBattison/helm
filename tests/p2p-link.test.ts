@@ -162,6 +162,18 @@ describe('a phone and a desktop', () => {
     expect(d.asked()).toBeGreaterThan(0);
   });
 
+  it('wait for a slow decision without starting a second link from the repeats of the first message', async () => {
+    const net = new SimNet();
+    const identity = generateKeyPair();
+    let asked = 0;
+    const links: unknown[] = [];
+    host({ socket: net.socket('203.0.113.5', 4000), identity, authorize: () => { asked++; return new Promise((r) => setTimeout(() => r({ name: 'slow' }), 1200)); }, onLink: (l) => links.push(l) });
+    const code = encodeShareCode({ v: 1, n: 'D', p: 4000, c: ['203.0.113.5'], k: b64.encode(identity.publicKey) });
+    expect(await connect(phone(net), code)).not.toBeInstanceOf(Error);
+    expect(asked).toBe(1);
+    expect(links).toHaveLength(1);
+  });
+
   it('can be ended from either side', async () => {
     const net = new SimNet();
     const d = desktop(net);

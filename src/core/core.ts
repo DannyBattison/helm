@@ -13,6 +13,7 @@ import * as G from './git';
 import * as GH from './github';
 import { Companion } from './companion';
 import { dispatch } from './dispatch';
+import { P2P } from './p2p/service';
 import { installLogging, logFile, logLine, recentLog } from './log';
 import { cleanHeavy, dirSize, reclaimableBytes } from './disk';
 import { readArtifact } from './artifacts';
@@ -88,6 +89,7 @@ const store = new Store();
 
 function send<K extends keyof HelmEvents>(channel: K, payload: HelmEvents[K]) {
   host.send(channel, payload);
+  p2p.forward(channel, payload);
 }
 
 // ------------------------------------------------------------------ state
@@ -102,6 +104,7 @@ function buildState(): AppState {
     activity: store.data.activity,
     activitySeq: store.logSeq,
     companion: companion.state,
+    p2p: p2p.state,
     settings: store.data.settings,
     outboundSecrets: { emailPassword: emailPasswordSet() },
     automations: store.data.automations,
@@ -189,6 +192,7 @@ const repos = new RepoService(store, emitState);
 // operations are filled in once they exist.
 const companionOps: import('./companion').CompanionOps = {} as any;
 const syncer = new SyncService(store, () => host, { isRunning: (id) => sessions.isRunning(id), changed: () => emitState(), canServe: () => !!host.syncServer, emitTranscript: (sessionId, index, event) => send('transcript', { sessionId, index, event }), name: () => os.hostname() });
+const p2p = new P2P(store, (name, args) => dispatch(api as any, name, args), () => emitState(), () => host);
 const companion = new Companion(store, companionOps, () => emitState(), () => host);
 const registry = new BackendRegistry([
   new ClaudeBackend({
@@ -350,6 +354,8 @@ export const api: HelmApi = {
   activityLog: (opts) => store.readLog(opts?.before, opts?.limit),
   async setEmailPassword(password) { await saveEmailPassword(password); emitState(); },
   testOutbound: (channel) => testOutbound(store.data.settings, channel),
+  async p2pNewCode() { if (host.companion !== false) p2p.newCode(); },
+  async p2pRevoke(id) { if (host.companion !== false) await p2p.revoke(id); },
   async companionUnlink() { if (host.companion !== false) await companion.unlink(); },
   async reportStall(ms, where) { diag(`window stalled ${ms} ms on ${where}`); },
   async updateSettings(patch: Partial<Settings>) {
@@ -365,6 +371,7 @@ export const api: HelmApi = {
     if ('activityDays' in patch) void store.pruneLog(store.data.settings.activityDays);
     if ('cleanupDays' in patch || 'reclaimOnArchive' in patch) void housekeeping();
     if (('companionEnabled' in patch || 'companionUrl' in patch) && host.companion !== false) companion.apply();
+    if (('p2pEnabled' in patch || 'p2pPort' in patch || 'p2pStun' in patch || 'p2pAddress' in patch) && host.companion !== false) p2p.apply();
     host.settingsChanged?.(patch);
     if ('planPause5h' in patch || 'planPauseWeek' in patch || 'billing' in patch) void sessions.enforcePlan();
     if ('enabledAgents' in patch) {
@@ -386,6 +393,7 @@ export const api: HelmApi = {
     G.setGitToken(GH.getToken());
     store.data.user = u;
     store.save();
+    if (host.companion !== false) p2p.apply();
     emitState();
     return u;
   },
@@ -394,6 +402,7 @@ export const api: HelmApi = {
     G.setGitToken(GH.getToken());
     store.data.user = u;
     store.save();
+    if (host.companion !== false) p2p.apply();
     emitState();
     return u;
   },
@@ -427,6 +436,7 @@ export const api: HelmApi = {
     G.setGitToken(null);
     store.data.user = null;
     store.save();
+    if (host.companion !== false) p2p.apply();
     emitState();
   },
 
@@ -1337,6 +1347,7 @@ export async function start(h: Host) {
   G.setSigning(store.data.settings.signCommits);
   if (!process.env.HELM_DEV_NO_RECOVER) sessions.recover();
   if (host.companion !== false) void companion.loadKey().then(() => companion.apply());
+  if (host.companion !== false) p2p.apply();
   GH.setSignInGuard(host.allowLogin ?? null);
   GH.watchAuth(() => G.setGitToken(GH.getToken()), () => { G.setGitToken(null); store.data.user = null; store.save(); emitState(); logLine('warn', 'GitHub rejected the sign-in and it could not be renewed; signed out'); });
   await loadOutboundSecrets(host);
@@ -1386,6 +1397,7 @@ export async function shutdown() {
   syncer.stop();
   terms.closeAll();
   companion.shutdown();
+  p2p.shutdown();
   sessions.shutdown();
   await store.flushAll().catch(() => undefined);
 }

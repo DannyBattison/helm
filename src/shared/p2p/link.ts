@@ -117,12 +117,17 @@ export interface JoinOptions {
   name: string;
   /** Give up after this long. */
   timeoutMs?: number;
+  /**
+   * A GitHub access token for the person using this phone, sent (encrypted, to the host only) when pairing a new device so the host can
+   * check it is the same GitHub user as the one signed in on the computer. It needs no scopes. Not needed for a device the host already knows.
+   */
+  githubToken?: string;
 }
 
 /** Probes every address in the code at once and resolves with the first host that answers. */
 export function join(o: JoinOptions): Promise<Link> {
   const { endpoints, hostKey, secret } = decodeShareCode(o.code);
-  const payload = new TextEncoder().encode(JSON.stringify({ n: o.name, ...(secret ? { s: b64.encode(secret) } : {}) }));
+  const payload = new TextEncoder().encode(JSON.stringify({ n: o.name, ...(secret ? { s: b64.encode(secret) } : {}), ...(o.githubToken ? { g: o.githubToken } : {}) }));
   const hs = initiate(o.identity, hostKey, payload, PROLOGUE);
   const idx = randomBytes(4);
   const idxI = rd32(idx, 0);
@@ -155,10 +160,11 @@ export interface HostOptions {
   socket: UdpSocket;
   identity: KeyPair;
   /**
-   * Decides whether to accept a device that sent a valid first message. `payload` is what it said about itself (`n` name, `s` secret). Return
-   * false and nothing is sent back: the device never learns that anything is listening.
+   * Decides whether to accept a device that sent a valid first message. `payload` is what it said about itself (`n` name, `s` secret, `g`
+   * GitHub token). Return false and nothing is sent back: the device never learns that anything is listening. May take a while (it can ask
+   * GitHub who the token belongs to); repeats of the same first message are ignored meanwhile.
    */
-  authorize(deviceKey: Uint8Array, payload: { n?: string; s?: string }): { name: string } | false;
+  authorize(deviceKey: Uint8Array, payload: { n?: string; s?: string; g?: string }): { name: string } | false | Promise<{ name: string } | false>;
   onLink(link: Link, device: { key: Uint8Array; name: string }): void;
   /** At most this many first messages a second from one address, and 4x that from all (each costs two key agreements). */
   initsPerSecond?: number;
@@ -169,6 +175,7 @@ export function host(o: HostOptions) {
   const byDevice = new Map<string, Session>();
   const answered = new Map<string, { resp: Uint8Array; at: number; session: Session; addr: string }>();
   const buckets = new Map<string, { n: number; at: number }>();
+  const deciding = new Set<string>();
   const limit = o.initsPerSecond ?? 5;
   let global = { n: 0, at: Date.now() };
 
@@ -200,11 +207,18 @@ export function host(o: HostOptions) {
     if (prior) { if (!prior.session.closed && prior.addr === addr) o.socket.send(prior.resp, hostName, port); return; }
     let hs: ReturnType<typeof respond>;
     try { hs = respond(o.identity, msg1, PROLOGUE); } catch { return; }
-    let said: { n?: string; s?: string } = {};
+    let said: { n?: string; s?: string; g?: string } = {};
     try { said = JSON.parse(new TextDecoder().decode(hs.payload)) || {}; } catch { return; }
-    const ok = o.authorize(hs.remoteStatic, said);
-    if (!ok) return;
+    if (deciding.has(dedupe)) return;
+    deciding.add(dedupe);
+    void Promise.resolve(o.authorize(hs.remoteStatic, said)).catch(() => false as const).then((ok) => {
+      deciding.delete(dedupe);
+      if (ok) establish(ok, hs, data.slice(0, 5), from, dedupe);
+    });
+  });
 
+  function establish(ok: { name: string }, hs: ReturnType<typeof respond>, data: Uint8Array, from: { host: string; port: number }, dedupe: string) {
+    const hostName = from.host, port = from.port, addr = `${hostName}:${port}`;
     const accepted = hs.accept(new Uint8Array(0));
     let localIdx = rd32(randomBytes(4), 0);
     while (sessions.has(localIdx)) localIdx = rd32(randomBytes(4), 0);
@@ -221,7 +235,7 @@ export function host(o: HostOptions) {
     if (answered.size > 500) for (const [k, v] of answered) if (Date.now() - v.at > 30_000) answered.delete(k);
     o.socket.send(resp, hostName, port);
     o.onLink(s, { key: hs.remoteStatic, name: ok.name });
-  });
+  }
 
   return {
     /** Ends every link. */
