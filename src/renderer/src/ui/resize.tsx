@@ -137,7 +137,8 @@ export const COMPACT = 1100;
 
 /** True while the window is narrower than `max` pixels. */
 export function useNarrow(max = PHONE) {
-  const query = `(max-width: ${max - 1}px)`;
+  // A phone on its side is wide but short: it gets the phone layout too (a drawer, one column).
+  const query = `(max-width: ${max - 1}px)` + (max === PHONE ? ', (pointer: coarse) and (max-height: 500px)' : '');
   const [narrow, setNarrow] = React.useState(() => window.matchMedia(query).matches);
   React.useEffect(() => {
     const mq = window.matchMedia(query);

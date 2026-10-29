@@ -4,8 +4,16 @@ export function Tabs({ tabs = [], value, defaultValue, onChange, onClose, closab
   const [inner, setInner] = React.useState(defaultValue ?? (tabs[0] && tabs[0].value));
   const cur = value ?? inner;
   const editor = variant === 'editor';
+  // On a phone the strip scrolls sideways: keep the chosen tab in view (without moving anything else on the page).
+  const strip = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    const c = strip.current, el = c?.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (!c || !el || c.scrollWidth <= c.clientWidth) return;
+    const cr = c.getBoundingClientRect(), er = el.getBoundingClientRect();
+    c.scrollTo({ left: c.scrollLeft + (er.left - cr.left) - (cr.width - er.width) / 2 });
+  }, [cur]);
   return (
-    <div role="tablist" className="helm-hscroll helm-tap-tabbar" style={{ display: 'flex', alignItems: 'stretch', gap: editor ? 0 : 16, height: editor ? 34 : 32, borderBottom: '1px solid var(--border)', padding: editor ? 0 : '0 12px', ...style }}>
+    <div ref={strip} role="tablist" className="helm-hscroll helm-tap-tabbar" style={{ display: 'flex', alignItems: 'stretch', gap: editor ? 0 : 16, height: editor ? 34 : 32, borderBottom: '1px solid var(--border)', padding: editor ? 0 : '0 12px', ...style }}>
       {tabs.map(t => {
         const on = t.value === cur;
         return (

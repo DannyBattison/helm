@@ -565,7 +565,8 @@ export function Settings({ section }: { section?: string }) {
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: narrow ? 'column' : 'row' }}>
       {narrow ? (
         <nav style={{ flex: 'none', padding: '8px 12px', borderBottom: '1px solid var(--border)', display: 'flex' }}>
-          <SegmentedControl value={sec} onChange={setSec} options={nav.map(([value, label, icon]) => ({ value, label, icon }))} />
+          {/* Some twenty pages do not fit a strip: a list shows them all and the one you are on. */}
+          <Select size="lg" value={sec} onChange={(e: any) => setSec(e.target.value)} style={{ width: '100%' }} options={nav.map(([value, label]) => ({ value, label: (groupOf[value as string] === 'accounts' ? 'Accounts · ' : groupOf[value as string] === 'shortcuts' ? 'Shortcuts · ' : groupOf[value as string] === 'repos' ? 'Repository · ' : '') + label }))} />
         </nav>
       ) : (
         <nav style={{ width: 200, flex: 'none', padding: '16px 8px', borderRight: '1px solid var(--border)' }}>
