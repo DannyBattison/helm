@@ -19,6 +19,7 @@ import { cleanHeavy, dirSize, reclaimableBytes } from './disk';
 import { readArtifact } from './artifacts';
 import { addRepoFixture, addRepoFixtureChunk, repoFixtureProgress, listRepoFixtureFolder, listRepoFixtures, removeRepoFixture, setRepoFixtureDir, setRepoFixtureShared, unzipRepoFixture } from './repofixtures';
 import { cpuTimes, cpuUse, HISTORY_LIMIT, parseLimit, type CpuTimes, type SystemPoint } from '../shared/system';
+import { nextAfter, validateScheduled } from '../shared/scheduled';
 import { approvedByReviews, autoMergeReady, queuedMergeStep } from '../shared/queue';
 import { SyncService } from './sync';
 import { applyImport, buildExport } from './migrate';
@@ -33,7 +34,7 @@ import { forecastRepo, revertHunk } from './review';
 import { SessionManager } from './sessions';
 import { Store } from './store';
 import { shellOptions, Terminals } from './terminal';
-import { expandHome, home, parseEnv, run } from './util';
+import { expandHome, home, parseEnv, run, uid } from './util';
 import { CURRENCIES, currencyForRegion, fmtMoney } from '../shared/money';
 import { notifyDecision } from '../shared/notify';
 import { dispatchOutbound, emailPasswordSet, loadOutboundSecrets, saveEmailPassword, testOutbound } from './outbound';
@@ -775,6 +776,21 @@ export const api: HelmApi = {
     emitState();
     void tickQueuedMerges();
   },
+  async schedulePrompt(id, input) {
+    const s = sess(id);
+    const problem = validateScheduled(input.text, input.at, Date.now());
+    if (problem) throw new Error(problem);
+    (s.scheduled ||= []).push({ id: uid(), text: input.text.trim(), at: input.at, repeat: input.repeat });
+    store.save();
+    emitState();
+  },
+  async cancelScheduledPrompt(id, promptId) {
+    const s = sess(id);
+    s.scheduled = (s.scheduled || []).filter((p) => p.id !== promptId);
+    if (!s.scheduled.length) s.scheduled = undefined;
+    store.save();
+    emitState();
+  },
   async cancelQueuedMerge(id) {
     const s = sess(id);
     if (!s.queuedMerge) return;
@@ -1303,6 +1319,25 @@ async function tickAutoMerge() {
   }
 }
 
+// ------------------------------------------------------------------ scheduled prompts
+/** Sends the prompts whose time has come. A repeating one moves to its next slot first, so a failed send cannot repeat itself. */
+async function tickScheduled() {
+  const now = Date.now();
+  for (const s of store.data.sessions) {
+    if (!s.scheduled?.length || s.archivedAt) continue;
+    const due = s.scheduled.filter((p) => p.at <= now);
+    if (!due.length) continue;
+    s.scheduled = s.scheduled.flatMap((p) => { if (p.at > now) return [p]; const n = nextAfter(p.at, p.repeat, now); return n ? [{ ...p, at: n }] : []; });
+    if (!s.scheduled.length) s.scheduled = undefined;
+    store.save();
+    emitState();
+    for (const p of due) {
+      try { await sessions.send(s.id, p.text); }
+      catch (e) { store.log({ kind: 'start', who: 'helm', what: 'could not send a scheduled prompt', repo: repoName(s.repoId), sessionId: s.id, detail: String((e as Error)?.message || e), ok: false }); }
+    }
+  }
+}
+
 // ------------------------------------------------------------------ queued merges
 let queuedTicking = false;
 /** Merges the pull requests of sessions whose merge was queued, once their checks have passed; flags the ones that cannot go ahead. */
@@ -1380,6 +1415,7 @@ export async function start(h: Host) {
   setInterval(() => void sampleSystem(), 5000).unref?.();
   setInterval(pollMerges, 120_000);
   setInterval(() => void tickQueuedMerges(), 30_000);
+  setInterval(() => void tickScheduled(), 15_000);
   setInterval(() => void tickAutoMerge(), 60_000);
   setInterval(() => sessions.checkStalls(), 60_000);
   setInterval(() => void sessions.wakeAfterReset(), 60_000);
