@@ -1,14 +1,17 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { SYNC_LISTS, SYNC_VERSION, chunkWant, countTotal, deadMap, emptyCounts, emptyWant, planSync } from '../shared/sync';
-import type { SyncCounts, SyncList, SyncManifest, SyncPeerInfo, SyncPeerResult, SyncStatus, SyncWant, Tombstone } from '../shared/sync';
+import { SYNC_LISTS, SYNC_VERSION, snapshotRef, chunkWant, countTotal, deadMap, emptyCounts, emptyWant, mergeSettings, planSync, syncableSettings } from '../shared/sync';
+import type { SyncCategory, SyncCounts, SyncList, SyncManifest, SyncPeerInfo, SyncPeerResult, SyncStatus, SyncWant, Tombstone } from '../shared/sync';
 import type { TranscriptEvent } from '../shared/types';
 import type { Host } from './host';
 import { adopt, readEntry, target, walk, writeEntry } from './migrate';
 import type { FileEntry } from './migrate';
 import type { Store } from './store';
-import { uid } from './util';
+import { existsSync } from 'node:fs';
+import * as G from './git';
+import { snapshotCommit } from './review';
+import { expandHome, uid } from './util';
 
 /**
  * Keeping helm instances' history in step. A sync is started by one side, which asks the other for a manifest of what it holds, works out
@@ -19,9 +22,11 @@ import { uid } from './util';
  * server rings it ("changed") when its data changes, and the starting side syncs; it also syncs when its own data changes. No data travels
  * on the socket, so there is one code path to get right, and a missed ring costs at most five minutes (a sync is also run on that interval).
  *
- * Settings, sign-ins, passwords, caches and the activity log are never synced. Records (sessions, repositories, automated agents) are
- * stamped with `updatedAt`, and the later copy wins. Deletions travel as tombstones. A transcript has one writer, the instance running
- * the session, which others see as `remoteOwner`; a session running here is never overwritten by a sync.
+ * Sign-ins, passwords, keys, environment variables, machine paths and caches are never synced; everything else of helm's is, by the
+ * categories in `SYNC_CATEGORIES`, which each side applies for itself. Records (sessions, repositories, automated agents) are stamped with
+ * `updatedAt`, and the later copy wins; the settings are one such record. Deletions travel as tombstones. A session is controlled by one
+ * instance (`owner`), which writes its transcript; others hold a read-only copy (`remoteOwner`) until one takes control, and the later
+ * takeover beats the other's edits and stops the session if it was running there.
  */
 type Vault = Pick<Host, 'dataDir' | 'encrypt' | 'decrypt'>;
 interface Peer { id: string; name: string; url: string; key: string; continuous?: boolean; last?: SyncPeerResult }
@@ -37,6 +42,8 @@ export interface SyncOps {
   emitTranscript(sessionId: string, index: number, event: TranscriptEvent): void;
   /** What other instances call this one. */
   name(): string;
+  /** Another instance took control of a session that was running here: stop it. */
+  release(sessionId: string): Promise<void>;
 }
 
 export interface SyncBundle {
@@ -49,6 +56,8 @@ export interface SyncBundle {
   deleted: Tombstone[];
   /** Events of a transcript from an index on. */
   transcripts: Record<string, { from: number; events: any[] }>;
+  /** The settings that travel (see `syncableSettings`), and when they last changed. */
+  settings?: { at: number; values: Record<string, any> };
 }
 
 const hash = (x: unknown) => createHash('sha1').update(JSON.stringify(x)).digest('base64url').slice(0, 12);
@@ -57,6 +66,9 @@ const same = (a: string, b: string) => timingSafeEqual(createHash('sha256').upda
 const validKey = (k: string) => /^[\w.-]+(~[\w.-]+)?$/.test(k) && !k.includes('..');
 export const normaliseUrl = (u: string) => u.trim().replace(/\/+$/, '');
 const SAFETY_MS = 5 * 60_000;
+/** The category a kind of tombstone belongs to. */
+const KIND_CATEGORY: Record<Tombstone['kind'], SyncCategory> = { session: 'sessions', repo: 'repos', automation: 'automations' };
+
 
 export class SyncService {
   private secrets: Secrets = { key: '', peers: [] };
@@ -72,6 +84,8 @@ export class SyncService {
   constructor(private store: Store, private vault: () => Vault, private ops: SyncOps) {}
 
   private file() { return join(this.vault().dataDir, 'sync.bin'); }
+  /** Whether this instance sends and takes in a kind of data. */
+  private on(c: SyncCategory) { return this.store.data.settings.syncWhat?.[c] !== false; }
   private get enabled() { return this.ops.canServe() && this.store.data.settings.syncEnabled; }
   private exclusive<T>(fn: () => Promise<T>): Promise<T> {
     const r = this.chain.then(fn, fn);
@@ -173,7 +187,8 @@ export class SyncService {
     for (const n of names) files[n] = (await stat(join(root, n)).catch(() => null))?.size || 0;
     return {
       v: SYNC_VERSION, instance: { id: d.instanceId, name: this.ops.name() },
-      repos: stamps(d.repos), automations: stamps(d.automations), sessions: stamps(d.sessions), transcripts, deleted: d.deleted,
+      repos: stamps(d.repos), automations: stamps(d.automations), sessions: stamps(d.sessions), owners: Object.fromEntries(d.sessions.map((x) => [x.id, x.owner?.at || 0])),
+      settings: d.settingsAt || 0, transcripts, deleted: d.deleted,
       lists: Object.fromEntries(SYNC_LISTS.map((k) => [k, (d[k] as unknown[]).map(hash)])) as Record<SyncList, string[]>, files
     };
   }
@@ -182,14 +197,17 @@ export class SyncService {
   async bundle(want: SyncWant): Promise<SyncBundle> {
     await this.store.flushTranscripts();
     const d = this.store.data, root = this.store.root;
-    const repos = new Set(want.repos), autos = new Set(want.automations), ids = new Set(want.sessions);
+    const repos = new Set(this.on('repos') ? want.repos : []), autos = new Set(this.on('automations') ? want.automations : []), ids = new Set(this.on('sessions') ? want.sessions : []);
     const out: SyncBundle = {
       from: { id: d.instanceId, name: this.ops.name() }, repos: d.repos.filter((r) => repos.has(r.id)), automations: d.automations.filter((a) => autos.has(a.id)),
-      sessions: d.sessions.filter((s) => ids.has(s.id)), lists: { usage: [], audit: [], daily: [] }, files: {}, deleted: d.deleted, transcripts: {}
+      // A session this instance controls goes out under this instance's name.
+      sessions: d.sessions.filter((s) => ids.has(s.id)).map((s) => (s.owner?.id === d.instanceId ? { ...s, owner: { ...s.owner, name: this.ops.name() } } : s)),
+      lists: { usage: [], audit: [], daily: [] }, files: {}, deleted: d.deleted.filter((t) => this.on(KIND_CATEGORY[t.kind])), transcripts: {}
     };
-    for (const k of SYNC_LISTS) { const h = new Set(want.lists[k]); out.lists[k] = (d[k] as unknown[]).filter((x) => h.has(hash(x))); }
-    for (const n of want.files) { const e = target(root, n) && n.startsWith('repo-artifacts/') ? await readEntry(root, n) : null; if (e) out.files[n] = e; }
-    for (const [key, from] of Object.entries(want.transcripts)) {
+    if (want.settings && this.on('settings')) out.settings = { at: d.settingsAt || 0, values: syncableSettings(d.settings) };
+    for (const k of SYNC_LISTS) { const h = new Set(this.on('usage') ? want.lists[k] : []); out.lists[k] = (d[k] as unknown[]).filter((x) => h.has(hash(x))); }
+    for (const n of this.on('files') ? want.files : []) { const e = target(root, n) && n.startsWith('repo-artifacts/') ? await readEntry(root, n) : null; if (e) out.files[n] = e; }
+    for (const [key, from] of Object.entries(this.on('sessions') ? want.transcripts : {})) {
       if (!validKey(key)) continue;
       const f = Math.max(0, Math.floor(+from) || 0);
       const events = (await this.store.peekTranscript(key)).slice(f);
@@ -202,7 +220,7 @@ export class SyncService {
   private applyDeleted(list: Tombstone[], n: SyncCounts) {
     const d = this.store.data;
     for (const t of Array.isArray(list) ? list : []) {
-      if (!t || typeof t.id !== 'string' || typeof t.at !== 'number' || !['session', 'repo', 'automation'].includes(t.kind)) continue;
+      if (!t || typeof t.id !== 'string' || typeof t.at !== 'number' || !['session', 'repo', 'automation'].includes(t.kind) || !this.on(KIND_CATEGORY[t.kind])) continue;
       const have = (t.kind === 'session' ? d.sessions : t.kind === 'repo' ? d.repos : d.automations) as { id: string; updatedAt?: number }[];
       const i = have.findIndex((x) => x.id === t.id);
       const edited = i >= 0 && (have[i].updatedAt || 0) > t.at;
@@ -226,48 +244,64 @@ export class SyncService {
     const newer = (a: any, old: any) => (a.updatedAt || 0) > (old.updatedAt || 0);
     const isLive = (kind: Tombstone['kind'], x: any) => (dead.get(`${kind}:${x.id}`) ?? -1) < (x.updatedAt || 0);
 
-    for (const r of arr(b.repos)) {
+    for (const r of this.on('repos') ? arr(b.repos) : []) {
       if (!r || typeof r.id !== 'string' || !isLive('repo', r)) continue;
       const i = d.repos.findIndex((x) => x.id === r.id);
-      if (i < 0) d.repos.push(r);
+      // The sender's folder is a path on its disk; here the repo goes where this machine keeps clones, and is cloned when first needed.
+      if (i < 0) d.repos.push({ ...r, localPath: join(expandHome(d.settings.cloneRoot), String(r.owner), String(r.name)) });
       else if (newer(r, d.repos[i])) d.repos[i] = { ...r, localPath: d.repos[i].localPath };
       else continue;
       this.store.markSynced('repo', d.repos.find((x) => x.id === r.id)!); n.repos++;
     }
-    for (const a of arr(b.automations)) {
+    for (const a of this.on('automations') ? arr(b.automations) : []) {
       if (!a || typeof a.id !== 'string' || !isLive('automation', a)) continue;
       const i = d.automations.findIndex((x) => x.id === a.id);
       if (i < 0) d.automations.push(a); else if (newer(a, d.automations[i])) d.automations[i] = a; else continue;
       this.store.markSynced('automation', a); n.automations++;
     }
-    for (const s of arr(b.sessions)) {
+    for (const s of this.on('sessions') ? arr(b.sessions) : []) {
       if (!s || typeof s.id !== 'string' || !/^[\w-]+$/.test(s.id) || !isLive('session', s)) continue;
+      // A copy that says nothing of who controls it is the sender's.
+      if (!s.owner || typeof s.owner.id !== 'string') s.owner = { id: String(b.from?.id || owner), name: owner, at: s.startedAt || 1 };
+      const theirs = s.owner.id !== d.instanceId;
       const i = d.sessions.findIndex((x) => x.id === s.id);
       if (i >= 0) {
         const old = d.sessions[i];
-        if (this.ops.isRunning(s.id) || !newer(s, old)) continue;
+        // Whoever took control last wins, whatever was edited since; with the same owner, the later edit wins.
+        const taken = (s.owner.at || 0) > (old.owner?.at || 0);
+        if (!(taken || ((s.owner.at || 0) === (old.owner?.at || 0) && newer(s, old)))) continue;
+        if (this.ops.isRunning(s.id)) { if (taken && theirs) await this.ops.release(s.id); else continue; }
         // Where things are on disk belongs to this machine, not to the session.
         for (const k of ['worktree', 'worktreeGone', 'extras', 'uploads'] as const) { if (old[k] === undefined) delete (s as any)[k]; else (s as any)[k] = old[k]; }
-        delete s.remoteOwner;
-        d.sessions[i] = adopt(s, owner);
-      } else d.sessions.push(adopt(s, owner));
+        d.sessions[i] = adopt(s, theirs ? s.owner.name || owner : undefined);
+      } else {
+        // Its worktree is on the machine that made it.
+        if (theirs) { s.worktreeGone = true; delete s.extras; delete s.uploads; }
+        d.sessions.push(adopt(s, theirs ? s.owner.name || owner : undefined));
+      }
       this.store.markSynced('session', s); n.sessions++;
     }
+    if (b.settings && this.on('settings') && typeof b.settings.at === 'number' && b.settings.values && typeof b.settings.values === 'object' && b.settings.at > (d.settingsAt || 0)) {
+      d.settings = mergeSettings(d.settings, b.settings.values);
+      d.settingsAt = b.settings.at;
+      this.store.markSettingsSynced();
+      n.settings++;
+    }
 
-    for (const k of SYNC_LISTS) {
+    for (const k of this.on('usage') ? SYNC_LISTS : []) {
       const list = d[k] as unknown[], seen = new Set(list.map(hash));
       for (const x of arr((b.lists as any)?.[k])) if (!seen.has(hash(x))) { list.push(x); seen.add(hash(x)); n.records++; }
     }
     if (n.records) { d.usage.sort((a, c) => a.t - c.t); d.daily.sort((a, c) => (a.day < c.day ? -1 : a.day > c.day ? 1 : 0)); }
 
-    for (const [name, f] of Object.entries(b.files && typeof b.files === 'object' ? b.files : {})) {
+    for (const [name, f] of Object.entries(this.on('files') && b.files && typeof b.files === 'object' ? b.files : {})) {
       const dest = name.startsWith('repo-artifacts/') ? target(root, name) : null;
       if (!dest || !f || typeof f.data !== 'string' || (await stat(dest).catch(() => null))) continue;
       await writeEntry(dest, f);
       n.files++;
     }
 
-    for (const [key, t] of Object.entries(b.transcripts && typeof b.transcripts === 'object' ? b.transcripts : {})) {
+    for (const [key, t] of Object.entries(this.on('sessions') && b.transcripts && typeof b.transcripts === 'object' ? b.transcripts : {})) {
       const sid = key.split('~')[0];
       if (!validKey(key) || !t || !Array.isArray(t.events) || this.ops.isRunning(sid) || !d.sessions.some((s) => s.id === sid)) continue;
       const mine = await this.store.transcript(key);
@@ -409,6 +443,30 @@ export class SyncService {
     });
   }
 
+  private published = new Map<string, number>();
+  /**
+   * Puts the work of the sessions this instance controls where another can pick it up: the branch on GitHub, and a snapshot (uncommitted
+   * work too) under a hidden ref. Offline or without push access it just tries again at the next sync.
+   */
+  async publish(): Promise<number> {
+    const branches = this.on('branches'), snapshots = this.on('worktrees');
+    if (!branches && !snapshots) return 0;
+    const d = this.store.data;
+    let n = 0;
+    for (const s of d.sessions) {
+      if (s.owner?.id !== d.instanceId || s.free || s.worktreeGone || s.archivedAt || s.mergedAt || !s.branch || !s.worktree || !existsSync(s.worktree)) continue;
+      const stamp = (s.updatedAt || 0) + (branches ? 1 : 0) + (snapshots ? 2 : 0) * 1e15;
+      if (this.published.get(s.id) === stamp) continue;
+      try {
+        if (branches) await G.git(s.worktree, 'push', 'origin', `${s.branch}:refs/heads/${s.branch}`);
+        if (snapshots) await G.git(s.worktree, 'push', '--force', 'origin', `${await snapshotCommit(s.worktree, 'helm sync snapshot')}:${snapshotRef(s.id)}`);
+        this.published.set(s.id, stamp);
+        n++;
+      } catch { /* offline, or no right to push: the next sync tries again */ }
+    }
+    return n;
+  }
+
   private async syncWith(p: Peer): Promise<SyncPeerResult> {
     const result: SyncPeerResult = { at: Date.now(), ok: false, pulled: emptyCounts(), pushed: emptyCounts() };
     const add = (to: SyncCounts, from: SyncCounts) => { for (const k of Object.keys(to) as (keyof SyncCounts)[]) to[k] += from?.[k] || 0; };
@@ -419,12 +477,22 @@ export class SyncService {
       this.applyDeleted(remote.deleted, result.pulled);
       const local = await this.manifest();
       const plan = planSync(local, remote, (id) => this.ops.isRunning(id));
+      // What this instance has turned off neither goes out nor comes in.
+      for (const w of [plan.pull, plan.push]) {
+        if (!this.on('repos')) w.repos = [];
+        if (!this.on('automations')) w.automations = [];
+        if (!this.on('sessions')) { w.sessions = []; w.transcripts = {}; }
+        if (!this.on('settings')) w.settings = false;
+        if (!this.on('usage')) w.lists = { usage: [], audit: [], daily: [] };
+        if (!this.on('files')) w.files = [];
+      }
       for (const w of chunkWant(plan.pull)) add(result.pulled, await this.apply(await this.call(p, 'POST', '/api/sync/pull', w)));
       const pushes = chunkWant(plan.push);
       const theirDead = deadMap(remote.deleted);
       const owe = local.deleted.some((t) => (theirDead.get(`${t.kind}:${t.id}`) ?? -1) < t.at);
       if (!pushes.length && owe) pushes.push(emptyWant());
       for (const w of pushes) add(result.pushed, await this.call(p, 'POST', '/api/sync/push', await this.bundle(w)));
+      result.pushed.branches += await this.publish();
       result.ok = true;
     } catch (e: any) { result.error = String(e?.cause?.message || e?.message || e); }
     return result;

@@ -302,7 +302,7 @@ describe('subscribers', () => {
 describe('starting a sync', () => {
   const stubFetch = (fn: (url: string, init: any) => Response | Promise<Response>) => vi.stubGlobal('fetch', async (u: string, i: any) => fn(u, i));
   const peerOf = async (a: X) => { await a.svc.addPeer('p', 'https://p.example', 'k'); return a.svc.status().peers[0].id; };
-  const m2 = (o: any = {}) => ({ v: 2, instance: { id: 'r', name: 'r' }, repos: {}, automations: {}, sessions: {}, transcripts: {}, deleted: [], lists: { usage: [], audit: [], daily: [] }, files: {}, ...o });
+  const m2 = (o: any = {}) => ({ v: 3, instance: { id: 'r', name: 'r' }, repos: {}, automations: {}, sessions: {}, owners: {}, settings: 0, transcripts: {}, deleted: [], lists: { usage: [], audit: [], daily: [] }, files: {}, ...o });
 
   it('explains a refused key, a different version, a server error and an unreachable server', async () => {
     const a = await mk();
@@ -385,7 +385,7 @@ describe('standing connection', () => {
     vi.stubGlobal('WebSocket', Sock);
     const a = await mk();
     // sync attempts triggered by the doorbell find a server that is not there
-    vi.stubGlobal('fetch', async () => new Response(JSON.stringify({ v: 2, instance: { id: 'r', name: 'r' }, repos: {}, automations: {}, sessions: {}, transcripts: {}, deleted: [], lists: { usage: [], audit: [], daily: [] }, files: {} }), { status: 200 }));
+    vi.stubGlobal('fetch', async () => new Response(JSON.stringify({ v: 3, instance: { id: 'r', name: 'r' }, repos: {}, automations: {}, sessions: {}, owners: {}, settings: 0, transcripts: {}, deleted: [], lists: { usage: [], audit: [], daily: [] }, files: {} }), { status: 200 }));
     await a.svc.addPeer('p', 'https://p.example', 'KEY');
     const id = a.svc.status().peers[0].id;
     return { a, id };

@@ -20,6 +20,7 @@ import { artifactDir, dropArtifacts, ensureArtifactDir } from './artifacts';
 import * as G from './git';
 import { logLine } from './log';
 import { listRepoFixtures, supplyRepoFixtures } from './repofixtures';
+import { snapshotRef } from '../shared/sync';
 import { checkpointParent, dropCheckpoints, listCheckpoints, restoreCheckpoint, seedFromCheckpoint, takeCheckpoint } from './review';
 import type { Store } from './store';
 import { commandPattern, expandHome, findBash, globMatch, hasShellControl, helmPids, killsPid, matchesAlwaysAsk, parseEnv, uid } from './util';
@@ -235,6 +236,8 @@ export class SessionManager {
     } else {
       branch = st.branchPrefix + id;
       wt = join(expandHome(st.worktreeRoot), repo!.name, id);
+      // A repository that arrived by sync has no clone on this machine yet.
+      if (!(await G.fileExists(repo!.localPath))) await G.clone(`https://github.com/${repo!.id}.git`, repo!.localPath);
       if (st.fetchBeforeSession) await G.git(repo!.localPath, 'fetch', 'origin', '--prune').catch(() => undefined);
       // `main` means the local branch, `origin/main` the one on GitHub. A bare name that only exists on GitHub falls back to it.
       const isLocal = !input.base.startsWith('origin/') && (await G.gitOk(repo!.localPath, 'rev-parse', '--verify', '--quiet', 'refs/heads/' + input.base));
@@ -260,7 +263,7 @@ export class SessionManager {
     const now = Date.now();
     const s: Session = {
       id, repoId: free ? FREE_ID : repo!.id, free: free ? { managed: !input.folder } : undefined, status: 'working', task: input.task, step: 'Starting', branch, base: remoteBase, worktree: wt,
-      backend: backendId, model: modelId, permMode: input.permMode, startedAt: now, tokens: { input: 0, output: 0, cacheRead: 0 }, cost: 0, budget: input.budget,
+      backend: backendId, model: modelId, permMode: input.permMode, startedAt: now, owner: { id: this.store.data.instanceId, at: now }, tokens: { input: 0, output: 0, cacheRead: 0 }, cost: 0, budget: input.budget,
       lastAccess: now, ctx: 0, add: 0, del: 0, files: 0, filesTouched: {}, timeline: [{ t: now, status: 'working' }], commits: [], removeAfterMerge: st.removeAfterMerge, deleteBranchAfterMerge: st.deleteBranchAfterMerge, subagents: [],
       extras: extras.length ? extras : undefined, uploads, agentSessionId, effort: extra.effort, parentId: extra.parentId, group: extra.group, source: extra.source
     };
@@ -1688,12 +1691,63 @@ export class SessionManager {
   }
 
   // ---------------------------------------------------------------- controls
+  /**
+   * Makes this instance the one that controls a session synced from another. Its work is brought here (the snapshot the other pushed,
+   * else its branch on GitHub) into a worktree of its own, and the other copy turns read-only at its next sync, stopping the session
+   * there if it was running.
+   */
+  async takeControl(id: string) {
+    const s = this.get(id);
+    if (!s) throw new Error('Session not found');
+    if (!s.remoteOwner) throw new Error('This session is already controlled from here.');
+    const from = s.remoteOwner;
+    if (!s.mergedAt) {
+      if (s.free) {
+        if (!s.free.managed) throw new Error('This agent works in a folder on ' + from + ', which cannot be moved.');
+        s.worktree = join(expandHome(this.cfg(FREE_ID).freeRoot), id);
+        await G.initScratch(s.worktree);
+      } else {
+        const repo = this.repoOf(s);
+        const st = this.cfg(repo.id);
+        if (!(await G.fileExists(repo.localPath))) await G.clone(`https://github.com/${repo.id}.git`, repo.localPath);
+        await G.git(repo.localPath, 'fetch', 'origin', '--prune').catch(() => undefined);
+        const ref = snapshotRef(id);
+        await G.git(repo.localPath, 'fetch', 'origin', `+${ref}:${ref}`).catch(() => undefined);
+        const snap = (await G.git(repo.localPath, 'rev-parse', '--verify', '--quiet', ref).catch(() => '')).trim();
+        const remote = 'origin/' + s.branch;
+        const hasRemote = await G.gitOk(repo.localPath, 'rev-parse', '--verify', '--quiet', 'refs/remotes/' + remote);
+        // A snapshot older than the branch on GitHub is not the latest work.
+        const useSnap = !!snap && (!hasRemote || (await G.gitOk(repo.localPath, 'merge-base', '--is-ancestor', remote, snap)));
+        if (!useSnap && !hasRemote) throw new Error(`The work of this session is on ${from} and has not been pushed. Turn on Branches (and Worktrees) under Settings → Sync there, let it sync, then try again.`);
+        const wt = join(expandHome(st.worktreeRoot), repo.name, id);
+        if (!(await G.fileExists(wt))) {
+          await G.addWorktree(repo.localPath, wt, s.branch, useSnap ? await checkpointParent(repo.localPath, snap) : remote).catch(async () => {
+            // The branch name is taken by an earlier copy here.
+            await mkdir(dirname(wt), { recursive: true });
+            await G.git(repo.localPath, 'worktree', 'add', '-B', s.branch, wt, useSnap ? await checkpointParent(repo.localPath, snap) : remote);
+          });
+          if (useSnap) await seedFromCheckpoint(wt, snap);
+          await this.copyUntracked(repo.localPath, wt, st.copyFiles);
+        }
+        s.worktree = wt;
+      }
+      s.worktreeGone = false;
+    }
+    s.owner = { id: this.store.data.instanceId, at: Date.now() };
+    s.remoteOwner = undefined;
+    s.status = 'idle';
+    s.step = `Taken over from ${from}`;
+    s.lastAccess = Date.now();
+    this.activity(s, 'session', `took control from ${from}`, { who: this.me(), human: true });
+    this.touch();
+  }
+
   async send(id: string, text: string, images: MessageImage[] = [], opts: SendOptions = {}) {
     this.held = false;
     const s = this.get(id);
     if (!s) throw new Error('Session not found');
     if (s.worktreeGone) throw new Error('This session\'s work was merged and its worktree removed, so it cannot be continued. Start a new session.');
-    if (s.remoteOwner) throw new Error(`This session is running on ${s.remoteOwner}. It can be continued here once it stops there.`);
+    if (s.remoteOwner) throw new Error(`This session belongs to ${s.remoteOwner}. Take control of it to continue it here.`);
     let rt = this.rt.get(id);
     // Talking to a queued session starts it now.
     s.queued = undefined;

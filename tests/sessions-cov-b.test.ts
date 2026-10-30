@@ -1008,7 +1008,7 @@ describe('controls', () => {
     s.worktreeGone = true;
     await expect(sm.send(id, 'hi')).rejects.toThrow(/cannot be continued/);
     s.worktreeGone = false; s.remoteOwner = 'laptop';
-    await expect(sm.send(id, 'hi')).rejects.toThrow(/running on laptop/);
+    await expect(sm.send(id, 'hi')).rejects.toThrow(/belongs to laptop/);
     s.remoteOwner = undefined; s.archivedAt = 5; s.archivedAuto = true; s.queued = { at: 1 } as any;
     await expect(sm.send('missing', 'hi')).rejects.toThrow('Session not found');
     await sm.send(id, 'hi');

@@ -191,7 +191,7 @@ const repos = new RepoService(store, emitState);
 // The companion is created before the sessions, which call into it when a transcript changes, but it needs them to act: so its
 // operations are filled in once they exist.
 const companionOps: import('./companion').CompanionOps = {} as any;
-const syncer = new SyncService(store, () => host, { isRunning: (id) => sessions.isRunning(id), changed: () => emitState(), canServe: () => !!host.syncServer, emitTranscript: (sessionId, index, event) => send('transcript', { sessionId, index, event }), name: () => os.hostname() });
+const syncer = new SyncService(store, () => host, { isRunning: (id) => sessions.isRunning(id), changed: () => emitState(), canServe: () => !!host.syncServer, emitTranscript: (sessionId, index, event) => send('transcript', { sessionId, index, event }), name: () => os.hostname(), release: (id) => sessions.stop(id) });
 const p2p = new P2P(store, (name, args) => dispatch(api as any, name, args), () => emitState(), () => host);
 const companion = new Companion(store, companionOps, () => emitState(), () => host);
 const registry = new BackendRegistry([
@@ -1014,6 +1014,7 @@ export const api: HelmApi = {
   syncRegenerateKey: () => syncer.regenerateKey(),
   syncAddPeer: (name, url, key) => syncer.addPeer(String(name), String(url), String(key)),
   syncSetContinuous: (id, on) => syncer.setContinuous(String(id), !!on),
+  takeControl: (id) => sessions.takeControl(String(id)),
   syncRemovePeer: (id) => syncer.removePeer(String(id)),
   async syncRun(peerId) {
     const r = await syncer.run(peerId);

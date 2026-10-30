@@ -3,9 +3,10 @@
 Move or share your sessions and history between helm instances, such as a laptop and a server.
 
 > **In short**
-> - **Sync** copies sessions, transcripts and usage between instances on request.
+> - **Sync** keeps sessions, transcripts, repositories, automated agents, settings and usage in step between instances.
+> - A synced session is **read-only** on every instance but one. **Take control** moves it.
 > - **Export** and **Import** do the same with a file.
-> - Settings and sign-ins are never copied.
+> - Keys, sign-ins, environment variables and anything about one machine (paths, shell, window choices) are never copied.
 
 ## Sync
 
@@ -23,11 +24,27 @@ Only a hosted server can receive a sync, since only it has an address. A desktop
 
 ### What is copied
 
-Repositories, automated agents, sessions and their transcripts, usage history, and repository fixtures. A session is copied when the other side lacks it or is further behind. A session that is running on the other side is never replaced. When a record differs on both sides, the more recent copy wins, and deletions are passed on too (for 30 days), so a session you remove on one side does not come back.
+Each kind of data has its own switch under **Settings, then Sync**, and each instance applies its own switches to what it sends and what it takes in:
+
+- **Sessions**, with their transcripts.
+- **Repositories**, with their settings and fixtures. Each machine keeps its own clone: a repository that arrives is cloned under your clone folder the first time you need it.
+- **Automated agents**.
+- **Settings**: preferences, budgets, shortcuts, MCP servers. Not paths, the agent environment, email setup, or machine choices such as tray, shell, start at login and the companion. MCP servers arrive without their environment variables and headers, and keep the ones you already have under the same name.
+- **Usage and audit history**, and **repository artifacts**.
+- **Branches** (off by default): pushes the branch of each session you control to GitHub.
+- **Worktrees** (off by default): also pushes a snapshot of uncommitted work, to a hidden ref (`refs/helm/sync/<session>`).
+
+When a record differs on both sides, the more recent copy wins, and deletions are passed on too (for 30 days), so a session you remove on one side does not come back.
+
+### Taking control
+
+A session is controlled by one instance, the one that made it. Every other instance holds a read-only copy: you can read it, but not message, resume or stop it. Press **Take control** on the copy to move it here. helm fetches the branch (and snapshot, if Worktrees was on) into a worktree of its own, and the other instance's copy turns read-only at its next sync. If the session was running there, it is stopped. The latest takeover always wins, even over later edits on the other side.
+
+Turn on **Branches** (and **Worktrees**) on the instance that has the work, let it sync, and then take control on the other. A scratch folder you chose yourself for a free agent cannot be moved.
 
 ### What is not
 
-Settings, sign-ins, passwords, the activity log, caches and the worktrees themselves. Code moves through git branches on GitHub.
+Sign-ins, passwords, sync keys, the activity log, caches and the worktrees themselves. Code moves through git on GitHub.
 
 ## Export and import
 
