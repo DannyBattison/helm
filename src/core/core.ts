@@ -522,6 +522,7 @@ export const api: HelmApi = {
   interrupt: (id) => sessions.interrupt(id),
   haltAll: () => sessions.haltAll(),
   resumeAll: () => sessions.resumeAll(),
+  broadcast: (text, ids, images) => sessions.broadcast(text, ids, images),
   stopSession: (id) => sessions.stop(id),
   async resumeSession(id) { await sessions.send(id, composeMessage(msgCfg(id), 'resume'), [], sessions.ownerOnly(sessions.get(id))); },
   sessionDeleteInfo: (id) => sessions.deleteInfo(id),

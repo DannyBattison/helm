@@ -414,6 +414,56 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
   );
 }
 
+// ------------------------------------------------------------------ broadcast
+/** One message to many agents. Everyone gets it unless you take them out; archived sessions are never offered. */
+export function Broadcast({ onClose }: { onClose(): void }) {
+  const app = useApp();
+  const narrow = useNarrow();
+  const targets = app.sessions.filter((s) => !s.archivedAt && !s.mergedAt && !s.worktreeGone && !s.remoteOwner);
+  const [skip, setSkip] = React.useState<string[]>([]);
+  const chosen = targets.filter((s) => !skip.includes(s.id)).map((s) => s.id);
+  const [text, setText] = React.useState('');
+  const [images, setImages] = React.useState<Draft[]>([]);
+  const [focused, setFocused] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState('');
+  const enterSends = app.settings.sendKey === 'enter';
+  const mod = mac() ? '⌘' : 'Ctrl+';
+  const send = async () => {
+    if (!text.trim() || !chosen.length) return;
+    setBusy(true); setErr('');
+    try {
+      const n = await api.broadcast(text.trim(), chosen, images.length ? images.map(({ mediaType, data, name }) => ({ mediaType, data, name })) : undefined);
+      toast({ tone: 'ready', title: `Sent to ${n} ${n === 1 ? 'agent' : 'agents'}` });
+      onClose();
+    } catch (e) { setErr(errText(e)); } finally { setBusy(false); }
+  };
+  return (
+    <Dialog width={560} title="Broadcast" description="Send one message to your agents at once. Archived sessions never receive it." onClose={onClose}
+      footer={<>
+        <span style={{ flex: narrow ? '1 1 100%' : 1, font: '400 12px/1.5 var(--font-sans)', color: err ? 'var(--status-error-text)' : 'var(--text-3)' }}>{err || (chosen.length === targets.length ? `All ${targets.length} ${targets.length === 1 ? 'agent' : 'agents'}` : `${chosen.length} of ${targets.length} agents`)}</span>
+        <Button variant="ghost" onClick={onClose}>Cancel</Button>
+        <Button variant="primary" icon="paper-plane-tilt" kbd={narrow ? undefined : enterSends ? '↵' : mod + '↵'} loading={busy} disabled={!text.trim() || !chosen.length} onClick={send}>Send</Button>
+      </>}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
+          style={{ borderRadius: 'var(--radius-lg)', background: 'var(--bg-input)', boxShadow: focused ? 'var(--ring-focus), inset 0 0 0 1px var(--accent)' : 'inset 0 0 0 1px var(--border-strong)' }}>
+          <AttachmentChips images={images} onRemove={(id) => setImages((c) => c.filter((x) => x.id !== id))} />
+          <textarea autoFocus={!narrow} rows={narrow ? 3 : 5} value={text} onChange={(e) => setText(e.target.value)} placeholder="What should every agent know or do? You can paste images."
+            onPaste={(e) => { const f = [...e.clipboardData.files].filter((x) => x.type.startsWith('image/')); if (f.length) { e.preventDefault(); void readAttachments(f, images.length).then((d) => d.length && setImages((cur) => [...cur, ...d])); } }}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing && (enterSends ? !e.shiftKey : mac() ? e.metaKey : e.ctrlKey)) { e.preventDefault(); void send(); } }}
+            style={{ display: 'block', width: '100%', boxSizing: 'border-box', resize: 'none', border: 'none', outline: 'none', boxShadow: 'none', background: 'transparent', color: 'var(--text-1)', font: '400 13px/1.5 var(--font-sans)', padding: '10px 12px', maxHeight: 280 }} />
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <span style={{ font: '500 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>Send to</span>
+          <Select multiple value={chosen} onChange={(e: any) => setSkip(targets.filter((s) => !(e.target.value as string[]).includes(s.id)).map((s) => s.id))}
+            options={targets.map((s) => ({ value: s.id, label: (s.customTitle || s.title || s.task).slice(0, 60) }))} placeholder="No agents" icon="users-three" />
+        </div>
+      </div>
+    </Dialog>
+  );
+}
+
 // ------------------------------------------------------------------ delete session
 const METHOD_HELP: Record<MergeMethod, string> = {
   merge: 'Keeps every commit and adds a merge commit.',

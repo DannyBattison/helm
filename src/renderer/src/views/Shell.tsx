@@ -250,6 +250,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
         <PlanMeters />
         {/* The header has no room for these on a narrow phone, so they live here. */}
         <div className="helm-portrait-only"><div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center' }}>
+          <IconButton size="lg" icon="megaphone" label="Broadcast a message to your agents" onClick={() => { setUI({ broadcasting: true, drawer: false }); }} />
           <IconButton size="lg" icon="play" label={paused ? `Continue all agents (${paused})` : 'Continue all agents'} disabled={!paused} onClick={() => void resumeAll()} />
           <IconButton size="lg" icon="pause" label={working ? `Interrupt all agents (${working})` : 'Interrupt all agents'} disabled={!working} onClick={() => void haltAll()} />
           <IconButton size="lg" icon="gear-six" label="Settings" active={route.screen === 'settings'} onClick={() => go({ screen: 'settings' })} />
@@ -283,6 +284,7 @@ export function TitleBar({ crumbs, theme, setTheme }: { crumbs: any[]; theme: 'd
           <span style={{ display: 'inline-flex', gap: 2 }}>
             <IconButton size={narrow ? 'lg' : 'md'} icon="plus" label="New session" glow accent onClick={() => { const r = getUI().route; setUI({ newSession: r.screen === 'repo' ? { repoId: r.id } : {} }); }} />
             <span className="helm-hide-portrait" style={{ display: 'inline-flex', gap: 2 }}>
+            <IconButton size={narrow ? 'lg' : 'md'} icon="megaphone" glow label="Broadcast a message to your agents" onClick={() => setUI({ broadcasting: true })} />
             <IconButton size={narrow ? 'lg' : 'md'} icon="play" glow label={paused ? `Continue all agents (${paused} interrupted)` : 'Continue all agents: none were interrupted'} disabled={!paused} hoverColor="var(--status-ready-text)" onClick={() => void resumeAll()} />
             <IconButton size={narrow ? 'lg' : 'md'} icon="pause" glow label={working ? `Interrupt all agents (${working} working)` : 'Interrupt all agents: none are working'} disabled={!working} hoverColor="var(--status-error-text)" onClick={() => void haltAll()} />
             </span>
