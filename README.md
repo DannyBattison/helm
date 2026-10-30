@@ -10,6 +10,8 @@ Supervise many coding-agent sessions (Claude Code, and Codex) across many GitHub
 
 **Website and downloads: [takethehelm.dev](https://takethehelm.dev)**
 
+![The helm Overview: sessions across repositories, what needs you, and plan usage](docs/images/overview.png)
+
 ## Features
 
 - **Isolated sessions.** Each session works in its own git worktree on an `agent/<name>` branch. Your checkout is never touched. helm pushes the branch after every commit (you can turn that off).
