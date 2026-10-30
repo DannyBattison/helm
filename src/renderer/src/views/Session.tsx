@@ -45,6 +45,7 @@ function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string
             <span style={{ font: '600 16px/1.5 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={s.task} onDoubleClick={() => setUI({ renaming: s.id })}>{s.customTitle || s.title || s.task}</span>
             <Badge tone={s.status} dot>{STATUS_LABEL[s.status]}</Badge>
             {s.archivedAt ? <Badge>Archived</Badge> : null}
+            {s.remoteOwner ? <Badge icon="lock-simple">Read-only · belongs to {s.remoteOwner}</Badge> : null}
             <SessionConflicts s={s} />
             {s.group ? <Badge icon="columns"><a href="#" onClick={(e) => { e.preventDefault(); go({ screen: 'compare', group: s.group! }); }}>Compare runs</a></Badge> : null}
             {s.parentId ? <Badge icon="git-fork">Fork of {s.parentId}</Badge> : null}
@@ -62,10 +63,11 @@ function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string
           {s.queuedMerge.error ? <Button variant="secondary" icon="arrow-clockwise" onClick={() => guard(api.retryQueuedMerge(s.id))}>Retry merge</Button> : null}
           <Button variant="ghost" onClick={() => guard(api.cancelQueuedMerge(s.id))}>Cancel merge</Button>
         </> : null}
+        {s.remoteOwner ? <Tooltip side="bottom" wide content={`Bring this session here and continue it. It becomes read-only on ${s.remoteOwner}, and stops there if it is running.`}><Button variant="primary" icon="hand-grabbing" onClick={() => guard(api.takeControl(s.id))}>Take control</Button></Tooltip> : null}
         {s.queued ? <><Button variant="primary" icon="play" onClick={() => guard(api.startQueued(s.id))}>Start now</Button><Button variant="ghost" onClick={() => guard(api.cancelQueued(s.id))}>Cancel</Button></> : null}
-        {s.status === 'idle' && /^Stopped/.test(s.step) ? <Button variant="secondary" icon="play" onClick={() => guard(api.resumeSession(s.id))}>Resume</Button> : null}
+        {s.status === 'idle' && !s.remoteOwner && /^Stopped/.test(s.step) ? <Button variant="secondary" icon="play" onClick={() => guard(api.resumeSession(s.id))}>Resume</Button> : null}
         {s.status === 'working' ? <Tooltip side="bottom" wide content="Halt the agent's current turn but keep the session open, so you can redirect it with a new message.">{narrow ? <IconButton icon="pause" label="Pause" onClick={() => guard(api.interrupt(s.id))} /> : <Button variant="ghost" icon="pause" onClick={() => guard(api.interrupt(s.id))}>Pause</Button>}</Tooltip> : null}
-        {!s.archivedAt ? <Tooltip side="bottom" wide content="End the session entirely, discarding any pending prompts. You'd need to Resume to start it again.">{narrow ? <IconButton icon="stop" label="Stop" onClick={() => guard(api.stopSession(s.id))} /> : <Button variant="ghost" icon="stop" onClick={() => guard(api.stopSession(s.id))}>Stop</Button>}</Tooltip> : null}
+        {!s.archivedAt && !s.remoteOwner ? <Tooltip side="bottom" wide content="End the session entirely, discarding any pending prompts. You'd need to Resume to start it again.">{narrow ? <IconButton icon="stop" label="Stop" onClick={() => guard(api.stopSession(s.id))} /> : <Button variant="ghost" icon="stop" onClick={() => guard(api.stopSession(s.id))}>Stop</Button>}</Tooltip> : null}
         {push.commits && !s.worktreeGone ? <span title={push.tip}><Button variant="secondary" icon="cloud-arrow-up" loading={push.busy} onClick={push.push}>Push · {push.commits}</Button></span> : null}
         {!s.worktreeGone && !(s.free && !s.free.managed) ? <IconButton icon="clock-counter-clockwise" label="Checkpoints" onClick={() => setUI({ checkpointsOf: s.id })} /> : null}
         {s.agentSessionId && can(app, s, 'fork') && !s.worktreeGone && !s.free ? <IconButton icon="git-fork" label="Fork this session" onClick={() => setUI({ forking: { sessionId: s.id, index: null, text: '' } })} /> : null}
@@ -723,6 +725,7 @@ export function Session({ id, tab, setTab, themeKey, sub, file, line, msg }: { i
 
   let body: React.ReactNode;
   if (sub) body = <SubagentView s={s} subId={sub} />;
+  else if (s.remoteOwner && s.worktreeGone && (tab === 'code' || tab === 'changes')) body = <div style={{ ...gone, flex: 1 }}>The code is on {s.remoteOwner}. Take control of this session to bring it here.</div>;
   else if (s.worktreeGone && (tab === 'code' || tab === 'changes')) body = <div style={{ ...gone, flex: 1 }}>The worktree was removed after this was merged{s.mergedInto ? ` into ${s.mergedInto}` : ''}, so there is no code to browse here. The conversation is kept.</div>;
   else if (tab === 'code') body = <CodeView wsId={s.id} session={s} branch={s.branch} themeKey={themeKey} open={file ? { path: file, line } : undefined} />;
   else if (tab === 'changes') body = <Changes s={s} />;
@@ -742,7 +745,7 @@ export function Session({ id, tab, setTab, themeKey, sub, file, line, msg }: { i
               {s.status === 'idle' && s.step ? <div style={{ marginLeft: 44, marginRight: 12, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{s.step}</div> : null}
             </>} />
         </div>
-        {s.worktreeGone ? <div style={{ ...gone, padding: '0 20px 16px' }}>Merged{s.mergedInto ? ` into ${s.mergedInto}` : ''} and archived. The worktree was removed, so this session cannot be continued.</div> : <Composer s={s} inputRef={input} />}
+        {s.remoteOwner ? <div style={{ ...gone, padding: '0 20px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>This session belongs to {s.remoteOwner}, so this copy is read-only.<Button variant="primary" icon="hand-grabbing" onClick={() => guard(api.takeControl(s.id))}>Take control</Button></div> : s.worktreeGone ? <div style={{ ...gone, padding: '0 20px 16px' }}>Merged{s.mergedInto ? ` into ${s.mergedInto}` : ''} and archived. The worktree was removed, so this session cannot be continued.</div> : <Composer s={s} inputRef={input} />}
       </div>
       <UsagePanel s={s} />
     </div>

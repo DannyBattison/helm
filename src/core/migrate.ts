@@ -50,14 +50,17 @@ export async function writeEntry(dest: string, f: FileEntry) {
   await writeFile(dest, f.enc === 'base64' ? Buffer.from(f.data, 'base64') : f.data);
 }
 
-/** A session from another instance, made safe to run here: stopped, and flagged when its worktree is not on this machine. If `owner` is given it is running over there. */
+/**
+ * A session from another instance, made safe to run here: stopped, and flagged when its worktree is not on this machine. If `owner` is given
+ * the session is another instance's to control: this copy is read-only until it is taken over, and shows where it is running if it was.
+ */
 export function adopt(s: any, owner?: string) {
   s.subagents ||= [];
   for (const a of s.subagents) if (a.status === 'working') { a.status = 'stopped'; a.endedAt = a.endedAt ?? Date.now(); }
   if (s.status === 'working' || s.status === 'attention') {
     s.status = 'idle'; s.step = owner ? `Running on ${owner}` : 'Imported'; s.ask = undefined; s.queued = undefined;
-    if (owner) s.remoteOwner = owner;
   }
+  if (owner) s.remoteOwner = owner; else delete s.remoteOwner;
   if (!s.worktreeGone && s.worktree && !existsSync(s.worktree) && !(s.free && !s.free.managed)) s.worktreeGone = true;
   return s;
 }
@@ -114,6 +117,8 @@ export async function applyImport(store: Store, text: string): Promise<ImportRes
   for (const s of Array.isArray(inc.sessions) ? inc.sessions : []) {
     if (!s?.id || known.has(s.id)) continue;
     adopt(s);
+    // An import is a move: the sessions are this installation's now.
+    s.owner = { id: d.instanceId, at: Date.now() };
     d.sessions.push(s); known.add(s.id); result.sessions++;
   }
 

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { AutomationSeen } from '../shared/automations';
 import type { ActivityEvent, AutomatedAgent, AuditEntry, DailyUsage, Lifetime, ModelAlias, PlanUsage, Repo, Session, Settings, TranscriptEvent, User } from '../shared/types';
 import { defaultOutbound } from '../shared/outbound';
+import { defaultSyncWhat, syncableSettings } from '../shared/sync';
 import type { Tombstone } from '../shared/sync';
 import { DEFAULT_ALWAYS_ASK, dayStart, home, uid, weekStart } from './util';
 
@@ -120,7 +121,8 @@ export const defaultSettings = (): Settings => ({
   collapseTools: false,
   uiScale: 100,
   activityDays: 0,
-  timeFormat: '24'
+  timeFormat: '24',
+  syncWhat: defaultSyncWhat()
 });
 
 interface Persisted {
@@ -150,10 +152,12 @@ interface Persisted {
   instanceId: string;
   /** What was deleted, so a sync deletes it on the other instances too rather than bringing it back. Dropped after 30 days. */
   deleted: Tombstone[];
+  /** When the settings that sync last changed on any instance. */
+  settingsAt: number;
 }
 
 export class Store {
-  data: Persisted = { user: null, repos: [], sessions: [], activity: [], settings: defaultSettings(), usage: [], plan: { at: 0 }, plans: {}, totals: {}, extArchive: {}, fx: { rates: {}, at: 0 }, audit: [], daily: [], automations: [], automationSeen: {}, instanceId: '', deleted: [] };
+  data: Persisted = { user: null, repos: [], sessions: [], activity: [], settings: defaultSettings(), usage: [], plan: { at: 0 }, plans: {}, totals: {}, extArchive: {}, fx: { rates: {}, at: 0 }, audit: [], daily: [], automations: [], automationSeen: {}, instanceId: '', deleted: [], settingsAt: 0 };
   private transcripts = new Map<string, TranscriptEvent[]>();
   private dir = '';
   private timer: NodeJS.Timeout | null = null;
@@ -164,6 +168,7 @@ export class Store {
   /** Called (not debounced) when something changed here by itself: a record edited, a transcript saved. Not for what a sync brought in. */
   onLocalChange: (() => void) | null = null;
   private fps = new Map<string, string>();
+  private settingsFp = '';
 
   /**
    * Records something that happened. Every event goes on the end of activity.jsonl, which is never rewritten, so the log can be long
@@ -244,6 +249,10 @@ export class Store {
       this.data.automationSeen ||= {};
       this.data.deleted ||= [];
       this.data.instanceId ||= uid() + uid();
+      this.data.settings.syncWhat = { ...defaultSyncWhat(), ...this.data.settings.syncWhat };
+      this.data.settingsAt ||= 1;
+      // Sessions from before sync belong to this installation.
+      for (const x of this.data.sessions) x.owner ||= { id: this.data.instanceId, at: x.startedAt || 1 };
       this.seedRecords();
       // The copy list used to be one comma-separated line. It is now gitignore patterns, one per line.
       if (!/[\r\n]/.test(this.data.settings.copyFiles) && this.data.settings.copyFiles.includes(',')) this.data.settings.copyFiles = this.data.settings.copyFiles.split(',').map((x) => x.trim()).filter(Boolean).join('\n');
@@ -278,6 +287,7 @@ export class Store {
       a.updatedAt ||= k.startsWith('session:') ? Math.max(a.startedAt || 0, a.endedAt || 0, a.mergedAt || 0, a.archivedAt || 0, a.timeline?.[a.timeline.length - 1]?.t || 0) : a.addedAt || 1;
       this.fps.set(k, this.fingerprint(x));
     }
+    this.settingsFp = JSON.stringify(syncableSettings(this.data.settings));
   }
   /** Stamps the records that changed since the last look. Returns whether any did. */
   private stamp(): boolean {
@@ -292,10 +302,14 @@ export class Store {
       any = true;
     }
     for (const k of this.fps.keys()) if (!live.has(k)) this.fps.delete(k);
+    const sfp = JSON.stringify(syncableSettings(this.data.settings));
+    if (sfp !== this.settingsFp) { this.settingsFp = sfp; this.data.settingsAt = Date.now(); any = true; }
     return any;
   }
   /** A record that came from another instance is what it is: don't count it as edited here. */
   markSynced(kind: 'session' | 'repo' | 'automation', x: { id: string }) { this.fps.set(kind + ':' + x.id, this.fingerprint(x)); }
+  /** Settings that came from another instance are not an edit made here. */
+  markSettingsSynced() { this.settingsFp = JSON.stringify(syncableSettings(this.data.settings)); }
   /** Remembers a deletion for sync. */
   tombstone(kind: Tombstone['kind'], id: string, at = Date.now(), quiet = false) {
     const d = this.data.deleted;

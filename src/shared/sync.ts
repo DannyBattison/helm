@@ -3,7 +3,46 @@
  * to pull and what to push. A sync can be started by hand, or by the doorbell of a standing connection (see `src/core/sync.ts`). Nothing
  * here touches the disk or the network.
  */
-export const SYNC_VERSION = 2;
+export const SYNC_VERSION = 3;
+/** What a sync can carry, each turned on or off in the settings of the instance doing the syncing (and of the one receiving). */
+export const SYNC_CATEGORIES = [
+  { id: 'sessions', label: 'Sessions', desc: 'Agents and their conversations. They arrive read-only until you take control of them.', on: true },
+  { id: 'repos', label: 'Repositories', desc: 'The repositories you added and their per-repository settings and fixtures. Each machine keeps its own clone.', on: true },
+  { id: 'automations', label: 'Automated agents', desc: 'Scheduled and event-driven agents.', on: true },
+  { id: 'settings', label: 'Settings', desc: 'Preferences, budgets, shortcuts and MCP servers. Not paths, keys, environment variables or anything about this machine.', on: true },
+  { id: 'usage', label: 'Usage and audit history', desc: 'What was spent and what agents and you did.', on: true },
+  { id: 'files', label: 'Repository artifacts', desc: 'Files uploaded for repositories.', on: true },
+  { id: 'branches', label: 'Branches', desc: 'Push the branch of each session that is yours to GitHub, so another machine can take it over. Off by default: it publishes work in progress.', on: false },
+  { id: 'worktrees', label: 'Worktrees', desc: 'Also push a snapshot of uncommitted work (a hidden ref on GitHub), so taking control picks up exactly where it was.', on: false }
+] as const;
+export type SyncCategory = (typeof SYNC_CATEGORIES)[number]['id'];
+export type SyncWhat = Record<SyncCategory, boolean>;
+export const defaultSyncWhat = (): SyncWhat => Object.fromEntries(SYNC_CATEGORIES.map((c) => [c.id, c.on])) as SyncWhat;
+/** The ref a session's snapshot (uncommitted work included) is pushed to on GitHub. */
+export const snapshotRef = (sessionId: string) => `refs/helm/sync/${sessionId}`;
+/** Settings that describe this machine or hold something private, and so never travel. */
+export const LOCAL_SETTINGS = new Set([
+  'claudePath', 'codexPath', 'worktreeRoot', 'freeRoot', 'cloneRoot', 'terminalShell', 'terminalShellCustom', 'companionEnabled', 'companionUrl', 'companionControl',
+  'p2pEnabled', 'p2pPort', 'p2pStun', 'p2pAddress', 'p2pPortMap', 'tray', 'autoUpdate', 'syncEnabled', 'syncWhat', 'startAtLogin', 'startMinimised', 'keepAwake',
+  'openIn', 'uiScale', 'agentEnv', 'outbound'
+]);
+/** The settings that travel: everything but `LOCAL_SETTINGS`, and MCP servers without their environment and headers (which can hold keys). */
+export function syncableSettings(st: Record<string, any>): Record<string, any> {
+  const out: Record<string, any> = {};
+  for (const [k, v] of Object.entries(st)) if (!LOCAL_SETTINGS.has(k)) out[k] = v;
+  if (Array.isArray(out.mcpServers)) out.mcpServers = out.mcpServers.map((m: any) => ({ ...m, env: {}, headers: {} }));
+  return out;
+}
+/** Settings from elsewhere laid over ours: this machine's own settings stay, and an MCP server of the same name keeps its local environment and headers. */
+export function mergeSettings<T extends Record<string, any>>(mine: T, theirs: Record<string, any>): T {
+  const next: Record<string, any> = { ...mine };
+  for (const [k, v] of Object.entries(syncableSettings(theirs))) if (k in mine) next[k] = v;
+  if (Array.isArray(next.mcpServers)) {
+    const have = new Map<string, any>((Array.isArray(mine.mcpServers) ? mine.mcpServers : []).map((m: any) => [m.name, m]));
+    next.mcpServers = next.mcpServers.map((m: any) => ({ ...m, env: have.get(m.name)?.env ?? {}, headers: have.get(m.name)?.headers ?? {} }));
+  }
+  return next as T;
+}
 /** The lists of records that have no id of their own: told apart by a short hash of their content. */
 export const SYNC_LISTS = ['usage', 'audit', 'daily'] as const;
 export type SyncList = (typeof SYNC_LISTS)[number];
@@ -22,6 +61,10 @@ export interface SyncManifest {
   repos: Record<string, number>;
   automations: Record<string, number>;
   sessions: Record<string, number>;
+  /** Session id to when the instance that controls it took control. A later takeover beats a later edit. */
+  owners: Record<string, number>;
+  /** When the settings last changed on any instance. */
+  settings: number;
   /** Keyed by a session's id, or `<id>~<subagent>`. */
   transcripts: Record<string, TranscriptInfo>;
   deleted: Tombstone[];
@@ -38,10 +81,11 @@ export interface SyncWant {
   transcripts: Record<string, number>;
   lists: Record<SyncList, string[]>;
   files: string[];
+  settings: boolean;
 }
 
-export const emptyWant = (): SyncWant => ({ repos: [], automations: [], sessions: [], transcripts: {}, lists: { usage: [], audit: [], daily: [] }, files: [] });
-export const wantCount = (w: SyncWant) => w.repos.length + w.automations.length + w.sessions.length + Object.keys(w.transcripts).length + w.files.length + SYNC_LISTS.reduce((n, k) => n + w.lists[k].length, 0);
+export const emptyWant = (): SyncWant => ({ repos: [], automations: [], sessions: [], transcripts: {}, lists: { usage: [], audit: [], daily: [] }, files: [], settings: false });
+export const wantCount = (w: SyncWant) => w.repos.length + w.automations.length + w.sessions.length + Object.keys(w.transcripts).length + w.files.length + (w.settings ? 1 : 0) + SYNC_LISTS.reduce((n, k) => n + w.lists[k].length, 0);
 
 const missing = (have: Iterable<string>, from: string[]) => { const h = new Set(have); return from.filter((x) => !h.has(x)); };
 
@@ -70,7 +114,17 @@ export function planSync(local: SyncManifest, remote: SyncManifest, runningHere:
   records('repo', local.repos, remote.repos, pairs.repos);
   records('automation', local.automations, remote.automations, pairs.automations);
   records('session', local.sessions, remote.sessions, pairs.sessions);
-  pull.sessions = pull.sessions.filter((id) => !runningHere(id));
+  // Who controls a session decides before when it was edited: the later takeover wins, and it can take a session away from the instance running it.
+  const lo = (id: string) => local.owners?.[id] ?? 0, ro = (id: string) => remote.owners?.[id] ?? 0;
+  const pullIt = new Set(pull.sessions), pushIt = new Set(push.sessions);
+  for (const id of new Set([...Object.keys(local.sessions), ...Object.keys(remote.sessions)])) {
+    if (ro(id) === lo(id) || !live('session', id, Math.max(local.sessions[id] ?? 0, remote.sessions[id] ?? 0))) continue;
+    if (ro(id) > lo(id) && remote.sessions[id] !== undefined) { pullIt.add(id); pushIt.delete(id); } else if (lo(id) > ro(id) && local.sessions[id] !== undefined) { pushIt.add(id); pullIt.delete(id); }
+  }
+  pull.sessions = [...pullIt].filter((id) => !runningHere(id) || ro(id) > lo(id));
+  push.sessions = [...pushIt];
+  if ((remote.settings ?? 0) > (local.settings ?? 0)) pull.settings = true;
+  if ((local.settings ?? 0) > (remote.settings ?? 0)) push.settings = true;
 
   for (const k of SYNC_LISTS) { pull.lists[k] = missing(local.lists[k], remote.lists[k]); push.lists[k] = missing(remote.lists[k], local.lists[k]); }
   pull.files = missing(Object.keys(local.files), Object.keys(remote.files)); push.files = missing(Object.keys(remote.files), Object.keys(local.files));
@@ -80,11 +134,13 @@ export function planSync(local: SyncManifest, remote: SyncManifest, runningHere:
     const sessionAlive = (m: SyncManifest) => m.sessions[sid] !== undefined && live('session', sid, m.sessions[sid]);
     if (l && r && l.h === r.h) continue;
     let dir: 'pull' | 'push' | null;
+    const takeover = (remote.owners?.[sid] ?? 0) !== (local.owners?.[sid] ?? 0);
     if (!l) dir = 'pull'; else if (!r) dir = 'push';
+    else if (takeover) dir = (remote.owners?.[sid] ?? 0) > (local.owners?.[sid] ?? 0) ? 'pull' : 'push';
     else if (r.n !== l.n) dir = r.n > l.n ? 'pull' : 'push';
     // Same length, different content: whoever's session changed last has the right one.
     else dir = (remote.sessions[sid] ?? 0) > (local.sessions[sid] ?? 0) ? 'pull' : (remote.sessions[sid] ?? 0) < (local.sessions[sid] ?? 0) ? 'push' : null;
-    if (dir === 'pull' && !runningHere(sid) && sessionAlive(remote)) pull.transcripts[key] = Math.max(0, (l?.n ?? 0) - TRANSCRIPT_OVERLAP);
+    if (dir === 'pull' && (!runningHere(sid) || (remote.owners?.[sid] ?? 0) > (local.owners?.[sid] ?? 0)) && sessionAlive(remote)) pull.transcripts[key] = Math.max(0, (l?.n ?? 0) - TRANSCRIPT_OVERLAP);
     if (dir === 'push' && sessionAlive(local)) push.transcripts[key] = Math.max(0, (r?.n ?? 0) - TRANSCRIPT_OVERLAP);
   }
   return { pull, push };
@@ -99,8 +155,8 @@ export function chunkWant(w: SyncWant, n = 10): SyncWant[] {
   return out.filter((x) => wantCount(x) > 0);
 }
 
-export interface SyncCounts { sessions: number; repos: number; automations: number; records: number; files: number; events: number; deleted: number }
-export const emptyCounts = (): SyncCounts => ({ sessions: 0, repos: 0, automations: 0, records: 0, files: 0, events: 0, deleted: 0 });
+export interface SyncCounts { sessions: number; repos: number; automations: number; records: number; files: number; events: number; deleted: number; settings: number; branches: number }
+export const emptyCounts = (): SyncCounts => ({ sessions: 0, repos: 0, automations: 0, records: 0, files: 0, events: 0, deleted: 0, settings: 0, branches: 0 });
 export const countTotal = (c: SyncCounts) => Object.values(c).reduce((a, b) => a + b, 0);
 export interface SyncPeerResult { at: number; ok: boolean; error?: string; pulled: SyncCounts; pushed: SyncCounts }
 export interface SyncPeerInfo {

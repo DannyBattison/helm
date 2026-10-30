@@ -6,7 +6,7 @@ import { SyncService } from '../src/core/sync';
 import { Store } from '../src/core/store';
 import { chunkWant, emptyWant, planSync } from '../src/shared/sync';
 
-const manifest = (o: any = {}) => ({ v: 2, instance: { id: 'x', name: 'x' }, repos: {}, automations: {}, sessions: {}, transcripts: {}, deleted: [], lists: { usage: [], audit: [], daily: [] }, files: {}, ...o });
+const manifest = (o: any = {}) => ({ v: 3, instance: { id: 'x', name: 'x' }, repos: {}, automations: {}, sessions: {}, owners: {}, settings: 0, transcripts: {}, deleted: [], lists: { usage: [], audit: [], daily: [] }, files: {}, ...o });
 
 describe('planSync', () => {
   it('pulls what changed later there, pushes what changed later here, leaves equals', () => {
@@ -39,6 +39,21 @@ describe('planSync', () => {
     expect(planSync(local, remote, () => true).pull.transcripts).toEqual({});
     expect(planSync(local, remote, () => true).pull.sessions).toEqual([]);
   });
+  it('lets the later takeover decide, even over a later edit and a session running here', () => {
+    const local = manifest({ sessions: { s: 100 }, owners: { s: 1 }, transcripts: { s: { n: 5, h: 'a' } } });
+    const remote = manifest({ sessions: { s: 10 }, owners: { s: 7 }, transcripts: { s: { n: 3, h: 'b' } } });
+    const p = planSync(local, remote, () => true);
+    expect(p.pull.sessions).toEqual(['s']);
+    expect(p.push.sessions).toEqual([]);
+    expect(Object.keys(p.pull.transcripts)).toEqual(['s']);
+    const q = planSync(remote, local, () => true);
+    expect(q.push.sessions).toEqual(['s']);
+  });
+  it('pulls settings that changed later there, and sends ones changed later here', () => {
+    expect(planSync(manifest({ settings: 1 }), manifest({ settings: 2 })).pull.settings).toBe(true);
+    expect(planSync(manifest({ settings: 3 }), manifest({ settings: 2 })).push.settings).toBe(true);
+    expect(planSync(manifest({ settings: 2 }), manifest({ settings: 2 })).pull.settings).toBe(false);
+  });
   it('splits sessions, then transcripts, into chunks', () => {
     const w = { ...emptyWant(), repos: ['r'], sessions: ['1', '2', '3'], transcripts: { '1': 0, '2': 0, '3': 0 } };
     const c = chunkWant(w, 2);
@@ -53,12 +68,12 @@ const mk = async (running: string[] = [], serve = true) => {
   const store = new Store();
   const dir = await mkdtemp(join(tmpdir(), 'helm-sync-'));
   await store.load(dir);
-  const events: any[] = [];
-  const svc = new SyncService(store, () => ({ dataDir: dir }), { isRunning: (id) => running.includes(id), changed: () => undefined, canServe: () => serve, emitTranscript: (...a) => events.push(a), name: () => 'box-' + dir.slice(-4) });
+  const events: any[] = [], released: string[] = [];
+  const svc = new SyncService(store, () => ({ dataDir: dir }), { isRunning: (id) => running.includes(id), changed: () => undefined, canServe: () => serve, emitTranscript: (...a) => events.push(a), name: () => 'box-' + dir.slice(-4), release: async (id) => { released.push(id); } });
   await svc.load();
-  return { store, svc, events, dir };
+  return { store, svc, events, dir, released };
 };
-const session = (id: string, extra: any = {}) => ({ id, repoId: 'o/r', status: 'idle', worktree: '/elsewhere/' + id, subagents: [], timeline: [{ t: 10, status: 'idle' }], startedAt: 1, updatedAt: 10, ...extra }) as any;
+const session = (id: string, extra: any = {}) => ({ id, repoId: 'o/r', status: 'idle', worktree: '/elsewhere/' + id, subagents: [], timeline: [{ t: 10, status: 'idle' }], startedAt: 1, updatedAt: 10, owner: { id: 'origin', at: 1 }, ...extra }) as any;
 const tx = async (x: { store: Store }, key: string, evs: any[]) => writeFile(join(x.store.root, 'transcripts', key + '.json'), JSON.stringify(evs));
 const link = (server: Awaited<ReturnType<typeof mk>>) => vi.stubGlobal('fetch', async (url: string, init: any) => {
   if (!server.svc.authorised(init.headers.Authorization)) return new Response('{}', { status: 401 });
@@ -107,7 +122,7 @@ describe('syncing two instances', () => {
 
   it('carries a live session as it grows, including a result patched into an earlier slot', async () => {
     const { server, client } = await pair();
-    server.store.data.sessions.push(session('s', { status: 'working', updatedAt: 10 }));
+    server.store.data.sessions.push(session('s', { status: 'working', updatedAt: 10, owner: { id: server.store.data.instanceId, at: 1 } }));
     await tx(server, 's', [{ k: 'tool', r: null }, { k: 'text', t: 'a' }]);
     await client.svc.run();
     const mine = client.store.data.sessions[0];
@@ -120,11 +135,68 @@ describe('syncing two instances', () => {
     expect(JSON.parse(await readFile(join(client.store.root, 'transcripts', 's.json'), 'utf8'))).toEqual([{ k: 'tool', r: 'done' }, { k: 'text', t: 'a' }, { k: 'text', t: 'b' }]);
     expect(client.events.map((e) => e[1])).toContain(2);
 
-    // It stops over there: the copy here is free to continue.
+    // It stops over there; the copy here stays read-only until control is taken.
     server.store.data.sessions[0].status = 'idle';
     server.store.data.sessions[0].updatedAt = 40;
     await client.svc.run();
-    expect(client.store.data.sessions[0].remoteOwner).toBeUndefined();
+    expect(client.store.data.sessions[0]).toMatchObject({ status: 'idle', remoteOwner: expect.stringMatching(/^box-/) });
+  });
+
+  it('lets a takeover beat later edits, and stops the session where it was running', async () => {
+    const { server, client } = await pair();
+    const sid = server.store.data.instanceId;
+    server.store.data.sessions.push(session('s', { status: 'working', updatedAt: 10, owner: { id: sid, at: 1 } }));
+    await client.svc.run();
+    expect(client.store.data.sessions[0].remoteOwner).toBeTruthy();
+    const mine = client.store.data.sessions[0];
+    mine.owner = { id: client.store.data.instanceId, at: 500 }; mine.remoteOwner = undefined; mine.updatedAt = 20; mine.step = 'taken';
+    // The server's copy keeps changing while it runs, and is newer by edit time.
+    server.store.data.sessions[0].updatedAt = 900;
+    const run = server.svc as any;
+    run.ops.isRunning = (id: string) => id === 's';
+    await client.svc.run();
+    expect(server.released).toEqual(['s']);
+    expect(server.store.data.sessions[0]).toMatchObject({ step: 'taken', owner: { id: client.store.data.instanceId }, remoteOwner: expect.stringMatching(/^box-/) });
+  });
+
+  it('syncs settings but not paths, environment variables or the machine-specific ones', async () => {
+    const { server, client } = await pair();
+    server.store.data.settings.theme = 'light';
+    server.store.data.settings.cloneRoot = '/srv/clones';
+    server.store.data.settings.agentEnv = 'SECRET=1';
+    server.store.data.settings.mcpServers = [{ name: 'm', type: 'stdio', command: 'x', args: [], env: { KEY: 'srv' }, url: '', headers: { A: 'srv' } }];
+    server.store.data.settingsAt = 100;
+    client.store.data.settings.cloneRoot = '/me/clones';
+    client.store.data.settings.mcpServers = [{ name: 'm', type: 'stdio', command: 'old', args: [], env: { KEY: 'mine' }, url: '', headers: {} }];
+    client.store.data.settingsAt = 5;
+    const [r] = await client.svc.run();
+    expect(r.result.pulled.settings).toBe(1);
+    const st = client.store.data.settings;
+    expect(st.theme).toBe('light');
+    expect(st.cloneRoot).toBe('/me/clones');
+    expect(st.agentEnv).not.toContain('SECRET');
+    expect(st.mcpServers[0]).toMatchObject({ command: 'x', env: { KEY: 'mine' }, headers: {} });
+    // A later choice here goes the other way.
+    client.store.data.settings.theme = 'dark';
+    await client.store.flush();
+    await client.svc.run();
+    expect(server.store.data.settings.theme).toBe('dark');
+    expect(server.store.data.settings.cloneRoot).toBe('/srv/clones');
+    expect(server.store.data.settings.mcpServers[0].env).toEqual({ KEY: 'srv' });
+  });
+
+  it('leaves out what is turned off here', async () => {
+    const { server, client } = await pair();
+    server.store.data.sessions.push(session('s'));
+    server.store.data.repos.push({ id: 'o/r', owner: 'o', name: 'r', localPath: '/srv/r', cap: 5, updatedAt: 1 } as any);
+    client.store.data.settings.syncWhat.sessions = false;
+    await client.svc.run();
+    expect(client.store.data.sessions).toHaveLength(0);
+    expect(client.store.data.repos).toHaveLength(1);
+    client.store.data.settings.syncWhat.sessions = true;
+    server.store.data.settings.syncWhat.sessions = false;
+    await client.svc.run();
+    expect(client.store.data.sessions).toHaveLength(0);
   });
 
   it('later change wins for sessions, repositories and automated agents', async () => {

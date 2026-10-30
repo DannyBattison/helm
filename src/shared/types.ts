@@ -251,6 +251,8 @@ export interface Session {
   updatedAt?: number;
   /** Set on a copy synced from another instance where the session is running: the name of that instance. It cannot be continued here until it stops there. */
   remoteOwner?: string;
+  /** The instance that controls this session. Others hold a read-only copy until one takes control. `at` is when it took control; `name` is for display. Absent only in sessions from before sync. */
+  owner?: { id: string; name?: string; at: number };
   /** More repositories this session works in, each with a worktree and branch of its own. Each can get its own pull request. */
   extras?: ExtraRepo[];
   /** Files uploaded for this session alone, kept in `dir` outside the worktree. */
@@ -548,6 +550,8 @@ export interface Settings {
   /** Connect to a helm-companion server so the website can show this app's agents and answer them. Off until turned on. */
   /** Lets other helm instances sync with this one, using the sync key. Only a hosted server can be reached, so the desktop app ignores it. */
   syncEnabled: boolean;
+  /** What this instance sends and takes in when syncing (see `SYNC_CATEGORIES`). */
+  syncWhat: import('./sync').SyncWhat;
   companionEnabled: boolean;
   /** The companion server, for example `https://companion.example.com`. */
   companionUrl: string;
@@ -1382,6 +1386,8 @@ export interface HelmApi {
   syncAddPeer(name: string, url: string, key: string): Promise<void>;
   /** Keeps a server in step all the time, over a standing connection, rather than only when asked. */
   syncSetContinuous(id: string, on: boolean): Promise<void>;
+  /** Makes this instance the one that controls a session synced from another, which then holds a read-only copy. */
+  takeControl(sessionId: string): Promise<void>;
   syncRemovePeer(id: string): Promise<void>;
   /** Compares history with one other instance (or all of them) and pulls and pushes what differs. */
   syncRun(peerId?: string): Promise<{ id: string; name: string; result: import('./sync').SyncPeerResult }[]>;

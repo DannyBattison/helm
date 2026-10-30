@@ -1,5 +1,6 @@
 import React from 'react';
 import type { CustomShortcut, GotoTarget, ModelAlias, NewSessionPreset, PermMode, Settings as SettingsT } from '@shared/types';
+import { SYNC_CATEGORIES } from '@shared/sync';
 import type { SyncStatus } from '@shared/sync';
 import { api, platform } from '../api';
 import { billingOf, defaultChoice, livePlan, modelChoices, planBackends, splitChoice, theme as resolveTheme, untilReset } from '../lib';
@@ -71,7 +72,7 @@ function SyncSection({ st }: { st: SettingsT }) {
   };
   const peers = status?.peers || [];
   return <>
-    <H sub="Keep the history of several helm instances (say your desktop and a cloud server) in step. It runs when you press the button, and all the time for servers you turn Keep in sync on for.">Sync</H>
+    <H sub="Keep several helm instances (say your desktop and a cloud server) in step. It runs when you press the button, and all the time for servers you turn Keep in sync on for. Keys, environment variables and paths on this machine never leave it. A synced session is read-only on every instance but the one that controls it; Take control moves it.">Sync</H>
     {status?.canServe ? <>
       <SettingRow title="Let other instances sync with this one" desc="Off by default. When on, an instance that has the key below can read and add sessions, transcripts and usage here. Use HTTPS in front of this server.">
         <Switch checked={st.syncEnabled} onChange={(v: boolean) => set({ syncEnabled: v })} />
@@ -83,6 +84,11 @@ function SyncSection({ st }: { st: SettingsT }) {
         <Button size="sm" icon="arrows-clockwise" onClick={() => setConfirmRegen(true)}>Regenerate</Button>
       </SettingRow> : null}
     </> : null}
+    {SYNC_CATEGORIES.map((c) => (
+      <SettingRow key={c.id} title={c.label} desc={c.desc}>
+        <Switch checked={st.syncWhat?.[c.id] ?? c.on} onChange={(v: boolean) => set({ syncWhat: { ...st.syncWhat, [c.id]: v } })} />
+      </SettingRow>
+    ))}
     <SettingRow title="Servers to sync with" desc={status?.canServe ? 'Another helm server and its sync key.' : 'A helm server and the sync key from its settings. This app has no address of its own, so it starts every sync and other instances cannot sync into it.'}>
       <Button icon="arrows-clockwise" disabled={!peers.length || !!busy} onClick={() => void run()}>{busy === 'all' ? 'Syncing…' : 'Sync all history'}</Button>
     </SettingRow>
