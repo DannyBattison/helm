@@ -1,4 +1,5 @@
 import { execFile, execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -10,7 +11,11 @@ export function run(cmd: string, args: string[], opts: { cwd?: string; env?: Nod
   return new Promise((resolve, reject) => {
     const child = execFile(cmd, args, { cwd: opts.cwd, env: opts.env ?? process.env, maxBuffer: 256 * 1024 * 1024, timeout: opts.timeout, windowsHide: true }, (err, stdout, stderr) => {
       if (err) {
-        const e: any = new Error((stderr || stdout || err.message).toString().trim());
+        let msg = (stderr || stdout || err.message).toString().trim();
+        // Node reports a missing working folder as "spawn <cmd> ENOENT" too, which reads as if the program were missing.
+        if ((err as any).code === 'ENOENT' && opts.cwd && !existsSync(opts.cwd)) msg = `The folder ${opts.cwd} does not exist (running ${cmd}). If it is a repository, it may have been moved or deleted.`;
+        else if ((err as any).code === 'ENOENT') msg = `${cmd} was not found. Install it, or make sure it is on your PATH, then restart helm.`;
+        const e: any = new Error(msg);
         e.code = (err as any).code;
         return reject(e);
       }

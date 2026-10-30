@@ -235,6 +235,8 @@ export class SessionManager {
     } else {
       branch = st.branchPrefix + id;
       wt = join(expandHome(st.worktreeRoot), repo!.name, id);
+      // A repository that arrived by sync has no clone on this machine yet.
+      if (!(await G.fileExists(repo!.localPath))) await G.clone(`https://github.com/${repo!.id}.git`, repo!.localPath);
       if (st.fetchBeforeSession) await G.git(repo!.localPath, 'fetch', 'origin', '--prune').catch(() => undefined);
       // `main` means the local branch, `origin/main` the one on GitHub. A bare name that only exists on GitHub falls back to it.
       const isLocal = !input.base.startsWith('origin/') && (await G.gitOk(repo!.localPath, 'rev-parse', '--verify', '--quiet', 'refs/heads/' + input.base));

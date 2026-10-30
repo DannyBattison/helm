@@ -8,7 +8,7 @@ import type { Host } from './host';
 import { adopt, readEntry, target, walk, writeEntry } from './migrate';
 import type { FileEntry } from './migrate';
 import type { Store } from './store';
-import { uid } from './util';
+import { expandHome, uid } from './util';
 
 /**
  * Keeping helm instances' history in step. A sync is started by one side, which asks the other for a manifest of what it holds, works out
@@ -229,7 +229,8 @@ export class SyncService {
     for (const r of arr(b.repos)) {
       if (!r || typeof r.id !== 'string' || !isLive('repo', r)) continue;
       const i = d.repos.findIndex((x) => x.id === r.id);
-      if (i < 0) d.repos.push(r);
+      // The sender's folder is a path on its disk; here the repo goes where this machine keeps clones, and is cloned when first needed.
+      if (i < 0) d.repos.push({ ...r, localPath: join(expandHome(d.settings.cloneRoot), String(r.owner), String(r.name)) });
       else if (newer(r, d.repos[i])) d.repos[i] = { ...r, localPath: d.repos[i].localPath };
       else continue;
       this.store.markSynced('repo', d.repos.find((x) => x.id === r.id)!); n.repos++;
