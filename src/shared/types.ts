@@ -8,6 +8,7 @@ import type { SearchResults } from './search';
 import type { HealthIssue, MemoryUsage } from './memoryhealth';
 import type { Report } from './reports';
 import type { AutomatedAgent } from './automations';
+import type { Repeat, ScheduledPrompt } from './scheduled';
 export type { AutomatedAgent };
 export type { Workflow, WorkflowRun, Report, Conflict, Issue, SearchResults, HealthIssue, MemoryUsage };
 
@@ -321,6 +322,8 @@ export interface Session {
   review?: SelfReview;
   /** Waiting to start: for a free slot, or for another session to be merged. It has a worktree but the agent has not run. */
   queued?: { after?: string; since: number };
+  /** Prompts this session sends by itself at a set time, once or repeating. */
+  scheduled?: ScheduledPrompt[];
   /** The repository's fixtures are being copied into the worktree; the agent starts when this is done. */
   preparing?: { done: number; total: number };
   /**
@@ -1399,6 +1402,9 @@ export interface HelmApi {
   /** Starts a workflow that has `workflow_dispatch` on a branch. Inputs are checked against the workflow's own declaration first. */
   runWorkflow(repoId: string, workflowId: number, ref: string, inputs: Record<string, string>): Promise<void>;
   workflowRuns(repoId: string, workflowId: number): Promise<WorkflowRun[]>;
+  /** Has the session send a prompt at a time, and again on a repeat. */
+  schedulePrompt(sessionId: string, input: { text: string; at: number; repeat: Repeat }): Promise<void>;
+  cancelScheduledPrompt(sessionId: string, id: string): Promise<void>;
   startQueued(sessionId: string): Promise<void>;
   /** Takes a session out of the queue without starting it. */
   cancelQueued(sessionId: string): Promise<void>;
