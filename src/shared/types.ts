@@ -185,6 +185,9 @@ export interface PendingAsk {
   scope?: 'session' | 'repo' | 'plan';
   /** helm was closed while this waited, so the agent's process is gone. Answering it starts the session again. */
   orphaned?: boolean;
+  /** For plan asks: the window that paused the session, and when it resets (epoch seconds). */
+  planKey?: 'fiveHour' | 'weekly';
+  resetsAt?: number;
 }
 
 export interface Subagent {
@@ -322,6 +325,8 @@ export interface Session {
   review?: SelfReview;
   /** Waiting to start: for a free slot, or for another session to be merged. It has a worktree but the agent has not run. */
   queued?: { after?: string; since: number };
+  /** Stopped by a plan limit: helm tells it to continue once this window (of its agent) has reset. */
+  limitWait?: { key: 'fiveHour' | 'weekly'; resetsAt: number };
   /** Prompts this session sends by itself at a set time, once or repeating. */
   scheduled?: ScheduledPrompt[];
   /** The repository's fixtures are being copied into the worktree; the agent starts when this is done. */
@@ -529,6 +534,10 @@ export interface Settings {
   planPause5h: number;
   /** Pause agents at this percentage of the weekly subscription limit. 0 is off. */
   planPauseWeek: number;
+  /** After a plan window resets, tell agents that were paused at the limit (or stopped by it) to continue. */
+  autoWake: boolean;
+  /** Which window must reset first: the 5-hour session, or the week. A session stopped by the weekly limit always waits for the week. */
+  autoWakeWindow: 'fiveHour' | 'weekly';
   /** Most sessions allowed to work at once across all repositories. More wait in a queue. 0 is no limit. */
   maxRunning: number;
   notifyAttention: { desktop: boolean; sound: boolean };

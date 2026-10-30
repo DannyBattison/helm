@@ -207,6 +207,7 @@ const sessions = new SessionManager(store, {
   emitTranscript: (sessionId, index, event) => { send('transcript', { sessionId, index, event }); companion.onTranscript(sessionId, index, event); },
   toast: (t) => send('toast', t),
   claudePath: () => host.sdkClaudePath(),
+  refreshPlan: () => refreshPlan(),
   notify(kind, title, body, sessionId) {
     const st = store.data.settings;
     const repoId = sessions.get(sessionId)?.repoId || '';
@@ -376,6 +377,7 @@ export const api: HelmApi = {
     if (('p2pEnabled' in patch || 'p2pPort' in patch || 'p2pStun' in patch || 'p2pAddress' in patch || 'p2pPortMap' in patch) && host.companion !== false) p2p.apply();
     host.settingsChanged?.(patch);
     if ('planPause5h' in patch || 'planPauseWeek' in patch || 'billing' in patch) void sessions.enforcePlan();
+    if ('autoWake' in patch || 'autoWakeWindow' in patch) void sessions.wakeAfterReset();
     if ('enabledAgents' in patch) {
       // At least one agent stays on, and new sessions default to one that is.
       const known = registry.all().map((b) => b.id);
@@ -1416,6 +1418,7 @@ export async function start(h: Host) {
   setInterval(() => void tickScheduled(), 15_000);
   setInterval(() => void tickAutoMerge(), 60_000);
   setInterval(() => sessions.checkStalls(), 60_000);
+  setInterval(() => void sessions.wakeAfterReset(), 60_000);
   setInterval(() => void automations.tick(), 60_000);
   setTimeout(() => void automations.tick(), 30_000);
   setInterval(() => void refreshForecast(), 20_000);
