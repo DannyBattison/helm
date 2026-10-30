@@ -31,6 +31,8 @@ export interface Hooks {
   toast(t: { tone: 'ready' | 'attention' | 'error' | 'neutral'; title: string; description?: string; sessionId?: string; tab?: string }): void;
   notify(kind: 'attention' | 'ready' | 'failed', title: string, body: string, sessionId: string): void;
   claudePath(): string | undefined;
+  /** Asks the agents for their current plan usage. */
+  refreshPlan?(): Promise<void>;
 }
 
 /** Added to the system prompt: a subagent reports to the agent that started it, which keeps going. */
@@ -1135,6 +1137,7 @@ export class SessionManager {
       s.error = msg;
       await this.push(s.id, { k: 'note', tone: 'error', text: msg });
       this.setStatus(s, 'error', trunc(msg, 120));
+      this.markLimitWait(s);
       this.activity(s, 'error', 'failed: ' + trunc(msg, 80));
       this.hooks.notify('failed', `${s.id} failed`, trunc(msg, 120), s.id);
       return;
@@ -1199,7 +1202,7 @@ export class SessionManager {
           if (!s || this.backendOf(s).id !== be.id || s.status !== 'working' || s.ask || rt.budgetPaused) continue;
           const mins = Math.max(1, Math.round((w.resetsAt * 1000 - Date.now()) / 60000));
           const resets = mins >= 90 ? `${Math.round(mins / 60)}h` : `${mins}m`;
-          const ask: PendingAsk = { id: uid(), type: 'budget', scope: 'plan', at: Date.now(), head: `Paused at ${Math.round(w.util * 100)}% of your ${who}${name} plan usage`, note: `You set a limit of ${limit}%. The window resets in ${resets}. Continuing may use up the rest of your plan.` };
+          const ask: PendingAsk = { id: uid(), type: 'budget', scope: 'plan', planKey: key, resetsAt: w.resetsAt, at: Date.now(), head: `Paused at ${Math.round(w.util * 100)}% of your ${who}${name} plan usage`, note: `You set a limit of ${limit}%. The window resets in ${resets}. Continuing may use up the rest of your plan.` };
           rt.budgetPaused = true;
           rt.asks.set(ask.id, { ask, scope: 'plan', planKey: key, resolve: () => undefined });
           s.ask = ask;
@@ -1212,6 +1215,61 @@ export class SessionManager {
         break;
       }
     }
+  }
+
+  /** The window an agent at its limit waits for: the weekly one if that is full, otherwise the one the user chose. */
+  private waitKeyFor(bid: string, hit: 'fiveHour' | 'weekly'): 'fiveHour' | 'weekly' {
+    return hit === 'weekly' ? 'weekly' : this.store.data.settings.autoWakeWindow;
+  }
+
+  /** A session that failed while one of its agent's plan windows is full is stopped by the limit: remember what to wait for. */
+  private markLimitWait(s: Session) {
+    const bid = this.backendOf(s).id, plan = this.store.planOf(bid), now = Date.now();
+    const full = (['weekly', 'fiveHour'] as const).find((k) => plan[k] && plan[k]!.util >= 0.99 && plan[k]!.resetsAt * 1000 > now);
+    if (!full) return;
+    const key = this.waitKeyFor(bid, full), w = plan[key];
+    if (w && w.resetsAt * 1000 > now) s.limitWait = { key, resetsAt: w.resetsAt };
+  }
+
+  private waking = false;
+
+  /**
+   * With "wake agents after a reset" on: sessions paused at a plan limit, or stopped by reaching it, are told to continue
+   * once the window they were waiting for has reset. Runs every minute and when the setting changes.
+   */
+  async wakeAfterReset() {
+    if (!this.store.data.settings.autoWake || this.waking) return;
+    this.waking = true;
+    try {
+      const now = Date.now();
+      const due: { s: Session; bid: string; key: 'fiveHour' | 'weekly'; resetsAt: number; ask?: PendingAsk }[] = [];
+      for (const s of this.store.data.sessions) {
+        const bid = this.backendOf(s).id;
+        if (s.ask?.type === 'budget' && s.ask.scope === 'plan' && s.ask.planKey && s.ask.resetsAt) {
+          const key = this.waitKeyFor(bid, s.ask.planKey);
+          // The ask knows its own window; a longer wait is looked up in the current numbers.
+          const resetsAt = key === s.ask.planKey ? s.ask.resetsAt : this.store.planOf(bid)[key]?.resetsAt;
+          if (resetsAt) due.push({ s, bid, key, resetsAt, ask: s.ask });
+        } else if (s.limitWait && s.status === 'error') due.push({ s, bid, ...s.limitWait });
+      }
+      const late = due.filter((d) => d.resetsAt * 1000 + 1000 <= now);
+      if (!late.length) return;
+      // Make sure the numbers are current before acting on them.
+      await this.hooks.refreshPlan?.();
+      for (const d of late) {
+        const w = this.store.planOf(d.bid)[d.key];
+        // A report that still shows the old, full window means the reset has not been seen yet; give it two minutes of grace.
+        if (w && w.resetsAt === d.resetsAt && w.util >= 0.99 && now < d.resetsAt * 1000 + 120_000) continue;
+        const s = this.get(d.s.id);
+        if (!s) continue;
+        s.limitWait = undefined;
+        this.activity(s, 'session', 'plan usage reset; telling the agent to continue');
+        try {
+          if (d.ask && s.ask?.id === d.ask.id) await this.resolveAsk(s.id, d.ask.id, {});
+          else await this.send(s.id, composeMessage(this.cfg(s.repoId), 'planLimitReset'));
+        } catch { /* the session cannot be continued; it stays as it is */ }
+      }
+    } finally { this.waking = false; }
   }
 
   /** Sessions already warned about passing their budget, so the warning comes once. */

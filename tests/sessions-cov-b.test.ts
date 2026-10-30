@@ -633,6 +633,39 @@ describe('plan limits', () => {
     expect(s.ask).toBeUndefined();
   });
 
+  it('wakes a session paused at a plan limit once its window has reset, only when the setting is on', async () => {
+    sub();
+    store.data.settings.planPause5h = 50;
+    const id = await sm.create(input());
+    const s = sm.get(id)!;
+    store.data.plan.fiveHour = { util: 0.9, resetsAt: Math.floor(Date.now() / 1000) + 3600 };
+    await sm.enforcePlan();
+    expect(s.ask!.scope).toBe('plan');
+    expect(s.ask!.planKey).toBe('fiveHour');
+    await sm.wakeAfterReset();
+    expect(s.ask).toBeTruthy();
+    store.data.settings.autoWake = true;
+    await sm.wakeAfterReset();
+    expect(s.ask).toBeTruthy(); // not reset yet
+    s.ask!.resetsAt = Math.floor(Date.now() / 1000) - 10;
+    store.data.plan.fiveHour = { util: 0.02, resetsAt: Math.floor(Date.now() / 1000) + 18000 };
+    await sm.wakeAfterReset();
+    expect(s.ask).toBeUndefined();
+    expect(s.status).toBe('working');
+  });
+
+  it('a session stopped by the weekly limit waits for the week even when waking on the session window', async () => {
+    store.data.settings.autoWake = true;
+    store.data.settings.autoWakeWindow = 'fiveHour';
+    const id = await sm.create(input());
+    const s = sm.get(id)!;
+    const soon = Math.floor(Date.now() / 1000) + 3600;
+    store.data.plan.fiveHour = { util: 0.5, resetsAt: soon };
+    store.data.plan.weekly = { util: 1, resetsAt: soon + 86400 };
+    (sm as any).markLimitWait(s);
+    expect(s.limitWait).toEqual({ key: 'weekly', resetsAt: soon + 86400 });
+  });
+
   it('words the reset time in minutes or hours, and pauses on the weekly window', async () => {
     sub();
     store.data.settings.planPause5h = 0;

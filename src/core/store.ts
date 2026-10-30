@@ -56,6 +56,8 @@ export const defaultSettings = (): Settings => ({
   currencyDetected: false,
   planPause5h: 0,
   planPauseWeek: 0,
+  autoWake: false,
+  autoWakeWindow: 'fiveHour',
   maxRunning: 0,
   panelReplyCap: 6,
   notifyAttention: { desktop: true, sound: true },

@@ -781,6 +781,8 @@ export function Settings({ section }: { section?: string }) {
               </SettingRow>
               <SettingRow title="Pause agents at 5-hour usage" desc="Running sessions pause and wait in Needs you when the 5-hour window reaches this. You can continue anyway until it resets."><SegmentedControl size="sm" value={String(st.planPause5h)} onChange={(v: string) => set({ planPause5h: +v })} options={pctOptions} /></SettingRow>
               <SettingRow title="Pause agents at weekly usage" desc="The same for the weekly limit."><SegmentedControl size="sm" value={String(st.planPauseWeek)} onChange={(v: string) => set({ planPauseWeek: +v })} options={pctOptions} /></SettingRow>
+              <SettingRow title="Wake agents after a reset" desc="When a window resets, tell agents that were paused at a limit above, or stopped by reaching 100%, to continue. Works for every agent with plan windows."><Switch checked={st.autoWake} onChange={(v: boolean) => set({ autoWake: v })} /></SettingRow>
+              {st.autoWake ? <SettingRow title="Wake when this resets" desc="An agent stopped by the weekly limit always waits for the week."><SegmentedControl size="sm" value={st.autoWakeWindow} onChange={(v: string) => set({ autoWakeWindow: v as 'fiveHour' | 'weekly' })} options={[{ value: 'fiveHour', label: 'Session (5-hour)' }, { value: 'weekly', label: 'Week' }]} /></SettingRow> : null}
               <SettingRow title="Warn at" desc="Meters turn amber at this share of a window."><SegmentedControl size="sm" value={String(st.warnAt)} onChange={(v: string) => set({ warnAt: +v })} options={[{ value: '50', label: '50%' }, { value: '80', label: '80%' }, { value: '90', label: '90%' }]} /></SettingRow>
             </> : null}
             {showDollars ? <>
