@@ -33,7 +33,8 @@ export function findCodex(configured?: string): string {
   for (const d of dirs) { const f = join(d, name); if (existsSync(f)) return f; }
   return name;
 }
-type Notice = { method: string; params: Json };
+const isScript = (exe: string) => /\.[cm]?js$/i.test(exe);
+type Notice ={ method: string; params: Json };
 
 /** The server process and a request/response layer over it. */
 export class CodexServer {
@@ -53,7 +54,10 @@ export class CodexServer {
 
   private start(): Promise<void> {
     const exe = findCodex(this.paths.cli());
-    const p = spawn(exe, ['app-server'], { stdio: ['pipe', 'pipe', 'pipe'], env: process.env, shell: process.platform === 'win32' });
+    // A script (the test stand-in) runs under node; a shell would hand it to whatever app owns the extension.
+    const p = isScript(exe)
+      ? spawn(process.execPath, [exe, 'app-server'], { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } })
+      : spawn(exe, ['app-server'], { stdio: ['pipe', 'pipe', 'pipe'], env: process.env, shell: process.platform === 'win32' });
     this.proc = p;
     p.stdout.on('data', (d) => {
       this.buf += d;
@@ -318,7 +322,8 @@ export class CodexBackend implements AgentBackend {
 
   async version(path?: string): Promise<string | null> {
     try {
-      const out = await run(findCodex(path || this.paths.cli()), ['--version'], { timeout: 8000 });
+      const exe = findCodex(path || this.paths.cli());
+      const out = isScript(exe) ? await run(process.execPath, [exe, '--version'], { timeout: 8000, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } }) : await run(exe, ['--version'], { timeout: 8000 });
       return out.trim().split(/\s+/).pop() || null;
     } catch { return null; }
   }

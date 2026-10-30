@@ -15,7 +15,7 @@ import { toast, useApp, useMoney } from '../store';
 import { comboFromEvent, comboKeys, comboProblem, normalizeCombo, SHORTCUT_ACTIONS, shortcutConflict, shortcutOf } from '@shared/shortcuts';
 import { qrSvg } from '@shared/qr';
 import { AgentSignInDialog } from './AgentSignIn';
-import { Avatar, Badge, Button, Checkbox, Dialog, IconButton, Input, Kbd, Meter, SegmentedControl, Select, Switch, TreeItem, useColumns, useNarrow } from '../ui';
+import { Avatar, Badge, Button, Checkbox, Dialog, IconButton, Input, Kbd, Meter, SegmentedControl, Select, Switch, TreeItem, Grip, useColumns, useNarrow, usePaneWidth } from '../ui';
 
 const errText = (e: any) => String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '');
 const set = (patch: Partial<SettingsT>) => void api.updateSettings(patch);
@@ -607,6 +607,7 @@ export function Settings({ section }: { section?: string }) {
   const groups: Record<string, [string, string, string]> = { github: ['accounts', 'Accounts', 'user-circle'], shortcuts: ['shortcuts', 'Shortcuts', 'keyboard'] };
   const groupOf: Record<string, string> = { ...Object.fromEntries(repoKeys.map((k) => [k, 'repos'])), github: 'accounts', claude: 'accounts', codex: 'accounts', shortcuts: 'shortcuts', 'custom-shortcuts': 'shortcuts' };
   const [folded, setFolded] = React.useState<string[]>([]);
+  const [navW, startNav, resetNav] = usePaneWidth('settings-nav', 200, 160, 420);
   const notif = (key: 'notifyAttention' | 'notifyReady' | 'notifyFailed' | 'notifyChecks', title: string) => (
     <SettingRow title={title}>
       <Switch checked={st[key].desktop} onChange={(v: boolean) => set({ [key]: { ...st[key], desktop: v } })} label="Desktop" />
@@ -621,7 +622,8 @@ export function Settings({ section }: { section?: string }) {
           <Select size="lg" value={sec} onChange={(e: any) => setSec(e.target.value)} style={{ width: '100%' }} options={nav.map(([value, label]) => ({ value, label: (groupOf[value as string] === 'accounts' ? 'Accounts · ' : groupOf[value as string] === 'shortcuts' ? 'Shortcuts · ' : groupOf[value as string] === 'repos' ? 'Repository · ' : '') + label }))} />
         </nav>
       ) : (
-        <nav style={{ width: 200, flex: 'none', padding: '16px 8px', borderRight: '1px solid var(--border)' }}>
+        <nav style={{ width: navW, flex: 'none', padding: '16px 8px', borderRight: '1px solid var(--border)', position: 'relative' }}>
+          <Grip onMouseDown={startNav} onDoubleClick={resetNav} />
           {nav.map(([k, l, ic, depth]) => (
             <React.Fragment key={k}>
               {k === 'defaults' ? <TreeItem icon={ic} label={l} expandable={repoKeys.length > 0} expanded={!folded.includes('repos')} selected={sec === k} onClick={() => { setSec(k); if (repoKeys.length) setFolded((f) => (f.includes('repos') ? f.filter((x) => x !== 'repos') : [...f, 'repos'])); }} /> : null}
