@@ -1214,6 +1214,8 @@ export interface HelmApi {
   haltAll(): Promise<number>;
   /** Continues every agent that was paused, halted or stopped when helm closed, and lets queued sessions start again. Resolves to how many were continued. */
   resumeAll(): Promise<number>;
+  /** Sends one message to the given sessions (all of them when omitted). Archived sessions never receive it. Resolves to how many did. */
+  broadcast(text: string, sessionIds?: string[], images?: MessageImage[]): Promise<number>;
   stopSession(sessionId: string): Promise<void>;
   resumeSession(sessionId: string): Promise<void>;
   /** What deleting a session would remove or lose, so the dialog can say so. */

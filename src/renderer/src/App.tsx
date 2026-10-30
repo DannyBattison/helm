@@ -9,7 +9,7 @@ import { findCustomShortcut } from '@shared/shortcuts';
 import { isShortcut, repoHere, runCustomShortcut } from './shortcuts';
 import { Activity, Dashboard } from './views/Dashboard';
 import { UploadsGuard } from './views/UploadsGuard';
-import { AddRepo, AgentLoginGate, DeleteSession, MergePr, NewSession, Palette, RemoveRepo, RenameSession, SignIn } from './views/Dialogs';
+import { AddRepo, AgentLoginGate, Broadcast, DeleteSession, MergePr, NewSession, Palette, RemoveRepo, RenameSession, SignIn } from './views/Dialogs';
 import { Archive } from './views/Archive';
 import { AddAgentHost } from './views/Panel';
 import { Reports } from './views/Reports';
@@ -39,6 +39,7 @@ export function App() {
   const fatal = useUI((u) => u.fatal);
   const route = useUI((u) => u.route);
   const adding = useUI((u) => u.adding);
+  const broadcasting = useUI((u) => u.broadcasting);
   const newSession = useUI((u) => u.newSession);
   const palette = useUI((u) => u.palette);
   const deleting = useUI((u) => u.deleting);
@@ -237,6 +238,7 @@ export function App() {
       </div>
       <StatusBar />
       {adding ? <AddRepo onClose={() => setUI({ adding: false })} /> : null}
+      {broadcasting ? <Broadcast onClose={() => setUI({ broadcasting: false })} /> : null}
       {newSession ? <NewSession repoId={newSession.repoId} initial={newSession} onClose={() => setUI({ newSession: null })} /> : null}
       {removingRepo ? <RemoveRepo key={removingRepo} id={removingRepo} onClose={() => setUI({ removingRepo: null })} /> : null}
       {mergingPr ? <MergePr key={mergingPr.repoId + mergingPr.number} target={mergingPr} onClose={() => setUI({ mergingPr: null })} /> : null}

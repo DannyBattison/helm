@@ -1106,7 +1106,22 @@ describe('controls', () => {
     expect(sm.isRunning(b)).toBe(false);
   });
 
+  it('broadcasts to the chosen sessions and never to archived ones', async () => {
+    const a = await sm.create(input({ task: 'Task A' }));
+    const b = await sm.create(input({ task: 'Task B' }));
+    const c = await sm.create(input({ task: 'Task C' }));
+    sm.get(c)!.archivedAt = Date.now();
+    const send = vi.spyOn(sm, 'send').mockResolvedValue(undefined as any);
+    expect(await sm.broadcast('hello')).toBe(2);
+    expect(send.mock.calls.map((x) => x[0]).sort()).toEqual([a, b].sort());
+    send.mockClear();
+    expect(await sm.broadcast('hello', [b, c])).toBe(1);
+    expect(send.mock.calls.map((x) => x[0])).toEqual([b]);
+    vi.restoreAllMocks();
+  });
+
   it('logs when a session cannot be resumed', async () => {
+
     const id = await sm.create(input());
     const s = sm.get(id)!;
     await sm.stop(id);

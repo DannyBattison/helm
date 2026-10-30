@@ -37,6 +37,8 @@ export interface UI {
   externals: Record<string, ExternalSession[]>;
   toasts: ToastItem[];
   adding: boolean;
+  /** The broadcast dialog is open. */
+  broadcasting: boolean;
   newSession: (NewSessionPreset & { source?: Session['source'] }) | null;
   /** The session whose delete dialog is open. */
   deleting: string | null;
@@ -76,7 +78,7 @@ function loadRoute(): Route {
   } catch { return { screen: 'overview' }; }
 }
 
-let ui: UI = { app: null, uploads: [], uploadsOpen: false, route: loadRoute(), transcripts: {}, externals: {}, toasts: [], adding: false, newSession: null, deleting: null, mergingPr: null, renaming: null, checkpointsOf: null, restoring: null, forking: null, replying: null, addingAgent: null, continuing: null, remembering: null, removingRepo: null, showArchived: (() => { try { return localStorage.getItem('helm-show-archived') === '1'; } catch { return false; } })(), palette: false, drawer: false, term: false };
+let ui: UI = { app: null, uploads: [], uploadsOpen: false, route: loadRoute(), transcripts: {}, externals: {}, toasts: [], adding: false, broadcasting: false, newSession: null, deleting: null, mergingPr: null, renaming: null, checkpointsOf: null, restoring: null, forking: null, replying: null, addingAgent: null, continuing: null, remembering: null, removingRepo: null, showArchived: (() => { try { return localStorage.getItem('helm-show-archived') === '1'; } catch { return false; } })(), palette: false, drawer: false, term: false };
 const listeners = new Set<() => void>();
 
 export function setUI(patch: Partial<UI> | ((u: UI) => Partial<UI>)) {

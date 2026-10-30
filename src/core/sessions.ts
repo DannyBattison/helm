@@ -2122,6 +2122,19 @@ export class SessionManager {
     return ids.length;
   }
 
+  /** Sends one message to many sessions at once. Archived sessions (and ones that cannot be continued) are skipped even if listed. Resolves to how many received it. */
+  async broadcast(text: string, ids?: string[], images: MessageImage[] = []): Promise<number> {
+    const want = ids ? new Set(ids) : null;
+    const to = this.sessions.filter((s) => (!want || want.has(s.id)) && !s.archivedAt && !s.mergedAt && !s.worktreeGone && !s.remoteOwner).map((s) => s.id);
+    let sent = 0;
+    for (const id of to) {
+      try { await this.send(id, text, images, this.ownerOnly(this.get(id))); sent++; }
+      catch (e: any) { const s = this.get(id); if (s) this.activity(s, 'error', 'could not receive the broadcast: ' + trunc(String(e?.message || e), 100), { ok: false }); }
+    }
+    this.touch();
+    return sent;
+  }
+
   async stopAll() {
     for (const id of [...this.rt.keys()]) await this.stop(id);
   }
