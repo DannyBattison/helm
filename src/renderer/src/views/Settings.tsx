@@ -647,7 +647,7 @@ export function Settings({ section }: { section?: string }) {
               <Button size="sm" iconRight="arrow-square-out" onClick={() => api.openExternal('https://github.com/settings/applications')}>Manage on GitHub</Button>
             </SettingRow>
             <SettingRow title="Commit identity" desc="Your git user.name and user.email are used for commits and pushes. Who agent commits are credited to is set under Agents." />
-            <SettingRow title="GitHub OAuth client ID" desc="Used for sign-in. Create an OAuth app on GitHub with device flow enabled.">
+            <SettingRow title="GitHub App client ID" desc="Used for sign-in. Create a GitHub App with device flow enabled (see the README).">
               <Field value={st.githubClientId} onCommit={(v: string) => set({ githubClientId: v.trim() })} style={{ width: 240 }} />
             </SettingRow>
           </> : null}

@@ -21,7 +21,7 @@ const CLIENT_KEY = 'helm.github.client';
 export class Account {
   constructor(private secrets: Secrets, private defaultClientId: string, private f: typeof fetch = fetch, private sleep?: (ms: number) => Promise<void>) {}
 
-  /** The client ID of the person's own GitHub OAuth app, if they gave one; otherwise helm's. */
+  /** The client ID of the person's own GitHub App, if they gave one; otherwise helm's. */
   async clientId(): Promise<string> { return ((await this.secrets.get(CLIENT_KEY).catch(() => null)) || '').trim() || this.defaultClientId; }
   async customClientId(): Promise<string> { return ((await this.secrets.get(CLIENT_KEY).catch(() => null)) || '').trim(); }
   /** Remembers the client ID to sign in with; empty goes back to helm's own. */

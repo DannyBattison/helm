@@ -59,9 +59,9 @@ export function SignIn() {
             </div>
             {showClient ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <span style={{ font: '500 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>GitHub OAuth app client ID</span>
-                <Input mono value={clientId} onChange={(e: any) => setClientId(e.target.value)} placeholder="Ov23li…" />
-                <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>Use your own GitHub OAuth app: create one at github.com/settings/developers and enable device flow. helm never sees a client secret.{clientId !== DEFAULT_GITHUB_CLIENT_ID ? <>{' '}<a href="#" onClick={(e) => { e.preventDefault(); setClientId(DEFAULT_GITHUB_CLIENT_ID); }}>Use helm's app</a></> : null}</span>
+                <span style={{ font: '500 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>GitHub App client ID</span>
+                <Input mono value={clientId} onChange={(e: any) => setClientId(e.target.value)} placeholder="Iv23li…" />
+                <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>Use your own GitHub App: create one at github.com/settings/apps/new and enable device flow. helm never sees a client secret.{clientId !== DEFAULT_GITHUB_CLIENT_ID ? <>{' '}<a href="#" onClick={(e) => { e.preventDefault(); setClientId(DEFAULT_GITHUB_CLIENT_ID); }}>Use helm's app</a></> : null}</span>
               </div>
             ) : <a href="#" style={{ font: '400 12px/1.5 var(--font-sans)' }} onClick={(e) => { e.preventDefault(); setOwn(true); }}>Use your own GitHub app</a>}
             {!usingToken ? <Button size="lg" variant="primary" icon="github-logo" fullWidth loading={busy} disabled={!clientId.trim()} onClick={start}>Continue with GitHub</Button> : <>
