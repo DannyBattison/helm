@@ -32,7 +32,7 @@ import { Automations } from './automations';
 import { RepoService } from './repos';
 import { forecastRepo, revertHunk } from './review';
 import { SessionManager } from './sessions';
-import { Store } from './store';
+import { Store, defaultSettings } from './store';
 import { shellOptions, Terminals } from './terminal';
 import { expandHome, home, parseEnv, run, uid } from './util';
 import { CURRENCIES, currencyForRegion, fmtMoney } from '../shared/money';
@@ -391,7 +391,7 @@ export const api: HelmApi = {
     emitState();
   },
 
-  async signInStart() { return GH.startDeviceFlow(store.data.settings.githubClientId); },
+  async signInStart() { return GH.startDeviceFlow(store.data.settings.githubClientId || defaultSettings().githubClientId); },
   async signInWait() {
     const u = await GH.waitDeviceFlow();
     G.setGitToken(GH.getToken());

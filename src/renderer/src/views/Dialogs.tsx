@@ -27,7 +27,7 @@ export function SignIn() {
   const [usingToken, setUsingToken] = React.useState(false);
   const [clientId, setClientId] = React.useState(app.settings.githubClientId);
   const [own, setOwn] = React.useState(false);
-  const showClient = !app.settings.githubClientId || own || clientId !== DEFAULT_GITHUB_CLIENT_ID;
+  const showClient = !app.settings.githubClientId || own || (!!clientId && clientId !== DEFAULT_GITHUB_CLIENT_ID);
 
   const start = async () => {
     setErr(''); setBusy(true);
@@ -61,10 +61,10 @@ export function SignIn() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <span style={{ font: '500 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>GitHub App client ID</span>
                 <Input mono value={clientId} onChange={(e: any) => setClientId(e.target.value)} placeholder="Iv23li…" />
-                <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>Use your own GitHub App: create one at github.com/settings/apps/new and enable device flow. helm never sees a client secret.{clientId !== DEFAULT_GITHUB_CLIENT_ID ? <>{' '}<a href="#" onClick={(e) => { e.preventDefault(); setClientId(DEFAULT_GITHUB_CLIENT_ID); }}>Use helm's app</a></> : null}</span>
+                <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>Leave blank to use helm's. Or use your own GitHub App: create one at github.com/settings/apps/new and enable device flow. helm never sees a client secret.{clientId ? <>{' '}<a href="#" onClick={(e) => { e.preventDefault(); setClientId(''); }}>Use helm's app</a></> : null}</span>
               </div>
             ) : <a href="#" style={{ font: '400 12px/1.5 var(--font-sans)' }} onClick={(e) => { e.preventDefault(); setOwn(true); }}>Use your own GitHub app</a>}
-            {!usingToken ? <Button size="lg" variant="primary" icon="github-logo" fullWidth loading={busy} disabled={!clientId.trim()} onClick={start}>Continue with GitHub</Button> : <>
+            {!usingToken ? <Button size="lg" variant="primary" icon="github-logo" fullWidth loading={busy} onClick={start}>Continue with GitHub</Button> : <>
               <Input mono type="password" value={token} onChange={(e: any) => setToken(e.target.value)} placeholder="ghp_… or github_pat_…" />
               <Button size="lg" variant="primary" fullWidth loading={busy} disabled={!token.trim()} onClick={withToken}>Sign in with token</Button>
             </>}
