@@ -11,6 +11,7 @@ export interface Secrets {
 export interface Signed { token: string; login: string }
 
 const KEY = 'helm.github';
+const CLIENT_KEY = 'helm.github.client';
 
 /**
  * The GitHub sign-in of the person using this phone, done once and kept. The token has no scopes: it only says who this is, and is sent to
@@ -18,7 +19,13 @@ const KEY = 'helm.github';
  * when reconnecting, and signing out deletes it (it can also be revoked at github.com/settings/applications).
  */
 export class Account {
-  constructor(private secrets: Secrets, private clientId: string, private f: typeof fetch = fetch, private sleep?: (ms: number) => Promise<void>) {}
+  constructor(private secrets: Secrets, private defaultClientId: string, private f: typeof fetch = fetch, private sleep?: (ms: number) => Promise<void>) {}
+
+  /** The client ID of the person's own GitHub OAuth app, if they gave one; otherwise helm's. */
+  async clientId(): Promise<string> { return ((await this.secrets.get(CLIENT_KEY).catch(() => null)) || '').trim() || this.defaultClientId; }
+  async customClientId(): Promise<string> { return ((await this.secrets.get(CLIENT_KEY).catch(() => null)) || '').trim(); }
+  /** Remembers the client ID to sign in with; empty goes back to helm's own. */
+  async setClientId(id: string) { if (id.trim()) await this.secrets.set(CLIENT_KEY, id.trim()); else await this.secrets.remove(CLIENT_KEY); }
 
   private async stored(): Promise<Signed | null> {
     try {
@@ -44,9 +51,10 @@ export class Account {
 
   /** Runs GitHub's device flow. `show` is given the code to display; resolves once the person has approved it on github.com/login/device. */
   async signIn(show: (code: DeviceCode) => void): Promise<Signed> {
-    const flow = await startDeviceFlow(this.clientId, this.f);
+    const clientId = await this.clientId();
+    const flow = await startDeviceFlow(clientId, this.f);
     show(flow);
-    const token = await waitForToken(this.clientId, flow, this.f, this.sleep);
+    const token = await waitForToken(clientId, flow, this.f, this.sleep);
     const login = await githubLogin(token, this.f);
     if (!login) throw new Error('GitHub did not say who you are. Try again.');
     const s = { token, login };

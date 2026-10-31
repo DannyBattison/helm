@@ -8,6 +8,7 @@ import { Badge, Button, Checkbox, Dialog, IconButton, Input, Kbd, SegmentedContr
 import { PERM_OPTIONS } from './Settings';
 import { AgentSignInPanel } from './AgentSignIn';
 import { comboKeys } from '@shared/shortcuts';
+import { DEFAULT_GITHUB_CLIENT_ID } from '@shared/githubApp';
 import { runCustomShortcut, useShortcutKeys } from '../shortcuts';
 import { AttachmentChips, IMAGE_TYPES, readAttachments, type Draft } from './attach';
 import { VariantEditor, type Variant } from './Review';
@@ -25,7 +26,8 @@ export function SignIn() {
   const [token, setToken] = React.useState('');
   const [usingToken, setUsingToken] = React.useState(false);
   const [clientId, setClientId] = React.useState(app.settings.githubClientId);
-  const needsClient = !app.settings.githubClientId;
+  const [own, setOwn] = React.useState(false);
+  const showClient = !app.settings.githubClientId || own || clientId !== DEFAULT_GITHUB_CLIENT_ID;
 
   const start = async () => {
     setErr(''); setBusy(true);
@@ -55,13 +57,13 @@ export function SignIn() {
               <h1 style={{ margin: 0, font: '600 20px/1.5 var(--font-sans)' }}>Run coding agents across all your repositories</h1>
               <p style={{ margin: 0, font: '400 13px/1.55 var(--font-sans)', color: 'var(--text-2)' }}>helm uses your GitHub account to list repositories, open pull requests and show history. A GitHub account is required.</p>
             </div>
-            {needsClient ? (
+            {showClient ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <span style={{ font: '500 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>GitHub OAuth app client ID</span>
                 <Input mono value={clientId} onChange={(e: any) => setClientId(e.target.value)} placeholder="Ov23li…" />
-                <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>Create an OAuth app at github.com/settings/developers and enable device flow. helm never sees a client secret.</span>
+                <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>Use your own GitHub OAuth app: create one at github.com/settings/developers and enable device flow. helm never sees a client secret.{clientId !== DEFAULT_GITHUB_CLIENT_ID ? <>{' '}<a href="#" onClick={(e) => { e.preventDefault(); setClientId(DEFAULT_GITHUB_CLIENT_ID); }}>Use helm's app</a></> : null}</span>
               </div>
-            ) : null}
+            ) : <a href="#" style={{ font: '400 12px/1.5 var(--font-sans)' }} onClick={(e) => { e.preventDefault(); setOwn(true); }}>Use your own GitHub app</a>}
             {!usingToken ? <Button size="lg" variant="primary" icon="github-logo" fullWidth loading={busy} disabled={!clientId.trim()} onClick={start}>Continue with GitHub</Button> : <>
               <Input mono type="password" value={token} onChange={(e: any) => setToken(e.target.value)} placeholder="ghp_… or github_pat_…" />
               <Button size="lg" variant="primary" fullWidth loading={busy} disabled={!token.trim()} onClick={withToken}>Sign in with token</Button>

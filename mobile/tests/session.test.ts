@@ -88,3 +88,16 @@ describe('asking GitHub who a token is', () => {
     await expect(githubLogin('t', (async () => { throw new TypeError('offline'); }) as any)).rejects.toThrow();
   });
 });
+
+describe('a custom GitHub client ID', () => {
+  it('is kept in secrets and used instead of the default, and empty goes back', async () => {
+    const store = new Map<string, string>();
+    const secrets = { get: async (k: string) => store.get(k) ?? null, set: async (k: string, v: string) => { store.set(k, v); }, remove: async (k: string) => { store.delete(k); } };
+    const a = new Account(secrets, 'default');
+    expect(await a.clientId()).toBe('default');
+    await a.setClientId(' mine ');
+    expect(await a.clientId()).toBe('mine');
+    await a.setClientId('');
+    expect(await a.clientId()).toBe('default');
+  });
+});

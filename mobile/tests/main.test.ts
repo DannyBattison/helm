@@ -143,6 +143,8 @@ describe('signing in to GitHub', () => {
     gh.tokenAnswers = [{ error: 'authorization_pending' }, { access_token: 'gho_new' }];
     await boot({ signedIn: false });
     expect(text()).toContain('Sign in to GitHub');
+    expect(text()).toContain('Use your own GitHub app');
+    await click('Continue with GitHub');
     await vi.advanceTimersByTimeAsync(0);
     expect(text()).toContain('ABCD-1234');
     expect(text()).toContain('Waiting for you to approve');
@@ -163,11 +165,13 @@ describe('signing in to GitHub', () => {
   it('shows what went wrong and starts again on Try again', async () => {
     gh.deviceFails = true;
     await boot({ signedIn: false });
+    await click('Continue with GitHub');
     expect(text()).toContain('Could not sign in');
     expect(text()).toContain('GitHub is down');
     gh.deviceFails = false;
     gh.tokenAnswers = [{ access_token: 'gho_again' }];
     await click('Try again');
+    await click('Continue with GitHub');
     await vi.advanceTimersByTimeAsync(1000);
     await flush();
     expect(text()).toContain('Add your computer');
@@ -269,6 +273,7 @@ describe('Servers', () => {
       await click('Add a computer');
       typeInto('textarea', shareCode());
       await click('Continue');
+      await click('Continue with GitHub');
       await vi.advanceTimersByTimeAsync(1000);
       await flush();
       expect(h.connects[0].link.githubToken).toBe('gho_p');
