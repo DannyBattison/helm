@@ -247,7 +247,7 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
   const withSessions = new Set(app.sessions.map((s) => s.repoId)).size;
   return (
     <div ref={measured} style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-      <div style={{ padding: narrow ? '14px 12px 24px' : '20px 24px 32px', display: 'flex', flexDirection: 'column', gap: narrow ? 14 : 20 }}>
+      <div style={{ maxWidth: experience.simple ? 1100 : undefined, width: '100%', margin: '0 auto', padding: narrow ? '14px 12px 24px' : '20px 24px 32px', display: 'flex', flexDirection: 'column', gap: narrow ? 14 : 20 }}>
         <div style={{ display: 'flex', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12 }}>
           <div style={{ flex: '1 1 240px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
             <h1 style={{ margin: 0, font: '600 20px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-tight)' }}>{filter === 'attention' ? 'Needs you' : 'Overview'}</h1>
@@ -258,7 +258,7 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
           <Hint id="new-session" title="Start an agent" text="Describe a task and an agent works on it in its own branch, while you do something else."><Button variant="primary" icon="plus" kbd={narrow ? undefined : platform() === 'darwin' ? '⌘N' : 'Ctrl+N'} onClick={() => setUI({ newSession: {} })}>New session</Button></Hint>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', borderRadius: 'var(--radius-lg)', background: 'var(--bg-panel)', boxShadow: 'inset 0 0 0 1px var(--border)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: experience.simple ? 'repeat(3, minmax(0, 1fr))' : 'repeat(auto-fit, minmax(150px, 1fr))', borderRadius: 'var(--radius-lg)', background: 'var(--bg-panel)', boxShadow: 'inset 0 0 0 1px var(--border)' }}>
           <div style={{ ...cell, borderLeft: 'none' }}><Stat label="Working" value={t.working} tone="working" /></div>
           <div style={cell}><Stat label="Needs you" value={t.attention} tone="attention" /></div>
           <div style={cell}><Stat label="Ready for review" value={t.ready} tone="ready" /></div>
