@@ -242,3 +242,19 @@ textarea {
   .helm-hide-portrait { display: none !important; }
   .helm-portrait-only { display: block; }
 }
+
+/* Preserve complete control labels and keep optional settings out of the send row. */
+.helm-run-settings { position: relative; }
+.helm-run-settings > summary { cursor: pointer; padding: 6px 8px; font-size: 12px; color: var(--text-2); }
+.helm-run-settings[open] { flex-basis: 100%; }
+.helm-comp-sel > button { max-width: 100%; }
+/* Scrollbars signal that more tabs and filters are available. */
+.helm-hscroll { scrollbar-width: thin; }
+.helm-hscroll::-webkit-scrollbar { display: block; height: 4px; }
+@media (max-width: 767px) {
+  .helm-sess-header { padding: 8px 12px 0 !important; gap: 6px !important; }
+  .helm-sess-head { flex-wrap: nowrap !important; }
+  .helm-sess-title { flex: 1 1 0 !important; }
+  .helm-sess-title > :first-child { flex-wrap: wrap; gap: 4px !important; }
+  .helm-sess-title > :first-child > span:first-child { flex-basis: 100%; }
+}

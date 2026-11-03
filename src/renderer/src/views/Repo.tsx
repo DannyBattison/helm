@@ -85,6 +85,11 @@ function HistorySkeleton({ col, n = 14 }: { col: Cols; n?: number }) {
 }
 
 function HistoryList({ commits, sel, setSel, col, onOpen, tapOpen }: { commits: HistoryCommit[]; sel: number; setSel(i: number): void; col: Cols; onOpen(i: number): void; tapOpen?: boolean }) {
+  if (tapOpen) return <div>{commits.map((c, i) => <button key={c.hash} onClick={() => { setSel(i); onOpen(i); }} style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%', textAlign: 'left', border: 0, borderBottom: '1px solid var(--border)', padding: '12px 16px', color: 'var(--text-1)', background: sel === i ? 'var(--bg-selected)' : 'transparent', cursor: 'pointer' }}>
+    <span style={{ font: '500 13px/1.5 var(--font-sans)', overflowWrap: 'anywhere' }}>{c.msg}</span>
+    {c.refs.length ? <span style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{c.refs.slice(0, 3).map((r) => <BranchTag key={r} name={r} />)}</span> : null}
+    <span style={{ display: 'flex', flexWrap: 'wrap', gap: 10, color: 'var(--text-2)', font: '400 12px/1.5 var(--font-mono)' }}><span>{c.who}</span><span>{c.hash.slice(0, 7)}</span><span>{relTime(c.at)}</span></span>
+  </button>)}</div>;
   return (
     <div style={{ position: 'relative' }}>
       <Graph commits={commits} />
@@ -500,7 +505,7 @@ export function Repo({ id, themeKey, tab: firstTab, hash, file, line }: { id: st
             return <span title={tip} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, height: 20, padding: '0 7px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-raised)', boxShadow: 'inset 0 0 0 1px var(--border)', font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-2)', whiteSpace: 'nowrap' }}><i className="ph ph-coins" style={{ fontSize: 12, color: 'var(--text-3)' }} />{fmtTokens(n)} tokens lifetime</span>;
           })()}
           <span style={{ flex: 1 }} />
-          <span title={pushes.tip}><Button variant="ghost" icon="cloud-arrow-up" loading={pushes.busy} disabled={pushes.ahead.length === 0} onClick={pushes.push}>{pushes.commits ? `Push all · ${pushes.commits}` : 'Push all'}</Button></span>
+          <span title={pushes.tip}><Button variant="ghost" icon="cloud-arrow-up" loading={pushes.busy} disabled={pushes.ahead.length === 0} onClick={pushes.push}>{pushes.commits ? `Push all (${pushes.commits} commits)` : 'Push all'}</Button></span>
           <Button variant="ghost" icon="arrows-clockwise" loading={fetching} onClick={fetchNow}>Fetch</Button>
           <Button variant="ghost" iconRight="arrow-square-out" onClick={() => api.openExternal(`https://github.com/${repo.id}`)}>GitHub</Button>
           <Button variant="primary" icon="plus" kbd={narrow ? undefined : platform() === 'darwin' ? '⌘N' : 'Ctrl+N'} onClick={() => setUI({ newSession: { repoId: repo.id } })}>New session</Button>
@@ -521,8 +526,8 @@ export function Repo({ id, themeKey, tab: firstTab, hash, file, line }: { id: st
       {tab === 'history' ? (
         <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
           <div style={{ flex: 1, minWidth: 0, overflowX: 'auto', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ flex: 1, minHeight: 0, minWidth: narrow ? col.minWidth + 16 : undefined, display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: col.template, gap: 12, alignItems: 'center', height: 30, flex: 'none', padding: '0 16px 0 0', borderBottom: '1px solid var(--border)', ...head }}>
+            <div style={{ flex: 1, minHeight: 0, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+            <div className="helm-hide-phone" style={{ display: 'grid', gridTemplateColumns: col.template, gap: 12, alignItems: 'center', height: 30, flex: 'none', padding: '0 16px 0 0', borderBottom: '1px solid var(--border)', ...head }}>
               <span />{col.cell(1, 'Message')}{col.cell(2, 'Author')}{col.cell(3, 'Commit')}<span style={{ textAlign: 'right' }}>When</span>
             </div>
             <div ref={listRef} onScroll={(e) => {

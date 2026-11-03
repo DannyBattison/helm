@@ -58,7 +58,7 @@ export function App() {
   if (term) termUsed.current = true;
   const toasts = useUI((u) => u.toasts);
   const drawer = useUI((u) => u.drawer);
-  const narrow = useNarrow();
+  const narrow = useNarrow(1024);
   const [sysDark, setSysDark] = React.useState(0);
   // Edge swipe: `drag` is how far the drawer is pulled out (px) while a finger is on it, otherwise null.
   const [drag, setDrag] = React.useState<number | null>(null);

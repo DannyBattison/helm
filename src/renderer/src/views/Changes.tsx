@@ -30,7 +30,7 @@ export function DiffLine({ l, onComment, lang }: { l: Row; onComment(line: numbe
       <span style={{ textAlign: 'right', paddingRight: 8, color: 'var(--text-disabled)', background: gut }}>{o || ''}</span>
       <span title={n ? 'Comment on this line' : undefined} onClick={() => n && onComment(n)} style={{ textAlign: 'right', paddingRight: 8, color: 'var(--text-disabled)', background: gut, cursor: n ? 'pointer' : 'default' }}>{n || ''}</span>
       <span style={{ textAlign: 'center', color: fg }}>{t === '-' ? '−' : t === '+' ? '+' : ''}</span>
-      <span className="selectable" style={{ whiteSpace: 'pre', color: t === ' ' ? 'var(--text-2)' : 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', tabSize: 4 }}><Hl text={text} lang={lang} /></span>
+      <span className="selectable" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', color: t === ' ' ? 'var(--text-2)' : 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', tabSize: 4 }}><Hl text={text} lang={lang} /></span>
     </div>
   );
 }
@@ -45,7 +45,7 @@ export function SplitRows({ lines, onComment, lang }: { lines: Row[]; onComment(
     return (
       <div style={{ display: 'grid', gridTemplateColumns: '44px minmax(0,1fr)', background: bg, minWidth: 0 }}>
         <span onClick={() => side === 'r' && num && onComment(num)} style={{ textAlign: 'right', paddingRight: 8, color: 'var(--text-disabled)', cursor: side === 'r' && num ? 'pointer' : 'default' }}>{num || ''}</span>
-        <span className="selectable" style={{ whiteSpace: 'pre', overflow: 'hidden', textOverflow: 'ellipsis', tabSize: 4, color: t === ' ' ? 'var(--text-2)' : 'var(--text-1)' }}><Hl text={l?.[3] ?? ''} lang={lang} /></span>
+        <span className="selectable" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', overflow: 'hidden', textOverflow: 'ellipsis', tabSize: 4, color: t === ' ' ? 'var(--text-2)' : 'var(--text-1)' }}><Hl text={l?.[3] ?? ''} lang={lang} /></span>
       </div>
     );
   };

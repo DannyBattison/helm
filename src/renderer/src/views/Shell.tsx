@@ -269,12 +269,12 @@ export function TitleBar({ crumbs, theme, setTheme }: { crumbs: any[]; theme: 'd
   const searchKeys = useShortcutKeys('palette');
   const working = app.sessions.filter((s) => s.status === 'working').length;
   const paused = app.sessions.filter(isResumable).length;
-  const narrow = useNarrow();
+  const narrow = useNarrow(1024);
   return (
     <div className="drag" style={{ height: 'var(--titlebar-h)', flex: 'none', display: 'flex', alignItems: 'center', gap: narrow ? 6 : 12, padding: '0 ' + (windowControls() === 'right' ? 150 : 10) + 'px 0 ' + (narrow ? 8 : 16) + 'px', borderBottom: '1px solid var(--border)', background: 'var(--bg-app)' }}>
       {narrow ? <IconButton size="lg" icon="list" label="Menu" onClick={() => setUI({ drawer: !getUI().drawer })} /> : null}
       <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', padding: '3px 0' }}><Breadcrumbs items={crumbs || []} compact={narrow} style={narrow ? { font: '500 17px/1.5 var(--font-sans)' } : undefined} /></div>
-      {narrow ? <IconButton size="lg" icon="magnifying-glass" label="Search" onClick={() => setUI({ palette: true })} /> : <Hint id="search" title="Search anything" text="Jump to any session or repository, and run commands, from here." style={{ flex: "none" }}><button type="button" onClick={() => setUI({ palette: true })} style={{ width: 340, height: 26, flex: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '0 6px 0 10px', border: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border)', color: 'var(--text-3)', font: '400 12px/1.5 var(--font-sans)', cursor: 'pointer' }}>
+      {narrow ? <IconButton size="lg" icon="magnifying-glass" label="Search" onClick={() => setUI({ palette: true })} /> : <Hint id="search" title="Search anything" text="Jump to any session or repository, and run commands, from here." style={{ flex: "none" }}><button type="button" onClick={() => setUI({ palette: true })} style={{ width: 'clamp(160px, 24vw, 340px)', height: 26, flex: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '0 6px 0 10px', border: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border)', color: 'var(--text-3)', font: '400 12px/1.5 var(--font-sans)', cursor: 'pointer' }}>
         <i className="ph ph-magnifying-glass" style={{ fontSize: 13 }} />
         <span style={{ flex: 1, textAlign: 'left' }}>Search sessions and repositories</span>
         <Kbd keys={searchKeys} />

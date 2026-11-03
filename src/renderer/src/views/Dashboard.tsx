@@ -239,7 +239,7 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
             <h1 style={{ margin: 0, font: '600 20px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-tight)' }}>{filter === 'attention' ? 'Needs you' : 'Overview'}</h1>
             <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{date} · {liveSessions} {liveSessions === 1 ? 'session' : 'sessions'} across {withSessions} {withSessions === 1 ? 'repository' : 'repositories'}{totalExt ? ` · ${totalExt} external, read-only` : ''}</span>
           </div>
-          <span title={pushes.tip}><Button variant="ghost" icon="cloud-arrow-up" loading={pushes.busy} disabled={pushes.ahead.length === 0} onClick={pushes.push}>{pushes.commits ? `Push all · ${pushes.commits}` : 'Push all'}</Button></span>
+          <span title={pushes.tip}><Button variant="ghost" icon="cloud-arrow-up" loading={pushes.busy} disabled={pushes.ahead.length === 0} onClick={pushes.push}>{pushes.commits ? `Push all (${pushes.commits} commits)` : 'Push all'}</Button></span>
           <Button variant="ghost" icon="book-bookmark" onClick={() => setUI({ adding: true })}>Add repository</Button>
           <Hint id="new-session" title="Start an agent" text="Describe a task and an agent works on it in its own branch, while you do something else."><Button variant="primary" icon="plus" kbd={narrow ? undefined : platform() === 'darwin' ? '⌘N' : 'Ctrl+N'} onClick={() => setUI({ newSession: {} })}>New session</Button></Hint>
         </div>
@@ -275,7 +275,7 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
               <span style={{ font: '600 13px/1.5 var(--font-sans)' }}>Needs you</span>
               <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Oldest first. Agents wait here until you answer.</span>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: narrow ? 'minmax(0,1fr)' : 'repeat(3, minmax(0,1fr))', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))', gap: 12 }}>
               {asks.map((s) => <AttentionCard key={s.id + s.ask!.id} s={s} />)}
             </div>
           </section>
@@ -422,7 +422,7 @@ export function Activity() {
   </> : null;
   return (
     <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-      <div style={{ maxWidth: 860, padding: narrow ? '14px 12px 24px' : '20px 24px 32px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ maxWidth: 1400, width: '100%', margin: '0 auto', padding: narrow ? '14px 12px 24px' : '20px 24px 32px', display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
           <h1 style={{ margin: 0, flex: 1, font: '600 20px/1.5 var(--font-sans)' }}>Activity</h1>
           <SegmentedControl size="sm" value={f} onChange={setF} options={[{ value: 'all', label: 'All' }, { value: 'attention', label: 'Needs you' }, { value: 'git', label: 'Git' }, { value: 'sessions', label: 'Sessions' }, { value: 'agents', label: 'Agent actions' }]} />

@@ -36,6 +36,7 @@ function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string
   const app = useApp();
   const sub = billingOf(app, s.backend) === 'subscription';
   const push = usePush(s.repoId, s.id);
+  const [more, setMore] = React.useState<{ x: number; y: number } | null>(null);
   const narrow = useNarrow();
   return (
     <div className="helm-sess-header" style={{ flex: 'none', padding: '14px 20px 0', display: 'flex', flexDirection: 'column', gap: 12, borderBottom: '1px solid var(--border)' }}>
@@ -54,7 +55,7 @@ function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string
             {s.queuedMerge ? <Tooltip content={s.queuedMerge.error || 'Merges when the pull request\'s checks pass.'}><Badge tone={s.queuedMerge.error ? 'error' : undefined} icon="git-merge">{s.queuedMerge.error ? 'Merge failed' : 'Merge queued'}</Badge></Tooltip> : null}
             {s.stuck ? <Tooltip content={s.stuck}><Badge tone="attention" icon="warning">Looks stuck</Badge></Tooltip> : null}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+          <div className="helm-hide-phone" style={{ display: 'flex', alignItems: 'center', gap: 10, font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden' }}>
             {s.free ? <span title={s.worktree} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><i className="ph ph-folder" />{tilde(s.worktree, app.home)}</span> : <BranchTag worktree base={s.base.replace(/^origin\//, '')} name={s.branch} />}
             {s.free ? null : <IconButton icon="copy" label="Copy branch name" size="sm" onClick={() => { void navigator.clipboard?.writeText(s.branch); toast({ tone: 'neutral', title: 'Branch name copied' }); }} />}
             <span>{prettyModel(s)}</span><span>·</span><span>started {clock(s.startedAt)}</span><span>·</span><span>{fmtTokens(s.tokens.input + s.tokens.output + s.tokens.cacheRead)} tokens</span>{sub ? null : <><span>·</span><span>{fmt(s.cost)}</span></>}
@@ -68,15 +69,22 @@ function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string
         {s.queued ? <><Button variant="primary" icon="play" onClick={() => guard(api.startQueued(s.id))}>Start now</Button><Button variant="ghost" onClick={() => guard(api.cancelQueued(s.id))}>Cancel</Button></> : null}
         {s.status === 'idle' && !s.remoteOwner && /^Stopped/.test(s.step) ? <Button variant="secondary" icon="play" onClick={() => guard(api.resumeSession(s.id))}>Resume</Button> : null}
         {s.status === 'working' ? <Tooltip side="bottom" wide content="Halt the agent's current turn but keep the session open, so you can redirect it with a new message.">{narrow ? <IconButton icon="pause" label="Pause" onClick={() => guard(api.interrupt(s.id))} /> : <Button variant="ghost" icon="pause" onClick={() => guard(api.interrupt(s.id))}>Pause</Button>}</Tooltip> : null}
-        {!s.archivedAt && !s.remoteOwner ? <Tooltip side="bottom" wide content="End the session entirely, discarding any pending prompts. You'd need to Resume to start it again.">{narrow ? <IconButton icon="stop" label="Stop" onClick={() => guard(api.stopSession(s.id))} /> : <Button variant="ghost" icon="stop" onClick={() => guard(api.stopSession(s.id))}>Stop</Button>}</Tooltip> : null}
+        {!narrow && !s.archivedAt && !s.remoteOwner ? <Tooltip side="bottom" wide content="End the session entirely, discarding any pending prompts. You'd need to Resume to start it again.">{narrow ? <IconButton icon="stop" label="Stop" onClick={() => guard(api.stopSession(s.id))} /> : <Button variant="ghost" icon="stop" onClick={() => guard(api.stopSession(s.id))}>Stop</Button>}</Tooltip> : null}
         {push.commits && !s.worktreeGone ? <span title={push.tip}><Button variant="secondary" icon="cloud-arrow-up" loading={push.busy} onClick={push.push}>Push · {push.commits}</Button></span> : null}
-        {!s.worktreeGone && !(s.free && !s.free.managed) ? <IconButton icon="clock-counter-clockwise" label="Checkpoints" onClick={() => setUI({ checkpointsOf: s.id })} /> : null}
-        {s.agentSessionId && can(app, s, 'fork') && !s.worktreeGone && !s.free ? <IconButton icon="git-fork" label="Fork this session" onClick={() => setUI({ forking: { sessionId: s.id, index: null, text: '' } })} /> : null}
-        {narrow ? <IconButton icon="arrow-square-out" label="Open in editor" onClick={() => guard(api.openInEditor(s.id))} /> : <Button variant="secondary" icon="arrow-square-out" onClick={() => guard(api.openInEditor(s.id))}>Open in editor</Button>}
+        {!narrow && !s.worktreeGone && !(s.free && !s.free.managed) ? <IconButton icon="clock-counter-clockwise" label="Checkpoints" onClick={() => setUI({ checkpointsOf: s.id })} /> : null}
+        {!narrow && s.agentSessionId && can(app, s, 'fork') && !s.worktreeGone && !s.free ? <IconButton icon="git-fork" label="Fork this session" onClick={() => setUI({ forking: { sessionId: s.id, index: null, text: '' } })} /> : null}
+        {narrow ? <IconButton icon="dots-three" label="More session actions" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMore({ x: r.left, y: r.bottom }); }} /> : <Button variant="secondary" icon="arrow-square-out" onClick={() => guard(api.openInEditor(s.id))}>Open in editor</Button>}
         {s.free ? <Button variant="secondary" icon="git-diff" disabled={!s.free.managed} title={s.free.managed ? undefined : 'Changes are tracked only in folders helm made'} onClick={() => setTab('changes')}>Changes</Button> : <>
         {s.mergedAt ? <Badge tone="ready">Merged into {s.mergedInto}</Badge> : null}
         </>}
       </div>
+      {more ? <ContextMenu {...more} onClose={() => setMore(null)} items={[
+        { label: 'Open in editor', icon: 'arrow-square-out', onClick: () => guard(api.openInEditor(s.id)) },
+        { label: 'Copy branch name', icon: 'copy', onClick: () => { void navigator.clipboard?.writeText(s.branch); } },
+        ...(!s.archivedAt && !s.remoteOwner ? [{ label: 'Stop session', icon: 'stop', onClick: () => guard(api.stopSession(s.id)) }] : []),
+        ...(!s.worktreeGone && !(s.free && !s.free.managed) ? [{ label: 'Checkpoints', icon: 'clock-counter-clockwise', onClick: () => setUI({ checkpointsOf: s.id }) }] : []),
+        ...(s.agentSessionId && can(app, s, 'fork') && !s.worktreeGone && !s.free ? [{ label: 'Fork this session', icon: 'git-fork', onClick: () => setUI({ forking: { sessionId: s.id, index: null, text: '' } }) }] : [])
+      ]} /> : null}
       <Tabs value={tab} onChange={setTab} style={{ borderBottom: 'none', padding: 0 }} tabs={[
         { value: 'conversation', label: 'Conversation', icon: 'chats-circle' },
         { value: 'code', label: 'Code', icon: 'code' },
@@ -437,7 +445,7 @@ function matchFiles(files: string[], q: string): string[] {
 
 function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAreaElement> }) {
   const app = useApp();
-  const narrow = useNarrow();
+  const narrow = useNarrow(1100);
   const [text, setTextState] = React.useState(drafts.get(s.id) || '');
   const [images, setImages] = React.useState<Draft[]>([]);
   const [focused, setFocused] = React.useState(false);
@@ -572,14 +580,14 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
           onPaste={(e) => { const f = [...e.clipboardData.files].filter((x) => x.type.startsWith('image/')); if (f.length) { e.preventDefault(); void addImages(f); } }}
           onKeyDown={onKeyDown}
           style={{ display: 'block', width: '100%', boxSizing: 'border-box', resize: 'none', border: 'none', outline: 'none', boxShadow: 'none', background: 'transparent', color: 'var(--text-1)', font: '400 13px/1.5 var(--font-sans)', padding: '10px 12px 4px', maxHeight: 200 }} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px 6px 8px', flexWrap: narrow ? 'wrap' : undefined }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px 6px 8px', flexWrap: 'wrap' }}>
           <input ref={picker} type="file" accept={IMAGE_TYPES.join(',')} multiple hidden onChange={(e) => { void addImages([...(e.target.files || [])]); e.target.value = ''; }} />
           <IconButton icon="at" label="Mention a file" size="sm" onClick={() => { const el = inputRef.current; const c = el ? el.selectionStart : text.length; const pre = text.slice(0, c); const lead = pre && !/\s$/.test(pre) ? ' ' : ''; setText(pre + lead + '@' + text.slice(c)); requestAnimationFrame(() => { el?.focus(); const p = c + lead.length + 1; el?.setSelectionRange(p, p); track(el!.value, p); }); }} />
           <IconButton icon="paperclip" label="Attach an image" size="sm" onClick={() => picker.current?.click()} />
           <PromptPicker s={s} onInsert={(t) => { const el = inputRef.current; const c = el ? el.selectionStart : text.length; const pre = text.slice(0, c); const lead = pre && !/\s$/.test(pre) ? '\n' : ''; setText(pre + lead + t + text.slice(c)); requestAnimationFrame(() => { el?.focus(); const p = c + lead.length + t.length; el?.setSelectionRange(p, p); }); }} />
           <SchedulePrompt s={s} text={text} onScheduled={() => setText('')} />
           {s.panel ? null : <IconButton icon="users-three" label="Bring in another agent to discuss this" size="sm" onClick={() => setUI({ addingAgent: s.id })} />}
-          {narrow ? <div className="helm-comp-sel" style={{ order: 3, flexBasis: '100%', minWidth: 0, display: 'flex', gap: 6 }}><Select size="sm" style={{ flex: 1, minWidth: 0 }} value={s.model} onChange={(e: any) => guard(api.setSessionModel(s.id, e.target.value as ModelAlias))} options={modelOptions(app, s.backend)} />{can(app, s, 'effort') ? <Select size="sm" style={{ flex: 1, minWidth: 0 }} value={s.effort || 'default'} onChange={(e: any) => guard(api.setSessionEffort(s.id, e.target.value === 'default' ? null : (e.target.value as Effort)))} options={EFFORTS} /> : null}<Select size="sm" style={{ flex: 1, minWidth: 0 }} value={s.permMode} onChange={(e: any) => guard(api.setSessionPermMode(s.id, e.target.value as PermMode))} options={[{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits' }, ...(can(app, s, 'planMode') ? [{ value: 'plan', label: 'Plan only' }] : []), { value: 'all', label: 'Allow everything' }]} /></div> : <><Select size="sm" value={s.model} onChange={(e: any) => guard(api.setSessionModel(s.id, e.target.value as ModelAlias))} options={modelOptions(app, s.backend)} />{can(app, s, 'effort') ? <Select size="sm" value={s.effort || 'default'} onChange={(e: any) => guard(api.setSessionEffort(s.id, e.target.value === 'default' ? null : (e.target.value as Effort)))} options={EFFORTS} /> : null}<Select size="sm" value={s.permMode} onChange={(e: any) => guard(api.setSessionPermMode(s.id, e.target.value as PermMode))} options={[{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits' }, ...(can(app, s, 'planMode') ? [{ value: 'plan', label: 'Plan only' }] : []), { value: 'all', label: 'Allow everything' }]} /></>}
+          <details className="helm-run-settings"><summary>Run settings</summary><div className="helm-comp-sel" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: 8 }}><Select size="sm" style={{ flexShrink: 0 }} value={s.model} onChange={(e: any) => guard(api.setSessionModel(s.id, e.target.value as ModelAlias))} options={modelOptions(app, s.backend)} />{can(app, s, 'effort') ? <Select size="sm" style={{ flexShrink: 0 }} value={s.effort || 'default'} onChange={(e: any) => guard(api.setSessionEffort(s.id, e.target.value === 'default' ? null : (e.target.value as Effort)))} options={EFFORTS} /> : null}<Select size="sm" style={{ flexShrink: 0 }} value={s.permMode} onChange={(e: any) => guard(api.setSessionPermMode(s.id, e.target.value as PermMode))} options={[{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits' }, ...(can(app, s, 'planMode') ? [{ value: 'plan', label: 'Plan only' }] : []), { value: 'all', label: 'Allow everything' }]} /></div></details>
           <span style={{ flex: 1 }} />
           {s.ctx ? <span title={`Context window: ${fmtTokens(s.ctx)} of ${ctxLabel} tokens in use`} style={{ font: '400 11.5px/1.5 var(--font-mono)', color: ctxPct >= 75 ? 'var(--status-attention-text)' : 'var(--text-3)', whiteSpace: 'nowrap' }}>{ctxPct}% context</span> : null}
           {working ? <Button size="sm" variant="ghost" kbd={narrow ? undefined : interruptKey === 'esc' ? 'Esc' : interruptKey === 'double-esc' ? 'Esc Esc' : undefined} onClick={() => guard(api.interrupt(s.id))}>Interrupt</Button> : null}
