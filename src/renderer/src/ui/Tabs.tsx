@@ -46,7 +46,7 @@ export function Tabs({ tabs = [], value, defaultValue, onChange, onClose, closab
               borderBottom: editor ? (on ? '1px solid var(--bg-editor)' : '1px solid transparent') : on ? '2px solid var(--accent)' : '2px solid transparent',
               boxShadow: editor && on ? 'inset 0 1px 0 var(--accent)' : 'none',
               color: on ? 'var(--text-1)' : 'var(--text-3)', font: editor ? '400 12px/1.5 var(--font-mono)' : '500 13px/1.5 var(--font-sans)' }}>
-            {t.icon ? <i className={'ph ph-' + t.icon} style={{ fontSize: 14 }} /> : null}
+            {t.icon ? <i aria-hidden="true" className={'ph ph-' + t.icon} style={{ fontSize: 14 }} /> : null}
             {t.label}
             {t.count != null ? <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{t.count}</span> : null}
             {t.dirty ? <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--text-2)' }} /> : null}

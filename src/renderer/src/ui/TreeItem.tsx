@@ -14,10 +14,10 @@ export function TreeItem({ label, icon, depth = 0, expandable = false, expanded 
         background: selected ? 'var(--bg-selected)' : hover ? 'var(--bg-hover)' : 'transparent', color: selected ? 'var(--text-1)' : 'var(--text-2)', ...style }}>
       <span role={expandable && onToggle ? 'button' : undefined} tabIndex={expandable && onToggle ? 0 : undefined} aria-label={expandable && onToggle ? (expanded ? 'Collapse' : 'Expand') + ' group' : undefined} onKeyDown={(e) => { if (expandable && onToggle && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); e.stopPropagation(); onToggle(); } }} className={expandable && onToggle ? 'helm-tree-caret' : undefined} onClick={expandable && onToggle ? (e) => { e.stopPropagation(); onToggle(); } : undefined}
         style={{ width: 12, flex: 'none', display: 'grid', placeItems: 'center', color: 'var(--text-3)' }}>
-        {expandable ? <i className={'ph ph-caret-' + (expanded ? 'down' : 'right')} style={{ fontSize: 11 }} /> : null}
+        {expandable ? <i aria-hidden="true" className={'ph ph-caret-' + (expanded ? 'down' : 'right')} style={{ fontSize: 11 }} /> : null}
       </span>
       {status ? <StatusDot status={status} size={10} />
-        : icon ? <i className={'ph ph-' + icon} style={{ fontSize: 14, flex: 'none', color: selected ? 'var(--accent-text)' : 'var(--text-3)' }} /> : null}
+        : icon ? <i aria-hidden="true" className={'ph ph-' + icon} style={{ fontSize: 14, flex: 'none', color: selected ? 'var(--accent-text)' : 'var(--text-3)' }} /> : null}
       <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', font: mono ? '400 12px/1.5 var(--font-mono)' : '400 13px/1.5 var(--font-sans)', color: selected || hover ? 'var(--text-1)' : undefined }}>{label}</span>
       {meta != null ? <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)', flex: 'none' }}>{meta}</span> : null}
       {trailing}
