@@ -1,6 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
+import { ErrorBoundary } from './ui/ErrorBoundary';
 import './styles/index.css';
 import './fonts';
 
@@ -9,4 +10,4 @@ const report = (m: string) => { try { void window.helmBridge.invoke('logRenderer
 window.addEventListener('error', (e) => report(`${e.message} at ${e.filename}:${e.lineno}`));
 window.addEventListener('unhandledrejection', (e) => report('unhandled rejection: ' + String((e.reason && (e.reason.stack || e.reason.message)) || e.reason)));
 
-createRoot(document.getElementById('root')!).render(<App />);
+createRoot(document.getElementById('root')!).render(<ErrorBoundary><App /></ErrorBoundary>);

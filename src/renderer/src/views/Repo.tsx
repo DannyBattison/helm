@@ -266,6 +266,7 @@ function PullRequests({ prs, err, repoId }: { prs: PullRequest[] | null; err: st
 }
 
 export function ago(t: number): string {
+  if (!Number.isFinite(t)) return 'Unknown time';
   const s = (Date.now() - t) / 1000;
   if (s < 60) return 'just now';
   if (s < 3600) return Math.floor(s / 60) + 'm ago';

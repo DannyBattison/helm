@@ -1,4 +1,5 @@
 import React from 'react';
+import { ErrorBoundary } from './ui/ErrorBoundary';
 import { api, platform } from './api';
 import { dataStack, fontStack, uiStack } from './fonts';
 import { setTimeFormat, theme as resolveTheme } from './lib';
@@ -232,7 +233,7 @@ export function App() {
         </> : null) : <Sidebar />}
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg-app)' }}>
           <TitleBar crumbs={crumbs} theme={theme} setTheme={toggleTheme as any} />
-          {body}
+          <ErrorBoundary key={JSON.stringify(route)}>{body}</ErrorBoundary>
           {termUsed.current ? <TerminalDrawer visible={term && !inCode} sessionId={route.screen === 'session' ? route.id : route.screen === 'repo' ? 'repo:' + route.id : null} themeKey={theme} onClose={() => setUI({ term: false })} /> : null}
         </div>
       </div>
