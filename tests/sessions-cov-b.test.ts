@@ -338,9 +338,10 @@ describe('stuck detection and commits', () => {
     g(s.worktree, 'add', '.'); g(s.worktree, 'commit', '-q', '-m', 'work');
     q().emit(tool('Bash', { command: 'git commit -m work' }, 'gc'));
     await until(() => rtOf(id).toolStart.has('gc'));
-    q().emit(result('gc', '[agent/fix-the-thing abc1234] work\n 1 file changed'));
+    const hash = g(s.worktree, 'rev-parse', '--short', 'HEAD').trim();
+    q().emit(result('gc', `[agent/fix-the-thing ${hash}] work\n 1 file changed`));
     await until(() => s.commits.length === 1);
-    expect(s.commits[0].hash).toBe('abc1234');
+    expect(s.commits[0].hash).toBe(hash);
     await until(() => store.data.activity.some((a: any) => a.kind === 'push' && a.what === `pushed ${s.branch}`));
     expect(g(remote, 'branch', '--list', s.branch)).toContain(s.branch);
     // output without the commit line records nothing
@@ -350,6 +351,44 @@ describe('stuck detection and commits', () => {
 });
 
 describe('pushing', () => {
+  it.each(['git -C . commit -q -m quiet', './commit-script', 'git commit -m quiet > commit.log'])('pushes commits without a recognizable output line: %s', async (command) => {
+    const remote = join(root, 'quiet' + n + '.git');
+    execFileSync('git', ['init', '-q', '--bare', remote]);
+    g(repoPath, 'remote', 'add', 'origin', remote);
+    const id = await sm.create(input());
+    const s = sm.get(id)!;
+    writeFileSync(join(s.worktree, 'quiet.txt'), 'committed quietly');
+    g(s.worktree, 'add', '.'); g(s.worktree, 'commit', '-q', '-m', 'quiet');
+    const hash = g(s.worktree, 'rev-parse', '--short', 'HEAD').trim();
+    q().emit(tool('Bash', { command }, 'quiet'));
+    await until(() => rtOf(id).toolStart.has('quiet'));
+    // Even a failed compound command can have made a successful commit first.
+    q().emit(result('quiet', '', true));
+    await until(() => store.data.activity.some((a: any) => a.kind === 'push' && a.what === `pushed ${s.branch}`));
+    expect(g(remote, 'rev-parse', `refs/heads/${s.branch}`).trim()).toBe(g(s.worktree, 'rev-parse', 'HEAD').trim());
+    await priv().reconcileCommits(s);
+    expect(s.commits).toEqual([expect.objectContaining({ hash })]);
+  });
+
+  it.each([false, true])('reconciles quiet commits at turn completion, respecting ready timing (autoPush=%s)', async (enabled) => {
+    const remote = join(root, 'ready' + n + '.git');
+    execFileSync('git', ['init', '-q', '--bare', remote]);
+    g(repoPath, 'remote', 'add', 'origin', remote);
+    store.data.settings.autoPush = enabled;
+    store.data.settings.pushWhen = 'ready';
+    const id = await sm.create(input());
+    const s = sm.get(id)!;
+    writeFileSync(join(s.worktree, 'quiet.txt'), 'quiet');
+    g(s.worktree, 'add', '.'); g(s.worktree, 'commit', '-q', '-m', 'quiet');
+    expect(s.commits).toHaveLength(0);
+    expect(store.data.activity.some((a: any) => a.kind === 'push')).toBe(false);
+    q().emit(done());
+    await until(() => s.status === 'ready');
+    expect(s.commits).toHaveLength(1);
+    if (enabled) await until(() => store.data.activity.some((a: any) => a.kind === 'push'));
+    expect(g(remote, 'branch', '--list', s.branch).includes(s.branch)).toBe(enabled);
+  });
+
   it('serialises pushes, bumps the epoch and survives a failed one before it', async () => {
     const id = await sm.create(input());
     const s = sm.get(id)!;

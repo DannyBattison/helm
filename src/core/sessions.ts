@@ -948,6 +948,7 @@ export class SessionManager {
         this.store.addAudit({ t: Date.now(), sessionId: s.id, repoId: s.repoId, kind: 'command', text: auditText(command), ok: !b.is_error });
         this.trackCommand(s, rt, command, !b.is_error);
         if (/git\s+commit/.test(command)) await this.detectCommit(s, text, start.tkey);
+        await this.reconcileCommits(s, start.tkey);
       } else if (start.kind === 'edit') {
         if (!b.is_error) {
           const file = rel(s.worktree, String(start.input.file_path || start.input.notebook_path || ''));
@@ -1025,7 +1026,7 @@ export class SessionManager {
 
   private async detectCommit(s: Session, out: string, tkey: string) {
     const m = out.match(/^\[[^\]\s]+(?: \(root-commit\))? ([0-9a-f]{7,40})\] (.+)$/m);
-    if (!m) return;
+    if (!m || s.commits.some((c) => c.hash.startsWith(m[1]) || m[1].startsWith(c.hash))) return;
     const now = Date.now();
     s.commits.push({ hash: m[1], at: now });
     this.markChanged(s, s.subagents.find((x) => tkey === `${s.id}~${x.id}`));
@@ -1037,6 +1038,15 @@ export class SessionManager {
     const push = this.cfg(s.repoId);
     if (push.autoPush && push.pushWhen !== 'ready') void this.autoPush(s);
     this.touch();
+  }
+
+  /** Command output can be quiet, redirected, truncated, or come from a script. Git is the fallback source of truth. */
+  private async reconcileCommits(s: Session, tkey = s.id) {
+    if (s.worktreeGone || (s.free && !s.free.managed)) return;
+    for (const w of [s, ...(s.extras || [])]) {
+      const log = await G.git(w.worktree, 'log', '--reverse', '--format=[helm %h] %s', `${w.base}..HEAD`).catch(() => '');
+      for (const line of log.split('\n')) await this.detectCommit(s, line, tkey);
+    }
   }
 
   /** Pushes the session's branch to GitHub, one push at a time per session so quick commits do not race. A failure is shown in the activity log and tried again at the next commit. */
@@ -1120,6 +1130,7 @@ export class SessionManager {
     rt.toolStart.clear();
     rt.lastTools.clear();
     for (const a of s.subagents) if (a.agentId) await this.syncSubagent(s, a);
+    await this.reconcileCommits(s);
     await this.refreshStats(s);
     void this.refreshTitle(s);
     if (rt.budgetPaused) {
