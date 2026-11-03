@@ -13,7 +13,7 @@ export function Dialog({ open = true, title, description, children, footer, widt
   React.useEffect(() => {
     if (!live) return;
     const previous = document.activeElement as HTMLElement | null;
-    const focusable = () => [...(dialog.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), a[href], [tabindex="0"]') || [])].filter((el) => el.getClientRects().length > 0);
+    const focusable = () => [...(dialog.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), a[href], summary, [tabindex="0"]') || [])].filter((el) => el.getClientRects().length > 0);
     if (!dialog.current?.contains(document.activeElement)) (focusable()[0] || dialog.current)?.focus();
     const key = (e: KeyboardEvent) => { if (e.key === 'Tab' && !document.querySelector('[role="listbox"], [role="menu"]')) {
       const list = focusable(), first = list[0], last = list[list.length - 1];

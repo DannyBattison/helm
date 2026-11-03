@@ -50,3 +50,14 @@ it('supports keyboard activation and expansion in navigation rows', () => {
   act(() => row.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })));
   expect(click).toHaveBeenCalledOnce(); expect(toggle).toHaveBeenCalledOnce();
 });
+
+it('closing a menu with Escape does not invoke session-level window shortcuts', async () => {
+  const { ContextMenu } = await import('../src/renderer/src/ui/ContextMenu');
+  const close = vi.fn(), interrupt = vi.fn();
+  window.addEventListener('keydown', interrupt);
+  try {
+    act(() => root.render(<ContextMenu x={0} y={0} items={[{ label: 'Open editor', onClick() {} }]} onClose={close} />));
+    act(() => document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })));
+    expect(close).toHaveBeenCalledOnce(); expect(interrupt).not.toHaveBeenCalled();
+  } finally { window.removeEventListener('keydown', interrupt); }
+});

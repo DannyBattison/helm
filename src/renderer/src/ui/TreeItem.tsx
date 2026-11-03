@@ -7,7 +7,7 @@ export function TreeItem({ label, icon, depth = 0, expandable = false, expanded 
   return (
     <div role="button" tabIndex={0} aria-expanded={expandable ? expanded : undefined} onKeyDown={(e) => {
       if (e.target !== e.currentTarget) return;
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick?.(); }
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); (onClick || onToggle)?.(); }
       else if (expandable && ((e.key === 'ArrowRight' && !expanded) || (e.key === 'ArrowLeft' && expanded))) { e.preventDefault(); (onToggle || onClick)?.(); }
     }} className="helm-tap-row" aria-current={selected ? 'page' : undefined} onClick={onClick} onPointerEnter={(e) => { if (e.pointerType === 'mouse') setHover(true); }} onPointerLeave={() => setHover(false)}
       style={{ display: 'flex', alignItems: 'center', gap: 6, height: 26, padding: '0 8px 0 ' + (8 + depth * 14) + 'px', borderRadius: 'var(--radius-sm)', cursor: 'pointer',

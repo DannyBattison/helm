@@ -593,7 +593,7 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
           <SchedulePrompt s={s} text={text} onScheduled={() => setText('')} />
           {s.panel ? null : <IconButton icon="users-three" label="Bring in another agent to discuss this" size="sm" onClick={() => setUI({ addingAgent: s.id })} />}
 </div></details>
-          <details className="helm-run-settings" open={!experience.simple && !narrow ? true : undefined}><summary>Run settings</summary><div className="helm-comp-sel" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: 8 }}><Select size="sm" style={{ flexShrink: 0 }} value={s.model} onChange={(e: any) => guard(api.setSessionModel(s.id, e.target.value as ModelAlias))} options={modelOptions(app, s.backend)} />{can(app, s, 'effort') ? <Select size="sm" style={{ flexShrink: 0 }} value={s.effort || 'default'} onChange={(e: any) => guard(api.setSessionEffort(s.id, e.target.value === 'default' ? null : (e.target.value as Effort)))} options={EFFORTS} /> : null}<Select size="sm" style={{ flexShrink: 0 }} value={s.permMode} onChange={(e: any) => guard(api.setSessionPermMode(s.id, e.target.value as PermMode))} options={[{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits' }, ...(can(app, s, 'planMode') ? [{ value: 'plan', label: 'Plan only' }] : []), { value: 'all', label: 'Allow everything' }]} /></div></details>
+          <details className="helm-run-settings" open={!experience.simple && !narrow ? true : undefined}><summary>Run settings</summary><div className="helm-comp-sel" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: 8 }}><Select size="sm" style={{ flexShrink: 0 }} aria-label="Model" value={s.model} onChange={(e: any) => guard(api.setSessionModel(s.id, e.target.value as ModelAlias))} options={modelOptions(app, s.backend)} />{can(app, s, 'effort') ? <Select size="sm" style={{ flexShrink: 0 }} aria-label="Reasoning effort" value={s.effort || 'default'} onChange={(e: any) => guard(api.setSessionEffort(s.id, e.target.value === 'default' ? null : (e.target.value as Effort)))} options={EFFORTS} /> : null}<Select size="sm" style={{ flexShrink: 0 }} aria-label="Command permissions" value={s.permMode} onChange={(e: any) => guard(api.setSessionPermMode(s.id, e.target.value as PermMode))} options={[{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits' }, ...(can(app, s, 'planMode') ? [{ value: 'plan', label: 'Plan only' }] : []), { value: 'all', label: 'Allow everything' }]} /></div></details>
           <span style={{ flex: 1 }} />
           {s.ctx ? <span title={`Context window: ${fmtTokens(s.ctx)} of ${ctxLabel} tokens in use`} style={{ font: '400 12px/1.5 var(--font-mono)', color: ctxPct >= 75 ? 'var(--status-attention-text)' : 'var(--text-3)', whiteSpace: 'nowrap' }}>{ctxPct}% context</span> : null}
           {working ? <Button size="sm" variant="ghost" kbd={narrow ? undefined : interruptKey === 'esc' ? 'Esc' : interruptKey === 'double-esc' ? 'Esc Esc' : undefined} onClick={() => guard(api.interrupt(s.id))}>Interrupt</Button> : null}
@@ -604,7 +604,7 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
   );
 }
 
-function UsagePanel({ s, expanded = false }: { s: S; expanded?: boolean }) {
+function UsagePanel({ s, expanded = false, onClose }: { s: S; expanded?: boolean; onClose?(): void }) {
   const app = useApp();
   const { fmt } = useMoney();
   const sub = billingOf(app, s.backend) === 'subscription';
@@ -615,6 +615,7 @@ function UsagePanel({ s, expanded = false }: { s: S; expanded?: boolean }) {
   const files = Object.entries(s.filesTouched);
   return (
     <aside className={expanded ? "helm-usage-expanded" : "helm-usage-panel"} style={{ position: 'relative', width, flex: 'none', borderLeft: '1px solid var(--border)', overflow: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 20, background: 'var(--bg-panel)' }}>
+      {expanded ? <Button size="sm" variant="ghost" icon="x" onClick={onClose}>Close session usage</Button> : null}
       <Grip edge="left" onMouseDown={grip} onDoubleClick={resetWidth} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <span style={label}>Usage</span>
@@ -711,6 +712,12 @@ export function Session({ id, tab, setTab, themeKey, sub, file, line, msg }: { i
   const app = useApp();
   const experience = useExperience();
   const [showUsage, setShowUsage] = React.useState(false);
+  React.useEffect(() => {
+    if (!showUsage) return;
+    const close = (e: KeyboardEvent) => { if (e.key === 'Escape' && !e.defaultPrevented) { e.preventDefault(); e.stopPropagation(); setShowUsage(false); } };
+    document.addEventListener('keydown', close);
+    return () => document.removeEventListener('keydown', close);
+  }, [showUsage]);
   const compact = useNarrow(1100);
   const s = app.sessions.find((x) => x.id === id);
   const items = useTranscript(id);
@@ -766,7 +773,7 @@ export function Session({ id, tab, setTab, themeKey, sub, file, line, msg }: { i
         </div>
         {s.remoteOwner ? <div style={{ ...gone, padding: '0 20px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>This session belongs to {s.remoteOwner}, so this copy is read-only.<Button variant="primary" icon="hand-grabbing" onClick={() => guard(api.takeControl(s.id))}>Take control</Button></div> : s.worktreeGone ? <div style={{ ...gone, padding: '0 20px 16px' }}>Merged{s.mergedInto ? ` into ${s.mergedInto}` : ''} and archived. The worktree was removed, so this session cannot be continued.</div> : <Composer s={s} inputRef={input} />}
       </div>
-      {(experience.detailedUsage && !compact) || showUsage ? <UsagePanel s={s} expanded={showUsage} /> : null}
+      {(experience.detailedUsage && !compact) || showUsage ? <UsagePanel s={s} expanded={showUsage} onClose={() => setShowUsage(false)} /> : null}
     </div>
   );
   return (

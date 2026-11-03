@@ -9,7 +9,7 @@ import { api, platform } from '../api';
 import { STATUS_LABEL, visibleRepos, backendIdOf, planBackends, isFreeGroup, whereLabel, ago, clock, fmtTokens, lifetimeTokens, laneAxis, laneData, LANE_MIN, livePlan, repoOf, reposWithSessions, runningSubagents, sessionTokens, totals, untilReset } from '../lib';
 import { Cmd } from '../Hl';
 import { go, setUI, useApp, useMoney, toast, useUI } from '../store';
-import { Avatar, Button, DiffStat, Hint, Meter, SegmentedControl, Stat, StatusDot, useColumns, useNarrow } from '../ui';
+import { Avatar, Button, DiffStat, Hint, Meter, SegmentedControl, Stat, StatusDot, Select, useColumns, useNarrow } from '../ui';
 import { PlanMeters } from './Shell';
 import { isQuickQuestion } from './QuestionForm';
 import { ForecastNotice } from './Review';
@@ -146,8 +146,13 @@ function FirstRun() {
         <i className={'ph ph-' + (none ? 'book-bookmark' : 'robot')} style={{ fontSize: 30, color: 'var(--text-3)' }} />
         <h2 style={{ margin: 0, font: '600 16px/1.5 var(--font-sans)' }}>{none ? 'Add your first repository' : 'Start your first session'}</h2>
         <p style={{ margin: 0, font: '400 13px/1.55 var(--font-sans)', color: 'var(--text-2)' }}>
-          {none ? 'helm works with GitHub repositories. Clone one from your account, from a URL, or register a clone you already have.' : 'Describe a task and helm gives the agent its own worktree and branch. Your checkout is never touched.'}
+          {none ? 'helm works with GitHub repositories. Clone one from your account, from a URL, or register a clone you already have.' : 'Describe a task and helm gives the agent a separate work folder and branch. Your checkout stays safe.'}
         </p>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%', textAlign: 'left' }}>
+          <span>How do you work with helm?</span>
+          <Select aria-label="Experience" value={app.settings.experience || 'advanced'} onChange={(e: any) => guard(api.updateSettings({ experience: e.target.value }))} options={[{ value: 'simple', label: 'Simple · tasks and review' }, { value: 'standard', label: 'Standard · developer tools' }, { value: 'advanced', label: 'Advanced · all controls (default)' }]} />
+          <span style={{ color: 'var(--text-2)', fontSize: 12 }}>You can change this anytime in Settings → Appearance.</span>
+        </label>
         {none ? <div style={{ display: 'flex', gap: 8 }}><Button variant="primary" icon="book-bookmark" onClick={() => setUI({ adding: true })}>Add repository</Button>{app.settings.freeAgents ? <Button variant="secondary" icon="robot" onClick={() => setUI({ newSession: { repoId: '@free' } })}>Start a free agent</Button> : null}</div> : <Button variant="primary" icon="plus" onClick={() => setUI({ newSession: {} })}>New session</Button>}
       </div>
     </div>
@@ -221,11 +226,14 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
   const planAgents = planBackends(app);
   const widgets = sub ? (planAgents.length ? planAgents.map((b) => ({ id: b.id as string | undefined, name: planAgents.length > 1 ? b.shortName : '' })) : [{ id: undefined, name: '' }]) : [];
   const phone = useNarrow(1100);
-  const narrow = phone || experience.simple;
+  const measured = React.useRef<HTMLDivElement>(null);
+  const [available, setAvailable] = React.useState(Infinity);
+  React.useLayoutEffect(() => { const el = measured.current; if (!el) return; const observer = new ResizeObserver(() => setAvailable(el.clientWidth - 48)); observer.observe(el); return () => observer.disconnect(); }, []);
   const col = useColumns(sub ? 'ledger-sub' : 'ledger-api', [
-    { w: 20, min: 20, fixed: true }, { w: 270, min: 150 }, { w: 200, min: 150, flex: true }, { w: 300, min: 180 }, { w: 88, min: 60 }, { w: 56, min: 44 },
+    { w: 20, min: 20, fixed: true }, { w: 270, min: 150, flex: true }, { w: 200, min: 150 }, { w: 300, min: 180 }, { w: 88, min: 60 }, { w: 56, min: 44 },
     ...(sub ? [] : [{ w: 56, min: 44 }]), { w: 104, min: 80, fixed: true }
   ]);
+  const narrow = phone || experience.simple || available < col.minWidth;
   const visible = (s: Session) => (filter === 'archived' ? !!s.archivedAt : !s.archivedAt && filter !== 'external' && (filter === 'all' || s.status === filter));
   const extVisible = (x: ExternalSession) => (filter === 'archived' ? x.archived : !x.archived && (filter === 'all' || filter === 'external' || (filter === 'working' && x.active)));
   const extFor = (id: string) => (externals[id] || []).filter(extVisible);
@@ -238,7 +246,7 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
   const date = new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
   const withSessions = new Set(app.sessions.map((s) => s.repoId)).size;
   return (
-    <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+    <div ref={measured} style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
       <div style={{ padding: narrow ? '14px 12px 24px' : '20px 24px 32px', display: 'flex', flexDirection: 'column', gap: narrow ? 14 : 20 }}>
         <div style={{ display: 'flex', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12 }}>
           <div style={{ flex: '1 1 240px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>

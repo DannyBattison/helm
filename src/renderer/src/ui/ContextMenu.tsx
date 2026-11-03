@@ -26,17 +26,17 @@ export function ContextMenu({ x, y, items, onClose }: { x: number; y: number; it
     const down = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) onClose(); };
     const key = (e: KeyboardEvent) => {
       const live = items.map((it, i) => (it.disabled ? -1 : i)).filter((i) => i >= 0);
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onClose(); }
       else if (e.key === 'ArrowDown') { e.preventDefault(); setHi((h) => live[(live.indexOf(h) + 1) % live.length]); }
       else if (e.key === 'ArrowUp') { e.preventDefault(); setHi((h) => live[(live.indexOf(h) - 1 + live.length) % live.length]); }
       else if (e.key === 'Enter' && hi >= 0) { e.preventDefault(); onClose(); items[hi].onClick(); }
     };
     window.addEventListener('mousedown', down);
-    window.addEventListener('keydown', key);
+    document.addEventListener('keydown', key);
     window.addEventListener('resize', onClose);
     window.addEventListener('blur', onClose);
     window.addEventListener('scroll', onClose, true);
-    return () => { window.removeEventListener('mousedown', down); window.removeEventListener('keydown', key); window.removeEventListener('resize', onClose); window.removeEventListener('blur', onClose); window.removeEventListener('scroll', onClose, true); };
+    return () => { window.removeEventListener('mousedown', down); document.removeEventListener('keydown', key); window.removeEventListener('resize', onClose); window.removeEventListener('blur', onClose); window.removeEventListener('scroll', onClose, true); };
   }, [items, hi]);
   return createPortal(
     <div ref={ref} role="menu" onContextMenu={(e) => e.preventDefault()} style={{ position: 'fixed', zIndex: 500, minWidth: 200, maxHeight: 'calc(100dvh - 16px)', overflowY: 'auto', padding: 4, borderRadius: 'var(--radius-lg)', background: 'var(--bg-overlay)', boxShadow: 'var(--shadow-popover)', animation: 'helm-in var(--dur) var(--ease-out)', ...pos }}>

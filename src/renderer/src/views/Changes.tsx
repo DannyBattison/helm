@@ -29,7 +29,7 @@ export function DiffLine({ l, onComment, lang }: { l: Row; onComment(line: numbe
   return (
     <div className="helm-diff-line" style={{ display: 'grid', gridTemplateColumns: '44px 44px 20px minmax(0,1fr)', background: bg, font: '400 12px/20px var(--font-code)' }}>
       <span style={{ textAlign: 'right', paddingRight: 8, color: 'var(--text-disabled)', background: gut }}>{o || ''}</span>
-      <span {...keyboardClick} title={n ? 'Comment on this line' : undefined} onClick={() => n && onComment(n)} style={{ textAlign: 'right', paddingRight: 8, color: 'var(--text-disabled)', background: gut, cursor: n ? 'pointer' : 'default' }}>{n || ''}</span>
+      <span {...(n ? keyboardClick : {})} aria-label={n ? `Comment on line ${n}` : undefined} title={n ? 'Comment on this line' : undefined} onClick={() => n && onComment(n)} style={{ textAlign: 'right', paddingRight: 8, color: 'var(--text-disabled)', background: gut, cursor: n ? 'pointer' : 'default' }}>{n || ''}</span>
       <span style={{ textAlign: 'center', color: fg }}>{t === '-' ? '−' : t === '+' ? '+' : ''}</span>
       <span className="selectable" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', color: t === ' ' ? 'var(--text-2)' : 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', tabSize: 4 }}><Hl text={text} lang={lang} /></span>
     </div>
@@ -45,7 +45,7 @@ export function SplitRows({ lines, onComment, lang }: { lines: Row[]; onComment(
     const bg = !l ? 'var(--bg-hover)' : t === '+' ? 'var(--diff-add-bg)' : t === '-' ? 'var(--diff-del-bg)' : 'transparent';
     return (
       <div style={{ display: 'grid', gridTemplateColumns: '44px minmax(0,1fr)', background: bg, minWidth: 0 }}>
-        <span {...keyboardClick} onClick={() => side === 'r' && num && onComment(num)} style={{ textAlign: 'right', paddingRight: 8, color: 'var(--text-disabled)', cursor: side === 'r' && num ? 'pointer' : 'default' }}>{num || ''}</span>
+        <span {...(side === 'r' && num ? keyboardClick : {})} aria-label={side === 'r' && num ? `Comment on line ${num}` : undefined} onClick={() => side === 'r' && num && onComment(num)} style={{ textAlign: 'right', paddingRight: 8, color: 'var(--text-disabled)', cursor: side === 'r' && num ? 'pointer' : 'default' }}>{num || ''}</span>
         <span className="selectable" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', overflow: 'hidden', textOverflow: 'ellipsis', tabSize: 4, color: t === ' ' ? 'var(--text-2)' : 'var(--text-1)' }}><Hl text={l?.[3] ?? ''} lang={lang} /></span>
       </div>
     );
