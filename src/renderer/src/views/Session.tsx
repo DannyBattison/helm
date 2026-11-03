@@ -1,5 +1,6 @@
 import { contextWindow, windowLabel } from '@shared/reports';
 import React from 'react';
+import { useExperience } from '../experience';
 import type { Session as S, TranscriptEvent, ModelAlias, PermMode, Effort, MessageImage, Artifact } from '@shared/types';
 import { api, platform } from '../api';
 import { commandSteps } from '@shared/commandSummary';
@@ -34,10 +35,12 @@ const stepsTip = (cmd: string, summary?: string) => { const steps = commandSteps
 function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string): void }) {
   const { fmt } = useMoney();
   const app = useApp();
+  const experience = useExperience();
   const sub = billingOf(app, s.backend) === 'subscription';
   const push = usePush(s.repoId, s.id);
   const [more, setMore] = React.useState<{ x: number; y: number } | null>(null);
-  const narrow = useNarrow();
+  const phone = useNarrow();
+  const narrow = phone || !experience.advanced;
   return (
     <div className="helm-sess-header" style={{ flex: 'none', padding: '14px 20px 0', display: 'flex', flexDirection: 'column', gap: 12, borderBottom: '1px solid var(--border)' }}>
       <div className="helm-sess-head" style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
@@ -87,8 +90,8 @@ function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string
       ]} /> : null}
       <Tabs value={tab} onChange={setTab} style={{ borderBottom: 'none', padding: 0 }} tabs={[
         { value: 'conversation', label: 'Conversation', icon: 'chats-circle' },
-        { value: 'code', label: 'Code', icon: 'code' },
-        { value: 'changes', label: 'Changes', icon: 'git-diff', count: s.files }
+        ...(!experience.simple || tab === 'code' ? [{ value: 'code', label: 'Code', icon: 'code' }] : []),
+        { value: 'changes', label: experience.simple ? 'Review' : 'Changes', icon: 'git-diff', count: s.files }
       ]} />
     </div>
   );
@@ -445,6 +448,7 @@ function matchFiles(files: string[], q: string): string[] {
 
 function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAreaElement> }) {
   const app = useApp();
+  const experience = useExperience();
   const narrow = useNarrow(1100);
   const [text, setTextState] = React.useState(drafts.get(s.id) || '');
   const [images, setImages] = React.useState<Draft[]>([]);
@@ -582,12 +586,13 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
           style={{ display: 'block', width: '100%', boxSizing: 'border-box', resize: 'none', border: 'none', outline: 'none', boxShadow: 'none', background: 'transparent', color: 'var(--text-1)', font: '400 13px/1.5 var(--font-sans)', padding: '10px 12px 4px', maxHeight: 200 }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px 6px 8px', flexWrap: 'wrap' }}>
           <input ref={picker} type="file" accept={IMAGE_TYPES.join(',')} multiple hidden onChange={(e) => { void addImages([...(e.target.files || [])]); e.target.value = ''; }} />
-          <IconButton icon="at" label="Mention a file" size="sm" onClick={() => { const el = inputRef.current; const c = el ? el.selectionStart : text.length; const pre = text.slice(0, c); const lead = pre && !/\s$/.test(pre) ? ' ' : ''; setText(pre + lead + '@' + text.slice(c)); requestAnimationFrame(() => { el?.focus(); const p = c + lead.length + 1; el?.setSelectionRange(p, p); track(el!.value, p); }); }} />
+          <details className="helm-composer-tools" open={experience.advanced ? true : undefined}><summary>More options</summary><div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>          <IconButton icon="at" label="Mention a file" size="sm" onClick={() => { const el = inputRef.current; const c = el ? el.selectionStart : text.length; const pre = text.slice(0, c); const lead = pre && !/\s$/.test(pre) ? ' ' : ''; setText(pre + lead + '@' + text.slice(c)); requestAnimationFrame(() => { el?.focus(); const p = c + lead.length + 1; el?.setSelectionRange(p, p); track(el!.value, p); }); }} />
           <IconButton icon="paperclip" label="Attach an image" size="sm" onClick={() => picker.current?.click()} />
           <PromptPicker s={s} onInsert={(t) => { const el = inputRef.current; const c = el ? el.selectionStart : text.length; const pre = text.slice(0, c); const lead = pre && !/\s$/.test(pre) ? '\n' : ''; setText(pre + lead + t + text.slice(c)); requestAnimationFrame(() => { el?.focus(); const p = c + lead.length + t.length; el?.setSelectionRange(p, p); }); }} />
           <SchedulePrompt s={s} text={text} onScheduled={() => setText('')} />
           {s.panel ? null : <IconButton icon="users-three" label="Bring in another agent to discuss this" size="sm" onClick={() => setUI({ addingAgent: s.id })} />}
-          <details className="helm-run-settings"><summary>Run settings</summary><div className="helm-comp-sel" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: 8 }}><Select size="sm" style={{ flexShrink: 0 }} value={s.model} onChange={(e: any) => guard(api.setSessionModel(s.id, e.target.value as ModelAlias))} options={modelOptions(app, s.backend)} />{can(app, s, 'effort') ? <Select size="sm" style={{ flexShrink: 0 }} value={s.effort || 'default'} onChange={(e: any) => guard(api.setSessionEffort(s.id, e.target.value === 'default' ? null : (e.target.value as Effort)))} options={EFFORTS} /> : null}<Select size="sm" style={{ flexShrink: 0 }} value={s.permMode} onChange={(e: any) => guard(api.setSessionPermMode(s.id, e.target.value as PermMode))} options={[{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits' }, ...(can(app, s, 'planMode') ? [{ value: 'plan', label: 'Plan only' }] : []), { value: 'all', label: 'Allow everything' }]} /></div></details>
+</div></details>
+          <details className="helm-run-settings" open={!experience.simple && !narrow ? true : undefined}><summary>Run settings</summary><div className="helm-comp-sel" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: 8 }}><Select size="sm" style={{ flexShrink: 0 }} value={s.model} onChange={(e: any) => guard(api.setSessionModel(s.id, e.target.value as ModelAlias))} options={modelOptions(app, s.backend)} />{can(app, s, 'effort') ? <Select size="sm" style={{ flexShrink: 0 }} value={s.effort || 'default'} onChange={(e: any) => guard(api.setSessionEffort(s.id, e.target.value === 'default' ? null : (e.target.value as Effort)))} options={EFFORTS} /> : null}<Select size="sm" style={{ flexShrink: 0 }} value={s.permMode} onChange={(e: any) => guard(api.setSessionPermMode(s.id, e.target.value as PermMode))} options={[{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits' }, ...(can(app, s, 'planMode') ? [{ value: 'plan', label: 'Plan only' }] : []), { value: 'all', label: 'Allow everything' }]} /></div></details>
           <span style={{ flex: 1 }} />
           {s.ctx ? <span title={`Context window: ${fmtTokens(s.ctx)} of ${ctxLabel} tokens in use`} style={{ font: '400 11.5px/1.5 var(--font-mono)', color: ctxPct >= 75 ? 'var(--status-attention-text)' : 'var(--text-3)', whiteSpace: 'nowrap' }}>{ctxPct}% context</span> : null}
           {working ? <Button size="sm" variant="ghost" kbd={narrow ? undefined : interruptKey === 'esc' ? 'Esc' : interruptKey === 'double-esc' ? 'Esc Esc' : undefined} onClick={() => guard(api.interrupt(s.id))}>Interrupt</Button> : null}
@@ -598,7 +603,7 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
   );
 }
 
-function UsagePanel({ s }: { s: S }) {
+function UsagePanel({ s, expanded = false }: { s: S; expanded?: boolean }) {
   const app = useApp();
   const { fmt } = useMoney();
   const sub = billingOf(app, s.backend) === 'subscription';
@@ -608,7 +613,7 @@ function UsagePanel({ s }: { s: S }) {
   const n = (v: string, l: string) => <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}><span style={{ font: '500 15px/1.5 var(--font-mono)' }}>{v}</span><span style={{ font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{l}</span></div>;
   const files = Object.entries(s.filesTouched);
   return (
-    <aside className="helm-hide-phone" style={{ position: 'relative', width, flex: 'none', borderLeft: '1px solid var(--border)', overflow: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 20, background: 'var(--bg-panel)' }}>
+    <aside className={expanded ? "helm-usage-expanded" : "helm-usage-panel"} style={{ position: 'relative', width, flex: 'none', borderLeft: '1px solid var(--border)', overflow: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 20, background: 'var(--bg-panel)' }}>
       <Grip edge="left" onMouseDown={grip} onDoubleClick={resetWidth} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <span style={label}>Usage</span>
@@ -703,6 +708,9 @@ function SubagentView({ s, subId }: { s: S; subId: string }) {
 
 export function Session({ id, tab, setTab, themeKey, sub, file, line, msg }: { id: string; tab: string; setTab(t: string): void; themeKey: 'dark' | 'light'; sub?: string; file?: string; line?: number; msg?: number }) {
   const app = useApp();
+  const experience = useExperience();
+  const [showUsage, setShowUsage] = React.useState(false);
+  const compact = useNarrow(1100);
   const s = app.sessions.find((x) => x.id === id);
   const items = useTranscript(id);
   const input = React.useRef<HTMLTextAreaElement>(null);
@@ -757,12 +765,13 @@ export function Session({ id, tab, setTab, themeKey, sub, file, line, msg }: { i
         </div>
         {s.remoteOwner ? <div style={{ ...gone, padding: '0 20px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>This session belongs to {s.remoteOwner}, so this copy is read-only.<Button variant="primary" icon="hand-grabbing" onClick={() => guard(api.takeControl(s.id))}>Take control</Button></div> : s.worktreeGone ? <div style={{ ...gone, padding: '0 20px 16px' }}>Merged{s.mergedInto ? ` into ${s.mergedInto}` : ''} and archived. The worktree was removed, so this session cannot be continued.</div> : <Composer s={s} inputRef={input} />}
       </div>
-      <UsagePanel s={s} />
+      {(experience.detailedUsage && !compact) || showUsage ? <UsagePanel s={s} expanded={showUsage} /> : null}
     </div>
   );
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <SessionHeader s={s} tab={tab} setTab={setTab} />
+      {!experience.advanced || compact ? <button className="helm-usage-toggle" onClick={() => setShowUsage(!showUsage)} aria-expanded={showUsage}>{showUsage ? 'Hide' : 'Show'} session usage</button> : null}
       {body}
     </div>
   );

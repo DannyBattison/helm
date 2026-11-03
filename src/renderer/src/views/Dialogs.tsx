@@ -193,7 +193,7 @@ export function AddRepo({ onClose }: { onClose(): void }) {
             {list && !loadErr && shown.length === 0 ? <div style={{ padding: 16, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>No repositories match.</div> : null}
             {shown.map((r, i) => (
               <div key={r.id} onClick={() => !r.added && setPicked({ ...picked, [r.id]: !picked[r.id] })} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderTop: i ? '1px solid var(--border-subtle)' : 'none', cursor: r.added ? 'default' : 'pointer', opacity: r.added ? 0.55 : 1 }}>
-                <Checkbox checked={r.added || !!picked[r.id]} disabled={r.added} />
+                <Checkbox aria-label={r.id} checked={r.added || !!picked[r.id]} disabled={r.added} onChange={(v: boolean) => setPicked({ ...picked, [r.id]: v })} />
                 <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 6, font: '500 13px/1.5 var(--font-sans)' }}>{r.id}{r.private ? <i className="ph ph-lock-simple" style={{ fontSize: 12, color: 'var(--text-3)' }} /> : null}</span>
                   <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.description || ' '}</span>
@@ -707,6 +707,8 @@ export function Palette({ onClose, toggleTheme }: { onClose(): void; toggleTheme
     { key: 'a-need', label: 'Inbox: what needs you', icon: 'tray', run: () => go({ screen: 'inbox' }) },
     { key: 'a-reports', label: 'Reports', icon: 'chart-line-up', run: () => go({ screen: 'reports' }) },
     { key: 'a-act', label: 'Activity', icon: 'pulse', run: () => go({ screen: 'activity' }) },
+    { key: 'a-archive', label: 'Archive', icon: 'archive', run: () => go({ screen: 'archive' }) },
+    { key: 'a-experience', label: 'How you work: Simple, Standard or Advanced experience', icon: 'sliders-horizontal', run: () => go({ screen: 'settings', section: 'appearance' }) },
     { key: 'a-set', label: 'Settings', icon: 'gear-six', run: () => go({ screen: 'settings' }) },
     { key: 'a-new', label: 'New session', icon: 'plus', hint: newKeys.join(mac() ? '' : '+'), run: () => setUI({ newSession: {} }) },
     { key: 'a-halt', label: 'Interrupt all agents', icon: 'pause', hint: haltKeys.join(mac() ? '' : '+'), run: () => void haltAll() },

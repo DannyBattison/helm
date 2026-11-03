@@ -655,6 +655,8 @@ export interface Settings {
   collapseTools: boolean;
   /** Interface zoom, percent. */
   uiScale: number;
+  /** Presentation preset; never changes permissions or operational defaults. */
+  experience: 'simple' | 'standard' | 'advanced';
   /** Keep the activity log for this many days. 0 keeps it for good. */
   activityDays: number;
   /** Clock used for times. */

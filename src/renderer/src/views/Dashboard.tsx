@@ -1,10 +1,11 @@
 import React from 'react';
+import { useExperience } from '../experience';
 import { CopyBox } from '../ui';
 import { usePush } from './push';
 import { sessionTitle, type ActivityEvent, type ExternalSession, type Session } from '@shared/types';
 import { contextWindow } from '@shared/reports';
 import { api, platform } from '../api';
-import { visibleRepos, backendIdOf, planBackends, isFreeGroup, whereLabel, ago, clock, fmtTokens, lifetimeTokens, laneAxis, laneData, LANE_MIN, livePlan, repoOf, reposWithSessions, runningSubagents, sessionTokens, totals, untilReset } from '../lib';
+import { STATUS_LABEL, visibleRepos, backendIdOf, planBackends, isFreeGroup, whereLabel, ago, clock, fmtTokens, lifetimeTokens, laneAxis, laneData, LANE_MIN, livePlan, repoOf, reposWithSessions, runningSubagents, sessionTokens, totals, untilReset } from '../lib';
 import { Cmd } from '../Hl';
 import { go, setUI, useApp, useMoney, toast, useUI } from '../store';
 import { Avatar, Button, DiffStat, Hint, Meter, SegmentedControl, Stat, StatusDot, useColumns, useNarrow } from '../ui';
@@ -99,6 +100,7 @@ function ExternalRow({ x, repoId, tpl, sub, narrow }: { x: ExternalSession; repo
 function SessionRow({ s, now, tpl, sub, narrow }: { s: Session; now: number; tpl: string; sub: boolean; narrow?: boolean }) {
   const { fmt, sym, from } = useMoney();
   const [hover, setHover] = React.useState(false);
+  const experience = useExperience();
   const needs = s.status === 'attention';
   const a = s.ask;
   return (
@@ -118,8 +120,8 @@ function SessionRow({ s, now, tpl, sub, narrow }: { s: Session; now: number; tpl
       </div>
       {narrow ? (
         <div style={{ gridColumn: 2, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px 12px', font: 'var(--type-data)', color: 'var(--text-2)' }}>
-          <span title="Context">ctx {fmtTokens(s.ctx)}</span>
-          <span>{fmtTokens(sessionTokens(s))} tokens</span>
+          {experience.simple ? <span>{STATUS_LABEL[s.status]}</span> : <span title="Context">ctx {fmtTokens(s.ctx)}</span>}
+          {experience.simple ? null : <span>{fmtTokens(sessionTokens(s))} tokens</span>}
           {sub ? null : <span>{fmt(s.cost)}</span>}
           <DiffStat additions={s.add} deletions={s.del} />
         </div>
@@ -154,6 +156,7 @@ function FirstRun() {
 const BOARD: [string, string, string[]][] = [['attention', 'Needs you', ['attention']], ['working', 'Working', ['working']], ['ready', 'Ready for review', ['ready']], ['idle', 'Idle', ['idle', 'error']]];
 
 function BoardCard({ s }: { s: Session }) {
+  const experience = useExperience();
   const { fmt } = useMoney();
   const [hover, setHover] = React.useState(false);
   const sub = useApp().settings.billing === 'subscription';
@@ -165,7 +168,7 @@ function BoardCard({ s }: { s: Session }) {
       <span style={{ font: '400 12px/1.5 var(--font-sans)', color: s.status === 'attention' ? 'var(--status-attention-text)' : 'var(--text-2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.step}</span>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, font: 'var(--type-data)', color: 'var(--text-2)' }}>
         {runningSubagents(s) ? <span style={{ color: 'var(--status-working-text)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><i className="ph ph-tree-structure" style={{ fontSize: 11 }} />{runningSubagents(s)}</span> : null}
-        <span title="Context">ctx {fmtTokens(s.ctx)}</span>
+        {experience.simple ? <span>{STATUS_LABEL[s.status]}</span> : <span title="Context">ctx {fmtTokens(s.ctx)}</span>}
         {sub ? null : <span>{fmt(s.cost)}</span>}
         <span style={{ flex: 1 }} />
         <DiffStat additions={s.add} deletions={s.del} />
@@ -199,6 +202,7 @@ function Board({ sessions, only }: { sessions: Session[]; only: string }) {
 
 export function Dashboard({ filter: initial }: { filter?: string }) {
   const app = useApp();
+  const experience = useExperience();
   const [filter, setFilter] = React.useState(initial || 'all');
   const [layout, setLayout] = React.useState<string>(() => localStorage.getItem('helm-overview-layout') === 'board' ? 'board' : 'list');
   const pickLayout = (v: string) => { setLayout(v); localStorage.setItem('helm-overview-layout', v); };
@@ -215,7 +219,8 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
   // One usage widget per agent on a plan, each with its own summary.
   const planAgents = planBackends(app);
   const widgets = sub ? (planAgents.length ? planAgents.map((b) => ({ id: b.id as string | undefined, name: planAgents.length > 1 ? b.shortName : '' })) : [{ id: undefined, name: '' }]) : [];
-  const narrow = useNarrow();
+  const phone = useNarrow(1100);
+  const narrow = phone || experience.simple;
   const col = useColumns(sub ? 'ledger-sub' : 'ledger-api', [
     { w: 20, min: 20, fixed: true }, { w: 270, min: 150 }, { w: 200, min: 150, flex: true }, { w: 300, min: 180 }, { w: 88, min: 60 }, { w: 56, min: 44 },
     ...(sub ? [] : [{ w: 56, min: 44 }]), { w: 104, min: 80, fixed: true }
@@ -224,7 +229,7 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
   const extVisible = (x: ExternalSession) => (filter === 'archived' ? x.archived : !x.archived && (filter === 'all' || filter === 'external' || (filter === 'working' && x.active)));
   const extFor = (id: string) => (externals[id] || []).filter(extVisible);
   const extShown = (id: string) => extFor(id).filter((x, i) => filter === 'external' || x.active || i < 5);
-  const board = layout === 'board' && filter !== 'external' && filter !== 'archived';
+  const board = experience.board && layout === 'board' && filter !== 'external' && filter !== 'archived';
   const axis = laneAxis(now);
   const asks = app.sessions.filter((s) => s.ask).sort((a, b) => a.ask!.at - b.ask!.at);
   const cell: React.CSSProperties = { padding: narrow ? 12 : '14px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'center', borderLeft: '1px solid var(--border-subtle)' };
@@ -244,12 +249,12 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
           <Hint id="new-session" title="Start an agent" text="Describe a task and an agent works on it in its own branch, while you do something else."><Button variant="primary" icon="plus" kbd={narrow ? undefined : platform() === 'darwin' ? '⌘N' : 'Ctrl+N'} onClick={() => setUI({ newSession: {} })}>New session</Button></Hint>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: narrow ? 'repeat(2, minmax(0,1fr))' : `repeat(4, minmax(0,1fr)) repeat(${Math.max(widgets.length, 1)}, minmax(0,1.6fr))`, borderRadius: 'var(--radius-lg)', background: 'var(--bg-panel)', boxShadow: 'inset 0 0 0 1px var(--border)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', borderRadius: 'var(--radius-lg)', background: 'var(--bg-panel)', boxShadow: 'inset 0 0 0 1px var(--border)' }}>
           <div style={{ ...cell, borderLeft: 'none' }}><Stat label="Working" value={t.working} tone="working" /></div>
           <div style={cell}><Stat label="Needs you" value={t.attention} tone="attention" /></div>
           <div style={cell}><Stat label="Ready for review" value={t.ready} tone="ready" /></div>
-          <div style={cell}><Stat label="Tokens today" value={fmtTokens(t.tokens)} /></div>
-          {sub ? widgets.map((w, i) => {
+          {experience.advanced ? <div style={cell}><Stat label="Tokens today" value={fmtTokens(t.tokens)} /></div> : null}
+          {sub ? widgets.filter((w) => { const p = livePlan(app, w.id); return experience.advanced || Math.max(p.weekly?.util ?? 0, p.fiveHour?.util ?? 0) >= app.settings.warnAt / 100; }).map((w, i) => {
             const plan = livePlan(app, w.id);
             const pre = w.name ? w.name + ' · ' : '';
             return <div key={w.id ?? 'default'} style={{ ...cell, gap: 10, ...(narrow ? { gridColumn: '1 / -1', borderTop: '1px solid var(--border-subtle)' } : null) }}>
@@ -297,7 +302,7 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
                 <span key={k} style={{ display: 'flex', alignItems: 'center', gap: 5, font: '400 11px/1.5 var(--font-sans)', color: 'var(--text-3)' }}><span style={{ width: 12, height: 6, borderRadius: 2, background: LANE_COLOR[k] }} />{l}</span>
               ))}
               {narrow || board ? null : <span style={{ display: 'flex', alignItems: 'center', gap: 5, font: '400 11px/1.5 var(--font-sans)', color: 'var(--text-3)' }}><span style={{ width: 2, height: 10, borderRadius: 1, background: 'var(--text-1)' }} />Commit</span>}
-              <SegmentedControl size="sm" value={layout} onChange={pickLayout} options={[{ value: 'list', label: 'List', icon: 'list' }, { value: 'board', label: 'Board', icon: 'kanban' }]} />
+              {experience.board ? <SegmentedControl size="sm" value={layout} onChange={pickLayout} options={[{ value: 'list', label: 'List', icon: 'list' }, { value: 'board', label: 'Board', icon: 'kanban' }]} /> : null}
             </div>
             {board ? <Board sessions={app.sessions.filter(visible)} only={filter} /> : <>
             {narrow ? null : <div style={{ display: 'grid', gridTemplateColumns: col.template, gap: 12, alignItems: 'end', padding: '6px 12px', borderTop: '1px solid var(--border)', font: '500 10.5px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>
@@ -311,7 +316,7 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
                   <i className={'ph ph-' + (isFreeGroup(r) ? 'robot' : 'book-bookmark')} style={{ fontSize: 14, color: 'var(--text-3)' }} />
                   <span style={{ font: '600 12.5px/1.5 var(--font-sans)', cursor: isFreeGroup(r) ? 'default' : 'pointer' }} onClick={() => { if (!isFreeGroup(r)) go({ screen: 'repo', id: r.id }); }}>{isFreeGroup(r) ? 'Free agents' : <><span style={{ fontWeight: 400, color: 'var(--text-3)' }}>{r.owner}/</span>{r.name}</>}</span>
                   {isFreeGroup(r) ? <span style={{ font: '400 11px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>not tied to a repository</span> : null}
-                  {!isFreeGroup(r) && lifetimeTokens(app.lifetime[r.id]) ? <span title="Lifetime tokens in this repository, including deleted sessions" style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{fmtTokens(lifetimeTokens(app.lifetime[r.id]))} lifetime</span> : null}
+                  {experience.advanced && !isFreeGroup(r) && lifetimeTokens(app.lifetime[r.id]) ? <span title="Lifetime tokens in this repository, including deleted sessions" style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{fmtTokens(lifetimeTokens(app.lifetime[r.id]))} lifetime</span> : null}
                   {sub || isFreeGroup(r) || narrow ? null : <>
                     <Meter value={app.weekSpend[r.id] || 0} max={r.cap} style={{ width: 90, marginLeft: 6 }} warnAt={app.settings.warnAt / 100} />
                     <span style={{ font: '400 11px/1.5 var(--font-mono)', color: (app.weekSpend[r.id] || 0) / r.cap >= app.settings.warnAt / 100 ? 'var(--status-attention-text)' : 'var(--text-3)' }}>{fmt(app.weekSpend[r.id] || 0)} / {fmt(r.cap, true)}</span>
@@ -328,7 +333,7 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
             </>}
           </section>
         ) : null}
-        <LifetimeByRepo />
+        {experience.detailedUsage ? <LifetimeByRepo /> : null}
       </div>
     </div>
   );

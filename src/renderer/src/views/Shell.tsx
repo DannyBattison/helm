@@ -1,6 +1,7 @@
 import { inbox } from '@shared/inbox';
 import { sessionTitle } from '@shared/types';
 import React from 'react';
+import { useExperience } from '../experience';
 import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
 import { Terminal } from '@xterm/xterm';
@@ -70,6 +71,8 @@ export function PlanMeters() {
 
 /** `drawer`: shown over the content on a phone. It fills the drawer, has a close button, and cannot be resized or dragged. */
 export function Sidebar({ drawer = false }: { drawer?: boolean }) {
+  const experience = useExperience();
+  const [allNav, setAllNav] = React.useState(false);
   const app = useApp();
   const working = app.sessions.filter((s) => s.status === 'working').length;
   const paused = app.sessions.filter(isResumable).length;
@@ -177,9 +180,10 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
         <TreeItem icon="squares-four" label="Overview" selected={route.screen === 'overview' && !(route as any).filter} onClick={() => go({ screen: 'overview' })} />
         <TreeItem icon="tray" label="Inbox" selected={route.screen === 'inbox'} onClick={() => go({ screen: 'inbox' })}
           trailing={inboxCount ? <Badge tone="attention" mono>{inboxCount}</Badge> : null} />
-        <TreeItem icon="pulse" label="Activity" selected={route.screen === 'activity'} onClick={() => go({ screen: 'activity' })} />
-        <TreeItem icon="chart-line-up" label="Reports" selected={route.screen === 'reports'} onClick={() => go({ screen: 'reports' })} />
-        <TreeItem icon="archive" label="Archive" selected={route.screen === 'archive'} onClick={() => go({ screen: 'archive' })} trailing={archivedCount ? <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{archivedCount}</span> : null} />
+{experience.activity || allNav ? <TreeItem icon="pulse" label="Activity" selected={route.screen === 'activity'} onClick={() => go({ screen: 'activity' })} /> : null}
+{experience.reports || allNav ? <TreeItem icon="chart-line-up" label="Reports" selected={route.screen === 'reports'} onClick={() => go({ screen: 'reports' })} /> : null}
+{experience.activity || allNav ? <TreeItem icon="archive" label="Archive" selected={route.screen === 'archive'} onClick={() => go({ screen: 'archive' })} trailing={archivedCount ? <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{archivedCount}</span> : null} /> : null}
+        {!experience.advanced ? <TreeItem icon="list" label={allNav ? 'Use reduced navigation' : 'Show all navigation'} onClick={() => setAllNav(!allNav)} /> : null}
         <SectionLabel action={<><IconButton icon="archive" label={showArchived ? 'Hide archived sessions' : 'Show archived sessions'} size="sm" active={showArchived} onClick={toggleArchived} /><Hint id="add-repo" side="right" title="Add a repository" text="Start here: pick a GitHub repository for agents to work in."><IconButton icon="plus" label="Add repository" size="sm" onClick={() => setUI({ adding: true })} /></Hint></>}>Repositories</SectionLabel>
         {visibleRepos(app).length === 0 ? <div style={{ padding: '4px 10px 6px', font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>No repositories yet. Use + to add one from GitHub.</div> : null}
         {reposWithSessions(app, showArchived).map(({ repo: r, sessions }) => {
