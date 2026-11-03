@@ -6,6 +6,18 @@ export function Tabs({ tabs = [], value, defaultValue, onChange, onClose, closab
   const editor = variant === 'editor';
   // On a phone the strip scrolls sideways: keep the chosen tab in view (without moving anything else on the page).
   const strip = React.useRef<HTMLDivElement>(null);
+  const [edges, setEdges] = React.useState({ left: false, right: false });
+  const measure = React.useCallback(() => {
+    const el = strip.current; if (!el) return;
+    const next = { left: el.scrollLeft > 2, right: el.scrollWidth - el.clientWidth - el.scrollLeft > 2 };
+    setEdges((old) => old.left === next.left && old.right === next.right ? old : next);
+  }, []);
+  React.useEffect(() => {
+    measure();
+    if (!strip.current || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure); observer.observe(strip.current);
+    return () => observer.disconnect();
+  }, [measure, tabs.length]);
   React.useEffect(() => {
     const c = strip.current, el = c?.querySelector<HTMLElement>('[aria-selected="true"]');
     if (!c || !el || c.scrollWidth <= c.clientWidth) return;
@@ -13,7 +25,7 @@ export function Tabs({ tabs = [], value, defaultValue, onChange, onClose, closab
     c.scrollTo({ left: c.scrollLeft + (er.left - cr.left) - (cr.width - er.width) / 2 });
   }, [cur]);
   return (
-    <div ref={strip} role="tablist" className="helm-hscroll helm-tap-tabbar" style={{ display: 'flex', alignItems: 'stretch', gap: editor ? 0 : 16, height: editor ? 34 : 32, borderBottom: '1px solid var(--border)', padding: editor ? 0 : '0 12px', ...style }}>
+    <div ref={strip} onScroll={measure} role="tablist" className="helm-hscroll helm-tap-tabbar" style={{ display: 'flex', alignItems: 'stretch', gap: editor ? 0 : 16, height: editor ? 34 : 32, borderBottom: '1px solid var(--border)', padding: editor ? 0 : '0 12px', maskImage: edges.left || edges.right ? `linear-gradient(to right, ${edges.left ? 'transparent' : '#000'}, #000 20px, #000 calc(100% - 20px), ${edges.right ? 'transparent' : '#000'})` : undefined, ...style }}>
       {tabs.map(t => {
         const on = t.value === cur;
         return (
