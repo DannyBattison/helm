@@ -12,7 +12,7 @@ export function Input({ value, defaultValue, placeholder, icon, kbd, mono = fals
         onFocus={() => setFocus(true)} onBlur={() => setFocus(false)}
         style={{ flex: 1, minWidth: 0, height: '100%', border: 'none', outline: 'none', background: 'transparent', color: 'var(--text-1)',
           font: mono ? '400 12px/1.5 var(--font-mono)' : '400 13px/1.5 var(--font-sans)', padding: 0, ...inputStyle }} />
-      {kbd ? <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{kbd}</span> : null}
+      {kbd ? <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{kbd}</span> : null}
     </label>
   );
 }

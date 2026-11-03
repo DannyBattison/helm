@@ -51,12 +51,12 @@ export function SchedulePrompt({ s, text, onScheduled }: { s: S; text: string; o
           </div>
           {list.length ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
-              <span style={{ font: '500 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Scheduled</span>
+              <span style={{ font: '500 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Scheduled</span>
               {list.map((p) => (
                 <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ font: '400 12px/1.4 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.text}</div>
-                    <div style={{ font: '400 11px/1.4 var(--font-mono)', color: 'var(--text-3)' }}>{describeScheduled(p)}</div>
+                    <div style={{ font: '400 12px/1.4 var(--font-mono)', color: 'var(--text-3)' }}>{describeScheduled(p)}</div>
                   </div>
                   <IconButton icon="x" label="Cancel this scheduled prompt" size="sm" onClick={() => void api.cancelScheduledPrompt(s.id, p.id)} />
                 </div>
@@ -64,7 +64,7 @@ export function SchedulePrompt({ s, text, onScheduled }: { s: S; text: string; o
             </div>
           ) : null}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ flex: 1, font: '400 11.5px/1.4 var(--font-sans)', color: 'var(--text-3)' }}>{prompt.trim() || at ? problem ?? '' : ''}</span>
+            <span style={{ flex: 1, font: '400 12px/1.4 var(--font-sans)', color: 'var(--text-3)' }}>{prompt.trim() || at ? problem ?? '' : ''}</span>
             <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>Close</Button>
             <Button size="sm" variant="primary" icon="clock" disabled={!!problem} onClick={() => void save()}>Schedule</Button>
           </div>

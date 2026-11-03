@@ -1,3 +1,4 @@
+import { keyboardClick } from '../ui/keyboard';
 import React from 'react';
 import { participants } from '@shared/panel';
 import type { ReplyRef, Session as S } from '@shared/types';
@@ -69,7 +70,7 @@ export function AddAgentHost() {
 /** The message a reply answers, in a line above it. Clicking jumps to the original. */
 export function ReplyQuote({ re, sessionId }: { re: ReplyRef; sessionId?: string }) {
   return (
-    <div role={sessionId ? 'button' : undefined} onClick={sessionId ? () => go({ screen: 'session', id: sessionId, tab: 'conversation', msg: re.index }) : undefined}
+    <div {...(sessionId ? keyboardClick : {})} role={sessionId ? 'button' : undefined} onClick={sessionId ? () => go({ screen: 'session', id: sessionId, tab: 'conversation', msg: re.index }) : undefined}
       style={{ display: 'flex', gap: 6, alignItems: 'baseline', minWidth: 0, cursor: sessionId ? 'pointer' : 'default', borderLeft: '2px solid var(--border-strong)', paddingLeft: 8, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>
       <i className="ph ph-arrow-bend-up-left" style={{ fontSize: 12 }} />
       <span style={{ font: '500 12px/1.5 var(--font-mono)', color: 'var(--text-2)', whiteSpace: 'nowrap' }}>{re.who === 'you' ? 'you' : '@' + re.who}</span>

@@ -1,3 +1,4 @@
+import { keyboardClick } from '../ui/keyboard';
 import React from 'react';
 import type { RepoFixture } from '@shared/types';
 import { api } from '../api';
@@ -49,10 +50,10 @@ function FixtureRow({ f, path, depth, actions, list }: { f: RepoFixture; path: s
     <>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', minHeight: 38, paddingLeft: depth * 18, borderTop: '1px solid var(--border-subtle)', font: '400 12.5px/1.5 var(--font-mono)' }}>
         {f.dir
-          ? <i className={'ph ph-caret-' + (open ? 'down' : 'right')} role="button" aria-label={open ? 'Collapse' : 'Expand'} onClick={toggle} style={{ cursor: 'pointer', fontSize: 12, color: 'var(--text-3)', width: 14 }} />
+          ? <i {...keyboardClick} className={'ph ph-caret-' + (open ? 'down' : 'right')} role="button" aria-label={open ? 'Collapse' : 'Expand'} onClick={toggle} style={{ cursor: 'pointer', fontSize: 12, color: 'var(--text-3)', width: 14 }} />
           : <span style={{ width: 14 }} />}
         <i className={'ph ' + (f.dir ? (open ? 'ph-folder-open' : 'ph-folder') : 'ph-file')} style={{ color: 'var(--text-3)' }} />
-        <span onClick={f.dir ? toggle : undefined} style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: f.dir ? 'pointer' : undefined }} title={f.name}>{f.name}{f.dir ? '/' : ''}</span>
+        <span {...(f.dir ? keyboardClick : {})} onClick={f.dir ? toggle : undefined} style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: f.dir ? 'pointer' : undefined }} title={f.name}>{f.name}{f.dir ? '/' : ''}</span>
         <span style={{ color: 'var(--text-3)' }}>{size(f.size)} · {relTime(f.modified)}</span>
         {actions}
       </div>

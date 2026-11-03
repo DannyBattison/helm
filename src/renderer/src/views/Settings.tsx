@@ -227,7 +227,7 @@ function PhoneSection({ st, set, state }: { st: any; set(p: any): void; state: a
         <span style={{ font: '500 13px/1.5 var(--font-sans)' }}>Pair a phone</span>
         <span style={{ font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>In the phone app choose Add computer and scan this code (or paste it), then sign in to GitHub as {st.githubUser || 'the same account as here'}. The code pairs one phone, once, within ten minutes. It holds addresses of this computer, so share it only with yourself.</span>
         <div role="img" aria-label="QR code with the share code" style={{ width: 200, height: 200, borderRadius: 8, overflow: 'hidden', alignSelf: 'flex-start' }} dangerouslySetInnerHTML={{ __html: qrSvg(state.code) }} />
-        <span className="selectable" style={{ font: '400 11.5px/1.5 var(--font-mono)', wordBreak: 'break-all', maxHeight: 48, overflow: 'auto', color: 'var(--text-3)' }}>{state.code}</span>
+        <span className="selectable" style={{ font: '400 12px/1.5 var(--font-mono)', wordBreak: 'break-all', maxHeight: 48, overflow: 'auto', color: 'var(--text-3)' }}>{state.code}</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Button size="sm" icon="copy" onClick={() => api.copyText(state.code)}>Copy code</Button>
           <Button size="sm" variant="ghost" icon="arrows-clockwise" onClick={() => api.p2pNewCode()}>New code</Button>
@@ -328,7 +328,7 @@ function LabeledField({ label, hint, children }: { label: string; hint?: string;
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <span style={{ font: '500 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>{label}</span>
       {children}
-      {hint ? <span style={{ font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{hint}</span> : null}
+      {hint ? <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{hint}</span> : null}
     </div>
   );
 }
@@ -717,7 +717,7 @@ export function Settings({ section }: { section?: string }) {
             <SettingRow title="Subagents per repository" desc="Most subagents that may run at once across every session of a repository. Counted for Claude Code only: Codex sessions cannot be counted together."><Select value={String(st.maxSubagentsRepo)} onChange={(e: any) => set({ maxSubagentsRepo: +e.target.value })} options={subLimits([st.maxSubagentsRepo, 16, 24])} /></SettingRow>
             {app.repos.length ? (
               <div style={{ display: 'flex', flexDirection: 'column', marginBottom: 6 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: subCols.template, gap: 12, padding: '8px 0', font: '500 10.5px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: subCols.template, gap: 12, padding: '8px 0', font: '500 12px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>
                   {subCols.cell(0, 'Repository')}<span>Subagent limit</span>
                 </div>
                 {app.repos.map((r) => (
@@ -820,7 +820,7 @@ export function Settings({ section }: { section?: string }) {
               <SettingRow title="Warn at"><SegmentedControl size="sm" value={String(st.warnAt)} onChange={(v: string) => set({ warnAt: +v })} options={[{ value: '50', label: '50%' }, { value: '80', label: '80%' }, { value: '90', label: '90%' }]} /></SettingRow>
               <div style={{ display: 'flex', flexDirection: 'column', marginTop: 12 }}>
                 {app.repos.length === 0 ? <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Add a repository to set its weekly cap.</span> : (
-                  <div style={{ display: 'grid', gridTemplateColumns: repoCols.template, gap: 16, padding: '8px 0', font: '500 10.5px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: repoCols.template, gap: 16, padding: '8px 0', font: '500 12px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>
                     {repoCols.cell(0, 'Repository')}{repoCols.cell(1, 'This week')}<span>Weekly cap</span>
                   </div>
                 )}

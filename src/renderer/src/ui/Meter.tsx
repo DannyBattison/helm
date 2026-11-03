@@ -8,7 +8,7 @@ export function Meter({ value = 0, max = 100, label, detail, tone, warnAt = 0.8,
       {label || detail ? (
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, font: '400 12px/1.5 var(--font-sans)' }}>
           <span style={{ color: 'var(--text-2)' }}>{label}</span>
-          <span style={{ font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-1)' }}>{detail}</span>
+          <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-1)' }}>{detail}</span>
         </div>
       ) : null}
       <div style={{ height, borderRadius: 999, background: 'var(--bg-active)', overflow: 'hidden' }}>

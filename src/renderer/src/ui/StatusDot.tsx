@@ -6,6 +6,6 @@ const COLOR = { working: 'var(--status-working)', attention: 'var(--status-atten
 export function StatusDot({ status = 'idle', size = 8, pulse, style }: any) {
   const p = pulse ?? status === 'working';
   const animation = usePulse(p);
-  return <span aria-label={status} style={{ display: 'inline-block', flex: 'none', width: size, height: size, borderRadius: '50%', background: COLOR[status] || COLOR.idle,
-    animation, ...style }} />;
+  const glyph = { working: 'circle-half', attention: 'warning', ready: 'check-circle', idle: 'minus-circle', error: 'x-circle' }[status] || 'circle';
+  return <i role="img" aria-label={status === 'attention' ? 'Needs you' : status} className={'ph-fill ph-' + glyph} style={{ display: 'inline-block', flex: 'none', fontSize: Math.max(size, 12), lineHeight: 1, color: COLOR[status] || COLOR.idle, animation, ...style }} />;
 }

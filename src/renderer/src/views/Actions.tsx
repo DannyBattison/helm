@@ -1,3 +1,4 @@
+import { keyboardClick } from '../ui/keyboard';
 import React from 'react';
 import type { Workflow, WorkflowRun } from '@shared/types';
 import { prepareInputs, runState } from '@shared/workflows';
@@ -40,9 +41,9 @@ function RunDialog({ repoId, wf, branch, branches, onClose, onStarted }: { repoI
                 <span style={{ font: '500 12px/1.5 var(--font-sans)' }}>{i.name}{i.required ? <span style={{ color: 'var(--status-error-text)' }}> *</span> : null}</span>
                 {i.type === 'choice' ? <Select value={values[i.name]} onChange={(e: any) => set(i.name, e.target.value)} options={i.options} />
                   : <Input mono={i.type === 'number'} value={values[i.name]} onChange={(e: any) => set(i.name, e.target.value)} placeholder={i.type === 'number' ? 'A number' : undefined} />}
-                {i.description ? <span style={{ font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{i.description}</span> : null}
+                {i.description ? <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{i.description}</span> : null}
               </>}
-            {errors[i.name] ? <span style={{ font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--status-error-text)' }}>{errors[i.name]}</span> : null}
+            {errors[i.name] ? <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--status-error-text)' }}>{errors[i.name]}</span> : null}
           </div>
         ))}
         {wf.inputs.length === 0 ? <span style={{ font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>This workflow takes no inputs.</span> : null}
@@ -100,7 +101,7 @@ export function Actions({ repoId }: { repoId: string }) {
             <i className="ph ph-lightning" style={{ fontSize: 15, color: 'var(--accent-text)' }} />
             <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
               <span style={{ font: '600 13px/1.5 var(--font-sans)' }}>{w.name}</span>
-              <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{w.path}{w.inputs.length ? ` · ${w.inputs.length} ${w.inputs.length === 1 ? 'input' : 'inputs'}` : ''}</span>
+              <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{w.path}{w.inputs.length ? ` · ${w.inputs.length} ${w.inputs.length === 1 ? 'input' : 'inputs'}` : ''}</span>
             </div>
             <Button size="sm" variant="ghost" iconRight="arrow-square-out" onClick={() => void api.openExternal(w.url)}>On GitHub</Button>
             <Button size="sm" variant="primary" icon="play" onClick={() => setRunning(w)}>Run…</Button>
@@ -108,10 +109,10 @@ export function Actions({ repoId }: { repoId: string }) {
           {(runs[w.id] || []).slice(0, 4).map((r) => {
             const st = runState(r);
             return (
-              <div key={r.id} className="helm-row-hover" onClick={() => void api.openExternal(r.url)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '3px 6px 3px 25px', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }}>
+              <div {...keyboardClick} key={r.id} className="helm-row-hover" onClick={() => void api.openExternal(r.url)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '3px 6px 3px 25px', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }}>
                 <Badge tone={st.tone as any} dot>{st.label}</Badge>
                 <span style={{ flex: 1, minWidth: 0, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>#{r.number} · {r.title}</span>
-                <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{r.branch} · {r.actor} · {relTime(Date.parse(r.at))}</span>
+                <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{r.branch} · {r.actor} · {relTime(Date.parse(r.at))}</span>
               </div>
             );
           })}
@@ -120,7 +121,7 @@ export function Actions({ repoId }: { repoId: string }) {
       {other.length ? (
         <div style={{ marginTop: 10 }}>
           <a href="#" onClick={(e) => { e.preventDefault(); setShowOther(!showOther); }} style={{ font: '400 12px/1.5 var(--font-sans)' }}>{showOther ? 'Hide' : 'Show'} {other.length} {other.length === 1 ? 'workflow' : 'workflows'} that cannot be started by hand</a>
-          {showOther ? other.map((w) => <div key={w.id} style={{ font: '400 12px/1.6 var(--font-sans)', color: 'var(--text-3)', padding: '2px 4px' }}>{w.name} <span style={{ font: '400 11px/1.5 var(--font-mono)' }}>{w.path}</span></div>) : null}
+          {showOther ? other.map((w) => <div key={w.id} style={{ font: '400 12px/1.6 var(--font-sans)', color: 'var(--text-3)', padding: '2px 4px' }}>{w.name} <span style={{ font: '400 12px/1.5 var(--font-mono)' }}>{w.path}</span></div>) : null}
         </div>
       ) : null}
       {running ? <RunDialog repoId={repoId} wf={running} branch={ref} branches={branches} onClose={() => setRunning(null)} onStarted={() => { setBump(6); setTimeout(() => list && loadRuns(list), 2500); }} /> : null}

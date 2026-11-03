@@ -7,7 +7,7 @@ import { Badge, Button, Dialog, Input, SegmentedControl, Switch } from '../ui';
 
 const errText = (e: any) => String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '');
 const label: React.CSSProperties = { font: '500 12px/1.5 var(--font-sans)', color: 'var(--text-2)' };
-const hint: React.CSSProperties = { font: '400 11.5px/1.45 var(--font-sans)', color: 'var(--text-3)' };
+const hint: React.CSSProperties = { font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' };
 
 const blank = (): McpServer => ({ name: '', type: 'stdio', command: '', args: [], env: {}, url: '', headers: {} });
 const toLines = (m: Record<string, string>) => Object.entries(m).map(([k, v]) => `${k}=${v}`).join('\n');
@@ -73,7 +73,7 @@ export function McpServers({ repoId, servers, inherited = [] }: { repoId: string
         <div key={x.name} style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 44, padding: '6px 0', borderTop: '1px solid var(--border-subtle)', opacity: x.disabled ? 0.55 : 1 }}>
           <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 8, font: '500 13px/1.5 var(--font-mono)' }}>{x.name}<Badge tone="neutral">{x.type === 'stdio' ? 'command' : x.type}</Badge></span>
-            <span title={summary(x)} style={{ font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{summary(x)}</span>
+            <span title={summary(x)} style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{summary(x)}</span>
           </div>
           <Switch checked={!x.disabled} onChange={(v: boolean) => void run(api.saveMcpServer(repoId, { ...x, disabled: v ? undefined : true }, x.name))} />
           <Button variant="ghost" size="sm" icon="pencil-simple" onClick={() => setEdit(x)}>Edit</Button>
