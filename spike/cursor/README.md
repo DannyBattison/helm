@@ -15,7 +15,7 @@ Sources: [CLI authentication](https://cursor.com/docs/cli/reference/authenticati
 Requires Node 22+ and an installed Cursor CLI. No npm dependencies needed:
 
 ```sh
-node --test spike/cursor/probe.test.mjs
+node --test spike/cursor/probe.check.mjs
 node spike/cursor/probe.mjs
 # If installed under a different name or path:
 CURSOR_AGENT_BIN=/absolute/path/to/cursor-agent node spike/cursor/probe.mjs
