@@ -77,9 +77,15 @@ async function handle(m) {
       if (text.includes('hang')) return;
       if (text.includes('crash')) return process.exit(1);
       if (text.includes('fail')) return done(t, 'failed', { error: { message: 'the model refused' } });
+      if (text.includes('native-helper')) {
+        for (const kind of ['started', 'started', 'completed']) {
+          out({ method: 'item/completed', params: { threadId: t, turnId: 'u9', item: { type: 'subAgentActivity', id: 'native-' + kind, kind, agentThreadId: 'native-child', agentPath: '/root/research', model: 'gpt-a' } } });
+        }
+        return done(t);
+      }
       if (text.includes('spawn')) {
         const sp = { type: 'collabAgentToolCall', id: 's1', tool: 'spawnAgent', status: 'inProgress', senderThreadId: t, receiverThreadIds: [], prompt: 'Read the readme\nthen report', model: 'gpt-a', agentsStates: {} };
-        out({ method: 'item/started', params: { threadId: t, turnId: 'u9', item: sp } });
+        if (!text.includes('completed-only')) out({ method: 'item/started', params: { threadId: t, turnId: 'u9', item: sp } });
         out({ method: 'item/completed', params: { threadId: t, turnId: 'u9', item: { ...sp, status: 'completed', receiverThreadIds: ['child1', 'child2'], agentsStates: { child1: { status: 'running', message: null } } } } });
         out({ method: 'item/completed', params: { threadId: t, turnId: 'u9', item: { type: 'collabAgentToolCall', id: 'w1', tool: 'wait', status: 'completed', senderThreadId: t, receiverThreadIds: ['child1'], agentsStates: { child1: { status: 'completed', message: 'found it' }, child2: { status: 'errored', message: 'boom' } } } } });
         out({ method: 'item/completed', params: { threadId: t, turnId: 'u9', item: { type: 'subAgentActivity', id: 'a1', kind: 'completed', agentThreadId: 'child1', agentPath: 'p' } } });

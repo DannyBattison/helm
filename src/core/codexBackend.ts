@@ -595,10 +595,15 @@ class CodexHandle {
     }
   }
 
+  private startedItems = new Set<string>();
+
   private itemStarted(item: Json) {
+    if (this.startedItems.has(item.id)) return;
+    this.startedItems.add(item.id);
     if (item.type === 'fileChange') this.changes.set(item.id, item.changes || []);
     const uses = toolUsesOf(item);
     if (uses.length) this.push({ t: 'assistant', parentId: null, blocks: uses });
+    if (item.type === 'subAgentActivity') this.helperEvents(item);
   }
 
   /** Tells helm about helpers Codex started, and when each one has finished. */
@@ -608,7 +613,16 @@ class CodexHandle {
         for (const child of item.receiverThreadIds || []) { this.helpers.set(child, item.id); this.push({ t: 'subagent_started', id: item.id, agentId: child }); }
       }
       for (const [child, st] of Object.entries<Json>(item.agentsStates || {})) this.helperEnded(child, st?.status, st?.message);
-    } else if (item.type === 'subAgentActivity' && item.kind === 'completed') this.helperEnded(item.agentThreadId, 'completed');
+    } else if (item.type === 'subAgentActivity') {
+      const child = item.agentThreadId;
+      if (item.kind === 'started' && !this.helpers.has(child)) {
+        // Codex's native agent runtime can announce a helper without a spawn tool item.
+        const id = item.id;
+        this.push({ t: 'assistant', parentId: null, blocks: [{ type: 'tool_use', id, name: 'Agent', input: { description: item.agentPath || 'Subagent', subagent_type: item.model || 'codex', run_in_background: true } }] });
+        this.helpers.set(child, id);
+        this.push({ t: 'subagent_started', id, agentId: child });
+      } else if (item.kind === 'completed') this.helperEnded(child, 'completed');
+    }
   }
 
   private helperEnded(child: string, status?: string, message?: string | null) {
@@ -619,14 +633,14 @@ class CodexHandle {
   }
 
   private itemCompleted(item: Json) {
+    // Some items arrive only when done; create their tool card before linking a helper.
+    this.itemStarted(item);
     this.helperEvents(item);
     if (item.type === 'agentMessage' || item.type === 'plan') {
       const text = String(item.text || '').trim();
       if (text) this.push({ t: 'assistant', parentId: null, blocks: [{ type: 'text', text }] });
       return;
     }
-    // An item that never announced itself (some arrive only when done) still shows up.
-    if (!this.changes.has(item.id) && item.type === 'fileChange') this.push({ t: 'assistant', parentId: null, blocks: toolUsesOf(item) });
     const results = resultsOf(item);
     if (results.length) this.push({ t: 'tool_results', results });
   }

@@ -227,6 +227,21 @@ describe('a Codex session', () => {
     expect(results[1].text).toBe('nope');
   });
 
+  it('creates a sidebar helper for native activity announcements only once', async () => {
+    const { ev } = await run(backend(), 'native-helper');
+    expect(ev.filter((e) => e.t === 'subagent_started')).toEqual([{ t: 'subagent_started', id: 'native-started', agentId: 'native-child' }]);
+    const agents = ev.flatMap((e) => e.t === 'assistant' ? e.blocks.filter((b) => b.type === 'tool_use' && b.name === 'Agent') : []);
+    expect(agents).toHaveLength(1);
+    expect(agents[0]).toMatchObject({ id: 'native-started', input: { description: '/root/research' } });
+    expect(ev.filter((e) => e.t === 'subagent_done')).toEqual([{ t: 'subagent_done', id: 'native-started', status: 'completed', summary: undefined }]);
+  });
+
+  it('creates the agent card before a spawn reported only on completion', async () => {
+    const { ev } = await run(backend(), 'spawn completed-only');
+    const start = ev.findIndex((e) => e.t === 'subagent_started');
+    expect(ev[start - 1]).toMatchObject({ t: 'assistant', blocks: [{ type: 'tool_use', name: 'Agent', id: 's1' }] });
+  });
+
   it('tracks several helpers, and the end of each', async () => {
     const { ev } = await run(backend(), 'spawn');
     expect(ev.filter((e) => e.t === 'subagent_started')).toEqual([{ t: 'subagent_started', id: 's1', agentId: 'child1' }, { t: 'subagent_started', id: 's1', agentId: 'child2' }]);
