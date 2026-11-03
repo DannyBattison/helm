@@ -18,7 +18,7 @@ const empty = (text: string) => <div style={{ font: '400 12.5px/1.5 var(--font-s
 /** A row with a name, a bar scaled to the largest value in its list, and a figure. */
 function BarRow({ label, value, max, text, sub, onClick, tone }: { label: React.ReactNode; value: number; max: number; text: React.ReactNode; sub?: React.ReactNode; onClick?: () => void; tone?: string }) {
   return (
-    <div {...keyboardClick} onClick={onClick} className={'helm-barrow' + (onClick ? ' helm-row-hover' : '')} style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 220px) 1fr auto', gap: 12, alignItems: 'center', padding: '5px 4px', cursor: onClick ? 'pointer' : undefined, borderRadius: 'var(--radius-sm)' }}>
+    <div {...(onClick ? keyboardClick : {})} onClick={onClick} className={'helm-barrow' + (onClick ? ' helm-row-hover' : '')} style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 220px) 1fr auto', gap: 12, alignItems: 'center', padding: '5px 4px', cursor: onClick ? 'pointer' : undefined, borderRadius: 'var(--radius-sm)' }}>
       <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
         <span style={{ ...mono, color: 'var(--text-1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
         {sub ? <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</span> : null}

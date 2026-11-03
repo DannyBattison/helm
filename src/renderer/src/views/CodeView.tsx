@@ -45,7 +45,7 @@ function QuickOpen({ ws, onPick, onClose }: { ws: string; onPick(p: string): voi
   }, [files, q]);
   const open = (p?: string) => { if (p) { onClose(); onPick(p); } };
   return (
-    <div {...keyboardClick} style={{ position: 'fixed', inset: 0, zIndex: 120, background: 'var(--scrim)', display: 'flex', justifyContent: 'center', paddingTop: 90 }} onClick={onClose}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 120, background: 'var(--scrim)', display: 'flex', justifyContent: 'center', paddingTop: 90 }} onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: 560, alignSelf: 'flex-start', borderRadius: 'var(--radius-xl)', background: 'var(--bg-overlay)', boxShadow: 'var(--shadow-dialog)', overflow: 'hidden', animation: 'helm-in var(--dur-slow) var(--ease-out)' }}>
         <div style={{ padding: 10, borderBottom: '1px solid var(--border-subtle)' }}>
           <Input autoFocus mono icon="file-code" size="lg" placeholder="Go to file" value={q} onChange={(e: any) => { setQ(e.target.value); setI(0); }}
