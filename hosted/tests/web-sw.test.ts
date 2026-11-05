@@ -3,7 +3,7 @@ import { Script, createContext } from 'node:vm';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const file = join(__dirname, '../web/worker/sw.js');
+const file = join(__dirname, '../web/public/sw.js');
 const script = new Script(readFileSync(file, 'utf8'), { filename: file });
 
 type Handler = (e: any) => void;

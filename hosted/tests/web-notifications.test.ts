@@ -2,7 +2,6 @@
 /// <reference lib="dom" />
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupNotifications } from '../web/notifications';
-import { phoneLayout } from '../web/layout';
 
 function fakeBridge() {
   const handlers: Record<string, (p: any) => void> = {};
@@ -231,47 +230,5 @@ describe('push', () => {
   it('does not listen to the worker without the push option', () => {
     setupNotifications(fakeBridge());
     expect(sw.addEventListener).not.toHaveBeenCalled();
-  });
-});
-
-describe('phoneLayout', () => {
-  const setup = (coarse: boolean, w: number, h: number) => {
-    document.head.innerHTML = '<meta name="viewport" content="width=device-width">';
-    vi.stubGlobal('matchMedia', (q: string) => ({ matches: coarse && q === '(pointer: coarse)' }));
-    vi.stubGlobal('screen', { width: w, height: h });
-  };
-  const content = () => document.querySelector('meta[name=viewport]')!.getAttribute('content');
-
-  it('narrows the viewport on a tablet', () => {
-    setup(true, 820, 1180);
-    phoneLayout();
-    expect(content()).toContain('width=500');
-    expect(content()).toContain('viewport-fit=cover');
-  });
-
-  it('takes a custom width', () => {
-    setup(true, 1024, 768);
-    phoneLayout(420);
-    expect(content()).toContain('width=420,');
-  });
-
-  it('leaves a real phone alone, even held wide', () => {
-    setup(true, 390, 844);
-    phoneLayout();
-    setup(true, 844, 390);
-    phoneLayout();
-    expect(content()).toBe('width=device-width');
-  });
-
-  it('leaves a mouse-driven screen alone', () => {
-    setup(false, 1920, 1080);
-    phoneLayout();
-    expect(content()).toBe('width=device-width');
-  });
-
-  it('tolerates a page without a viewport tag', () => {
-    setup(true, 820, 1180);
-    document.head.innerHTML = '';
-    expect(() => phoneLayout()).not.toThrow();
   });
 });

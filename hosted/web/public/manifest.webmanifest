@@ -2,7 +2,7 @@
   "name": "Helm",
   "short_name": "Helm",
   "description": "Supervise your Claude Code and Codex sessions from your phone.",
-  "start_url": "./?app=1",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
