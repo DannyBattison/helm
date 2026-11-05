@@ -22,6 +22,26 @@ export function TranscriptList({ items, firstIndex = 0, renderItem, header, foot
   focusIndex?: number;
 }) {
   const ref = React.useRef<VirtuosoHandle>(null);
+  // Following new output stops the moment you scroll up (wheel or touch), and resumes only once you are back at the bottom.
+  // Waiting for the bottom check alone lets output that arrives mid-gesture pull you back down, which is worst on a phone.
+  const follow = React.useRef(true);
+  const cleanup = React.useRef<(() => void) | null>(null);
+  const scroller = React.useCallback((el: HTMLElement | Window | null) => {
+    cleanup.current?.(); cleanup.current = null; follow.current = true;
+    if (!el || el === window) return;
+    const node = el as HTMLElement;
+    let y = 0, top = node.scrollTop;
+    const onWheel = (e: WheelEvent) => { if (e.deltaY < 0) follow.current = false; };
+    const onStart = (e: TouchEvent) => { y = e.touches[0]?.clientY ?? 0; };
+    const onMove = (e: TouchEvent) => { const t = e.touches[0]?.clientY ?? y; if (t > y + 2) follow.current = false; y = t; };
+    const onScroll = () => { if (node.scrollTop < top - 1) follow.current = false; top = node.scrollTop; };
+    node.addEventListener('wheel', onWheel, { passive: true });
+    node.addEventListener('touchstart', onStart, { passive: true });
+    node.addEventListener('touchmove', onMove, { passive: true });
+    node.addEventListener('scroll', onScroll, { passive: true });
+    cleanup.current = () => { node.removeEventListener('wheel', onWheel); node.removeEventListener('touchstart', onStart); node.removeEventListener('touchmove', onMove); node.removeEventListener('scroll', onScroll); };
+  }, []);
+  React.useEffect(() => () => cleanup.current?.(), []);
   const [lit, setLit] = React.useState<number | undefined>(focusIndex);
   React.useEffect(() => {
     if (focusIndex == null || !items.length) { setLit(undefined); return; }
@@ -39,8 +59,10 @@ export function TranscriptList({ items, firstIndex = 0, renderItem, header, foot
       data={items}
       firstItemIndex={firstIndex}
       initialTopMostItemIndex={focusIndex != null ? { index: focusIndex, align: 'center' } : { index: 'LAST', align: 'end' }}
-      followOutput={(atBottom) => (atBottom ? 'auto' : false)}
-      atBottomThreshold={160}
+      scrollerRef={scroller}
+      followOutput={(atBottom) => (atBottom && follow.current ? 'auto' : false)}
+      atBottomStateChange={(atBottom) => { if (atBottom) follow.current = true; }}
+      atBottomThreshold={40}
       increaseViewportBy={{ top: 600, bottom: 600 }}
       startReached={onStartReached}
       context={{ header, footer }}
