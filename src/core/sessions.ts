@@ -1877,13 +1877,55 @@ export class SessionManager {
     if (rt || s.status === 'working' || s.status === 'attention') this.setStatus(s, 'idle', 'Stopped');
   }
 
+  /** `model` is a model of the session's agent, or `agent/model` to hand the session to another agent. */
   async setModel(id: string, model: ModelAlias) {
     const s = this.get(id);
     if (!s) return;
+    const slash = model.indexOf('/');
+    const to = slash > 0 && this.registry.all().some((b) => b.id === model.slice(0, slash)) ? model.slice(0, slash) : s.backend;
+    if (slash > 0 && to !== s.backend) return this.switchAgent(s, to, model.slice(slash + 1));
+    if (slash > 0 && to === s.backend) model = model.slice(slash + 1);
     const changed = s.model !== model;
     s.model = model;
     await this.rt.get(id)?.agent.setModel(model);
     if (changed) await this.push(id, { k: 'note', tone: 'neutral', rule: true, text: `Switched to ${this.registry.model(s.backend, model).label}` });
+    this.touch();
+  }
+
+  /** Moves the session to another agent. It starts a conversation of its own, and its first message carries what was said so far. */
+  private async switchAgent(s: Session, backend: string, model: string) {
+    if (s.panel) throw new Error('Pick the owner from the session\'s agents instead; this session has several.');
+    if (s.status === 'working') throw new Error('The agent is working. Interrupt it first, then pick the other agent.');
+    const be = this.registry.get(backend);
+    const on = this.store.data.settings.enabledAgents;
+    if (on && !on.includes(be.id)) throw new Error(`${be.label} is turned off. Turn it on under Settings → Agents, or pick another agent.`);
+    const id = s.id;
+    const t = await this.store.transcript(id);
+    const lines: string[] = [];
+    for (const ev of t) {
+      if (ev.k === 'user') lines.push(`[user]: ${ev.text}`);
+      else if (ev.k === 'agent' && ev.text) lines.push(`[assistant]: ${ev.text}`);
+    }
+    let body = '';
+    let cut = false;
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (body.length + lines[i].length > 24000 && body) { cut = true; break; }
+      body = lines[i] + (body ? '\n\n' : '') + body;
+    }
+    const rt = this.rt.get(id);
+    if (rt) { for (const w of rt.asks.values()) w.resolve({ behavior: 'deny', message: 'The agent changed' }); rt.agent.close(); this.rt.delete(id); }
+    const label = this.registry.model(be.id, model).label;
+    s.backend = be.id;
+    s.model = this.registry.model(be.id, model).id;
+    s.effort = undefined;
+    s.agentSessionId = undefined;
+    s.modelName = undefined;
+    s.ctx = 0;
+    s.ctxMax = undefined;
+    s.ask = undefined;
+    s.agentNote = body ? `Note from helm: the user switched this session to you (${label}) from another agent. The work is in the worktree already. This is the conversation so far${cut ? ' (earlier messages left out)' : ''}:\n\n${body}\n\nContinue from here.` : undefined;
+    await this.push(id, { k: 'note', tone: 'neutral', rule: true, text: `Switched to ${label}` });
+    this.activity(s, 'session', `switched to ${label}`, { who: this.me(), human: true });
     this.touch();
   }
 
