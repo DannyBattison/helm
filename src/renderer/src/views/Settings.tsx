@@ -623,11 +623,12 @@ export function Settings({ section }: { section?: string }) {
   const q = search.trim().toLowerCase();
   const visibleNav = nav.filter(([k, label]) => q ? `${label} ${keywords[k] || ''}`.toLowerCase().includes(q) : allSettings || experience.advanced || k === sec || (experience.simple ? basic.includes(k) || k.startsWith('repo:') : !advanced.includes(k)));
   React.useEffect(() => { if (section) setSec(section === 'account' ? 'github' : section); }, [section]);
-  // Accounts and Shortcuts are nodes of their own with nothing on them: each holds its pages and folds them away when clicked.
+  // Accounts and Shortcuts are nodes of their own with nothing on them: clicking one opens its first page, and the caret folds its pages away.
   const repoKeys = app.repos.map((r) => 'repo:' + r.id);
   const groups: Record<string, [string, string, string]> = { github: ['accounts', 'Accounts', 'user-circle'], shortcuts: ['shortcuts', 'Shortcuts', 'keyboard'] };
   const groupOf: Record<string, string> = { ...Object.fromEntries(repoKeys.map((k) => [k, 'repos'])), github: 'accounts', claude: 'accounts', codex: 'accounts', shortcuts: 'shortcuts', 'custom-shortcuts': 'shortcuts' };
   const [folded, setFolded] = React.useState<string[]>([]);
+  const toggleFold = (g: string) => setFolded((f) => (f.includes(g) ? f.filter((x) => x !== g) : [...f, g]));
   const [navW, startNav, resetNav] = usePaneWidth('settings-nav', 200, 160, 420);
   const notif = (key: 'notifyAttention' | 'notifyReady' | 'notifyFailed' | 'notifyChecks', title: string) => (
     <SettingRow title={title}>
@@ -652,8 +653,8 @@ export function Settings({ section }: { section?: string }) {
           <Grip onMouseDown={startNav} onDoubleClick={resetNav} />
           {visibleNav.map(([k, l, ic, depth]) => (
             <React.Fragment key={k}>
-              {k === 'defaults' ? <TreeItem icon={ic} label={l} expandable={repoKeys.length > 0} expanded={!folded.includes('repos')} selected={sec === k} onClick={() => { setSec(k); if (repoKeys.length) setFolded((f) => (f.includes('repos') ? f.filter((x) => x !== 'repos') : [...f, 'repos'])); }} /> : null}
-              {groups[k] ? <TreeItem icon={groups[k][2]} label={groups[k][1]} expandable expanded={!folded.includes(groups[k][0])} onClick={() => setFolded((f) => (f.includes(groups[k][0]) ? f.filter((x) => x !== groups[k][0]) : [...f, groups[k][0]]))} /> : null}
+              {k === 'defaults' ? <TreeItem icon={ic} label={l} expandable={repoKeys.length > 0} expanded={!folded.includes('repos')} selected={sec === k} onToggle={() => toggleFold('repos')} onClick={() => setSec(k)} /> : null}
+              {groups[k] ? <TreeItem icon={groups[k][2]} label={groups[k][1]} expandable expanded={!folded.includes(groups[k][0])} onToggle={() => toggleFold(groups[k][0])} onClick={() => setSec(k)} /> : null}
               {k === 'defaults' || (!q && groupOf[k] && folded.includes(groupOf[k])) ? null : <TreeItem icon={ic} label={l} depth={depth || 0} selected={sec === k} onClick={() => setSec(k)} />}
             </React.Fragment>
           ))}
