@@ -40,7 +40,8 @@ jobs:
         run: npm version ${{ inputs.version }} --no-git-tag-version --allow-same-version
       - run: npm run build
       # electron-builder downloads its tooling at build time; a 504 from the host should not fail a release, so retry.
-      - run: |
+      - shell: bash
+        run: |
           for attempt in 1 2 3; do
             npx electron-builder --publish never && exit 0
             echo "electron-builder failed (attempt $attempt), retrying"
