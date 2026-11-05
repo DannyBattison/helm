@@ -20,7 +20,7 @@ export function validSub(s: any): s is PushSub {
  * Web Push for phones that have helm installed: the server keeps a VAPID key and the list of subscribed devices in `dataDir`, and sends each
  * notification to all of them, so one arrives with the app closed. The key is made on first use and survives restarts.
  */
-export function createPush(dataDir: string, contact = process.env.HELM_HOSTED_PUSH_CONTACT || 'mailto:helm@localhost', send: typeof webpush.sendNotification = webpush.sendNotification, fileName = 'push.json') {
+export function createPush(dataDir: string, contact = process.env.HELM_HOSTED_PUSH_CONTACT || 'https://github.com/DannyBattison/helm', send: typeof webpush.sendNotification = webpush.sendNotification, fileName = 'push.json') {
   const file = join(dataDir, fileName);
   let data: { keys: { publicKey: string; privateKey: string }; subs: PushSub[] };
   try { data = JSON.parse(readFileSync(file, 'utf8')); } catch { data = { keys: webpush.generateVAPIDKeys(), subs: [] }; }
@@ -45,7 +45,11 @@ export function createPush(dataDir: string, contact = process.env.HELM_HOSTED_PU
       const body = JSON.stringify({ title: p.title, body: p.body, sessionId: p.sessionId, kind: p.kind, silent: !!p.silent });
       const gone: string[] = [];
       await Promise.all(data.subs.map(async (s) => {
-        try { await send(s, body, { ...options, urgency: 'high' }); } catch (e: any) { if (e?.statusCode === 404 || e?.statusCode === 410) gone.push(s.endpoint); }
+        try { await send(s, body, { ...options, urgency: 'high' }); } catch (e: any) {
+          if (e?.statusCode === 404 || e?.statusCode === 410) gone.push(s.endpoint);
+          // Anything else (a rejected key, a bad contact) would otherwise leave a phone silent with nothing to say why.
+          else console.error(`push to ${new URL(s.endpoint).host} failed: ${e?.statusCode ?? ''} ${e?.body || e?.message || e}`.trim());
+        }
       }));
       for (const g of gone) this.unsubscribe(g);
     }
