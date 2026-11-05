@@ -6,7 +6,7 @@ export class ErrorBoundary extends React.Component<React.PropsWithChildren, { fa
   state = { failed: false };
   static getDerivedStateFromError() { return { failed: true }; }
   componentDidCatch(error: Error, info: React.ErrorInfo) {
-    void api.logRenderer(`${error.stack || error.message}\n${info.componentStack}`).catch(() => {});
+    void api.logRenderer(`${error.name}: ${error.message}\n${error.stack || ''}\n${info.componentStack}`).catch(() => {});
   }
   render() {
     if (!this.state.failed) return this.props.children;
