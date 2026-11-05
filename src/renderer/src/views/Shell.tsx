@@ -1,6 +1,8 @@
+import { keyboardClick } from '../ui/keyboard';
 import { inbox } from '@shared/inbox';
 import { sessionTitle } from '@shared/types';
 import React from 'react';
+import { useExperience } from '../experience';
 import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
 import { Terminal } from '@xterm/xterm';
@@ -19,7 +21,7 @@ const mac = () => platform() === 'darwin';
 function SectionLabel({ children, action }: any) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', height: 26, padding: '0 4px 0 10px', marginTop: 10 }}>
-      <span style={{ flex: 1, font: '500 10.5px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>{children}</span>
+      <span style={{ flex: 1, font: '500 12px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>{children}</span>
       {action}
     </div>
   );
@@ -29,13 +31,13 @@ function SectionLabel({ children, action }: any) {
 function MiniPlan({ label, p, warn }: { label: string; p: ReturnType<typeof livePlan>; warn: number }) {
   const bar = (name: string, w?: { util: number; resetsAt: number }) => (
     <div title={w ? `${name} window: ${Math.round(w.util * 100)}% used, resets in ${untilReset(w.resetsAt)}` : `${name} window: no data yet`} style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', font: '400 11px/1.3 var(--font-mono)', color: 'var(--text-3)' }}><span>{name}</span><span style={{ color: 'var(--text-1)' }}>{w ? Math.round(w.util * 100) + '%' : '–'}</span></div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', font: '400 12px/1.3 var(--font-mono)', color: 'var(--text-3)' }}><span>{name}</span><span style={{ color: 'var(--text-1)' }}>{w ? Math.round(w.util * 100) + '%' : '–'}</span></div>
       <Meter value={w?.util ?? 0} max={1} warnAt={warn} height={3} />
     </div>
   );
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <span style={{ font: '500 11.5px/1.3 var(--font-sans)', color: 'var(--text-2)' }}>{label}</span>
+      <span style={{ font: '500 12px/1.3 var(--font-sans)', color: 'var(--text-2)' }}>{label}</span>
       <div style={{ display: 'flex', gap: 10 }}>{bar('5h', p.fiveHour)}{bar('Week', p.weekly)}</div>
     </div>
   );
@@ -70,6 +72,8 @@ export function PlanMeters() {
 
 /** `drawer`: shown over the content on a phone. It fills the drawer, has a close button, and cannot be resized or dragged. */
 export function Sidebar({ drawer = false }: { drawer?: boolean }) {
+  const experience = useExperience();
+  const [allNav, setAllNav] = React.useState(false);
   const app = useApp();
   const working = app.sessions.filter((s) => s.status === 'working').length;
   const paused = app.sessions.filter(isResumable).length;
@@ -177,9 +181,10 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
         <TreeItem icon="squares-four" label="Overview" selected={route.screen === 'overview' && !(route as any).filter} onClick={() => go({ screen: 'overview' })} />
         <TreeItem icon="tray" label="Inbox" selected={route.screen === 'inbox'} onClick={() => go({ screen: 'inbox' })}
           trailing={inboxCount ? <Badge tone="attention" mono>{inboxCount}</Badge> : null} />
-        <TreeItem icon="pulse" label="Activity" selected={route.screen === 'activity'} onClick={() => go({ screen: 'activity' })} />
-        <TreeItem icon="chart-line-up" label="Reports" selected={route.screen === 'reports'} onClick={() => go({ screen: 'reports' })} />
-        <TreeItem icon="archive" label="Archive" selected={route.screen === 'archive'} onClick={() => go({ screen: 'archive' })} trailing={archivedCount ? <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{archivedCount}</span> : null} />
+{experience.activity || allNav ? <TreeItem icon="pulse" label="Activity" selected={route.screen === 'activity'} onClick={() => go({ screen: 'activity' })} /> : null}
+{experience.reports || allNav ? <TreeItem icon="chart-line-up" label="Reports" selected={route.screen === 'reports'} onClick={() => go({ screen: 'reports' })} /> : null}
+{experience.activity || allNav ? <TreeItem icon="archive" label="Archive" selected={route.screen === 'archive'} onClick={() => go({ screen: 'archive' })} trailing={archivedCount ? <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{archivedCount}</span> : null} /> : null}
+        {!experience.advanced ? <TreeItem icon="list" label={allNav ? 'Use reduced navigation' : 'Show all navigation'} onClick={() => setAllNav(!allNav)} /> : null}
         <SectionLabel action={<><IconButton icon="archive" label={showArchived ? 'Hide archived sessions' : 'Show archived sessions'} size="sm" active={showArchived} onClick={toggleArchived} /><Hint id="add-repo" side="right" title="Add a repository" text="Start here: pick a GitHub repository for agents to work in."><IconButton icon="plus" label="Add repository" size="sm" onClick={() => setUI({ adding: true })} /></Hint></>}>Repositories</SectionLabel>
         {visibleRepos(app).length === 0 ? <div style={{ padding: '4px 10px 6px', font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>No repositories yet. Use + to add one from GitHub.</div> : null}
         {reposWithSessions(app, showArchived).map(({ repo: r, sessions }) => {
@@ -192,7 +197,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
               <TreeItem icon={isFreeGroup(r) ? 'robot' : 'book-bookmark'} expandable expanded={open} onToggle={() => setClosed({ ...closed, [r.id]: open })}
                 label={isFreeGroup(r) ? <span title="Agents that are not tied to a repository">Free agents</span> : <span>{app.settings.showOwner ? <span style={{ color: 'var(--text-3)' }}>{r.owner}/</span> : null}{r.name}</span>}
                 selected={!isFreeGroup(r) && route.screen === 'repo' && route.id === r.id} meta={live || null}
-                trailing={isFreeGroup(r) ? (app.settings.freeAgents ? <IconButton icon="plus" label="New free agent" size="sm" onClick={(e: any) => { e.stopPropagation(); setUI({ newSession: { repoId: '@free' } }); }} /> : null) : lifetimeTokens(app.lifetime[r.id]) ? <span title={`${lifetimeTokens(app.lifetime[r.id]).toLocaleString()} tokens used in ${r.name} over its lifetime, including deleted sessions`} style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)', flex: 'none', marginLeft: 6 }}>{fmtTokens(lifetimeTokens(app.lifetime[r.id]))}</span> : null}
+                trailing={isFreeGroup(r) ? (app.settings.freeAgents ? <IconButton icon="plus" label="New free agent" size="sm" onClick={(e: any) => { e.stopPropagation(); setUI({ newSession: { repoId: '@free' } }); }} /> : null) : lifetimeTokens(app.lifetime[r.id]) ? <span title={`${lifetimeTokens(app.lifetime[r.id]).toLocaleString()} tokens used in ${r.name} over its lifetime, including deleted sessions`} style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)', flex: 'none', marginLeft: 6 }}>{fmtTokens(lifetimeTokens(app.lifetime[r.id]))}</span> : null}
                 onClick={() => { if (isFreeGroup(r) || (route.screen === 'repo' && route.id === r.id)) setClosed({ ...closed, [r.id]: open }); else go({ screen: 'repo', id: r.id }); }} />
               </div>
               {open ? sessions.map((s) => {
@@ -219,8 +224,8 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
                         onClick={() => go({ screen: 'session', id: s.id, tab: 'conversation', sub: a.id })} />
                     )) : null}
                     {subsOpen && hiddenSubs ? (
-                      <div onClick={() => setSubsShown({ ...subsShown, [s.id]: !showHidden })} className="helm-row-hover" title="Subagents that handed back without changing any files are tidied away"
-                        style={{ padding: '3px 8px 3px 62px', font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)', cursor: 'pointer', borderRadius: 4 }}>{showHidden ? 'Hide handed-back subagents' : `${hiddenSubs} handed back`}</div>
+                      <div {...keyboardClick} onClick={() => setSubsShown({ ...subsShown, [s.id]: !showHidden })} className="helm-row-hover" title="Subagents that handed back without changing any files are tidied away"
+                        style={{ padding: '3px 8px 3px 62px', font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)', cursor: 'pointer', borderRadius: 4 }}>{showHidden ? 'Hide handed-back subagents' : `${hiddenSubs} handed back`}</div>
                     ) : null}
                   </div>
                 );
@@ -238,7 +243,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
                       selected={route.screen === 'external' && route.id === x.id}
                       onClick={() => go({ screen: 'external', repoId: r.id, id: x.id })} /></div>
                   ))}
-                  {all.length > shown.length ? <div onClick={() => go({ screen: 'repo', id: r.id, tab: 'external' })} className="helm-row-hover" style={{ padding: '4px 8px 6px 40px', font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)', cursor: 'pointer', borderRadius: 4 }}>{all.length - shown.length} more external</div> : null}
+                  {all.length > shown.length ? <div {...keyboardClick} onClick={() => go({ screen: 'repo', id: r.id, tab: 'external' })} className="helm-row-hover" style={{ padding: '4px 8px 6px 40px', font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)', cursor: 'pointer', borderRadius: 4 }}>{all.length - shown.length} more external</div> : null}
                 </>;
               })() : null}
               {open && sessions.length === 0 && !extList(r.id).length ? <div style={{ padding: '4px 0 6px 42px', font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>No sessions</div> : null}
@@ -266,15 +271,16 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
 
 export function TitleBar({ crumbs, theme, setTheme }: { crumbs: any[]; theme: 'dark' | 'light'; setTheme(t: 'dark' | 'light'): void }) {
   const app = useApp();
+  const experience = useExperience();
   const searchKeys = useShortcutKeys('palette');
   const working = app.sessions.filter((s) => s.status === 'working').length;
   const paused = app.sessions.filter(isResumable).length;
-  const narrow = useNarrow();
+  const narrow = useNarrow(1024);
   return (
     <div className="drag" style={{ height: 'var(--titlebar-h)', flex: 'none', display: 'flex', alignItems: 'center', gap: narrow ? 6 : 12, padding: '0 ' + (windowControls() === 'right' ? 150 : 10) + 'px 0 ' + (narrow ? 8 : 16) + 'px', borderBottom: '1px solid var(--border)', background: 'var(--bg-app)' }}>
       {narrow ? <IconButton size="lg" icon="list" label="Menu" onClick={() => setUI({ drawer: !getUI().drawer })} /> : null}
       <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', padding: '3px 0' }}><Breadcrumbs items={crumbs || []} compact={narrow} style={narrow ? { font: '500 17px/1.5 var(--font-sans)' } : undefined} /></div>
-      {narrow ? <IconButton size="lg" icon="magnifying-glass" label="Search" onClick={() => setUI({ palette: true })} /> : <Hint id="search" title="Search anything" text="Jump to any session or repository, and run commands, from here." style={{ flex: "none" }}><button type="button" onClick={() => setUI({ palette: true })} style={{ width: 340, height: 26, flex: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '0 6px 0 10px', border: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border)', color: 'var(--text-3)', font: '400 12px/1.5 var(--font-sans)', cursor: 'pointer' }}>
+      {narrow ? <IconButton size="lg" icon="magnifying-glass" label="Search" onClick={() => setUI({ palette: true })} /> : <Hint id="search" title="Search anything" text="Jump to any session or repository, and run commands, from here." style={{ flex: "none" }}><button type="button" onClick={() => setUI({ palette: true })} style={{ width: 'clamp(160px, 24vw, 340px)', height: 26, flex: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '0 6px 0 10px', border: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border)', color: 'var(--text-3)', font: '400 12px/1.5 var(--font-sans)', cursor: 'pointer' }}>
         <i className="ph ph-magnifying-glass" style={{ fontSize: 13 }} />
         <span style={{ flex: 1, textAlign: 'left' }}>Search sessions and repositories</span>
         <Kbd keys={searchKeys} />
@@ -283,19 +289,19 @@ export function TitleBar({ crumbs, theme, setTheme }: { crumbs: any[]; theme: 'd
         <Hint id="play-pause" title="Pause and continue everything" text="Interrupt every working agent in one go, then continue them all when you are ready.">
           <span style={{ display: 'inline-flex', gap: 2 }}>
             <IconButton size={narrow ? 'lg' : 'md'} icon="plus" label="New session" glow accent onClick={() => { const r = getUI().route; setUI({ newSession: r.screen === 'repo' ? { repoId: r.id } : {} }); }} />
-            <span className="helm-hide-portrait" style={{ display: 'inline-flex', gap: 2 }}>
+            {!experience.simple ? <span className="helm-hide-portrait" style={{ display: 'inline-flex', gap: 2 }}>
             <IconButton size={narrow ? 'lg' : 'md'} icon="megaphone" glow label="Broadcast a message to your agents" onClick={() => setUI({ broadcasting: true })} />
             <IconButton size={narrow ? 'lg' : 'md'} icon="play" glow label={paused ? `Continue all agents (${paused} interrupted)` : 'Continue all agents: none were interrupted'} disabled={!paused} hoverColor="var(--status-ready-text)" onClick={() => void resumeAll()} />
             <IconButton size={narrow ? 'lg' : 'md'} icon="pause" glow label={working ? `Interrupt all agents (${working} working)` : 'Interrupt all agents: none are working'} disabled={!working} hoverColor="var(--status-error-text)" onClick={() => void haltAll()} />
-            </span>
+            </span> : null}
           </span>
         </Hint>
         <Hint id="inbox" title="Your inbox" text="Approvals, questions and finished work that need you collect here."><InboxPreview glow size={narrow ? 'lg' : 'md'} /></Hint>
-        {narrow ? null : <>
+        <span className="helm-hide-portrait" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           <IconButton glow icon={theme === 'dark' ? 'sun' : 'moon'} label="Toggle theme" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
           <span style={{ width: 1, height: 16, background: 'var(--border)', margin: '0 6px' }} />
           <Avatar name={app.user?.login || '?'} src={app.user?.avatar || undefined} size={22} />
-        </>}
+        </span>
       </div>
     </div>
   );
@@ -312,7 +318,7 @@ export function StatusBar() {
   const tok = t.tokens >= 1e6 ? (t.tokens / 1e6).toFixed(2) + 'M' : t.tokens >= 1e3 ? Math.round(t.tokens / 1e3) + 'k' : String(t.tokens);
   // A phone has room for the three counts and today's tokens; the terminal needs a keyboard and the Claude version can wait for Settings.
   if (narrow) return (
-    <div style={{ height: 'var(--statusbar-h)', flex: 'none', display: 'flex', alignItems: 'center', padding: '0 4px', borderTop: '1px solid var(--border)', background: 'var(--bg-sidebar)', font: '400 11px/1.5 var(--font-mono)', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+    <div style={{ height: 'var(--statusbar-h)', flex: 'none', display: 'flex', alignItems: 'center', padding: '0 4px', borderTop: '1px solid var(--border)', background: 'var(--bg-sidebar)', font: '400 12px/1.5 var(--font-mono)', overflow: 'hidden', whiteSpace: 'nowrap' }}>
       <span style={item} title="Working">{dot('working')}{t.working}</span>
       <span style={item} title="Need you">{dot('attention')}{t.attention}</span>
       <span style={item} title="Ready for review">{dot('ready')}{t.ready}</span>
@@ -322,7 +328,7 @@ export function StatusBar() {
     </div>
   );
   return (
-    <div style={{ height: 'var(--statusbar-h)', flex: 'none', display: 'flex', alignItems: 'center', padding: '0 6px', borderTop: '1px solid var(--border)', background: 'var(--bg-sidebar)', font: '400 11px/1.5 var(--font-mono)' }}>
+    <div style={{ height: 'var(--statusbar-h)', flex: 'none', display: 'flex', alignItems: 'center', padding: '0 6px', borderTop: '1px solid var(--border)', background: 'var(--bg-sidebar)', font: '400 12px/1.5 var(--font-mono)' }}>
       <span style={item}>{dot('working')}{t.working} working</span>
       <span style={item}>{dot('attention')}{t.attention} need you</span>
       <span style={item}>{dot('ready')}{t.ready} ready</span>
@@ -330,7 +336,7 @@ export function StatusBar() {
       <span style={{ flex: 1 }} />
       <span style={item}>{tok} tokens today</span>
       {(() => { const b = backendFor(app, app.settings.defaultBackend); return b ? <span style={item} title={b.version ? `${b.label} CLI found` : `Using the ${b.label} bundled with helm`}><i className="ph ph-plugs-connected" style={{ fontSize: 12 }} />{b.version ? `${b.id} ${b.version}` : `${b.id} (bundled)`}</span> : null; })()}
-      <span style={{ ...item, cursor: 'pointer', color: term ? 'var(--text-1)' : 'var(--text-3)' }} onClick={() => setUI({ term: !term })}><i className="ph ph-terminal-window" style={{ fontSize: 12 }} />Terminal ⌃`</span>
+      <span {...keyboardClick} style={{ ...item, cursor: 'pointer', color: term ? 'var(--text-1)' : 'var(--text-3)' }} onClick={() => setUI({ term: !term })}><i className="ph ph-terminal-window" style={{ fontSize: 12 }} />Terminal ⌃`</span>
     </div>
   );
 }
@@ -512,7 +518,7 @@ export function TerminalDrawer({ height: initial = 260, visible = true, onClose,
     setMenu({ x: r.left, y: r.top - 4 - items.length * 30, items });
   };
 
-  const tabStyle = (on: boolean): React.CSSProperties => ({ display: 'flex', alignItems: 'center', gap: 6, height: '100%', padding: '0 8px 0 10px', cursor: 'pointer', maxWidth: 200, font: '400 11.5px/1.5 var(--font-mono)', color: on ? 'var(--text-1)' : 'var(--text-3)', boxShadow: on ? 'inset 0 -1px 0 var(--accent)' : 'none' });
+  const tabStyle = (on: boolean): React.CSSProperties => ({ display: 'flex', alignItems: 'center', gap: 6, height: '100%', padding: '0 8px 0 10px', cursor: 'pointer', maxWidth: 200, font: '400 12px/1.5 var(--font-mono)', color: on ? 'var(--text-1)' : 'var(--text-3)', boxShadow: on ? 'inset 0 -1px 0 var(--accent)' : 'none' });
   const startDrag = (e: React.MouseEvent) => {
     e.preventDefault();
     const y0 = e.clientY, h0 = height;
@@ -526,18 +532,18 @@ export function TerminalDrawer({ height: initial = 260, visible = true, onClose,
       <div style={{ height: 30, flex: 'none', display: 'flex', alignItems: 'center', gap: 2, padding: '0 6px 0 4px', borderBottom: '1px solid var(--border-subtle)' }}>
         <div style={{ display: 'flex', alignItems: 'center', height: '100%', minWidth: 0, overflowX: 'auto' }}>
           {tabs.map((t) => (
-            <span key={t.key} style={tabStyle(view === 'shell' && t.key === activeKey)} onClick={() => { setActiveKey(t.key); setView('shell'); }}
+            <span {...keyboardClick} key={t.key} style={tabStyle(view === 'shell' && t.key === activeKey)} onClick={() => { setActiveKey(t.key); setView('shell'); }}
               onAuxClick={(e) => { if (e.button === 1) close(t.key); }} title={t.title || t.label}>
               <i className="ph ph-terminal-window" style={{ fontSize: 13, flex: 'none', opacity: t.exited ? 0.5 : 1 }} />
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: t.exited ? 'line-through' : 'none' }}>{t.label}</span>
-              <i className="ph ph-x" onClick={(e) => { e.stopPropagation(); close(t.key); }} style={{ fontSize: 11, flex: 'none', opacity: 0.6 }} />
+              <i {...keyboardClick} className="ph ph-x" onClick={(e) => { e.stopPropagation(); close(t.key); }} style={{ fontSize: 11, flex: 'none', opacity: 0.6 }} />
             </span>
           ))}
         </div>
         <IconButton icon="plus" label="New terminal (Ctrl+Shift+T)" size="sm" onClick={() => add(sessionId)} />
         <IconButton icon="caret-up" label="New terminal in…" size="sm" onClick={(e: any) => openMenu(e, 'new')} />
         <IconButton icon="lightning" label="Jump to a project in this terminal" size="sm" onClick={(e: any) => openMenu(e, 'jump')} />
-        {hasAgent ? <span style={tabStyle(view === 'agent')} onClick={() => setView('agent')}><i className="ph ph-robot" style={{ fontSize: 13 }} />agent output</span> : null}
+        {hasAgent ? <span {...keyboardClick} style={tabStyle(view === 'agent')} onClick={() => setView('agent')}><i className="ph ph-robot" style={{ fontSize: 13 }} />agent output</span> : null}
         <span style={{ flex: 1 }} />
         <IconButton icon="caret-down" label="Minimise" size="sm" onClick={onClose} />
       </div>
@@ -551,7 +557,7 @@ export function TerminalDrawer({ height: initial = 260, visible = true, onClose,
                 onTitle={(title) => setTabs((all) => all.map((x) => (x.key === t.key ? { ...x, title } : x)))}
                 onExit={() => setTabs((all) => all.map((x) => (x.key === t.key ? { ...x, exited: true } : x)))} />
               {t.exited ? (
-                <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', gap: 8, padding: '4px 12px', background: 'var(--bg-app)', borderTop: '1px solid var(--border-subtle)', font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>
+                <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', gap: 8, padding: '4px 12px', background: 'var(--bg-app)', borderTop: '1px solid var(--border-subtle)', font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>
                   Process exited.
                   <button type="button" onClick={() => { const target = t.target; close(t.key); add(target); }} style={{ font: 'inherit', color: 'var(--accent-text, var(--accent))', background: 'none', border: 'none', cursor: 'pointer' }}>Restart</button>
                   <button type="button" onClick={() => close(t.key)} style={{ font: 'inherit', color: 'var(--text-2)', background: 'none', border: 'none', cursor: 'pointer' }}>Close</button>

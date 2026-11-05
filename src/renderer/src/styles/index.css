@@ -242,3 +242,31 @@ textarea {
   .helm-hide-portrait { display: none !important; }
   .helm-portrait-only { display: block; }
 }
+
+/* Preserve complete control labels and keep optional settings out of the send row. */
+.helm-run-settings { position: relative; }
+.helm-run-settings > summary { cursor: pointer; padding: 6px 8px; font-size: 12px; color: var(--text-2); }
+.helm-run-settings[open] { flex-basis: 100%; }
+.helm-comp-sel > button { max-width: 100%; }
+/* Scrollbars signal that more tabs and filters are available. */
+.helm-hscroll { scrollbar-width: thin; }
+.helm-hscroll::-webkit-scrollbar { display: block; height: 4px; }
+@media (max-width: 767px) {
+  .helm-sess-header { padding: 8px 12px 0 !important; gap: 6px !important; }
+  .helm-sess-head { flex-wrap: nowrap !important; }
+  .helm-sess-title { flex: 1 1 0 !important; }
+  .helm-sess-title > :first-child { flex-wrap: wrap; gap: 4px !important; }
+  .helm-sess-title > :first-child > span:first-child { flex-basis: 100%; }
+}
+.helm-composer-tools > summary { cursor: pointer; padding: 6px 8px; font-size: 12px; color: var(--text-2); }
+.helm-composer-tools[data-expanded="true"] > summary { display: none; }
+.helm-usage-toggle { flex: none; padding: 6px 12px; border: 0; border-bottom: 1px solid var(--border); text-align: right; background: var(--bg-panel); color: var(--text-2); cursor: pointer; }
+@media (max-width: 1099px) {
+  .helm-usage-expanded { position: absolute !important; right: 0; top: var(--titlebar-h); bottom: 24px; z-index: 20; max-width: 85vw; box-shadow: var(--shadow-dialog); }
+}
+/* An outline survives inline box shadows and remains visible on every control. */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.helm-tap-label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 3px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}

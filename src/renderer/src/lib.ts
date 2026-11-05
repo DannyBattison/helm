@@ -52,6 +52,7 @@ export function elapsed(from: number, to?: number): string {
 }
 
 export function ago(t: number): string {
+  if (!Number.isFinite(t)) return 'Unknown time';
   const s = (Date.now() - t) / 1000;
   if (s < 60) return 'now';
   if (s < 3600) return Math.floor(s / 60) + 'm';
@@ -65,6 +66,7 @@ export const setTimeFormat = (f: 'auto' | '12' | '24' | undefined) => { hour12 =
 export const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12 });
 
 export function relTime(t: number): string {
+  if (!Number.isFinite(t)) return 'Unknown time';
   const d = new Date(t);
   const today = new Date();
   if (d.toDateString() === today.toDateString()) return clock(t);

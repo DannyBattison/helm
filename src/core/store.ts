@@ -122,6 +122,7 @@ export const defaultSettings = (): Settings => ({
   confirmDestructive: true,
   collapseTools: false,
   uiScale: 100,
+  experience: 'advanced',
   activityDays: 0,
   timeFormat: '24',
   syncWhat: defaultSyncWhat()

@@ -1,3 +1,4 @@
+import { keyboardClick } from '../ui/keyboard';
 import React from 'react';
 import type { Report, WorktreeUsage } from '@shared/types';
 import { bytesText, durationText, type SystemPoint, type SystemStatus } from '@shared/system';
@@ -9,7 +10,7 @@ import { go, toast, useApp, useMoney } from '../store';
 import { Badge, Button, Meter, Panel, SegmentedControl, Stat, useNarrow } from '../ui';
 
 const fail = (title: string) => (e: any) => toast({ tone: 'error', title, description: String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '') });
-const head: React.CSSProperties = { font: '500 10.5px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' };
+const head: React.CSSProperties = { font: '500 12px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' };
 const mono: React.CSSProperties = { font: '400 12px/1.5 var(--font-mono)' };
 const pct = (x: number) => Math.round(x * 100) + '%';
 const empty = (text: string) => <div style={{ font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-3)', padding: '4px 0' }}>{text}</div>;
@@ -17,10 +18,10 @@ const empty = (text: string) => <div style={{ font: '400 12.5px/1.5 var(--font-s
 /** A row with a name, a bar scaled to the largest value in its list, and a figure. */
 function BarRow({ label, value, max, text, sub, onClick, tone }: { label: React.ReactNode; value: number; max: number; text: React.ReactNode; sub?: React.ReactNode; onClick?: () => void; tone?: string }) {
   return (
-    <div onClick={onClick} className={'helm-barrow' + (onClick ? ' helm-row-hover' : '')} style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 220px) 1fr auto', gap: 12, alignItems: 'center', padding: '5px 4px', cursor: onClick ? 'pointer' : undefined, borderRadius: 'var(--radius-sm)' }}>
+    <div {...(onClick ? keyboardClick : {})} onClick={onClick} className={'helm-barrow' + (onClick ? ' helm-row-hover' : '')} style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 220px) 1fr auto', gap: 12, alignItems: 'center', padding: '5px 4px', cursor: onClick ? 'pointer' : undefined, borderRadius: 'var(--radius-sm)' }}>
       <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
         <span style={{ ...mono, color: 'var(--text-1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
-        {sub ? <span style={{ font: '400 11px/1.5 var(--font-sans)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</span> : null}
+        {sub ? <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</span> : null}
       </span>
       <div style={{ height: 6, borderRadius: 999, background: 'var(--bg-active)', overflow: 'hidden' }}>
         <div style={{ width: (max ? Math.max(value / max, value > 0 ? 0.01 : 0) * 100 : 0) + '%', height: '100%', borderRadius: 999, background: tone || 'var(--accent)' }} />
@@ -41,7 +42,7 @@ function Columns({ data, format, height = 96 }: { data: { key: string; value: nu
           <div key={d.key} title={`${label(d.key)}: ${format(d.value)}`} style={{ flex: 1, minWidth: 1, height: Math.max(d.value > 0 ? 3 : 1, max ? (d.value / max) * height : 1), borderRadius: '2px 2px 0 0', background: d.value > 0 ? 'var(--accent)' : 'var(--border)' }} />
         ))}
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, font: '400 10.5px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>
         <span>{data[0] ? label(data[0].key) : ''}</span>
         <span>{data.length ? label(data[data.length - 1].key) : ''}</span>
       </div>
@@ -118,7 +119,7 @@ function Throughput({ r }: { r: Report }) {
         </div>
       </Panel>
       <Panel title="Sessions per week" icon="calendar-blank">
-        <div style={{ display: 'flex', gap: 14, marginBottom: 8, font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>
+        <div style={{ display: 'flex', gap: 14, marginBottom: 8, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>
           <span><i style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: 'var(--text-3)', marginRight: 5 }} />Started</span>
           <span><i style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: 'var(--status-ready)', marginRight: 5 }} />Merged</span>
           <span><i style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: 'var(--status-attention)', marginRight: 5 }} />Abandoned</span>
@@ -130,7 +131,7 @@ function Throughput({ r }: { r: Report }) {
               {([['started', 'var(--text-3)'], ['merged', 'var(--status-ready)'], ['abandoned', 'var(--status-attention)']] as const).map(([k, c]) => (
                 <div key={k} title={`${w[k]} ${k}`} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <div style={{ height: 5, width: (w[k] / max) * 100 + '%', minWidth: w[k] ? 3 : 0, borderRadius: 999, background: c }} />
-                  {w[k] ? <span style={{ font: '400 10.5px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{w[k]}</span> : null}
+                  {w[k] ? <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{w[k]}</span> : null}
                 </div>
               ))}
             </div>
@@ -165,7 +166,7 @@ function Approvals({ r }: { r: Report }) {
         </div>
       </Panel>
       {a.suggestions.length ? (
-        <Panel title="Suggested allow rules" icon="lightbulb" actions={<span style={{ font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)', paddingRight: 8 }}>approved often, never denied</span>}>
+        <Panel title="Suggested allow rules" icon="lightbulb" actions={<span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)', paddingRight: 8 }}>approved often, never denied</span>}>
           {a.suggestions.map((x) => (
             <div key={x.pattern} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 4px' }}>
               <code style={{ ...mono, color: 'var(--text-1)' }}>{x.pattern}</code>
@@ -191,7 +192,7 @@ function Quality({ r }: { r: Report }) {
     <>
       <Panel title="Looks stuck" icon="warning">
         {q.stuck.length ? q.stuck.map((x) => (
-          <div key={x.id} className="helm-row-hover" onClick={() => go({ screen: 'session', id: x.id })} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '6px 4px', cursor: 'pointer', borderRadius: 'var(--radius-sm)' }}>
+          <div {...keyboardClick} key={x.id} className="helm-row-hover" onClick={() => go({ screen: 'session', id: x.id })} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '6px 4px', cursor: 'pointer', borderRadius: 'var(--radius-sm)' }}>
             <Badge tone="attention" icon="warning">Stuck</Badge>
             <span style={{ ...mono }}>{x.id}</span>
             <span style={{ flex: 1, font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>{x.reason}</span>
@@ -202,7 +203,7 @@ function Quality({ r }: { r: Report }) {
       <Grid>
         <Panel title="Context window" icon="database">
           {q.context.length ? q.context.map((x) => (
-            <div key={x.id} onClick={() => go({ screen: 'session', id: x.id })} style={{ padding: '4px', cursor: 'pointer' }}>
+            <div {...keyboardClick} key={x.id} onClick={() => go({ screen: 'session', id: x.id })} style={{ padding: '4px', cursor: 'pointer' }}>
               <Meter value={x.ctx} max={x.window} warnAt={0.7} label={x.id} detail={`${fmtTokens(x.ctx)} · ${pct(x.pct)}`} />
             </div>
           )) : empty('No sessions have used context yet.')}
@@ -297,15 +298,15 @@ function Disk() {
         {(rows || []).map((r) => (
           <div key={r.sessionId} className="helm-barrow" style={{ display: 'grid', gridTemplateColumns: 'minmax(140px, 240px) 1fr auto', gap: 12, alignItems: 'center', padding: '7px 4px', borderTop: '1px solid var(--border-subtle)' }}>
             <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
-              <span style={{ ...mono, cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} onClick={() => go({ screen: 'session', id: r.sessionId })}>{r.sessionId}</span>
-              <span style={{ font: '400 11px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{r.repoId} · {r.running ? 'running' : r.merged ? 'merged' : r.archived ? 'archived' : r.status}{r.dirty ? ` · ${r.dirty} uncommitted` : ''}{r.unpushed ? ` · ${r.unpushed} unpushed` : ''}</span>
+              <span {...keyboardClick} style={{ ...mono, cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} onClick={() => go({ screen: 'session', id: r.sessionId })}>{r.sessionId}</span>
+              <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{r.repoId} · {r.running ? 'running' : r.merged ? 'merged' : r.archived ? 'archived' : r.status}{r.dirty ? ` · ${r.dirty} uncommitted` : ''}{r.unpushed ? ` · ${r.unpushed} unpushed` : ''}</span>
             </span>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <div style={{ height: 6, borderRadius: 999, background: 'var(--bg-active)', overflow: 'hidden', display: 'flex' }} title={`${gb(r.bytes)}, of which ${gb(r.reclaimable)} can be freed (${r.reclaimDirs.join(', ') || 'nothing'})`}>
                 <div style={{ width: (max ? ((r.bytes - r.reclaimable) / max) * 100 : 0) + '%', background: 'var(--text-3)' }} />
                 <div style={{ width: (max ? (r.reclaimable / max) * 100 : 0) + '%', background: 'var(--accent)' }} />
               </div>
-              <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{gb(r.bytes)}{r.partial ? '+' : ''}{r.reclaimable ? ` · ${gb(r.reclaimable)} in ${r.reclaimDirs.join(', ')}` : ''}</span>
+              <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{gb(r.bytes)}{r.partial ? '+' : ''}{r.reclaimable ? ` · ${gb(r.reclaimable)} in ${r.reclaimDirs.join(', ')}` : ''}</span>
             </div>
             <span style={{ display: 'flex', gap: 4 }}>
               <Button size="sm" variant="secondary" icon="broom" disabled={!r.reclaimable || r.running || !!busy} loading={busy === 'c' + r.sessionId} title={r.running ? 'Stop the session first' : undefined} onClick={() => void act('c' + r.sessionId, () => api.cleanWorktree(r.sessionId), (b) => `Freed ${gb(b)}`)}>Clean</Button>
@@ -340,7 +341,7 @@ function Trend({ points, max, format, color = 'var(--accent)', height = 72 }: { 
         </svg>
         {h ? <div style={{ position: 'absolute', top: 2, right: 6, ...mono, fontSize: 11, color: 'var(--text-1)' }}>{new Date(h.t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })} · {h.v == null ? '–' : format(h.v)}</div> : null}
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, font: '400 10.5px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>
         <span>{span ? durationText(span / 1000) + ' ago' : ''}</span><span>now</span>
       </div>
     </div>

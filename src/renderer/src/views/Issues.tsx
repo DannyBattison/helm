@@ -1,3 +1,4 @@
+import { keyboardClick } from '../ui/keyboard';
 import React from 'react';
 import type { Issue } from '@shared/types';
 import { api } from '../api';
@@ -39,8 +40,8 @@ export function Issues({ repoId }: { repoId: string }) {
           <div key={i.number} className="helm-row-hover" style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 48, padding: '6px 4px', borderTop: '1px solid var(--border-subtle)' }}>
             <i className="ph ph-circle-dashed" style={{ fontSize: 15, color: 'var(--status-ready)' }} />
             <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <span style={{ font: '500 13px/1.5 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'pointer' }} onClick={() => void api.openExternal(i.url)}>{i.title}</span>
-              <span style={{ display: 'flex', gap: 6, alignItems: 'center', font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>
+              <span {...keyboardClick} style={{ font: '500 13px/1.5 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'pointer' }} onClick={() => void api.openExternal(i.url)}>{i.title}</span>
+              <span style={{ display: 'flex', gap: 6, alignItems: 'center', font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>
                 #{i.number} · {i.author} · {relTime(Date.parse(i.updated))}{i.comments ? ` · ${i.comments} comments` : ''}
                 {i.labels.slice(0, 4).map((l) => <Badge key={l}>{l}</Badge>)}
               </span>

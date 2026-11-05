@@ -1,4 +1,5 @@
 import React from 'react';
+import { ControlLabel } from './ControlLabel';
 import { createPortal } from 'react-dom';
 
 type Opt = { value: string; label: string };
@@ -8,7 +9,9 @@ type Opt = { value: string; label: string };
  * `onChange` receives `{ target: { value } }` so it can replace a native handler unchanged.
  * With `multiple`, `value` is a string[], picking toggles an option and keeps the list open, and `placeholder` shows when none are picked.
  */
-export function Select({ value, defaultValue, options = [], icon, mono = false, size = 'md', disabled = false, multiple = false, placeholder = '', onChange, style }: any) {
+export function Select({ value, defaultValue, options = [], icon, mono = false, size = 'md', disabled = false, multiple = false, placeholder = '', onChange, style, 'aria-label': ariaLabel }: any) {
+  const id = React.useId();
+  const rowLabel = React.useContext(ControlLabel);
   const norm: Opt[] = options.map((o: any) => (typeof o === 'string' ? { value: o, label: o } : o));
   const [inner, setInner] = React.useState(defaultValue ?? norm[0]?.value);
   const cur = value ?? inner;
@@ -69,23 +72,23 @@ export function Select({ value, defaultValue, options = [], icon, mono = false, 
   const font = mono ? '400 12px/1.5 var(--font-mono)' : '500 13px/1.5 var(--font-sans)';
   return (
     <>
-      <button ref={btn} type="button" className="helm-tap-field" disabled={disabled} onClick={() => (open ? setOpen(false) : show())} onKeyDown={key} aria-haspopup="listbox" aria-expanded={open}
+      <button ref={btn} type="button" className="helm-tap-field" disabled={disabled} onClick={() => (open ? setOpen(false) : show())} onKeyDown={key} aria-haspopup="listbox" aria-expanded={open} aria-label={ariaLabel || rowLabel || label} aria-controls={open ? id : undefined} aria-activedescendant={open ? `${id}-${hi}` : undefined}
         style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 6, height: h, padding: '0 26px 0 8px', border: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-raised)',
           boxShadow: open ? 'inset 0 0 0 1px var(--accent), 0 0 0 2px var(--focus-ring)' : 'inset 0 0 0 1px var(--border-strong)', opacity: disabled ? 0.5 : 1, color: 'var(--text-1)', cursor: disabled ? 'default' : 'pointer', textAlign: 'left', minWidth: 0, ...style }}>
-        {icon ? <i className={'ph ph-' + icon} style={{ fontSize: 14, color: 'var(--text-3)', flex: 'none' }} /> : null}
+        {icon ? <i aria-hidden="true" className={'ph ph-' + icon} style={{ fontSize: 14, color: 'var(--text-3)', flex: 'none' }} /> : null}
         <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', font }}>{label}</span>
-        <i className="ph ph-caret-up-down" style={{ position: 'absolute', right: 7, fontSize: 13, color: 'var(--text-3)', pointerEvents: 'none' }} />
+        <i aria-hidden="true" className="ph ph-caret-up-down" style={{ position: 'absolute', right: 7, fontSize: 13, color: 'var(--text-3)', pointerEvents: 'none' }} />
       </button>
       {open ? createPortal(
-        <div ref={menu} role="listbox" aria-multiselectable={multiple || undefined} style={{ position: 'fixed', zIndex: 300, overflowY: 'auto', padding: 4, borderRadius: 'var(--radius-lg)', background: 'var(--bg-overlay)', boxShadow: 'var(--shadow-popover)', animation: 'helm-in var(--dur) var(--ease-out)', ...pos }}>
+        <div ref={menu} id={id} aria-label={ariaLabel || rowLabel || label} role="listbox" aria-multiselectable={multiple || undefined} style={{ position: 'fixed', zIndex: 300, overflowY: 'auto', padding: 4, borderRadius: 'var(--radius-lg)', background: 'var(--bg-overlay)', boxShadow: 'var(--shadow-popover)', animation: 'helm-in var(--dur) var(--ease-out)', ...pos }}>
           {norm.map((o, i) => {
             const on = isOn(o.value);
             return (
-              <div key={o.value} role="option" className="helm-tap-row" aria-selected={on} data-hi={i === hi} onMouseEnter={() => setHi(i)} onClick={() => pick(o.value)}
+              <div key={o.value} id={`${id}-${i}`} role="option" className="helm-tap-row" aria-selected={on} data-hi={i === hi} onMouseEnter={() => setHi(i)} onClick={() => pick(o.value)}
                 style={{ display: 'flex', alignItems: 'center', gap: 8, height: 28, padding: '0 8px 0 10px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', whiteSpace: 'nowrap',
                   background: i === hi ? 'var(--bg-hover)' : 'transparent', color: on ? 'var(--text-1)' : 'var(--text-2)', font: mono ? '400 12px/1.5 var(--font-mono)' : '400 13px/1.5 var(--font-sans)' }}>
                 <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{o.label}</span>
-                {on ? <i className="ph ph-check" style={{ fontSize: 13, color: 'var(--accent-text)' }} /> : null}
+                {on ? <i aria-hidden="true" className="ph ph-check" style={{ fontSize: 13, color: 'var(--accent-text)' }} /> : null}
               </div>
             );
           })}

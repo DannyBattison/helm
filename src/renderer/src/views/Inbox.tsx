@@ -1,3 +1,4 @@
+import { keyboardClick } from '../ui/keyboard';
 import React from 'react';
 import { inbox, inboxKey, keyAction, type InboxItem, type InboxKind } from '@shared/inbox';
 import type { Artifact } from '@shared/types';
@@ -24,7 +25,7 @@ export const KIND: Record<InboxKind, { label: string; icon: string; tone: string
 };
 
 function Hint({ k, children }: { k: string; children: React.ReactNode }) {
-  return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}><Kbd keys={k} />{children}</span>;
+  return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}><Kbd keys={k} />{children}</span>;
 }
 
 export function Inbox() {
@@ -94,11 +95,11 @@ export function Inbox() {
             const on = !!cur && inboxKey(it) === inboxKey(cur);
             const k = KIND[it.kind];
             return (
-              <div key={inboxKey(it)} onClick={() => setSelId(inboxKey(it))} className="helm-row-hover" style={{ display: 'flex', gap: 10, padding: '9px 10px', borderRadius: 'var(--radius-md)', cursor: 'pointer', background: on ? 'var(--bg-selected)' : undefined, boxShadow: on ? 'inset 2px 0 0 var(--accent)' : undefined }}>
+              <div {...keyboardClick} key={inboxKey(it)} onClick={() => setSelId(inboxKey(it))} className="helm-row-hover" style={{ display: 'flex', gap: 10, padding: '9px 10px', borderRadius: 'var(--radius-md)', cursor: 'pointer', background: on ? 'var(--bg-selected)' : undefined, boxShadow: on ? 'inset 2px 0 0 var(--accent)' : undefined }}>
                 <i className={'ph ph-' + k.icon} style={{ fontSize: 15, marginTop: 1, color: `var(--status-${k.tone === 'idle' ? 'idle' : k.tone}-text)` }} />
                 <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
                   <span style={{ font: '500 12.5px/1.5 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sessionTitle(it.session)}</span>
-                  <span style={{ font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.artifact ? it.artifact.label || it.artifact.name : k.label} · {it.session.free ? 'free agent' : it.session.repoId.split('/')[1]} · {ago(it.since)}</span>
+                  <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.artifact ? it.artifact.label || it.artifact.name : k.label} · {it.session.free ? 'free agent' : it.session.repoId.split('/')[1]} · {ago(it.since)}</span>
                 </div>
               </div>
             );
@@ -125,7 +126,7 @@ export function Inbox() {
               <span style={{ font: '600 16px/1.5 var(--font-sans)', flex: 1, minWidth: 0 }}>{sessionTitle(s)}</span>
               <Badge tone={KIND[cur.kind].tone as any} icon={KIND[cur.kind].icon}>{KIND[cur.kind].label}</Badge>
             </div>
-            <span style={{ font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{s.free ? 'Free agent' : s.repoId} · {s.free ? s.worktree : s.branch} · waiting {ago(cur.since)}</span>
+            <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{s.free ? 'Free agent' : s.repoId} · {s.free ? s.worktree : s.branch} · waiting {ago(cur.since)}</span>
 
             {cur.kind === 'approve' && a ? <>
               <div style={{ font: '600 14px/1.5 var(--font-sans)' }}>{a.summary || a.head}</div>
@@ -145,7 +146,7 @@ export function Inbox() {
 
             {cur.kind === 'question' && a ? <>
               {(a.questions?.length ?? 0) === 1 ? <>
-                {a.questions![0].header ? <span style={{ font: '500 10.5px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>{a.questions![0].header}</span> : null}
+                {a.questions![0].header ? <span style={{ font: '500 12px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>{a.questions![0].header}</span> : null}
                 <div style={{ font: '600 14px/1.5 var(--font-sans)' }}>{a.questions![0].question}</div>
               </> : null}
               {a.questions?.length ? <QuestionForm key={a.id} questions={a.questions} onSubmit={(answers) => void act(cur, { do: 'answers', answers })} /> : null}
@@ -207,7 +208,7 @@ function ArtifactDetail({ item, onAct }: { item: InboxItem; onAct(a: { do: 'down
     {art === null ? <span style={{ font: '400 12.5px/1.55 var(--font-sans)', color: 'var(--text-3)' }}>This file has expired: it was kept in a temporary folder that has since been cleaned. You can dismiss it.</span> : null}
     {art && previewable ? <img src={dataUrl(art)} alt={artifact!.label || art.name} title="Click to enlarge" onClick={() => setZoom(true)} style={{ alignSelf: 'flex-start', maxWidth: '100%', maxHeight: 360, cursor: 'zoom-in', objectFit: 'contain', borderRadius: 'var(--radius-md)', boxShadow: 'inset 0 0 0 1px var(--border)', background: 'var(--bg-editor)' }} /> : null}
     {art && !previewable ? <span style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 'var(--radius-md)', boxShadow: 'inset 0 0 0 1px var(--border)', background: 'var(--bg-editor)', font: '400 12.5px/1.5 var(--font-mono)' }}><i className="ph ph-file" style={{ color: 'var(--text-3)' }} />{art.name}</span> : null}
-    {art ? <span style={{ font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{art.name} · {fmtSize(art.size)}{art.data == null ? ' · too large to download here' : ''}</span> : null}
+    {art ? <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{art.name} · {fmtSize(art.size)}{art.data == null ? ' · too large to download here' : ''}</span> : null}
     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
       <Button variant="primary" icon="download-simple" kbd="d" disabled={!canDownload} onClick={() => onAct({ do: 'download' })}>Download</Button>
       <Button variant="ghost" kbd="x" onClick={() => onAct({ do: 'dismiss' })}>Dismiss</Button>

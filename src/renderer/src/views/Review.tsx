@@ -27,9 +27,9 @@ export function CheckpointsDialog({ id, onClose }: { id: string; onClose(): void
         {list?.length === 0 ? <span style={{ font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>No checkpoints yet. One is taken each time you send a message.</span> : null}
         {list?.slice().reverse().map((c) => (
           <div key={c.n} className="helm-row-hover" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 8px', borderRadius: 'var(--radius-sm)' }}>
-            <span style={{ font: '500 11px/1.5 var(--font-mono)', color: 'var(--text-3)', width: 22 }}>#{c.n}</span>
+            <span style={{ font: '500 12px/1.5 var(--font-mono)', color: 'var(--text-3)', width: 22 }}>#{c.n}</span>
             <span style={{ flex: 1, minWidth: 0, font: '400 12.5px/1.5 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={c.label}>{c.label.startsWith('Before restoring') ? c.label : clean(c.label)}</span>
-            <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{relTime(c.at)}</span>
+            <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{relTime(c.at)}</span>
             <Button size="sm" variant="secondary" icon="clock-counter-clockwise" onClick={() => { onClose(); setUI({ restoring: { sessionId: id, n: c.n, label: c.label } }); }}>Restore</Button>
           </div>
         ))}
@@ -126,11 +126,11 @@ export function ForecastNotice({ conflicts }: { conflicts: Conflict[] }) {
           <a href="#" onClick={(e) => { e.preventDefault(); go({ screen: 'session', id: c.a, tab: 'changes' }); }}>{name(c.a)}</a>
           {' '}{c.kind === 'conflict' ? 'would conflict with' : 'edits the same files as'}{' '}
           {c.b.startsWith('origin/') ? <b>{c.b}</b> : <a href="#" onClick={(e) => { e.preventDefault(); go({ screen: 'session', id: c.b, tab: 'changes' }); }}>{name(c.b)}</a>}
-          <span style={{ font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-3)', marginLeft: 8 }}>{c.files.slice(0, 3).join(', ')}{c.files.length > 3 ? ` +${c.files.length - 3}` : ''}</span>
+          <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)', marginLeft: 8 }}>{c.files.slice(0, 3).join(', ')}{c.files.length > 3 ? ` +${c.files.length - 3}` : ''}</span>
           {c.kind === 'conflict' ? <Button size="sm" variant="ghost" icon="magic-wand" style={{ marginLeft: 8 }} onClick={() => void resolve(c)}>Resolve</Button> : null}
         </div>
       ))}
-      {conflicts.length > 6 ? <span style={{ font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>and {conflicts.length - 6} more</span> : null}
+      {conflicts.length > 6 ? <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>and {conflicts.length - 6} more</span> : null}
     </div>
   );
 }
@@ -214,7 +214,7 @@ export function VariantEditor({ variants, onChange }: { variants: Variant[]; onC
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       {variants.map((v, i) => (
         <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <span style={{ font: '500 11px/1.5 var(--font-mono)', color: 'var(--text-3)', width: 14 }}>{i + 1}</span>
+          <span style={{ font: '500 12px/1.5 var(--font-mono)', color: 'var(--text-3)', width: 14 }}>{i + 1}</span>
           <Select value={v.choice} onChange={(e: any) => set(i, { choice: e.target.value })} options={models} style={{ flex: 1 }} />
           <Select value={v.effort} onChange={(e: any) => set(i, { effort: e.target.value })} options={EFFORT_OPTIONS} style={{ flex: 1 }} />
           <Button size="sm" variant="ghost" icon="x" disabled={variants.length <= 2} onClick={() => onChange(variants.filter((_, k) => k !== i))} />

@@ -23,7 +23,7 @@ export function QuestionForm({ questions, onSubmit }: { questions: AskQuestion[]
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {questions.map((q, qi) => (
         <div key={qi} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {q.header && questions.length > 1 ? <span style={{ font: '500 10.5px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>{q.header}</span> : null}
+          {q.header && questions.length > 1 ? <span style={{ font: '500 12px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>{q.header}</span> : null}
           {questions.length > 1 ? <div className="selectable" style={{ font: '500 13px/1.45 var(--font-sans)' }}>{q.question}</div> : null}
           {q.multiSelect ? <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Choose any that apply.</span> : null}
           {q.options.map((o) => {

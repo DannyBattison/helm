@@ -51,7 +51,7 @@ export function SignInSteps({ backend, step, code, setCode, busy, error, onOpen,
 function Step({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', gap: 10 }}>
-      <span style={{ flex: 'none', width: 20, height: 20, borderRadius: '50%', display: 'grid', placeItems: 'center', background: 'var(--bg-active)', color: 'var(--text-2)', font: '600 11px/1 var(--font-mono)', marginTop: 1 }}>{n}</span>
+      <span style={{ flex: 'none', width: 20, height: 20, borderRadius: '50%', display: 'grid', placeItems: 'center', background: 'var(--bg-active)', color: 'var(--text-2)', font: '600 12px/1 var(--font-mono)', marginTop: 1 }}>{n}</span>
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
         <span style={{ font: '500 13px/1.5 var(--font-sans)', color: 'var(--text-1)' }}>{title}</span>
         {children}

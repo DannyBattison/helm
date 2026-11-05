@@ -1,4 +1,6 @@
 import React from 'react';
+import { useExperience } from '../experience';
+import { ControlLabel } from '../ui/ControlLabel';
 import type { CustomShortcut, GotoTarget, ModelAlias, NewSessionPreset, PermMode, Settings as SettingsT } from '@shared/types';
 import { SYNC_CATEGORIES } from '@shared/sync';
 import type { SyncStatus } from '@shared/sync';
@@ -225,7 +227,7 @@ function PhoneSection({ st, set, state }: { st: any; set(p: any): void; state: a
         <span style={{ font: '500 13px/1.5 var(--font-sans)' }}>Pair a phone</span>
         <span style={{ font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>In the phone app choose Add computer and scan this code (or paste it), then sign in to GitHub as {st.githubUser || 'the same account as here'}. The code pairs one phone, once, within ten minutes. It holds addresses of this computer, so share it only with yourself.</span>
         <div role="img" aria-label="QR code with the share code" style={{ width: 200, height: 200, borderRadius: 8, overflow: 'hidden', alignSelf: 'flex-start' }} dangerouslySetInnerHTML={{ __html: qrSvg(state.code) }} />
-        <span className="selectable" style={{ font: '400 11.5px/1.5 var(--font-mono)', wordBreak: 'break-all', maxHeight: 48, overflow: 'auto', color: 'var(--text-3)' }}>{state.code}</span>
+        <span className="selectable" style={{ font: '400 12px/1.5 var(--font-mono)', wordBreak: 'break-all', maxHeight: 48, overflow: 'auto', color: 'var(--text-3)' }}>{state.code}</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Button size="sm" icon="copy" onClick={() => api.copyText(state.code)}>Copy code</Button>
           <Button size="sm" variant="ghost" icon="arrows-clockwise" onClick={() => api.p2pNewCode()}>New code</Button>
@@ -326,7 +328,7 @@ function LabeledField({ label, hint, children }: { label: string; hint?: string;
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <span style={{ font: '500 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>{label}</span>
       {children}
-      {hint ? <span style={{ font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{hint}</span> : null}
+      {hint ? <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{hint}</span> : null}
     </div>
   );
 }
@@ -513,7 +515,7 @@ export function SettingRow({ title, desc, children }: { title: React.ReactNode; 
         <span style={{ font: '500 13px/1.5 var(--font-sans)' }}>{title}</span>
         {desc ? <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>{desc}</span> : null}
       </div>
-      <div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 8 }}>{children}</div>
+      <ControlLabel.Provider value={typeof title === 'string' ? title : undefined}><div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 8 }}>{children}</div></ControlLabel.Provider>
     </div>
   );
 }
@@ -585,6 +587,9 @@ export function Settings({ section }: { section?: string }) {
   const hosted = !!window.helmBridge.hosted;
   const app = useApp();
   const st = app.settings;
+  const experience = useExperience();
+  const [search, setSearch] = React.useState('');
+  const [allSettings, setAllSettings] = React.useState(false);
   const [sec, setSec] = React.useState(!section || section === 'account' ? 'github' : section);
   const [signOut, setSignOut] = React.useState(false);
   const { fmt, sym, to, from, cur } = useMoney();
@@ -602,6 +607,22 @@ export function Settings({ section }: { section?: string }) {
   const pctOptions = [{ value: '0', label: 'Off' }, { value: '50', label: '50%' }, { value: '70', label: '70%' }, { value: '80', label: '80%' }, { value: '90', label: '90%' }];
   const subLimits = (extra: number[]) => [...new Set([0, 1, 2, 3, 4, 6, 8, 12, ...extra])].sort((a, b) => a - b).map((n) => ({ value: String(n), label: n === 0 ? 'Off' : String(n) }));
   const nav = [['github', 'GitHub', 'github-logo', 1], ['claude', 'Claude Code', 'sparkle', 1], ['codex', 'Codex', 'terminal-window', 1], ['agents', 'Agents', 'robot'], ['automations', 'Automated agents', 'clock-clockwise', 1], ['mcp', 'MCP servers', 'plugs-connected', 1], ['worktrees', 'Worktrees', 'tree-structure', 1], ['budgets', 'Usage', 'coins'], ['defaults', 'Repositories', 'book-bookmark'], ...app.repos.map((r) => ['repo:' + r.id, r.hidden ? r.id + ' (hidden)' : r.id, r.hidden ? 'eye-slash' : 'git-branch', 1]), ['notifications', 'Notifications', 'bell'], ['appearance', 'Appearance', 'paint-brush'], ['shortcuts', 'Keyboard shortcuts', 'keyboard', 1], ['custom-shortcuts', 'Custom shortcuts', 'lightning', 1], ['transfer', 'Import and export', 'arrows-left-right'], ['sync', 'Sync', 'arrows-clockwise'], ...(hosted ? [] : [['phone', 'Mobile app', 'device-mobile'], ['companion', 'Companion', 'broadcast', 1]]), ['about', 'About and support', 'info']] as [string, string, string, number?][];
+  const basic = ['github', 'claude', 'codex', 'budgets', 'defaults', 'notifications', 'appearance', 'about'];
+  const advanced = ['automations', 'mcp', 'sync', 'companion', 'custom-shortcuts'];
+  const keywords: Record<string, string> = {
+    appearance: 'experience simple standard advanced theme colour color font text size scale zoom tutorial tips layout time clock start page collapse tools',
+    agents: 'model effort permissions commands defaults backend subagents concurrency',
+    budgets: 'spend usage plan limits tokens money currency warning pause weekly',
+    defaults: 'repositories branches push merge git commit review work folders worktrees',
+    notifications: 'sound desktop alerts attention ready failed checks preview',
+    worktrees: 'work folders branches cleanup git',
+    about: 'help support diagnostics log version updates',
+    mcp: 'servers tools integrations', transfer: 'import export backup restore', sync: 'devices pairing',
+    github: 'accounts login sign in authentication', claude: 'accounts login sign in authentication', codex: 'accounts login sign in authentication',
+  };
+  const q = search.trim().toLowerCase();
+  const visibleNav = nav.filter(([k, label]) => q ? `${label} ${keywords[k] || ''}`.toLowerCase().includes(q) : allSettings || experience.advanced || k === sec || (experience.simple ? basic.includes(k) || k.startsWith('repo:') : !advanced.includes(k)));
+  React.useEffect(() => { if (section) setSec(section === 'account' ? 'github' : section); }, [section]);
   // Accounts and Shortcuts are nodes of their own with nothing on them: each holds its pages and folds them away when clicked.
   const repoKeys = app.repos.map((r) => 'repo:' + r.id);
   const groups: Record<string, [string, string, string]> = { github: ['accounts', 'Accounts', 'user-circle'], shortcuts: ['shortcuts', 'Shortcuts', 'keyboard'] };
@@ -617,18 +638,23 @@ export function Settings({ section }: { section?: string }) {
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: narrow ? 'column' : 'row' }}>
       {narrow ? (
-        <nav style={{ flex: 'none', padding: '8px 12px', borderBottom: '1px solid var(--border)', display: 'flex' }}>
+        <nav style={{ flex: 'none', flexWrap: 'wrap', gap: 8, padding: '8px 12px', borderBottom: '1px solid var(--border)', display: 'flex' }}>
+          <Input aria-label="Search settings" placeholder="Search all settings" value={search} onChange={(e: any) => setSearch(e.target.value)} style={{ width: '100%' }} />
+          {!experience.advanced ? <Button size="sm" variant="ghost" onClick={() => setAllSettings(!allSettings)}>{allSettings ? 'Use reduced settings' : 'Show all settings'}</Button> : null}
           {/* Some twenty pages do not fit a strip: a list shows them all and the one you are on. */}
-          <Select size="lg" value={sec} onChange={(e: any) => setSec(e.target.value)} style={{ width: '100%' }} options={nav.map(([value, label]) => ({ value, label: (groupOf[value as string] === 'accounts' ? 'Accounts · ' : groupOf[value as string] === 'shortcuts' ? 'Shortcuts · ' : groupOf[value as string] === 'repos' ? 'Repository · ' : '') + label }))} />
+          <Select size="lg" value={sec} onChange={(e: any) => setSec(e.target.value)} style={{ width: '100%' }} options={visibleNav.map(([value, label]) => ({ value, label: (groupOf[value as string] === 'accounts' ? 'Accounts · ' : groupOf[value as string] === 'shortcuts' ? 'Shortcuts · ' : groupOf[value as string] === 'repos' ? 'Repository · ' : '') + label }))} />
         </nav>
       ) : (
-        <nav style={{ width: navW, flex: 'none', padding: '16px 8px', borderRight: '1px solid var(--border)', position: 'relative' }}>
+        <nav style={{ width: navW, flex: 'none', overflowY: 'auto', padding: '16px 8px', borderRight: '1px solid var(--border)', position: 'relative' }}>
+          <Input aria-label="Search settings" placeholder="Search all settings" value={search} onChange={(e: any) => setSearch(e.target.value)} style={{ width: '100%', marginBottom: 8 }} />
+          {q && !visibleNav.length ? <p>No settings found.</p> : null}
+          {!experience.advanced ? <Button size="sm" variant="ghost" onClick={() => setAllSettings(!allSettings)}>{allSettings ? 'Use reduced settings' : 'Show all settings'}</Button> : null}
           <Grip onMouseDown={startNav} onDoubleClick={resetNav} />
-          {nav.map(([k, l, ic, depth]) => (
+          {visibleNav.map(([k, l, ic, depth]) => (
             <React.Fragment key={k}>
               {k === 'defaults' ? <TreeItem icon={ic} label={l} expandable={repoKeys.length > 0} expanded={!folded.includes('repos')} selected={sec === k} onClick={() => { setSec(k); if (repoKeys.length) setFolded((f) => (f.includes('repos') ? f.filter((x) => x !== 'repos') : [...f, 'repos'])); }} /> : null}
               {groups[k] ? <TreeItem icon={groups[k][2]} label={groups[k][1]} expandable expanded={!folded.includes(groups[k][0])} onClick={() => setFolded((f) => (f.includes(groups[k][0]) ? f.filter((x) => x !== groups[k][0]) : [...f, groups[k][0]]))} /> : null}
-              {k === 'defaults' || (groupOf[k] && folded.includes(groupOf[k])) ? null : <TreeItem icon={ic} label={l} depth={depth || 0} selected={sec === k} onClick={() => setSec(k)} />}
+              {k === 'defaults' || (!q && groupOf[k] && folded.includes(groupOf[k])) ? null : <TreeItem icon={ic} label={l} depth={depth || 0} selected={sec === k} onClick={() => setSec(k)} />}
             </React.Fragment>
           ))}
         </nav>
@@ -691,7 +717,7 @@ export function Settings({ section }: { section?: string }) {
             <SettingRow title="Subagents per repository" desc="Most subagents that may run at once across every session of a repository. Counted for Claude Code only: Codex sessions cannot be counted together."><Select value={String(st.maxSubagentsRepo)} onChange={(e: any) => set({ maxSubagentsRepo: +e.target.value })} options={subLimits([st.maxSubagentsRepo, 16, 24])} /></SettingRow>
             {app.repos.length ? (
               <div style={{ display: 'flex', flexDirection: 'column', marginBottom: 6 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: subCols.template, gap: 12, padding: '8px 0', font: '500 10.5px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: subCols.template, gap: 12, padding: '8px 0', font: '500 12px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>
                   {subCols.cell(0, 'Repository')}<span>Subagent limit</span>
                 </div>
                 {app.repos.map((r) => (
@@ -794,7 +820,7 @@ export function Settings({ section }: { section?: string }) {
               <SettingRow title="Warn at"><SegmentedControl size="sm" value={String(st.warnAt)} onChange={(v: string) => set({ warnAt: +v })} options={[{ value: '50', label: '50%' }, { value: '80', label: '80%' }, { value: '90', label: '90%' }]} /></SettingRow>
               <div style={{ display: 'flex', flexDirection: 'column', marginTop: 12 }}>
                 {app.repos.length === 0 ? <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Add a repository to set its weekly cap.</span> : (
-                  <div style={{ display: 'grid', gridTemplateColumns: repoCols.template, gap: 16, padding: '8px 0', font: '500 10.5px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: repoCols.template, gap: 16, padding: '8px 0', font: '500 12px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>
                     {repoCols.cell(0, 'Repository')}{repoCols.cell(1, 'This week')}<span>Weekly cap</span>
                   </div>
                 )}
@@ -892,6 +918,9 @@ export function Settings({ section }: { section?: string }) {
           </> : null}
           {sec === 'appearance' ? <>
             <H>Appearance</H>
+            <SettingRow title="How do you work with helm?" desc="Simple focuses on tasks and review. Standard adds developer tools. Advanced shows all controls (default). All commands remain available through search. Permissions and budgets stay the same.">
+              <Select value={experience.level} onChange={(e: any) => set({ experience: e.target.value })} options={['simple', 'standard', 'advanced'].map((value) => ({ value, label: value[0].toUpperCase() + value.slice(1) }))} />
+            </SettingRow>
             <SettingRow title="Theme"><SegmentedControl value={st.theme} onChange={(v: string) => set({ theme: v as any })} options={[{ value: 'dark', label: 'Dark', icon: 'moon' }, { value: 'light', label: 'Light', icon: 'sun' }, { value: 'system', label: 'System', icon: 'desktop' }]} /></SettingRow>
             <ColourRows st={st} set={set} />
             <SettingRow title="Tutorial mode" desc="Shows small bubbles pointing out useful areas, one at a time, until you dismiss each.">

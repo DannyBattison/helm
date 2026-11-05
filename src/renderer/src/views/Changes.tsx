@@ -1,3 +1,4 @@
+import { keyboardClick } from '../ui/keyboard';
 import React from 'react';
 import type { ChangesSummary, ExtraRepo, DiffHunk, ReviewComment, Session } from '@shared/types';
 import { hunkId } from '@shared/hunks';
@@ -10,7 +11,7 @@ import { CHECK_RE, agentName, relTime, repoSettings } from '../lib';
 import { go, setUI, toast, useApp, useTranscript } from '../store';
 import { Avatar, Badge, BranchTag, Button, Checkbox, DiffStat, Grip, IconButton, Input, SegmentedControl, Select, usePaneWidth } from '../ui';
 
-const label: React.CSSProperties = { font: '500 10.5px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' };
+const label: React.CSSProperties = { font: '500 12px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' };
 const sClr: Record<string, string> = { M: 'var(--status-attention-text)', A: 'var(--diff-add-fg)', D: 'var(--diff-del-fg)', R: 'var(--accent-text)' };
 const MOD = () => (platform() === 'darwin' ? '⌘' : 'Ctrl+');
 const errText = (e: any) => String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '');
@@ -28,9 +29,9 @@ export function DiffLine({ l, onComment, lang }: { l: Row; onComment(line: numbe
   return (
     <div className="helm-diff-line" style={{ display: 'grid', gridTemplateColumns: '44px 44px 20px minmax(0,1fr)', background: bg, font: '400 12px/20px var(--font-code)' }}>
       <span style={{ textAlign: 'right', paddingRight: 8, color: 'var(--text-disabled)', background: gut }}>{o || ''}</span>
-      <span title={n ? 'Comment on this line' : undefined} onClick={() => n && onComment(n)} style={{ textAlign: 'right', paddingRight: 8, color: 'var(--text-disabled)', background: gut, cursor: n ? 'pointer' : 'default' }}>{n || ''}</span>
+      <span {...(n ? keyboardClick : {})} aria-label={n ? `Comment on line ${n}` : undefined} title={n ? 'Comment on this line' : undefined} onClick={() => n && onComment(n)} style={{ textAlign: 'right', paddingRight: 8, color: 'var(--text-disabled)', background: gut, cursor: n ? 'pointer' : 'default' }}>{n || ''}</span>
       <span style={{ textAlign: 'center', color: fg }}>{t === '-' ? '−' : t === '+' ? '+' : ''}</span>
-      <span className="selectable" style={{ whiteSpace: 'pre', color: t === ' ' ? 'var(--text-2)' : 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', tabSize: 4 }}><Hl text={text} lang={lang} /></span>
+      <span className="selectable" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', color: t === ' ' ? 'var(--text-2)' : 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', tabSize: 4 }}><Hl text={text} lang={lang} /></span>
     </div>
   );
 }
@@ -44,8 +45,8 @@ export function SplitRows({ lines, onComment, lang }: { lines: Row[]; onComment(
     const bg = !l ? 'var(--bg-hover)' : t === '+' ? 'var(--diff-add-bg)' : t === '-' ? 'var(--diff-del-bg)' : 'transparent';
     return (
       <div style={{ display: 'grid', gridTemplateColumns: '44px minmax(0,1fr)', background: bg, minWidth: 0 }}>
-        <span onClick={() => side === 'r' && num && onComment(num)} style={{ textAlign: 'right', paddingRight: 8, color: 'var(--text-disabled)', cursor: side === 'r' && num ? 'pointer' : 'default' }}>{num || ''}</span>
-        <span className="selectable" style={{ whiteSpace: 'pre', overflow: 'hidden', textOverflow: 'ellipsis', tabSize: 4, color: t === ' ' ? 'var(--text-2)' : 'var(--text-1)' }}><Hl text={l?.[3] ?? ''} lang={lang} /></span>
+        <span {...(side === 'r' && num ? keyboardClick : {})} aria-label={side === 'r' && num ? `Comment on line ${num}` : undefined} onClick={() => side === 'r' && num && onComment(num)} style={{ textAlign: 'right', paddingRight: 8, color: 'var(--text-disabled)', cursor: side === 'r' && num ? 'pointer' : 'default' }}>{num || ''}</span>
+        <span className="selectable" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', overflow: 'hidden', textOverflow: 'ellipsis', tabSize: 4, color: t === ' ' ? 'var(--text-2)' : 'var(--text-1)' }}><Hl text={l?.[3] ?? ''} lang={lang} /></span>
       </div>
     );
   };
@@ -66,7 +67,7 @@ function Thread({ c, onRemove }: { c: ReviewComment; onRemove(): void }) {
       <div style={{ display: 'flex', gap: 10, padding: 12 }}>
         <Avatar name={app.user?.login || 'you'} src={app.user?.avatar || undefined} size={20} />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
-          <span style={{ font: '500 12px/1.5 var(--font-sans)' }}>{app.user?.login || 'you'} <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)', marginLeft: 6 }}>line {c.line}</span></span>
+          <span style={{ font: '500 12px/1.5 var(--font-sans)' }}>{app.user?.login || 'you'} <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)', marginLeft: 6 }}>line {c.line}</span></span>
           <span className="selectable" style={{ font: '400 13px/1.5 var(--font-sans)', whiteSpace: 'pre-wrap' }}>{c.text}</span>
         </div>
       </div>
@@ -131,13 +132,13 @@ function ReviewPanel({ s, onOpen }: { s: Session; onOpen(file: string): void }) 
       {r?.state === 'failed' ? <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--status-error-text)' }}>{r.summary}</span> : null}
       {r?.state === 'done' ? <>
         <span className="selectable" style={{ font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-1)' }}>{r.summary}</span>
-        {stale ? <span style={{ font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--status-attention-text)' }}>The branch has new commits since this review.</span> : null}
+        {stale ? <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--status-attention-text)' }}>The branch has new commits since this review.</span> : null}
         {r.findings.length === 0 ? <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--status-ready-text)' }}><i className="ph ph-check-circle" /> No findings.</span> : null}
         {r.findings.map((f, i) => (
-          <div key={i} onClick={() => f.file && onOpen(f.file)} style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '8px 10px', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border)', cursor: f.file ? 'pointer' : 'default' }}>
+          <div {...keyboardClick} key={i} onClick={() => f.file && onOpen(f.file)} style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '8px 10px', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border)', cursor: f.file ? 'pointer' : 'default' }}>
             <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
               <Badge tone={SEVERITY[f.severity].tone as any}>{SEVERITY[f.severity].label}</Badge>
-              {f.file ? <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.file}{f.line ? ':' + f.line : ''}</span> : null}
+              {f.file ? <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.file}{f.line ? ':' + f.line : ''}</span> : null}
             </span>
             <span className="selectable" style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>{f.text}</span>
           </div>
@@ -173,7 +174,7 @@ function ExtraRepoPr({ s, x }: { s: Session; x: ExtraRepo }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 10, borderRadius: 'var(--radius-md)', boxShadow: 'inset 0 0 0 1px var(--border)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, font: '500 12px/1.5 var(--font-sans)' }}>
         <i className="ph ph-git-branch" /><span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{x.repoId}</span>
-        <span style={{ font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{sum ? `${sum.commits.length} ${sum.commits.length === 1 ? 'commit' : 'commits'} · ${files} ${files === 1 ? 'file' : 'files'}` : ''}</span>
+        <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{sum ? `${sum.commits.length} ${sum.commits.length === 1 ? 'commit' : 'commits'} · ${files} ${files === 1 ? 'file' : 'files'}` : ''}</span>
       </div>
       <BranchTag name={x.branch} />
       {x.prUrl
@@ -343,7 +344,7 @@ function ChangesView({ s }: { s: Session }) {
         <Grip onMouseDown={lgrip} onDoubleClick={lreset} />
         <div style={{ height: 34, flex: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px' }}>
           <Checkbox checked={allOn} onChange={(on) => setUnchecked(on ? new Set() : new Set((sum?.files || []).filter((f) => pickable(f.path)).map((f) => f.path)))} />
-          <span style={{ flex: 1, font: '500 12px/1.5 var(--font-sans)' }} title="Hunks accepted, of all hunks in the change">{sum?.files.length ?? 0} files{totalHunks ? <span style={{ font: '400 11px/1.5 var(--font-mono)', color: doneHunks === totalHunks ? 'var(--status-ready-text)' : 'var(--text-3)', marginLeft: 8, whiteSpace: 'nowrap' }}>✓ {doneHunks}/{totalHunks}</span> : null}</span>
+          <span style={{ flex: 1, font: '500 12px/1.5 var(--font-sans)' }} title="Hunks accepted, of all hunks in the change">{sum?.files.length ?? 0} files{totalHunks ? <span style={{ font: '400 12px/1.5 var(--font-mono)', color: doneHunks === totalHunks ? 'var(--status-ready-text)' : 'var(--text-3)', marginLeft: 8, whiteSpace: 'nowrap' }}>✓ {doneHunks}/{totalHunks}</span> : null}</span>
           <DiffStat additions={totalAdd} deletions={totalDel} blocks={false} />
         </div>
         <div style={{ height: 30, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, padding: '0 12px' }}>
@@ -356,16 +357,16 @@ function ChangesView({ s }: { s: Session }) {
               const on = f.path === sel;
               const parts = f.path.split('/');
               return (
-                <div key={f.path} onClick={() => setSel(f.path)} style={{ display: 'flex', alignItems: 'center', gap: 8, height: tree ? 28 : 40, padding: '0 8px 0 ' + (8 + depth * 14) + 'px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', background: on ? 'var(--bg-selected)' : 'transparent' }}>
+                <div {...keyboardClick} key={f.path} onClick={() => setSel(f.path)} style={{ display: 'flex', alignItems: 'center', gap: 8, height: tree ? 28 : 40, padding: '0 8px 0 ' + (8 + depth * 14) + 'px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', background: on ? 'var(--bg-selected)' : 'transparent' }}>
                   <span onClick={(e) => e.stopPropagation()}><Checkbox checked={!unchecked.has(f.path)} disabled={!pickable(f.path)} onChange={() => toggle(f.path)} /></span>
                   <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
                     <span style={{ font: '400 12px/1.5 var(--font-mono)', color: sClr[f.status] || 'var(--text-1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{parts[parts.length - 1]}</span>
-                    {tree ? null : <span style={{ font: '400 10.5px/1.5 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{parts.slice(0, -1).join('/') || '.'}</span>}
+                    {tree ? null : <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{parts.slice(0, -1).join('/') || '.'}</span>}
                   </div>
-                  <span style={{ font: '400 10.5px/1.5 var(--font-mono)', color: 'var(--diff-add-fg)' }}>+{f.add}</span>
-                  <span style={{ font: '400 10.5px/1.5 var(--font-mono)', color: 'var(--diff-del-fg)' }}>−{f.del}</span>
+                  <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--diff-add-fg)' }}>+{f.add}</span>
+                  <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--diff-del-fg)' }}>−{f.del}</span>
                   {fileHunks[f.path]?.length && fileHunks[f.path].every((h) => accepted.has(h)) ? <i className="ph-fill ph-check-circle" title="All hunks accepted" style={{ fontSize: 12, color: 'var(--status-ready)' }} /> : null}
-                  <span style={{ font: '500 11px/1.5 var(--font-mono)', width: 10, color: sClr[f.status] }}>{f.status}</span>
+                  <span style={{ font: '500 12px/1.5 var(--font-mono)', width: 10, color: sClr[f.status] }}>{f.status}</span>
                 </div>
               );
             };
@@ -384,11 +385,11 @@ function ChangesView({ s }: { s: Session }) {
                 const path = prefix + d + '/';
                 const open = !folded.has(path);
                 out.push(
-                  <div key={'d:' + path} onClick={() => setFolded((cur) => { const n = new Set(cur); if (n.has(path)) n.delete(path); else n.add(path); return n; })} style={{ display: 'flex', alignItems: 'center', gap: 6, height: 26, padding: '0 8px 0 ' + (8 + depth * 14) + 'px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', color: 'var(--text-2)' }}>
+                  <div {...keyboardClick} key={'d:' + path} onClick={() => setFolded((cur) => { const n = new Set(cur); if (n.has(path)) n.delete(path); else n.add(path); return n; })} style={{ display: 'flex', alignItems: 'center', gap: 6, height: 26, padding: '0 8px 0 ' + (8 + depth * 14) + 'px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', color: 'var(--text-2)' }}>
                     <i className={'ph ph-caret-' + (open ? 'down' : 'right')} style={{ fontSize: 11, width: 12, color: 'var(--text-3)' }} />
                     <i className="ph ph-folder" style={{ fontSize: 14, color: 'var(--text-3)' }} />
                     <span style={{ flex: 1, minWidth: 0, font: '400 12px/1.5 var(--font-mono)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d}</span>
-                    <span style={{ font: '400 10.5px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{fs.length}</span>
+                    <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{fs.length}</span>
                   </div>
                 );
                 if (open) walk(fs, path, depth + 1);
@@ -413,7 +414,7 @@ function ChangesView({ s }: { s: Session }) {
             <div style={{ display: 'flex', gap: 1, minHeight: '100%', background: 'var(--border)' }}>
               {([['Before', images.old], ['After', images.new]] as const).map(([label, src]) => (
                 <div key={label} style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center', padding: 16, background: 'var(--bg-editor)' }}>
-                  <span style={{ font: '500 11px/1.5 var(--font-sans)', color: label === 'Before' ? 'var(--diff-del-fg)' : 'var(--diff-add-fg)' }}>{label}</span>
+                  <span style={{ font: '500 12px/1.5 var(--font-sans)', color: label === 'Before' ? 'var(--diff-del-fg)' : 'var(--diff-add-fg)' }}>{label}</span>
                   {src ? <img src={src} alt={label} style={{ maxWidth: '100%', maxHeight: 'calc(100vh - 220px)', objectFit: 'contain', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'repeating-conic-gradient(var(--bg-hover) 0% 25%, transparent 0% 50%) 50% / 16px 16px' }} /> : <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{label === 'Before' ? 'Did not exist' : 'Deleted'}</span>}
                 </div>
               ))}
@@ -432,7 +433,7 @@ function ChangesView({ s }: { s: Session }) {
             : hunks.map((h, i) => (
               <div key={i}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 8px 3px 16px', background: 'var(--accent-muted)' }}>
-                  <span style={{ flex: 1, minWidth: 0, font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--accent-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h.header}</span>
+                  <span style={{ flex: 1, minWidth: 0, font: '400 12px/1.5 var(--font-mono)', color: 'var(--accent-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h.header}</span>
                   {sel ? <HunkActions s={s} path={sel} h={h} accepted={accepted.has(hunkId(sel, h))} onAsk={() => { const first = h.lines.find((l) => l[0] === '+' && l[2]) || h.lines.find((l) => l[2]); if (first) setComposing(first[2]); }} onChanged={() => setTick((t) => t + 1)} /> : null}
                 </div>
                 {mode === 's' ? <SplitRows lines={h.lines} onComment={setComposing} lang={fileLang} />
@@ -453,7 +454,7 @@ function ChangesView({ s }: { s: Session }) {
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <i className={'ph-fill ph-' + (c.ok ? 'check-circle' : 'x-circle')} style={{ fontSize: 14, color: c.ok ? 'var(--status-ready)' : 'var(--status-error)' }} />
                 <span style={{ font: '400 12px/1.5 var(--font-mono)', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.cmd}</span>
-                <span style={{ font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)', whiteSpace: 'nowrap' }}>{c.meta}</span>
+                <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)', whiteSpace: 'nowrap' }}>{c.meta}</span>
               </div>
             ))}
           </div>
@@ -462,7 +463,7 @@ function ChangesView({ s }: { s: Session }) {
             {sum && sum.commits.length === 0 ? <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>No commits yet. {sum.dirty} uncommitted {sum.dirty === 1 ? 'file' : 'files'} will be committed with the pull request.</span> : null}
             {(sum?.commits || []).map((c) => (
               <div key={c.hash} style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                <span style={{ font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{c.hash}</span>
+                <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{c.hash}</span>
                 <span style={{ font: '400 12px/1.5 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.msg}</span>
               </div>
             ))}
@@ -492,7 +493,7 @@ function ChangesView({ s }: { s: Session }) {
         </div>
         <div style={{ flex: 'none', padding: 12, borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 8 }}>
           {openBlockers || (totalHunks && doneHunks < totalHunks) ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 3, font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--status-attention-text)' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3, font: '400 12px/1.5 var(--font-sans)', color: 'var(--status-attention-text)' }}>
               {openBlockers ? <span><i className="ph ph-warning" /> The review found {openBlockers} {openBlockers === 1 ? 'blocker' : 'blockers'}.</span> : null}
               {totalHunks && doneHunks < totalHunks ? <span>{totalHunks - doneHunks} {totalHunks - doneHunks === 1 ? 'hunk' : 'hunks'} not yet accepted.</span> : null}
             </div>

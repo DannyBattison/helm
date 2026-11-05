@@ -1,3 +1,4 @@
+import { keyboardClick } from '../ui/keyboard';
 import React from 'react';
 import { MAX_UPLOAD_FILES, MAX_UPLOAD_TOTAL, type BaseOption, type GhRepo, type MergeMethod, type ModelAlias, type PermMode, type PullRequest, type RepoRemoveInfo, type SessionDeleteInfo } from '@shared/types';
 import { api, platform } from '../api';
@@ -192,14 +193,14 @@ export function AddRepo({ onClose }: { onClose(): void }) {
             {loadErr ? <div style={{ padding: 16, font: '400 12px/1.45 var(--font-sans)', color: 'var(--status-error-text)' }}>{loadErr}</div> : null}
             {list && !loadErr && shown.length === 0 ? <div style={{ padding: 16, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>No repositories match.</div> : null}
             {shown.map((r, i) => (
-              <div key={r.id} onClick={() => !r.added && setPicked({ ...picked, [r.id]: !picked[r.id] })} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderTop: i ? '1px solid var(--border-subtle)' : 'none', cursor: r.added ? 'default' : 'pointer', opacity: r.added ? 0.55 : 1 }}>
-                <Checkbox checked={r.added || !!picked[r.id]} disabled={r.added} />
+              <div {...keyboardClick} key={r.id} onClick={() => !r.added && setPicked({ ...picked, [r.id]: !picked[r.id] })} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderTop: i ? '1px solid var(--border-subtle)' : 'none', cursor: r.added ? 'default' : 'pointer', opacity: r.added ? 0.55 : 1 }}>
+                <Checkbox aria-label={r.id} checked={r.added || !!picked[r.id]} disabled={r.added} onChange={(v: boolean) => setPicked({ ...picked, [r.id]: v })} />
                 <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 6, font: '500 13px/1.5 var(--font-sans)' }}>{r.id}{r.private ? <i className="ph ph-lock-simple" style={{ fontSize: 12, color: 'var(--text-3)' }} /> : null}</span>
                   <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.description || ' '}</span>
                 </div>
-                <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{r.lang}</span>
-                <span style={{ width: 76, textAlign: 'right', font: '400 11px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{r.added ? <Badge>Added</Badge> : r.updated}</span>
+                <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{r.lang}</span>
+                <span style={{ width: 76, textAlign: 'right', font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{r.added ? <Badge>Added</Badge> : r.updated}</span>
               </div>
             ))}
           </div>
@@ -355,9 +356,9 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
               {uploads.map((u) => (
                 <div key={u.id} title={u.name} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 6, height: 28, padding: '0 22px 0 8px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-raised)', boxShadow: 'inset 0 0 0 1px var(--border)' }}>
                   <i className="ph ph-file" style={{ fontSize: 13, color: 'var(--text-3)' }} />
-                  <span style={{ font: '500 11.5px/1.5 var(--font-sans)', color: 'var(--text-1)', maxWidth: 150, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.name}</span>
-                  <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{fmtSize(u.size)}</span>
-                  <span role="button" aria-label={'Remove ' + u.name} onClick={() => setUploads((c) => c.filter((x) => x.id !== u.id))} style={{ position: 'absolute', right: 5, top: 0, bottom: 0, display: 'flex', alignItems: 'center', cursor: 'pointer', color: 'var(--text-3)' }}><i className="ph ph-x" style={{ fontSize: 11 }} /></span>
+                  <span style={{ font: '500 12px/1.5 var(--font-sans)', color: 'var(--text-1)', maxWidth: 150, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.name}</span>
+                  <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{fmtSize(u.size)}</span>
+                  <span {...keyboardClick} role="button" aria-label={'Remove ' + u.name} onClick={() => setUploads((c) => c.filter((x) => x.id !== u.id))} style={{ position: 'absolute', right: 5, top: 0, bottom: 0, display: 'flex', alignItems: 'center', cursor: 'pointer', color: 'var(--text-3)' }}><i className="ph ph-x" style={{ fontSize: 11 }} /></span>
                 </div>
               ))}
             </div>
@@ -369,7 +370,7 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px 6px 8px' }}>
             <input ref={picker} type="file" multiple hidden onChange={(e) => { void addFiles([...(e.target.files || [])]); e.target.value = ''; }} />
             <IconButton icon="paperclip" label="Attach files" size="sm" onClick={() => picker.current?.click()} />
-            <span style={{ font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{images.length || uploads.length ? `${images.length + uploads.length} attached` : 'Any file type. Images go in the message; other files are only for this agent.'}</span>
+            <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{images.length || uploads.length ? `${images.length + uploads.length} attached` : 'Any file type. Images go in the message; other files are only for this agent.'}</span>
           </div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: narrow ? 'minmax(0,1fr)' : sub ? '1fr 1fr' : '1fr 1fr 110px', gap: 8, ...(compare ? { opacity: 0.5 } : null) }}>
@@ -387,14 +388,14 @@ export function NewSession({ repoId, initial, onClose }: { repoId?: string; init
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <span style={{ font: '500 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>Also work in</span>
             <Select multiple value={extraRepos} onChange={(e: any) => setMore(e.target.value)} options={others.map((x) => ({ value: x.id, label: x.id }))} placeholder="None" icon="books" />
-            {extraRepos.length ? <span style={{ font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>The agent gets a worktree in each, from its default branch, and each can have its own pull request.</span> : null}
+            {extraRepos.length ? <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>The agent gets a worktree in each, from its default branch, and each can have its own pull request.</span> : null}
           </div>
         ) : null}
         {compare ? null : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <span style={{ font: '500 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>Also ask</span>
             <Select multiple value={joiners} onChange={(e: any) => setJoiners(e.target.value)} options={modelChoices(app)} placeholder="No other agents" icon="users-three" />
-            {joiners.length ? <span style={{ font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>They read the code and discuss it with the first agent, which is the only one that edits and runs commands. Address one with @name; you can change who edits later.</span> : null}
+            {joiners.length ? <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>They read the code and discuss it with the first agent, which is the only one that edits and runs commands. Address one with @name; you can change who edits later.</span> : null}
           </div>
         )}
         {free ? null : <Checkbox checked={compare} onChange={setCompare} label="Compare several runs" description="Start the same task more than once, with different models or effort, and keep the best result." />}
@@ -519,7 +520,7 @@ export function MergePr({ target, onClose }: { target: { repoId: string; number:
                   style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 6px', borderRadius: 'var(--radius-sm)', textDecoration: 'none', color: 'var(--text-1)', font: '400 12.5px/1.5 var(--font-sans)', cursor: 'pointer' }}>
                   <i className={'ph-fill ph-' + icon} style={{ fontSize: 14, flex: 'none', color: 'var(--status-' + tone + (tone === 'idle' ? '' : '-text') + ', var(--text-3))', ...(c.state === 'pending' ? { animation: 'helm-spin .9s linear infinite' } : null) }} />
                   <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
-                  <span style={{ font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{c.state === 'pending' ? 'Running' : c.state === 'passing' ? 'Passed' : c.state === 'failing' ? 'Failed' : 'Skipped'}</span>
+                  <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{c.state === 'pending' ? 'Running' : c.state === 'passing' ? 'Passed' : c.state === 'failing' ? 'Failed' : 'Skipped'}</span>
                   <i className="ph ph-arrow-square-out" style={{ fontSize: 13, color: 'var(--text-3)' }} />
                 </a>
               );
@@ -707,6 +708,8 @@ export function Palette({ onClose, toggleTheme }: { onClose(): void; toggleTheme
     { key: 'a-need', label: 'Inbox: what needs you', icon: 'tray', run: () => go({ screen: 'inbox' }) },
     { key: 'a-reports', label: 'Reports', icon: 'chart-line-up', run: () => go({ screen: 'reports' }) },
     { key: 'a-act', label: 'Activity', icon: 'pulse', run: () => go({ screen: 'activity' }) },
+    { key: 'a-archive', label: 'Archive', icon: 'archive', run: () => go({ screen: 'archive' }) },
+    { key: 'a-experience', label: 'How you work: Simple, Standard or Advanced experience', icon: 'sliders-horizontal', run: () => go({ screen: 'settings', section: 'appearance' }) },
     { key: 'a-set', label: 'Settings', icon: 'gear-six', run: () => go({ screen: 'settings' }) },
     { key: 'a-new', label: 'New session', icon: 'plus', hint: newKeys.join(mac() ? '' : '+'), run: () => setUI({ newSession: {} }) },
     { key: 'a-halt', label: 'Interrupt all agents', icon: 'pause', hint: haltKeys.join(mac() ? '' : '+'), run: () => void haltAll() },
@@ -728,7 +731,7 @@ export function Palette({ onClose, toggleTheme }: { onClose(): void; toggleTheme
   const go_ = (it?: Item) => { if (!it) return; onClose(); it.run(); };
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 120, background: 'var(--scrim)', display: 'flex', justifyContent: 'center', paddingTop: 90 }} onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: 560, alignSelf: 'flex-start', borderRadius: 'var(--radius-xl)', background: 'var(--bg-overlay)', boxShadow: 'var(--shadow-dialog)', overflow: 'hidden', animation: 'helm-in var(--dur-slow) var(--ease-out)' }}>
+      <div role="dialog" aria-modal="true" aria-label="Search helm" onClick={(e) => e.stopPropagation()} style={{ width: 560, maxWidth: 'calc(100vw - 24px)', alignSelf: 'flex-start', borderRadius: 'var(--radius-xl)', background: 'var(--bg-overlay)', boxShadow: 'var(--shadow-dialog)', overflow: 'hidden', animation: 'helm-in var(--dur-slow) var(--ease-out)' }}>
         <div style={{ padding: 10, borderBottom: '1px solid var(--border-subtle)' }}>
           <Input autoFocus icon="magnifying-glass" size="lg" placeholder="Search sessions, conversations, commits and code" value={q} onChange={(e: any) => { setQ(e.target.value); setI(0); }}
             onKeyDown={(e: any) => {
@@ -742,17 +745,17 @@ export function Palette({ onClose, toggleTheme }: { onClose(): void; toggleTheme
           {f.length === 0 ? <div style={{ padding: 14, font: '400 13px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{searching ? 'Searching…' : 'Nothing matches.'}</div> : null}
           {f.map((it, n) => (
             <React.Fragment key={it.key}>
-            {it.section && f[n - 1]?.section !== it.section ? <div style={{ padding: '10px 10px 4px', font: '500 10.5px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>{it.section}</div> : null}
-            <div onMouseEnter={() => setI(n)} onClick={() => go_(it)} style={{ display: 'flex', alignItems: 'center', gap: 10, height: 34, padding: '0 10px', borderRadius: 'var(--radius-md)', cursor: 'pointer', background: n === i ? 'var(--bg-selected)' : 'transparent' }}>
+            {it.section && f[n - 1]?.section !== it.section ? <div style={{ padding: '10px 10px 4px', font: '500 12px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>{it.section}</div> : null}
+            <div {...keyboardClick} onMouseEnter={() => setI(n)} onClick={() => go_(it)} style={{ display: 'flex', alignItems: 'center', gap: 10, height: 34, padding: '0 10px', borderRadius: 'var(--radius-md)', cursor: 'pointer', background: n === i ? 'var(--bg-selected)' : 'transparent' }}>
               <i className={'ph ph-' + it.icon} style={{ fontSize: 15, color: 'var(--text-3)' }} />
               <span style={{ font: it.section ? '400 12.5px/1.5 var(--font-sans)' : '500 13px/1.5 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: it.section ? '66%' : undefined, flex: it.section ? '0 1 auto' : 'none' }}>{it.label}</span>
               <span style={{ flex: 1, minWidth: 0, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textAlign: it.section ? 'right' : undefined }}>{it.hint}</span>
             </div>
             </React.Fragment>
           ))}
-          {searching && f.length > 0 ? <div style={{ padding: '8px 10px', font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Searching conversations, commits and code…</div> : null}
+          {searching && f.length > 0 ? <div style={{ padding: '8px 10px', font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>Searching conversations, commits and code…</div> : null}
         </div>
-        <div style={{ display: 'flex', gap: 14, padding: '8px 12px', borderTop: '1px solid var(--border-subtle)', font: '400 11px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>
+        <div style={{ display: 'flex', gap: 14, padding: '8px 12px', borderTop: '1px solid var(--border-subtle)', font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>
           <span style={{ display: 'flex', gap: 5, alignItems: 'center' }}><Kbd keys={['↑', '↓']} /> move</span>
           <span style={{ display: 'flex', gap: 5, alignItems: 'center' }}><Kbd keys={['↵']} /> open</span>
           <span style={{ display: 'flex', gap: 5, alignItems: 'center' }}><Kbd keys={['Esc']} /> close</span>

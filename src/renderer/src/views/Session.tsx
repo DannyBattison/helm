@@ -1,5 +1,7 @@
+import { keyboardClick } from '../ui/keyboard';
 import { contextWindow, windowLabel } from '@shared/reports';
 import React from 'react';
+import { useExperience } from '../experience';
 import type { Session as S, TranscriptEvent, ModelAlias, PermMode, Effort, MessageImage, Artifact } from '@shared/types';
 import { api, platform } from '../api';
 import { commandSteps } from '@shared/commandSummary';
@@ -25,7 +27,7 @@ const guard = (p: Promise<any>) => p.catch((e: any) => toast({ tone: 'error', ti
 const mod = (e: { metaKey: boolean; ctrlKey: boolean }) => (platform() === 'darwin' ? e.metaKey : e.ctrlKey);
 const MOD = () => (platform() === 'darwin' ? '⌘' : 'Ctrl+');
 
-const label: React.CSSProperties = { font: '500 10.5px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' };
+const label: React.CSSProperties = { font: '500 12px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' };
 const box: React.CSSProperties = { borderRadius: 'var(--radius-md)', background: 'var(--bg-panel)', boxShadow: 'inset 0 0 0 1px var(--border)', overflow: 'hidden' };
 
 /** Tooltip over a command's summary: each step on its own line when there is more than one (the header may only name three). */
@@ -34,9 +36,12 @@ const stepsTip = (cmd: string, summary?: string) => { const steps = commandSteps
 function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string): void }) {
   const { fmt } = useMoney();
   const app = useApp();
+  const experience = useExperience();
   const sub = billingOf(app, s.backend) === 'subscription';
   const push = usePush(s.repoId, s.id);
-  const narrow = useNarrow();
+  const [more, setMore] = React.useState<{ x: number; y: number } | null>(null);
+  const phone = useNarrow();
+  const narrow = phone || !experience.advanced;
   return (
     <div className="helm-sess-header" style={{ flex: 'none', padding: '14px 20px 0', display: 'flex', flexDirection: 'column', gap: 12, borderBottom: '1px solid var(--border)' }}>
       <div className="helm-sess-head" style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
@@ -54,7 +59,7 @@ function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string
             {s.queuedMerge ? <Tooltip content={s.queuedMerge.error || 'Merges when the pull request\'s checks pass.'}><Badge tone={s.queuedMerge.error ? 'error' : undefined} icon="git-merge">{s.queuedMerge.error ? 'Merge failed' : 'Merge queued'}</Badge></Tooltip> : null}
             {s.stuck ? <Tooltip content={s.stuck}><Badge tone="attention" icon="warning">Looks stuck</Badge></Tooltip> : null}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+          <div className="helm-hide-phone" style={{ display: 'flex', alignItems: 'center', gap: 10, font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden' }}>
             {s.free ? <span title={s.worktree} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><i className="ph ph-folder" />{tilde(s.worktree, app.home)}</span> : <BranchTag worktree base={s.base.replace(/^origin\//, '')} name={s.branch} />}
             {s.free ? null : <IconButton icon="copy" label="Copy branch name" size="sm" onClick={() => { void navigator.clipboard?.writeText(s.branch); toast({ tone: 'neutral', title: 'Branch name copied' }); }} />}
             <span>{prettyModel(s)}</span><span>·</span><span>started {clock(s.startedAt)}</span><span>·</span><span>{fmtTokens(s.tokens.input + s.tokens.output + s.tokens.cacheRead)} tokens</span>{sub ? null : <><span>·</span><span>{fmt(s.cost)}</span></>}
@@ -68,19 +73,26 @@ function SessionHeader({ s, tab, setTab }: { s: S; tab: string; setTab(t: string
         {s.queued ? <><Button variant="primary" icon="play" onClick={() => guard(api.startQueued(s.id))}>Start now</Button><Button variant="ghost" onClick={() => guard(api.cancelQueued(s.id))}>Cancel</Button></> : null}
         {s.status === 'idle' && !s.remoteOwner && /^Stopped/.test(s.step) ? <Button variant="secondary" icon="play" onClick={() => guard(api.resumeSession(s.id))}>Resume</Button> : null}
         {s.status === 'working' ? <Tooltip side="bottom" wide content="Halt the agent's current turn but keep the session open, so you can redirect it with a new message.">{narrow ? <IconButton icon="pause" label="Pause" onClick={() => guard(api.interrupt(s.id))} /> : <Button variant="ghost" icon="pause" onClick={() => guard(api.interrupt(s.id))}>Pause</Button>}</Tooltip> : null}
-        {!s.archivedAt && !s.remoteOwner ? <Tooltip side="bottom" wide content="End the session entirely, discarding any pending prompts. You'd need to Resume to start it again.">{narrow ? <IconButton icon="stop" label="Stop" onClick={() => guard(api.stopSession(s.id))} /> : <Button variant="ghost" icon="stop" onClick={() => guard(api.stopSession(s.id))}>Stop</Button>}</Tooltip> : null}
+        {!narrow && !s.archivedAt && !s.remoteOwner ? <Tooltip side="bottom" wide content="End the session entirely, discarding any pending prompts. You'd need to Resume to start it again.">{narrow ? <IconButton icon="stop" label="Stop" onClick={() => guard(api.stopSession(s.id))} /> : <Button variant="ghost" icon="stop" onClick={() => guard(api.stopSession(s.id))}>Stop</Button>}</Tooltip> : null}
         {push.commits && !s.worktreeGone ? <span title={push.tip}><Button variant="secondary" icon="cloud-arrow-up" loading={push.busy} onClick={push.push}>Push · {push.commits}</Button></span> : null}
-        {!s.worktreeGone && !(s.free && !s.free.managed) ? <IconButton icon="clock-counter-clockwise" label="Checkpoints" onClick={() => setUI({ checkpointsOf: s.id })} /> : null}
-        {s.agentSessionId && can(app, s, 'fork') && !s.worktreeGone && !s.free ? <IconButton icon="git-fork" label="Fork this session" onClick={() => setUI({ forking: { sessionId: s.id, index: null, text: '' } })} /> : null}
-        {narrow ? <IconButton icon="arrow-square-out" label="Open in editor" onClick={() => guard(api.openInEditor(s.id))} /> : <Button variant="secondary" icon="arrow-square-out" onClick={() => guard(api.openInEditor(s.id))}>Open in editor</Button>}
+        {!narrow && !s.worktreeGone && !(s.free && !s.free.managed) ? <IconButton icon="clock-counter-clockwise" label="Checkpoints" onClick={() => setUI({ checkpointsOf: s.id })} /> : null}
+        {!narrow && s.agentSessionId && can(app, s, 'fork') && !s.worktreeGone && !s.free ? <IconButton icon="git-fork" label="Fork this session" onClick={() => setUI({ forking: { sessionId: s.id, index: null, text: '' } })} /> : null}
+        {narrow ? <IconButton icon="dots-three" label="More session actions" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMore({ x: r.left, y: r.bottom }); }} /> : <Button variant="secondary" icon="arrow-square-out" onClick={() => guard(api.openInEditor(s.id))}>Open in editor</Button>}
         {s.free ? <Button variant="secondary" icon="git-diff" disabled={!s.free.managed} title={s.free.managed ? undefined : 'Changes are tracked only in folders helm made'} onClick={() => setTab('changes')}>Changes</Button> : <>
         {s.mergedAt ? <Badge tone="ready">Merged into {s.mergedInto}</Badge> : null}
         </>}
       </div>
+      {more ? <ContextMenu {...more} onClose={() => setMore(null)} items={[
+        { label: 'Open in editor', icon: 'arrow-square-out', onClick: () => guard(api.openInEditor(s.id)) },
+        { label: 'Copy branch name', icon: 'copy', onClick: () => { void navigator.clipboard?.writeText(s.branch); } },
+        ...(!s.archivedAt && !s.remoteOwner ? [{ label: 'Stop session', icon: 'stop', onClick: () => guard(api.stopSession(s.id)) }] : []),
+        ...(!s.worktreeGone && !(s.free && !s.free.managed) ? [{ label: 'Checkpoints', icon: 'clock-counter-clockwise', onClick: () => setUI({ checkpointsOf: s.id }) }] : []),
+        ...(s.agentSessionId && can(app, s, 'fork') && !s.worktreeGone && !s.free ? [{ label: 'Fork this session', icon: 'git-fork', onClick: () => setUI({ forking: { sessionId: s.id, index: null, text: '' } }) }] : [])
+      ]} /> : null}
       <Tabs value={tab} onChange={setTab} style={{ borderBottom: 'none', padding: 0 }} tabs={[
         { value: 'conversation', label: 'Conversation', icon: 'chats-circle' },
-        { value: 'code', label: 'Code', icon: 'code' },
-        { value: 'changes', label: 'Changes', icon: 'git-diff', count: s.files }
+        ...(!experience.simple || tab === 'code' ? [{ value: 'code', label: 'Code', icon: 'code' }] : []),
+        { value: 'changes', label: experience.simple ? 'Review' : 'Changes', icon: 'git-diff', count: s.files }
       ]} />
     </div>
   );
@@ -97,11 +109,11 @@ function SubagentTree({ s, selected }: { s: S; selected?: string }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
       {rows.map(({ a, depth }) => (
-        <div key={a.id} onClick={() => go({ screen: 'session', id: s.id, tab: 'conversation', sub: a.id })} className="helm-row-hover"
+        <div {...keyboardClick} key={a.id} onClick={() => go({ screen: 'session', id: s.id, tab: 'conversation', sub: a.id })} className="helm-row-hover"
           style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 28, padding: '0 6px 0 ' + (6 + depth * 14) + 'px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', background: selected === a.id ? 'var(--bg-selected)' : undefined }}>
           <StatusDot status={subTone(a.status)} size={7} />
           <span style={{ flex: 1, minWidth: 0, font: '400 12px/1.5 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={a.description}>{a.description}</span>
-          <span style={{ font: '400 10.5px/1.5 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap' }}>{a.tools} tools · {a.status === 'working' ? elapsed(a.startedAt) : elapsed(a.startedAt, a.endedAt)}</span>
+          <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap' }}>{a.tools} tools · {a.status === 'working' ? elapsed(a.startedAt) : elapsed(a.startedAt, a.endedAt)}</span>
         </div>
       ))}
       {hidden ? <Button size="sm" variant="ghost" icon={all ? 'eye-slash' : 'archive'} onClick={() => setAll(!all)}>{all ? 'Hide archived' : `Show ${hidden} archived`}</Button> : null}
@@ -132,7 +144,7 @@ function ToolRow({ tool, target, meta, session }: { tool: string; target: string
       {FILE_TOOLS.has(tool)
         ? <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><FileLink session={session} path={target} style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-1)' }} /></span>
         : <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{target}</span>}
-      <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{meta}</span>
+      <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{meta}</span>
     </div>
   );
 }
@@ -159,10 +171,10 @@ function ArtifactView({ sessionId, name, label, embed }: { sessionId: string; na
     <span style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start', maxWidth: '100%' }}>
       {lightbox}
       <img onClick={() => setZoom(true)} title="Click to enlarge" src={`data:${art.mediaType};base64,${art.data}`} alt={label || art.name} style={{ cursor: 'zoom-in', maxWidth: '100%', maxHeight: 420, borderRadius: 'var(--radius-md)', boxShadow: 'inset 0 0 0 1px var(--border)', objectFit: 'contain', background: 'var(--bg-editor)' }} />
-      <span style={{ display: 'flex', alignItems: 'center', gap: 8, font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{art.name} · {fmtSize(art.size)}{button}</span>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{art.name} · {fmtSize(art.size)}{button}</span>
     </span>
   );
-  return <span style={box}>{lightbox}<i className={'ph ' + (previewable ? 'ph-image' : 'ph-file')} style={{ color: 'var(--text-3)' }} /><span onClick={previewable ? () => setZoom(true) : undefined} title={previewable ? 'Click to preview' : undefined} style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: previewable ? 'zoom-in' : undefined }}>{label || art.name}</span><span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{fmtSize(art.size)}</span>{button}</span>;
+  return <span style={box}>{lightbox}<i className={'ph ' + (previewable ? 'ph-image' : 'ph-file')} style={{ color: 'var(--text-3)' }} /><span {...(previewable ? keyboardClick : {})} onClick={previewable ? () => setZoom(true) : undefined} title={previewable ? 'Click to preview' : undefined} style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: previewable ? 'zoom-in' : undefined }}>{label || art.name}</span><span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{fmtSize(art.size)}</span>{button}</span>;
 }
 
 /** Paragraphs, bullet and numbered lists, tables, and `inline code`. Enough for agent prose. */
@@ -224,7 +236,7 @@ function EditCard({ m, box, session, fold }: { m: Extract<TranscriptEvent, { k: 
   const [open, setOpen] = React.useState(!fold);
   return (
     <div style={{ marginLeft: 44, marginRight: 12, ...box }}>
-      <div onClick={fold ? () => { if (!window.getSelection()?.toString()) setOpen(!open); } : undefined} style={{ display: 'flex', alignItems: 'center', gap: 8, height: 30, padding: '0 10px', borderBottom: open ? '1px solid var(--border-subtle)' : 'none', cursor: fold ? 'pointer' : undefined }}>
+      <div {...(fold ? keyboardClick : {})} onClick={fold ? () => { if (!window.getSelection()?.toString()) setOpen(!open); } : undefined} style={{ display: 'flex', alignItems: 'center', gap: 8, height: 30, padding: '0 10px', borderBottom: open ? '1px solid var(--border-subtle)' : 'none', cursor: fold ? 'pointer' : undefined }}>
         <i className="ph ph-pencil-simple" style={{ fontSize: 13, color: 'var(--text-3)' }} />
         <span style={{ font: '500 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>Edit</span>
         <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><FileLink session={session} path={m.file} style={{ font: '400 12px/1.5 var(--font-mono)' }} /></span>
@@ -248,7 +260,7 @@ function ToolsGroup({ items, box, session, fold }: { items: [string, string, str
   for (const t of items) counts.set(t[0], (counts.get(t[0]) || 0) + 1);
   return (
     <div style={{ marginLeft: 44, marginRight: 12, ...box, padding: '3px 0' }}>
-      {open ? null : <div onClick={() => setOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: 8, height: 26, padding: '0 10px', cursor: 'pointer', font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}><i className="ph ph-caret-right" style={{ fontSize: 12, color: 'var(--text-3)' }} />{items.length} tool {items.length === 1 ? 'call' : 'calls'}<span style={{ color: 'var(--text-3)', font: '400 11px/1.5 var(--font-mono)' }}>{[...counts].map(([k, n]) => n > 1 ? `${k} ×${n}` : k).join(' · ')}</span></div>}
+      {open ? null : <div {...keyboardClick} onClick={() => setOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: 8, height: 26, padding: '0 10px', cursor: 'pointer', font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}><i className="ph ph-caret-right" style={{ fontSize: 12, color: 'var(--text-3)' }} />{items.length} tool {items.length === 1 ? 'call' : 'calls'}<span style={{ color: 'var(--text-3)', font: '400 12px/1.5 var(--font-mono)' }}>{[...counts].map(([k, n]) => n > 1 ? `${k} ×${n}` : k).join(' · ')}</span></div>}
       {open ? items.map((t, i) => <ToolRow key={i} tool={t[0]} target={t[1]} meta={t[2]} session={session} />) : null}
     </div>
   );
@@ -260,13 +272,13 @@ function BashRow({ m, box }: { m: Extract<TranscriptEvent, { k: 'bash' }>; box: 
   const long = m.cmd.length > (m.summary ? 40 : 80) || m.cmd.includes('\n') || result.length > 40 || result.includes('\n');
   return (
     <div style={{ marginLeft: 44, marginRight: 12, ...box }}>
-      <div onClick={long ? () => { if (!window.getSelection()?.toString()) setOpen(!open); } : undefined} style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 30, padding: '0 10px', background: 'var(--bg-editor)', cursor: long ? 'pointer' : undefined }}>
+      <div {...(long ? keyboardClick : {})} onClick={long ? () => { if (!window.getSelection()?.toString()) setOpen(!open); } : undefined} style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 30, padding: '0 10px', background: 'var(--bg-editor)', cursor: long ? 'pointer' : undefined }}>
         <i className="ph ph-terminal" style={{ fontSize: 13, color: 'var(--text-3)' }} />
         {m.summary ? <span style={{ font: '500 12px/1.5 var(--font-sans)', color: 'var(--text-1)', flex: 'none', maxWidth: '45%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={stepsTip(m.cmd, m.summary)}>{m.summary}</span> : null}
         <span className="selectable" style={{ font: '400 12px/1.5 var(--font-mono)', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><span style={{ color: 'var(--text-3)' }}>$ </span><Hl text={m.cmd.split('\n')[0]} lang="bash" />{m.cmd.includes('\n') ? <span style={{ color: 'var(--text-3)' }}> …</span> : null}</span>
         {m.done ? <span style={{ font: '400 12px/1.5 var(--font-mono)', color: m.ok ? 'var(--diff-add-fg)' : 'var(--diff-del-fg)', maxWidth: 260, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{result.split('\n')[0]}</span>
           : <i className="ph ph-circle-notch" style={{ fontSize: 13, color: 'var(--status-working-text)', animation: 'helm-spin .9s linear infinite' }} />}
-        <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{m.meta}</span>
+        <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{m.meta}</span>
         {long ? <i className={'ph ph-caret-' + (open ? 'up' : 'down')} aria-label={open ? 'Collapse' : 'Show the full command'} style={{ fontSize: 12, color: 'var(--text-3)' }} /> : null}
       </div>
       {open ? (
@@ -301,7 +313,7 @@ function TranscriptItemView({ m, s, index, onDeny }: { m: TranscriptEvent; s: S;
     <div onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} style={{ position: 'relative', display: 'flex', gap: 10, ...(!m.from ? { background: 'var(--bg-selected)', borderRadius: 'var(--radius-md)', padding: '10px 12px', boxShadow: 'inset 0 0 0 1px var(--border)' } : null) }}>
       <Avatar agent={!!m.from} name={m.from || app.user?.login || 'you'} src={m.from ? undefined : app.user?.avatar || undefined} size={22} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <span style={{ font: m.from ? '500 12px/1.5 var(--font-mono)' : '500 12px/1.5 var(--font-sans)' }}>{m.from ? m.from + ' → subagent' : app.user?.login || 'you'} {m.t || m.at ? <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)', marginLeft: 6 }}>{clock(m.t || m.at!)}</span> : null}</span>
+        <span style={{ font: m.from ? '500 12px/1.5 var(--font-mono)' : '500 12px/1.5 var(--font-sans)' }}>{m.from ? m.from + ' → subagent' : app.user?.login || 'you'} {m.t || m.at ? <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)', marginLeft: 6 }}>{clock(m.t || m.at!)}</span> : null}</span>
         {m.re ? <ReplyQuote re={m.re} sessionId={s?.id} /> : null}
         {m.to?.length ? <span style={{ font: '500 12px/1.5 var(--font-mono)', color: 'var(--accent-text)' }}>→ {m.to.map((n) => '@' + n).join(' ')}</span> : null}
         <div className="selectable" style={{ font: '400 13px/1.55 var(--font-sans)', color: 'var(--text-1)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.text}</div>
@@ -325,7 +337,7 @@ function TranscriptItemView({ m, s, index, onDeny }: { m: TranscriptEvent; s: S;
       <Avatar agent backend={who ? panelBackendId(app, s, who) : backendIdOf(app, s)} name={who ? '@' + who : agentName(app, s || {})} size={22} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
         {m.re ? <ReplyQuote re={m.re} sessionId={s?.id} /> : null}
-        <span style={{ font: who ? '500 12px/1.5 var(--font-mono)' : '500 12px/1.5 var(--font-sans)' }}>{who ? '@' + who : agentName(app, s || {})}{who && who === s.panel!.owner ? <span style={{ font: '400 11px/1.5 var(--font-sans)', color: 'var(--text-3)', marginLeft: 6 }}>owner</span> : null} {m.at ? <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)', marginLeft: 6 }}>{clock(m.at)}</span> : null}</span>
+        <span style={{ font: who ? '500 12px/1.5 var(--font-mono)' : '500 12px/1.5 var(--font-sans)' }}>{who ? '@' + who : agentName(app, s || {})}{who && who === s.panel!.owner ? <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)', marginLeft: 6 }}>owner</span> : null} {m.at ? <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)', marginLeft: 6 }}>{clock(m.at)}</span> : null}</span>
         <div className="selectable" style={{ font: '400 13px/1.6 var(--font-sans)', color: 'var(--text-1)', display: 'flex', flexDirection: 'column', gap: 6, wordBreak: 'break-word' }}><Rich text={m.text} sessionId={s?.id} /></div>
       </div>
       {menu && who ? <ContextMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)} items={[
@@ -342,7 +354,7 @@ function TranscriptItemView({ m, s, index, onDeny }: { m: TranscriptEvent; s: S;
     <div style={{ marginLeft: 44, marginRight: 12, display: 'flex', alignItems: 'center', gap: 8, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-2)' }}>
       <i className="ph ph-git-commit" style={{ fontSize: 15, color: 'var(--text-1)' }} />
       Committed <BranchTag kind="commit" name={m.hash} /> <span style={{ color: 'var(--text-1)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.msg}</span>
-      <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)', marginLeft: 'auto' }}>{clock(m.t)}</span>
+      <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)', marginLeft: 'auto' }}>{clock(m.t)}</span>
     </div>
   );
   if (m.k === 'note') return (
@@ -375,7 +387,7 @@ function TranscriptItemView({ m, s, index, onDeny }: { m: TranscriptEvent; s: S;
         {restarted ? <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>helm was restarted while this waited. Approving starts the session again and has the agent run it.</div> : null}
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <Button size="sm" variant="primary" kbd={MOD() + '↵'} onClick={() => guard(api.resolveAsk(s.id, m.askId, { decision: 'approve' }))}>Approve once</Button>
-          {m.pattern ? <Button size="sm" onClick={() => guard(api.resolveAsk(s.id, m.askId, { decision: 'always' }))}>Always allow <span style={{ font: '400 11px var(--font-mono)', color: 'var(--text-3)' }}>{m.pattern}</span></Button> : null}
+          {m.pattern ? <Button size="sm" onClick={() => guard(api.resolveAsk(s.id, m.askId, { decision: 'always' }))}>Always allow <span style={{ font: '400 12px var(--font-mono)', color: 'var(--text-3)' }}>{m.pattern}</span></Button> : null}
           <Button size="sm" variant="ghost" onClick={() => { void guard(api.resolveAsk(s.id, m.askId, { decision: 'deny' })); onDeny(); }}>Deny and explain</Button>
         </div>
       </div>
@@ -437,7 +449,8 @@ function matchFiles(files: string[], q: string): string[] {
 
 function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAreaElement> }) {
   const app = useApp();
-  const narrow = useNarrow();
+  const experience = useExperience();
+  const narrow = useNarrow(1100);
   const [text, setTextState] = React.useState(drafts.get(s.id) || '');
   const [images, setImages] = React.useState<Draft[]>([]);
   const [focused, setFocused] = React.useState(false);
@@ -544,7 +557,7 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
                   style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', background: i === hi ? 'var(--bg-selected, var(--bg-hover))' : undefined }}>
                   <i className="ph ph-at" style={{ fontSize: 13, color: 'var(--accent-text)' }} />
                   <span style={{ font: '500 12.5px/1.5 var(--font-mono)', color: 'var(--text-1)' }}>{f}</span>
-                  <span style={{ font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{f === 'all' ? 'Everyone replies' : f === s.panel!.owner ? 'Owner: edits and runs commands' : 'Read-only'}</span>
+                  <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{f === 'all' ? 'Everyone replies' : f === s.panel!.owner ? 'Owner: edits and runs commands' : 'Read-only'}</span>
                 </div>
               );
               return (
@@ -552,7 +565,7 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
                   style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '6px 8px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', background: i === hi ? 'var(--bg-selected, var(--bg-hover))' : undefined, minWidth: 0 }}>
                   <i className="ph ph-file" style={{ fontSize: 13, color: 'var(--text-3)', alignSelf: 'center' }} />
                   <span style={{ font: '500 12.5px/1.5 var(--font-mono)', color: 'var(--text-1)', whiteSpace: 'nowrap' }}>{f.slice(cut + 1)}</span>
-                  {cut >= 0 ? <span style={{ font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', direction: 'rtl', textAlign: 'left', minWidth: 0 }}>{f.slice(0, cut)}</span> : null}
+                  {cut >= 0 ? <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', direction: 'rtl', textAlign: 'left', minWidth: 0 }}>{f.slice(0, cut)}</span> : null}
                 </div>
               );
             })}
@@ -572,16 +585,17 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
           onPaste={(e) => { const f = [...e.clipboardData.files].filter((x) => x.type.startsWith('image/')); if (f.length) { e.preventDefault(); void addImages(f); } }}
           onKeyDown={onKeyDown}
           style={{ display: 'block', width: '100%', boxSizing: 'border-box', resize: 'none', border: 'none', outline: 'none', boxShadow: 'none', background: 'transparent', color: 'var(--text-1)', font: '400 13px/1.5 var(--font-sans)', padding: '10px 12px 4px', maxHeight: 200 }} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px 6px 8px', flexWrap: narrow ? 'wrap' : undefined }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px 6px 8px', flexWrap: 'wrap' }}>
           <input ref={picker} type="file" accept={IMAGE_TYPES.join(',')} multiple hidden onChange={(e) => { void addImages([...(e.target.files || [])]); e.target.value = ''; }} />
-          <IconButton icon="at" label="Mention a file" size="sm" onClick={() => { const el = inputRef.current; const c = el ? el.selectionStart : text.length; const pre = text.slice(0, c); const lead = pre && !/\s$/.test(pre) ? ' ' : ''; setText(pre + lead + '@' + text.slice(c)); requestAnimationFrame(() => { el?.focus(); const p = c + lead.length + 1; el?.setSelectionRange(p, p); track(el!.value, p); }); }} />
+          <details className="helm-composer-tools" data-expanded={experience.advanced} open={experience.advanced ? true : undefined}><summary>More options</summary><div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>          <IconButton icon="at" label="Mention a file" size="sm" onClick={() => { const el = inputRef.current; const c = el ? el.selectionStart : text.length; const pre = text.slice(0, c); const lead = pre && !/\s$/.test(pre) ? ' ' : ''; setText(pre + lead + '@' + text.slice(c)); requestAnimationFrame(() => { el?.focus(); const p = c + lead.length + 1; el?.setSelectionRange(p, p); track(el!.value, p); }); }} />
           <IconButton icon="paperclip" label="Attach an image" size="sm" onClick={() => picker.current?.click()} />
           <PromptPicker s={s} onInsert={(t) => { const el = inputRef.current; const c = el ? el.selectionStart : text.length; const pre = text.slice(0, c); const lead = pre && !/\s$/.test(pre) ? '\n' : ''; setText(pre + lead + t + text.slice(c)); requestAnimationFrame(() => { el?.focus(); const p = c + lead.length + t.length; el?.setSelectionRange(p, p); }); }} />
           <SchedulePrompt s={s} text={text} onScheduled={() => setText('')} />
           {s.panel ? null : <IconButton icon="users-three" label="Bring in another agent to discuss this" size="sm" onClick={() => setUI({ addingAgent: s.id })} />}
-          {narrow ? <div className="helm-comp-sel" style={{ order: 3, flexBasis: '100%', minWidth: 0, display: 'flex', gap: 6 }}><Select size="sm" style={{ flex: 1, minWidth: 0 }} value={s.model} onChange={(e: any) => guard(api.setSessionModel(s.id, e.target.value as ModelAlias))} options={modelOptions(app, s.backend)} />{can(app, s, 'effort') ? <Select size="sm" style={{ flex: 1, minWidth: 0 }} value={s.effort || 'default'} onChange={(e: any) => guard(api.setSessionEffort(s.id, e.target.value === 'default' ? null : (e.target.value as Effort)))} options={EFFORTS} /> : null}<Select size="sm" style={{ flex: 1, minWidth: 0 }} value={s.permMode} onChange={(e: any) => guard(api.setSessionPermMode(s.id, e.target.value as PermMode))} options={[{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits' }, ...(can(app, s, 'planMode') ? [{ value: 'plan', label: 'Plan only' }] : []), { value: 'all', label: 'Allow everything' }]} /></div> : <><Select size="sm" value={s.model} onChange={(e: any) => guard(api.setSessionModel(s.id, e.target.value as ModelAlias))} options={modelOptions(app, s.backend)} />{can(app, s, 'effort') ? <Select size="sm" value={s.effort || 'default'} onChange={(e: any) => guard(api.setSessionEffort(s.id, e.target.value === 'default' ? null : (e.target.value as Effort)))} options={EFFORTS} /> : null}<Select size="sm" value={s.permMode} onChange={(e: any) => guard(api.setSessionPermMode(s.id, e.target.value as PermMode))} options={[{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits' }, ...(can(app, s, 'planMode') ? [{ value: 'plan', label: 'Plan only' }] : []), { value: 'all', label: 'Allow everything' }]} /></>}
+</div></details>
+          <details className="helm-run-settings" open={!experience.simple && !narrow ? true : undefined}><summary>Run settings</summary><div className="helm-comp-sel" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: 8 }}><Select size="sm" style={{ flexShrink: 0 }} aria-label="Model" value={s.model} onChange={(e: any) => guard(api.setSessionModel(s.id, e.target.value as ModelAlias))} options={modelOptions(app, s.backend)} />{can(app, s, 'effort') ? <Select size="sm" style={{ flexShrink: 0 }} aria-label="Reasoning effort" value={s.effort || 'default'} onChange={(e: any) => guard(api.setSessionEffort(s.id, e.target.value === 'default' ? null : (e.target.value as Effort)))} options={EFFORTS} /> : null}<Select size="sm" style={{ flexShrink: 0 }} aria-label="Command permissions" value={s.permMode} onChange={(e: any) => guard(api.setSessionPermMode(s.id, e.target.value as PermMode))} options={[{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits' }, ...(can(app, s, 'planMode') ? [{ value: 'plan', label: 'Plan only' }] : []), { value: 'all', label: 'Allow everything' }]} /></div></details>
           <span style={{ flex: 1 }} />
-          {s.ctx ? <span title={`Context window: ${fmtTokens(s.ctx)} of ${ctxLabel} tokens in use`} style={{ font: '400 11.5px/1.5 var(--font-mono)', color: ctxPct >= 75 ? 'var(--status-attention-text)' : 'var(--text-3)', whiteSpace: 'nowrap' }}>{ctxPct}% context</span> : null}
+          {s.ctx ? <span title={`Context window: ${fmtTokens(s.ctx)} of ${ctxLabel} tokens in use`} style={{ font: '400 12px/1.5 var(--font-mono)', color: ctxPct >= 75 ? 'var(--status-attention-text)' : 'var(--text-3)', whiteSpace: 'nowrap' }}>{ctxPct}% context</span> : null}
           {working ? <Button size="sm" variant="ghost" kbd={narrow ? undefined : interruptKey === 'esc' ? 'Esc' : interruptKey === 'double-esc' ? 'Esc Esc' : undefined} onClick={() => guard(api.interrupt(s.id))}>Interrupt</Button> : null}
           <Button size="sm" variant="primary" icon="paper-plane-right" kbd={narrow ? undefined : enterSends ? '↵' : MOD() + '↵'} disabled={!text.trim() && !images.length} onClick={send}>Send</Button>
         </div>
@@ -590,17 +604,18 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
   );
 }
 
-function UsagePanel({ s }: { s: S }) {
+function UsagePanel({ s, expanded = false, onClose }: { s: S; expanded?: boolean; onClose?(): void }) {
   const app = useApp();
   const { fmt } = useMoney();
   const sub = billingOf(app, s.backend) === 'subscription';
   const [width, grip, resetWidth] = usePaneWidth('usage-panel', 300, 240, 560, -1);
   const limit = s.maxSubagents ?? app.settings.maxSubagentsSession;
   const running = runningSubagents(s);
-  const n = (v: string, l: string) => <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}><span style={{ font: '500 15px/1.5 var(--font-mono)' }}>{v}</span><span style={{ font: '400 11.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{l}</span></div>;
+  const n = (v: string, l: string) => <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}><span style={{ font: '500 15px/1.5 var(--font-mono)' }}>{v}</span><span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{l}</span></div>;
   const files = Object.entries(s.filesTouched);
   return (
-    <aside className="helm-hide-phone" style={{ position: 'relative', width, flex: 'none', borderLeft: '1px solid var(--border)', overflow: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 20, background: 'var(--bg-panel)' }}>
+    <aside className={expanded ? "helm-usage-expanded" : "helm-usage-panel"} style={{ position: 'relative', width, flex: 'none', borderLeft: '1px solid var(--border)', overflow: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 20, background: 'var(--bg-panel)' }}>
+      {expanded ? <Button size="sm" variant="ghost" icon="x" onClick={onClose}>Close session usage</Button> : null}
       <Grip edge="left" onMouseDown={grip} onDoubleClick={resetWidth} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <span style={label}>Usage</span>
@@ -622,15 +637,15 @@ function UsagePanel({ s }: { s: S }) {
         <span style={label}>Files touched · {files.length}</span>
         {files.length === 0 ? <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>No changes yet.</span> : null}
         {files.slice(0, 40).map(([p, v]) => (
-          <div key={p} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} onClick={() => go({ screen: 'session', id: s.id, tab: 'changes' })}>
-            <span style={{ flex: 1, minWidth: 0, font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', direction: 'rtl', textAlign: 'left' }}>{p}</span>
+          <div {...keyboardClick} key={p} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} onClick={() => go({ screen: 'session', id: s.id, tab: 'changes' })}>
+            <span style={{ flex: 1, minWidth: 0, font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', direction: 'rtl', textAlign: 'left' }}>{p}</span>
             <DiffStat additions={v.add} deletions={v.del} blocks={false} />
           </div>
         ))}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <span style={label}>{s.free ? 'Folder' : 'Worktree'}</span>
-        <span className="selectable" style={{ font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-2)', wordBreak: 'break-all' }}>{tilde(s.worktree, app.home)}</span>
+        <span className="selectable" style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-2)', wordBreak: 'break-all' }}>{tilde(s.worktree, app.home)}</span>
         <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>{s.free ? (s.free.managed ? 'A folder made for this agent, with git so changes and checkpoints work. It is deleted only if you delete the session and choose to.' : 'Your own folder. The agent works in it directly, and helm never deletes it.') : <>Isolated from your main checkout.{s.removeAfterMerge || (s.deleteBranchAfterMerge ?? false) ? ' Removed after the PR merges.' : ''}</>}</span>
         <div style={{ display: 'flex', gap: 6 }}>
           <Button size="sm" variant="ghost" icon={s.archivedAt ? 'arrow-counter-clockwise' : 'archive'} disabled={!s.archivedAt && (s.status === 'working' || s.status === 'attention')} onClick={() => guard(api.archiveSession(s.id, !s.archivedAt))}>{s.archivedAt ? 'Restore' : 'Archive'}</Button>
@@ -670,7 +685,7 @@ function SubagentView({ s, subId }: { s: S; subId: string }) {
           <Badge mono>{a.agentType}</Badge>
           <Badge tone={subTone(a.status) as any} dot>{subLabel(a.status)}</Badge>
         </div>
-        <div style={{ display: 'flex', gap: 10, font: '400 11.5px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>
+        <div style={{ display: 'flex', gap: 10, font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>
           <span>started {clock(a.startedAt)}</span><span>·</span><span>{a.status === 'working' ? elapsed(a.startedAt) : elapsed(a.startedAt, a.endedAt)}</span><span>·</span><span>{a.tools} tool calls</span><span>·</span><span>{fmtTokens(a.tokens)} tokens</span>
         </div>
       </div>
@@ -695,6 +710,15 @@ function SubagentView({ s, subId }: { s: S; subId: string }) {
 
 export function Session({ id, tab, setTab, themeKey, sub, file, line, msg }: { id: string; tab: string; setTab(t: string): void; themeKey: 'dark' | 'light'; sub?: string; file?: string; line?: number; msg?: number }) {
   const app = useApp();
+  const experience = useExperience();
+  const [showUsage, setShowUsage] = React.useState(false);
+  React.useEffect(() => {
+    if (!showUsage) return;
+    const close = (e: KeyboardEvent) => { if (e.key === 'Escape' && !e.defaultPrevented) { e.preventDefault(); e.stopPropagation(); setShowUsage(false); } };
+    document.addEventListener('keydown', close);
+    return () => document.removeEventListener('keydown', close);
+  }, [showUsage]);
+  const compact = useNarrow(1100);
   const s = app.sessions.find((x) => x.id === id);
   const items = useTranscript(id);
   const input = React.useRef<HTMLTextAreaElement>(null);
@@ -749,12 +773,13 @@ export function Session({ id, tab, setTab, themeKey, sub, file, line, msg }: { i
         </div>
         {s.remoteOwner ? <div style={{ ...gone, padding: '0 20px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>This session belongs to {s.remoteOwner}, so this copy is read-only.<Button variant="primary" icon="hand-grabbing" onClick={() => guard(api.takeControl(s.id))}>Take control</Button></div> : s.worktreeGone ? <div style={{ ...gone, padding: '0 20px 16px' }}>Merged{s.mergedInto ? ` into ${s.mergedInto}` : ''} and archived. The worktree was removed, so this session cannot be continued.</div> : <Composer s={s} inputRef={input} />}
       </div>
-      <UsagePanel s={s} />
+      {(experience.detailedUsage && !compact) || showUsage ? <UsagePanel s={s} expanded={showUsage} onClose={() => setShowUsage(false)} /> : null}
     </div>
   );
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <SessionHeader s={s} tab={tab} setTab={setTab} />
+      {!experience.advanced || compact ? <button className="helm-usage-toggle" onClick={() => setShowUsage(!showUsage)} aria-expanded={showUsage}>{showUsage ? 'Hide' : 'Show'} session usage</button> : null}
       {body}
     </div>
   );

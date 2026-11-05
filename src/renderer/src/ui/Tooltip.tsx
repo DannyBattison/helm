@@ -12,7 +12,7 @@ export function Tooltip({ content, kbd, side = 'top', wide, open, children, styl
           padding: '5px 8px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-overlay)', boxShadow: 'var(--shadow-popover)', ...(wide ? { width: 240, whiteSpace: 'normal' } : { whiteSpace: 'nowrap' }),
           font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-1)', pointerEvents: 'none', animation: 'helm-in var(--dur) var(--ease-out)' }}>
           {content}
-          {kbd ? <span style={{ font: '400 11px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{kbd}</span> : null}
+          {kbd ? <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{kbd}</span> : null}
         </span>
       ) : null}
     </span>
