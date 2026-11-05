@@ -9,7 +9,7 @@ Open with **Cmd/Ctrl+comma**, or **Settings** at the bottom of the sidebar. The 
 ## Accounts
 
 ### GitHub
-Who you are signed in as, your organisations (their repositories appear in **Add repository**), and **Sign out**. Your git name and email are used for commits and pushes. **GitHub OAuth client ID** is for the sign-in itself and normally never needs changing.
+Who you are signed in as, your organisations (their repositories appear in **Add repository**), and **Sign out**. Your git name and email are used for commits and pushes. **GitHub App client ID** is for the sign-in itself and normally never needs changing. To use your own GitHub App, see [Use your own GitHub App](https://github.com/DannyBattison/helm#use-your-own-github-app).
 
 ### Claude Code
 Anthropic's agent. Sign in with a Claude subscription or an API key, and choose **Subscription** or **API tokens** billing. **Command-line tool** lets you point to your own `claude` instead of the bundled one. **Remote Control for new and resumed sessions** lets you follow and drive sessions from claude.ai/code or the Claude app (needs a subscription sign-in; your organisation may block it).

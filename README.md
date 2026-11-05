@@ -30,6 +30,17 @@ Supervise many coding-agent sessions (Claude Code, and Codex) across many GitHub
 - **Several machines.** Sync history between helm instances, or export and import it as a file.
 - **Phone app.** Reach a hosted server by URL, or your desktop directly over an encrypted peer-to-peer link (Settings → Phone app on the desktop gives a code to scan). See [mobile/README.md](mobile/README.md).
 
+## Use your own GitHub App
+
+helm signs in with its own registered GitHub app by default. To use yours instead, create one and give its client ID on the sign-in screen ("Use your own GitHub App", on the desktop, web and phone versions) or later under Settings.
+
+1. Open <https://github.com/settings/apps/new> (for an organisation: Settings → Developer settings → GitHub Apps → New GitHub App).
+2. Give it a name and any homepage URL. Leave the callback URL empty and untick **Webhook → Active**.
+3. Under **Identifying and authorizing users**, tick **Enable Device Flow**.
+4. Under **Permissions → Repository permissions**, set Contents, Pull requests, Issues and Workflows to read and write; Actions, Checks and Metadata to read. Under **Organization permissions**, set Members to read. Without these, the matching features fail.
+5. Create the app, then copy its **Client ID** (it starts with `Iv`). helm never needs the client secret, so do not paste it anywhere.
+6. Install the app on the account or organisation that owns your repositories (**Install App** in the app's sidebar), choosing the repositories helm should reach. A GitHub App only sees what it is installed on.
+
 ## Documentation
 
 A guide to every view and feature, for newcomers, developers and power users, is in [docs/](docs/Home.md) and the repository's wiki.

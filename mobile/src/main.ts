@@ -69,7 +69,13 @@ async function goTo(t: Target) {
 /** Signs in to GitHub and keeps it. The code can be copied; GitHub's page asks for it. */
 async function signIn(): Promise<Signed> {
   for (;;) {
-    show(el('h1', 'Sign in to GitHub'), 'Helm uses your GitHub account to make sure only you can connect to your computers. It asks for no permissions: it only learns your username.', 'Contacting GitHub…');
+    const own = el('input'); own.placeholder = 'Iv23li…'; own.autocapitalize = 'off'; own.value = await account.clientId();
+    const ownBox = el('details');
+    ownBox.append(el('summary', 'Use your own GitHub app'), el('p', 'The client ID of a GitHub App of yours with device flow on. It starts as helm\'s.'), own);
+    ownBox.open = true;
+    await new Promise<void>((go) => show(el('h1', 'Sign in to GitHub'), 'Helm uses your GitHub account to make sure only you can connect to your computers. It asks for no permissions: it only learns your username.', ownBox, el('button', 'Continue with GitHub', 'primary', () => go())));
+    await account.setClientId(own.value.trim() === DEFAULT_GITHUB_CLIENT_ID ? '' : own.value);
+    show(el('h1', 'Sign in to GitHub'), 'Contacting GitHub…');
     try {
       return await account.signIn((flow) => {
         const copied = el('p', '');
