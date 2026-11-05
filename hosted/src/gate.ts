@@ -1,5 +1,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { readFileSync, writeFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { join } from 'node:path';
 
 /**
  * Remembering who has signed in. The person signs in once, with helm's own GitHub sign-in (the one screen), and the server only lets them
@@ -26,7 +28,7 @@ export function sign(secret: string, login: string, avatar: string, ttlMs: numbe
   return `${payload}.${createHmac('sha256', secret).update(payload).digest('base64url')}`;
 }
 
-export function verify(secret: string, value: string | undefined, now = Date.now()): { login: string; avatar: string } | null {
+export function verify(secret: string, value: string | undefined, now = Date.now()): { login: string; avatar: string; expires: number } | null {
   if (!value) return null;
   const [payload, mac] = value.split('.');
   if (!payload || !mac) return null;
@@ -36,13 +38,26 @@ export function verify(secret: string, value: string | undefined, now = Date.now
   if (got.length !== want.length || !timingSafeEqual(got, want)) return null;
   try {
     const p = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
-    return typeof p.l === 'string' && typeof p.e === 'number' && p.e >= now ? { login: p.l, avatar: typeof p.a === 'string' ? p.a : '' } : null;
+    return typeof p.l === 'string' && typeof p.e === 'number' && p.e >= now ? { login: p.l, avatar: typeof p.a === 'string' ? p.a : '', expires: p.e } : null;
   } catch { return null; }
+}
+
+/** The key cookies are signed with: HELM_HOSTED_SECRET if set, else one made on first start and kept in the data directory, so a restart does not sign everyone out. */
+export function signingSecret(env: string | undefined, dataDir: string): string {
+  if (env) return env;
+  const file = join(dataDir, 'secret');
+  try { const s = readFileSync(file, 'utf8').trim(); if (s.length >= 16) return s; } catch { /* first start */ }
+  const made = randomBytes(32).toString('hex');
+  writeFileSync(file, made, { mode: 0o600 });
+  return made;
 }
 
 // ------------------------------------------------------------------ the gate
 const COOKIE = 'helm_hosted';
-const SESSION_TTL = 7 * 24 * 3600_000;
+/** Every visit pushes the expiry out again (see `renewal`), so this is how long helm can go unopened before signing you out. */
+const SESSION_TTL = 30 * 24 * 3600_000;
+/** A cookie is only reissued once this much of its life is gone, so most requests set nothing. */
+const RENEW_AFTER = 3600_000;
 const CLAIM_TTL = 60_000;
 
 export interface GateOptions {
@@ -65,9 +80,18 @@ export function createGate(opts: GateOptions) {
   const secure = (req: IncomingMessage) => opts.secureCookie ?? req.headers['x-forwarded-proto'] === 'https';
 
   /** The signed-in person, if the cookie is genuine and it is for the allowed username. */
-  function identity(req: IncomingMessage): { login: string; avatar: string } | null {
+  function identity(req: IncomingMessage): { login: string; avatar: string; expires: number } | null {
     const who = verify(opts.secret, readCookie(req));
     return who && allowedLogin(who.login) ? who : null;
+  }
+
+  const cookieFor = (req: IncomingMessage, login: string, avatar: string) =>
+    `${COOKIE}=${encodeURIComponent(sign(opts.secret, login, avatar, SESSION_TTL))}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${SESSION_TTL / 1000}${secure(req) ? '; Secure' : ''}`;
+
+  /** A fresh cookie for someone who is signed in and has not had one for an hour, else null. Sent on page loads and socket connects, so using helm keeps you signed in. */
+  function renewal(req: IncomingMessage, now = Date.now()): string | null {
+    const who = identity(req);
+    return who && who.expires - now < SESSION_TTL - RENEW_AFTER ? cookieFor(req, who.login, who.avatar) : null;
   }
 
   /** Called when someone has signed in and been let in. Returns what they exchange for a cookie. */
@@ -107,7 +131,7 @@ export function createGate(opts: GateOptions) {
       const c = typeof b.claim === 'string' ? claims.get(b.claim) : undefined;
       if (!c || c.expires < Date.now() || !allowedLogin(c.login)) { json(res, 401, { error: 'That claim is not valid.' }); return true; }
       claims.delete(b.claim);
-      const cookie = `${COOKIE}=${encodeURIComponent(sign(opts.secret, c.login, c.avatar, SESSION_TTL))}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${SESSION_TTL / 1000}${secure(req) ? '; Secure' : ''}`;
+      const cookie = cookieFor(req, c.login, c.avatar);
       json(res, 200, { login: c.login }, { 'Set-Cookie': cookie });
       return true;
     }
@@ -121,5 +145,5 @@ export function createGate(opts: GateOptions) {
     return true;
   }
 
-  return { identity, issueClaim, handle };
+  return { identity, issueClaim, renewal, handle };
 }

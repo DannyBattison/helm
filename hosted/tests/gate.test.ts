@@ -1,7 +1,10 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createGate, parseUser, sign, verify } from '../src/gate';
+import { mkdtempSync, readFileSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createGate, parseUser, sign, signingSecret, verify } from '../src/gate';
 
 describe('the allowed username', () => {
   it('is one GitHub username, lower-cased, with a leading @ and spaces ignored', () => {
@@ -24,7 +27,7 @@ describe('the allowed username', () => {
 describe('the cookie', () => {
   it('verifies what it signed, and nothing else', () => {
     const v = sign('a-long-enough-secret', 'danny', 'x', 1000, 5_000);
-    expect(verify('a-long-enough-secret', v, 5_500)).toEqual({ login: 'danny', avatar: 'x' });
+    expect(verify('a-long-enough-secret', v, 5_500)).toEqual({ login: 'danny', avatar: 'x', expires: 6_000 });
     expect(verify('another-long-secret!!', v, 5_500)).toBeNull();
     expect(verify('a-long-enough-secret', v, 7_000)).toBeNull();
     const [p, m] = v.split('.');
@@ -113,5 +116,41 @@ describe('claims and cookies', () => {
   it('leaves every other path to the caller', async () => {
     const { base } = await boot('danny');
     expect(await (await fetch(base + '/anything')).text()).toBe('page');
+  });
+});
+
+describe('staying signed in', () => {
+  const secret = 'test-secret-test-secret';
+  const day = 24 * 3600_000;
+  const gate = createGate({ allowed: 'danny', secret });
+  const req = (cookie?: string) => ({ headers: cookie ? { cookie: `helm_hosted=${encodeURIComponent(cookie)}` } : {} }) as any;
+  const now = Date.now();
+
+  it('reissues the cookie to someone who has used helm since it was set', () => {
+    const old = sign(secret, 'danny', 'x', 20 * day, now);
+    const c = gate.renewal(req(old), now + 2 * day)!;
+    expect(c).toContain('helm_hosted=');
+    expect(c).toContain('Max-Age=2592000');
+    expect(c).toContain('HttpOnly');
+    const fresh = decodeURIComponent(/helm_hosted=([^;]+)/.exec(c)![1]);
+    expect(verify(secret, fresh, now + 25 * day)).not.toBeNull();
+  });
+
+  it('does not reissue a cookie that was set minutes ago, or one that is not valid', () => {
+    expect(gate.renewal(req(sign(secret, 'danny', 'x', 30 * day, now)), now + 60_000)).toBeNull();
+    expect(gate.renewal(req(sign(secret, 'mallory', 'x', 20 * day, now)), now + day)).toBeNull();
+    expect(gate.renewal(req(), now)).toBeNull();
+  });
+});
+
+describe('the signing secret', () => {
+  it('uses the environment value, else makes one and keeps it so a restart signs nobody out', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'helm-secret-'));
+    expect(signingSecret('from-the-env-value', dir)).toBe('from-the-env-value');
+    const first = signingSecret(undefined, dir);
+    expect(first.length).toBeGreaterThanOrEqual(32);
+    expect(signingSecret(undefined, dir)).toBe(first);
+    expect(readFileSync(join(dir, 'secret'), 'utf8')).toBe(first);
+    expect(statSync(join(dir, 'secret')).mode & 0o077).toBe(0);
   });
 });

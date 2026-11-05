@@ -77,7 +77,7 @@ describe('app icons', () => {
   });
 
   it('the PWA manifest only names icons that exist', () => {
-    const manifest = JSON.parse(readFileSync('hosted/pwa/manifest.webmanifest', 'utf8'));
+    const manifest = JSON.parse(readFileSync('hosted/web/public/manifest.webmanifest', 'utf8'));
     for (const i of manifest.icons) expect(existsSync(join('hosted/web/public', i.src)), i.src).toBe(true);
     expect(manifest.icons.some((i: any) => i.purpose === 'maskable')).toBe(true);
   });

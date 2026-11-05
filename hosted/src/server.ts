@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -7,7 +6,7 @@ import { WebSocket, WebSocketServer } from 'ws';
 import { api, shutdown, start, syncHttp } from '../../src/core/core';
 import { originAllowed } from './auth';
 import { dispatch } from './dispatch';
-import { createGate, parseUser } from './gate';
+import { createGate, parseUser, signingSecret } from './gate';
 import { createHost, dataDirectory } from './host';
 import { createPush, pushRoute } from './push';
 import { serveStatic } from './static';
@@ -27,12 +26,12 @@ if ('error' in parsed) {
   process.exit(1);
 }
 const ALLOWED = parsed.user;
-let SECRET = process.env.HELM_HOSTED_SECRET || '';
-if (SECRET.length < 16) {
-  if (SECRET) { console.error('HELM_HOSTED_SECRET must be at least 16 characters (for example `openssl rand -hex 32`).'); process.exit(1); }
-  SECRET = randomBytes(32).toString('hex');
-  console.warn('HELM_HOSTED_SECRET is not set: everyone is signed out whenever this restarts. Set it to keep sign-ins.');
+if (process.env.HELM_HOSTED_SECRET && process.env.HELM_HOSTED_SECRET.length < 16) {
+  console.error('HELM_HOSTED_SECRET must be at least 16 characters (for example `openssl rand -hex 32`).');
+  process.exit(1);
 }
+// Without one, a key is made once and kept in the data directory, so restarts do not sign anyone out.
+const SECRET = signingSecret(process.env.HELM_HOSTED_SECRET, dataDirectory());
 
 const gate = createGate({
   allowed: ALLOWED,
@@ -68,6 +67,8 @@ const http = createServer(async (req, res) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'no-referrer');
   if ((req.url || '').startsWith('/api/sync/')) { await syncRoute(req, res).catch(() => { if (!res.headersSent) res.writeHead(500).end(); }); return; }
+  const renewed = gate.renewal(req);
+  if (renewed) res.setHeader('Set-Cookie', renewed);
   if (await gate.handle(req, res).catch(() => { res.writeHead(500).end(); return true; })) return;
   if (await pushRoute(req, res, push, (r) => !!gate.identity(r)).catch(() => { res.writeHead(500).end(); return true; })) return;
   // The built client is public (it has to be, to show the sign-in screen); everything that matters is behind the cookie.
@@ -121,6 +122,9 @@ http.on('upgrade', (req, socket, head) => {
   if (path !== '/ws' || !originAllowed(req.headers.origin, req.headers.host, EXTRA_ORIGINS)) { socket.write('HTTP/1.1 403 Forbidden\r\n\r\n'); socket.destroy(); return; }
   wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
 });
+
+// A socket that opens with a valid cookie renews it too: an installed app resumes from the background without loading a page.
+wss.on('headers', (headers, req) => { const renewed = gate.renewal(req); if (renewed) headers.push('Set-Cookie: ' + renewed); });
 
 wss.on('connection', (ws, req) => {
   (ws as any).__alive = true;

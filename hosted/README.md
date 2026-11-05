@@ -48,7 +48,7 @@ Put settings in an env file (`docker run --env-file helm.env …`, or `.env` for
 | Variable | Meaning |
 | --- | --- |
 | `HELM_HOSTED_ALLOWED_USER` | **Required.** The one GitHub username let in. Anyone else is turned away. That person can run commands in the container. |
-| `HELM_HOSTED_SECRET` | Signs the sign-in cookie. 32+ random characters. If unset, everyone is signed out on every restart. |
+| `HELM_HOSTED_SECRET` | Signs the sign-in cookie. 32+ random characters. If unset, a key is made once and kept in the data directory (`secret`), so restarts keep sign-ins. |
 | `ANTHROPIC_API_KEY` | Optional. Agents use this API key instead of a Claude login (billed per token). |
 | `OPENAI_API_KEY` | Optional. Signs Codex in with this API key (billed per token) instead of a ChatGPT login. |
 | `CLAUDE_CODE_OAUTH_TOKEN` | Optional. A long-lived subscription token from `claude setup-token`, instead of the in-app login. |
@@ -131,7 +131,7 @@ The server sends each notification to connected browsers, which show it when the
 
 ## Apps: phone and desktop window
 
-The same server also serves an installable build that adds push notifications, which arrive with the app closed: the [PWA](pwa/README.md) at `/mobile/` (always the phone layout). The server keeps a Web Push key and the subscribed devices in its data directory (`push.json`); set `HELM_HOSTED_PUSH_CONTACT` to a `mailto:` or `https:` address if you want push services to be able to reach you about it. Shared code is in `web/` (`boot.ts`, `notifications.ts`, `layout.ts`, `worker/sw.js`) and `src/push.ts`; the build's own folder, `pwa/`, holds only its entry, manifest and options.
+The web client is also an installable app (a PWA) with push notifications that arrive with the app closed. Serve it over HTTPS, open the server's address on the phone, sign in, then on Android use Chrome's menu → **Install app**, and on iPhone/iPad use Safari's Share → **Add to Home Screen** (iOS 16.4 or later; it only allows push for installed apps). Open it from the home screen, tap anywhere once and allow notifications. Tapping a notification opens its session. The server keeps a Web Push key and the subscribed devices in its data directory (`push.json`); set `HELM_HOSTED_PUSH_CONTACT` to a `mailto:` or `https:` address if you want push services to be able to reach you about it. The code is `web/` (`boot.ts`, `notifications.ts`, and `public/` for the worker, manifest and icons) and `src/push.ts`.
 
 ## Not safe yet
 
