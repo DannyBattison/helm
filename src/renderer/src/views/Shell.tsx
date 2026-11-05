@@ -318,7 +318,7 @@ export function StatusBar() {
   const tok = t.tokens >= 1e6 ? (t.tokens / 1e6).toFixed(2) + 'M' : t.tokens >= 1e3 ? Math.round(t.tokens / 1e3) + 'k' : String(t.tokens);
   // A phone has room for the three counts and today's tokens; the terminal needs a keyboard and the Claude version can wait for Settings.
   if (narrow) return (
-    <div style={{ height: 'var(--statusbar-h)', flex: 'none', display: 'flex', alignItems: 'center', padding: '0 4px', borderTop: '1px solid var(--border)', background: 'var(--bg-sidebar)', font: '400 12px/1.5 var(--font-mono)', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+    <div style={{ boxSizing: 'border-box', height: 'calc(var(--statusbar-h) + env(safe-area-inset-bottom, 0px))', paddingBottom: 'env(safe-area-inset-bottom, 0px)', flex: 'none', display: 'flex', alignItems: 'center', paddingLeft: 4, paddingRight: 4, borderTop: '1px solid var(--border)', background: 'var(--bg-sidebar)', font: '400 12px/1.5 var(--font-mono)', overflow: 'hidden', whiteSpace: 'nowrap' }}>
       <span style={item} title="Working">{dot('working')}{t.working}</span>
       <span style={item} title="Need you">{dot('attention')}{t.attention}</span>
       <span style={item} title="Ready for review">{dot('ready')}{t.ready}</span>
@@ -328,7 +328,7 @@ export function StatusBar() {
     </div>
   );
   return (
-    <div style={{ height: 'var(--statusbar-h)', flex: 'none', display: 'flex', alignItems: 'center', padding: '0 6px', borderTop: '1px solid var(--border)', background: 'var(--bg-sidebar)', font: '400 12px/1.5 var(--font-mono)' }}>
+    <div style={{ boxSizing: 'border-box', height: 'calc(var(--statusbar-h) + env(safe-area-inset-bottom, 0px))', paddingBottom: 'env(safe-area-inset-bottom, 0px)', flex: 'none', display: 'flex', alignItems: 'center', paddingLeft: 6, paddingRight: 6, borderTop: '1px solid var(--border)', background: 'var(--bg-sidebar)', font: '400 12px/1.5 var(--font-mono)' }}>
       <span style={item}>{dot('working')}{t.working} working</span>
       <span style={item}>{dot('attention')}{t.attention} need you</span>
       <span style={item}>{dot('ready')}{t.ready} ready</span>

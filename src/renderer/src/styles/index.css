@@ -14,12 +14,14 @@ body,
   height: 100%;
   overflow: hidden;
 }
-/* On a phone the browser's own bars come and go; the dynamic height keeps the status bar and the composer on screen. */
+/* Pinned to all four edges rather than sized with vh/dvh: an installed iOS app reports a viewport shorter than the screen, which left a gap under the status bar. */
 #root {
-  height: 100dvh;
-  /* An installed app draws under the notch and home bar (viewport-fit=cover); keep the UI clear of them. Zero everywhere else. */
+  position: fixed;
+  inset: 0;
+  height: auto;
+  /* An installed app draws under the notch (viewport-fit=cover); keep the UI clear of it. Zero everywhere else. The bottom inset is left to the status bar, which extends its own background under the home indicator. */
   box-sizing: border-box;
-  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) 0 env(safe-area-inset-left, 0px);
 }
 body {
   user-select: none;
