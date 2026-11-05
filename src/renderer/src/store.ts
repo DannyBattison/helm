@@ -115,7 +115,7 @@ export const dismissToast = (id: number) => setUI((u) => ({ toasts: u.toasts.fil
 
 export async function loadTranscript(id: string) {
   const t = await api.getTranscript(id);
-  setUI((u) => ({ transcripts: { ...u.transcripts, [id]: t } }));
+  setUI((u) => ({ transcripts: { ...u.transcripts, [id]: (t || []).filter(Boolean) } }));
 }
 
 /** Local Claude Code sessions from outside helm, for every repository. Cheap enough to repeat while the window is in use. */
@@ -136,6 +136,8 @@ export async function init() {
     setUI((u) => {
       const cur = u.transcripts[sessionId];
       if (!cur) return {};
+      // An event past the end would leave holes (undefined) that crash the transcript view: refetch instead.
+      if (!event || index > cur.length) { void loadTranscript(sessionId); return {}; }
       const next = cur.slice();
       next[index] = event;
       return { transcripts: { ...u.transcripts, [sessionId]: next } };
