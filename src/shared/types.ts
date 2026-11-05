@@ -435,7 +435,7 @@ export type TranscriptEvent = { at?: number } & (
   | { k: 'commit'; hash: string; msg: string; t: number }
   | { k: 'permission'; askId: string; cmd: string; summary?: string; tool: string; why: string; pattern?: string; resolved?: 'approved' | 'always' | 'denied' }
   | { k: 'question'; askId: string; questions: AskQuestion[]; answered?: string }
-  | { k: 'note'; tone: 'attention' | 'error' | 'neutral'; text: string });
+  | { k: 'note'; tone: 'attention' | 'error' | 'neutral'; text: string; rule?: boolean });
 
 export interface ActivityEvent {
   id: string;
