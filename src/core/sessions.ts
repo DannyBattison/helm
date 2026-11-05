@@ -1594,6 +1594,7 @@ export class SessionManager {
     s.ask = undefined;
     panel.members = panel.members.map((x) => (x.name === name ? old : x));
     panel.owner = name;
+    await this.push(id, { k: 'note', tone: 'neutral', rule: true, text: `Switched to @${name}` });
     await this.push(id, { k: 'note', tone: 'neutral', text: `@${name} now edits and runs commands. @${old.name} is read-only.` });
     this.activity(s, 'session', `made ${name} the owner`, { who: this.me(), human: true });
     this.touch();
@@ -1879,8 +1880,10 @@ export class SessionManager {
   async setModel(id: string, model: ModelAlias) {
     const s = this.get(id);
     if (!s) return;
+    const changed = s.model !== model;
     s.model = model;
     await this.rt.get(id)?.agent.setModel(model);
+    if (changed) await this.push(id, { k: 'note', tone: 'neutral', rule: true, text: `Switched to ${this.registry.model(s.backend, model).label}` });
     this.touch();
   }
 

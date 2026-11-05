@@ -357,6 +357,11 @@ function TranscriptItemView({ m, s, index, onDeny }: { m: TranscriptEvent; s: S;
       <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)', marginLeft: 'auto' }}>{clock(m.t)}</span>
     </div>
   );
+  if (m.k === 'note' && m.rule) return (
+    <div role="separator" style={{ marginLeft: 44, marginRight: 12, display: 'flex', alignItems: 'center', gap: 10, font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>
+      <span style={{ flex: 1, height: 1, background: 'var(--border)' }} /><span className="selectable">{m.text}</span><span style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+    </div>
+  );
   if (m.k === 'note') return (
     <div style={{ marginLeft: 44, marginRight: 12, display: 'flex', alignItems: 'flex-start', gap: 8, font: '400 12px/1.45 var(--font-sans)', color: m.tone === 'error' ? 'var(--status-error-text)' : m.tone === 'attention' ? 'var(--status-attention-text)' : 'var(--text-3)' }}>
       <i className={'ph-fill ph-' + (m.tone === 'error' ? 'warning-circle' : 'info')} style={{ fontSize: 14, marginTop: 1 }} /><span className="selectable">{m.text}</span>
