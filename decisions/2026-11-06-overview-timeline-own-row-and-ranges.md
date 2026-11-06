@@ -1,0 +1,3 @@
+## 2026-11-06 · Overview timeline sits on its own row and reaches back up to 7 days
+
+The Gantt lane on the overview was a grid column showing a fixed 110 minute window, and it vanished on narrow screens. It now sits on a second row under each session, spans the full width, and has a range control (2h default, 6h, 24h, 3d, 7d; remembered in localStorage). Ranges of a day or more get a minimum pixel width per hour, so the lane scrolls sideways, starting at "now"; every lane and the axis scroll together so a time lines up down the list. Phones show the lane too (scrollable, at least 520px wide) in every experience except Simple. The Lane column and its resize handle were removed from the table. The 2h range keeps the original geometry (110 minutes, "now" at 104).

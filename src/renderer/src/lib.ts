@@ -107,31 +107,54 @@ export function prettyModel(s: Session): string {
 /** Lane geometry: a 110 minute window ending 6 minutes after now, so "now" sits at 104/110. */
 export const LANE_MIN = 110;
 export const NOW_AT = 104;
-export function laneData(s: Session, now = Date.now()) {
-  const start = now - NOW_AT * 60000;
+const LANE_TAIL = LANE_MIN - NOW_AT;
+
+/** How far back the overview timeline reaches. `px` is the least width an hour gets: past that the lane scrolls sideways. */
+export interface LaneRange { id: string; label: string; hours: number; step: number; px: number }
+export const LANE_RANGES: LaneRange[] = [
+  { id: '2h', label: '2h', hours: 0, step: 30, px: 0 },
+  { id: '6h', label: '6h', hours: 6, step: 60, px: 0 },
+  { id: '24h', label: '24h', hours: 24, step: 240, px: 28 },
+  { id: '3d', label: '3d', hours: 72, step: 720, px: 12 },
+  { id: '7d', label: '7d', hours: 168, step: 1440, px: 6 }
+];
+export const laneRange = (id?: string | null): LaneRange => LANE_RANGES.find((r) => r.id === id) ?? LANE_RANGES[0];
+/** The window in minutes and where "now" sits in it. The default range is the original 110 minute window. */
+export const laneSpan = (r: LaneRange = LANE_RANGES[0]) => (r.hours ? { span: r.hours * 60 + LANE_TAIL, nowAt: r.hours * 60 } : { span: LANE_MIN, nowAt: NOW_AT });
+
+export function laneData(s: Session, now = Date.now(), range: LaneRange = LANE_RANGES[0]) {
+  const nowAt = laneSpan(range).nowAt;
+  const start = now - nowAt * 60000;
   const toMin = (t: number) => (t - start) / 60000;
   const segs: [number, number, Status][] = [];
   s.timeline.forEach((e, i) => {
     if (e.status === 'idle' || e.status === 'error') return;
     const end = i + 1 < s.timeline.length ? s.timeline[i + 1].t : s.endedAt ?? now;
-    const a = Math.max(0, toMin(e.t)), b = Math.min(NOW_AT, toMin(end));
+    const a = Math.max(0, toMin(e.t)), b = Math.min(nowAt, toMin(end));
     if (b > a) segs.push([a, Math.max(b, a + 0.6), e.status]);
   });
-  const marks = s.commits.map((c) => toMin(c.at)).filter((m) => m >= 0 && m <= NOW_AT);
+  const marks = s.commits.map((c) => toMin(c.at)).filter((m) => m >= 0 && m <= nowAt);
   return { segs, marks };
 }
 
-export function laneAxis(now = Date.now()): [number, string][] {
-  const start = now - NOW_AT * 60000;
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+export function laneAxis(now = Date.now(), range: LaneRange = LANE_RANGES[0]): [number, string][] {
+  const nowAt = laneSpan(range).nowAt;
+  const start = now - nowAt * 60000;
   const out: [number, string][] = [];
   const t = new Date(start);
   t.setSeconds(0, 0);
-  t.setMinutes(t.getMinutes() < 30 ? 30 : 60);
-  for (let d = t.getTime(); d < now - 8 * 60000; d += 30 * 60000) {
+  if (range.step >= 1440) { t.setHours(0, 0, 0, 0); if (t.getTime() < start) t.setDate(t.getDate() + 1); }
+  else { const m = t.getHours() * 60 + t.getMinutes(); const up = Math.ceil(m / range.step) * range.step; t.setHours(0, up, 0, 0); }
+  const stepMs = range.step * 60000;
+  // Ticks stop short of "now" so the two labels never collide.
+  for (let d = t.getTime(); d < now - (range.hours ? range.step / 2 : 8) * 60000; d += range.step >= 1440 ? 0 : stepMs) {
     const dd = new Date(d);
-    out.push([(d - start) / 60000, dd.getHours() + ':' + String(dd.getMinutes()).padStart(2, '0')]);
+    const clockLabel = dd.getHours() + ':' + String(dd.getMinutes()).padStart(2, '0');
+    out.push([(d - start) / 60000, range.step >= 1440 ? DAYS[dd.getDay()] + ' ' + dd.getDate() : range.step >= 720 ? (dd.getHours() === 0 ? DAYS[dd.getDay()] : DAYS[dd.getDay()] + ' ' + clockLabel) : clockLabel]);
+    if (range.step >= 1440) { const n = new Date(d); n.setDate(n.getDate() + 1); d = n.getTime(); }
   }
-  out.push([NOW_AT, 'now']);
+  out.push([nowAt, 'now']);
   return out;
 }
 
