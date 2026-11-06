@@ -6,7 +6,7 @@ import { usePush } from './push';
 import { sessionTitle, type ActivityEvent, type ExternalSession, type Session } from '@shared/types';
 import { contextWindow } from '@shared/reports';
 import { api, platform } from '../api';
-import { STATUS_LABEL, visibleRepos, backendIdOf, planBackends, isFreeGroup, whereLabel, ago, clock, fmtTokens, lifetimeTokens, laneAxis, laneData, LANE_MIN, livePlan, repoOf, reposWithSessions, runningSubagents, sessionTokens, totals, untilReset } from '../lib';
+import { STATUS_LABEL, visibleRepos, backendIdOf, planBackends, isFreeGroup, whereLabel, ago, clock, fmtTokens, lifetimeTokens, laneAxis, laneData, laneRange, laneSpan, LANE_RANGES, type LaneRange, livePlan, repoOf, reposWithSessions, runningSubagents, sessionTokens, totals, untilReset } from '../lib';
 import { Cmd } from '../Hl';
 import { go, setUI, useApp, useMoney, toast, useUI } from '../store';
 import { Avatar, Button, DiffStat, Hint, Meter, SegmentedControl, Stat, StatusDot, Select, useColumns, useNarrow } from '../ui';
@@ -14,20 +14,50 @@ import { PlanMeters } from './Shell';
 import { isQuickQuestion } from './QuestionForm';
 import { ForecastNotice } from './Review';
 
-const lanePct = (m: number) => ((m / LANE_MIN) * 100).toFixed(2) + '%';
+const lanePct = (m: number, span: number) => ((m / span) * 100).toFixed(2) + '%';
 const LANE_COLOR: Record<string, string> = { working: 'var(--status-working)', attention: 'var(--status-attention)', ready: 'var(--status-ready)', idle: 'var(--status-idle)' };
 
 const guard = (p: Promise<any>) => p.catch((e: any) => toast({ tone: 'error', title: 'That did not work', description: String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '') }));
 
-export function Lane({ s, now }: { s: Session; now: number }) {
-  const { segs, marks } = laneData(s, now);
+/** Where the timelines are scrolled to. Every lane on the page follows the others, so a time lines up down the list. */
+const laneScroll = { left: null as number | null };
+const laneStart = (el: HTMLDivElement | null) => { if (el) el.scrollLeft = laneScroll.left ?? el.scrollWidth; };
+const laneSync = (e: React.UIEvent<HTMLDivElement>) => {
+  const el = e.currentTarget;
+  laneScroll.left = el.scrollLeft;
+  el.closest('[data-lanes]')?.querySelectorAll<HTMLDivElement>('[data-lane]').forEach((o) => { if (o !== el && Math.abs(o.scrollLeft - el.scrollLeft) > 0.5) o.scrollLeft = el.scrollLeft; });
+};
+/** A horizontally scrolling strip: wide ranges (and anything on a phone) extend past the edge and scroll, starting at "now". */
+function LaneTrack({ range, narrow, height, bar, children }: { range: LaneRange; narrow?: boolean; height: number; bar?: boolean; children: React.ReactNode }) {
+  const width = range.px ? `max(100%, ${range.hours * range.px}px)` : narrow ? 'max(100%, 520px)' : '100%';
   return (
-    <div style={{ position: 'relative', height: 20 }}>
-      <div style={{ position: 'absolute', left: 0, right: 0, top: 10, height: 1, background: 'var(--border-subtle)' }} />
-      {segs.map(([a, b, st], i) => <div key={i} role="img" aria-label={`${STATUS_LABEL[st]} from ${Math.round(a)} to ${Math.round(b)} minutes on the timeline`} title={STATUS_LABEL[st]} style={{ borderTop: st === 'attention' ? '2px dotted var(--text-1)' : st === 'ready' ? '3px double var(--text-1)' : st === 'idle' ? '2px dashed var(--text-2)' : undefined, position: 'absolute', top: 6, height: 8, left: lanePct(a), width: lanePct(b - a), borderRadius: `${i === 0 ? 2 : 0}px ${i === segs.length - 1 ? 2 : 0}px ${i === segs.length - 1 ? 2 : 0}px ${i === 0 ? 2 : 0}px`, background: LANE_COLOR[st], opacity: st === 'working' ? 0.85 : 1 }} />)}
-      {marks.map((m, i) => <div key={'m' + i} title="Commit" style={{ position: 'absolute', top: 3, left: lanePct(m), width: 2, height: 14, marginLeft: -1, borderRadius: 1, background: 'var(--text-1)', boxShadow: '0 0 0 1.5px var(--bg-panel)' }} />)}
-      <div style={{ position: 'absolute', top: -2, bottom: -2, left: lanePct(104), width: 1, background: 'var(--text-3)' }} />
+    <div data-lane ref={laneStart} onScroll={laneSync} style={{ overflowX: 'auto', overflowY: 'hidden', scrollbarWidth: bar ? 'thin' : 'none', overscrollBehaviorX: 'contain' }}>
+      <div style={{ position: 'relative', height, width }}>{children}</div>
     </div>
+  );
+}
+
+export function LaneAxis({ now, range, narrow }: { now: number; range: LaneRange; narrow?: boolean }) {
+  const { span } = laneSpan(range);
+  return (
+    <LaneTrack range={range} narrow={narrow} height={18} bar>
+      {laneAxis(now, range).map(([m, l]) => <span key={l} style={{ position: 'absolute', left: lanePct(m, span), transform: l === 'now' ? 'translateX(-100%)' : 'translateX(-50%)', whiteSpace: 'nowrap', font: '400 12px/1.5 var(--font-mono)', color: l === 'now' ? 'var(--text-1)' : 'var(--text-3)' }}>{l}</span>)}
+    </LaneTrack>
+  );
+}
+
+export function Lane({ s, now, range, narrow }: { s: Session; now: number; range: LaneRange; narrow?: boolean }) {
+  const { segs, marks } = laneData(s, now, range);
+  const { span, nowAt } = laneSpan(range);
+  const ticks = laneAxis(now, range);
+  return (
+    <LaneTrack range={range} narrow={narrow} height={20}>
+      <div style={{ position: 'absolute', left: 0, right: 0, top: 10, height: 1, background: 'var(--border-subtle)' }} />
+      {ticks.slice(0, -1).map(([m, l]) => <div key={l} style={{ position: 'absolute', top: 4, height: 12, left: lanePct(m, span), width: 1, background: 'var(--border-subtle)' }} />)}
+      {segs.map(([a, b, st], i) => <div key={i} role="img" aria-label={`${STATUS_LABEL[st]} for ${Math.max(1, Math.round(b - a))} minutes, ${Math.round(nowAt - b) > 0 ? Math.round(nowAt - b) + ' minutes before now' : 'up to now'}`} title={STATUS_LABEL[st]} style={{ borderTop: st === 'attention' ? '2px dotted var(--text-1)' : st === 'ready' ? '3px double var(--text-1)' : st === 'idle' ? '2px dashed var(--text-2)' : undefined, position: 'absolute', top: 6, height: 8, left: lanePct(a, span), width: lanePct(b - a, span), borderRadius: `${i === 0 ? 2 : 0}px ${i === segs.length - 1 ? 2 : 0}px ${i === segs.length - 1 ? 2 : 0}px ${i === 0 ? 2 : 0}px`, background: LANE_COLOR[st], opacity: st === 'working' ? 0.85 : 1 }} />)}
+      {marks.map((m, i) => <div key={'m' + i} title="Commit" style={{ position: 'absolute', top: 3, left: lanePct(m, span), width: 2, height: 14, marginLeft: -1, borderRadius: 1, background: 'var(--text-1)', boxShadow: '0 0 0 1.5px var(--bg-panel)' }} />)}
+      <div style={{ position: 'absolute', top: -2, bottom: -2, left: lanePct(nowAt, span), width: 1, background: 'var(--text-3)' }} />
+    </LaneTrack>
   );
 }
 
@@ -98,7 +128,7 @@ function ExternalRow({ x, repoId, tpl, sub, narrow }: { x: ExternalSession; repo
   );
 }
 
-function SessionRow({ s, now, tpl, sub, narrow }: { s: Session; now: number; tpl: string; sub: boolean; narrow?: boolean }) {
+function SessionRow({ s, now, tpl, sub, narrow, range }: { s: Session; now: number; tpl: string; sub: boolean; narrow?: boolean; range?: LaneRange }) {
   const { fmt, sym, from } = useMoney();
   const [hover, setHover] = React.useState(false);
   const experience = useExperience();
@@ -107,7 +137,7 @@ function SessionRow({ s, now, tpl, sub, narrow }: { s: Session; now: number; tpl
   return (
     <div {...keyboardClick} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
       onClick={() => go({ screen: 'session', id: s.id, tab: s.status === 'ready' ? 'changes' : 'conversation' })}
-      style={{ display: 'grid', gridTemplateColumns: narrow ? '20px minmax(0,1fr)' : tpl, gap: narrow ? 8 : 12, alignItems: 'center', minHeight: 44, padding: narrow ? '10px 12px' : '0 12px', borderTop: '1px solid var(--border-subtle)', background: hover ? 'var(--bg-hover)' : 'transparent', cursor: 'pointer' }}>
+      style={{ display: 'grid', gridTemplateColumns: narrow ? '20px minmax(0,1fr)' : tpl, gap: narrow ? 8 : 12, alignItems: 'center', minHeight: 44, padding: narrow ? '10px 12px' : range ? '6px 12px 0' : '0 12px', borderTop: '1px solid var(--border-subtle)', background: hover ? 'var(--bg-hover)' : 'transparent', cursor: 'pointer' }}>
       <StatusDot status={s.status} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
         <span style={{ font: '500 13px/1.5 var(--font-sans)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.task}</span>
@@ -127,12 +157,12 @@ function SessionRow({ s, now, tpl, sub, narrow }: { s: Session; now: number; tpl
           <DiffStat additions={s.add} deletions={s.del} />
         </div>
       ) : <>
-        <Lane s={s} now={now} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Meter value={s.ctx} max={contextWindow(s)} warnAt={0.75} style={{ flex: 1 }} /><span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-2)', width: 30, textAlign: 'right' }}>{fmtTokens(s.ctx)}</span></div>
         <span style={{ font: 'var(--type-data)', textAlign: 'right' }}>{fmtTokens(sessionTokens(s))}</span>
         {sub ? null : <span style={{ font: 'var(--type-data)', textAlign: 'right' }}>{fmt(s.cost)}</span>}
         <span style={{ textAlign: 'right' }}><DiffStat additions={s.add} deletions={s.del} /></span>
       </>}
+      {range ? <div style={{ gridColumn: '1 / -1', minWidth: 0, paddingBottom: narrow ? 0 : 8 }}><Lane s={s} now={now} range={range} narrow={narrow} /></div> : null}
     </div>
   );
 }
@@ -211,6 +241,8 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
   const experience = useExperience();
   const [filter, setFilter] = React.useState(initial || 'all');
   const [layout, setLayout] = React.useState<string>(() => localStorage.getItem('helm-overview-layout') === 'board' ? 'board' : 'list');
+  const [rangeId, setRangeId] = React.useState<string>(() => laneRange(localStorage.getItem('helm-overview-range')).id);
+  const pickRange = (v: string) => { laneScroll.left = null; setRangeId(v); localStorage.setItem('helm-overview-range', v); };
   const pickLayout = (v: string) => { setLayout(v); localStorage.setItem('helm-overview-layout', v); };
   const pushes = usePush();
   const [now, setNow] = React.useState(Date.now());
@@ -230,7 +262,7 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
   const [available, setAvailable] = React.useState(Infinity);
   React.useLayoutEffect(() => { const el = measured.current; if (!el) return; const observer = new ResizeObserver(() => setAvailable(el.clientWidth - 48)); observer.observe(el); return () => observer.disconnect(); }, []);
   const col = useColumns(sub ? 'ledger-sub' : 'ledger-api', [
-    { w: 20, min: 20, fixed: true }, { w: 270, min: 150, flex: true }, { w: 200, min: 150 }, { w: 300, min: 180 }, { w: 88, min: 60 }, { w: 56, min: 44 },
+    { w: 20, min: 20, fixed: true }, { w: 270, min: 150, flex: true }, { w: 200, min: 150 }, { w: 180, min: 120 }, { w: 88, min: 60 }, { w: 56, min: 44 },
     ...(sub ? [] : [{ w: 56, min: 44 }]), { w: 104, min: 80, fixed: true }
   ]);
   const narrow = phone || experience.simple || available < col.minWidth;
@@ -239,7 +271,8 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
   const extFor = (id: string) => (externals[id] || []).filter(extVisible);
   const extShown = (id: string) => extFor(id).filter((x, i) => filter === 'external' || x.active || i < 5);
   const board = experience.board && layout === 'board' && filter !== 'external' && filter !== 'archived';
-  const axis = laneAxis(now);
+  const range = laneRange(rangeId);
+  const lanes = !experience.simple && !board && filter !== 'external';
   const asks = app.sessions.filter((s) => s.ask).sort((a, b) => a.ask!.at - b.ask!.at);
   const cell: React.CSSProperties = { padding: narrow ? 12 : '14px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'center', borderLeft: '1px solid var(--border-subtle)' };
   const groups = reposWithSessions(app, true, true).filter(({ repo: r, sessions }) => sessions.some(visible) || extFor(r.id).length > 0);
@@ -296,7 +329,7 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
         ) : null}
 
         {liveSessions > 0 || totalExt > 0 || archivedTotal > 0 ? (
-          <section style={{ borderRadius: 'var(--radius-lg)', background: 'var(--bg-panel)', boxShadow: 'inset 0 0 0 1px var(--border)', overflow: 'hidden' }}>
+          <section data-lanes style={{ borderRadius: 'var(--radius-lg)', background: 'var(--bg-panel)', boxShadow: 'inset 0 0 0 1px var(--border)', overflow: 'hidden' }}>
             <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12, padding: '10px 12px' }}>
               <span style={{ font: '600 13px/1.5 var(--font-sans)' }}>Sessions</span>
               <SegmentedControl size="sm" value={filter} onChange={setFilter} options={[
@@ -307,18 +340,22 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
                 { value: 'external', label: 'External', count: totalExt },
                 { value: 'archived', label: 'Archived', count: archivedTotal }]} />
               <span style={{ flex: 1 }} />
-              {narrow || board ? null : [['working', 'Working'], ['attention', 'Waiting on you'], ['ready', 'Ready']].map(([k, l]) => (
+              {narrow || !lanes ? null : [['working', 'Working'], ['attention', 'Waiting on you'], ['ready', 'Ready']].map(([k, l]) => (
                 <span key={k} style={{ display: 'flex', alignItems: 'center', gap: 5, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}><span style={{ width: 12, height: 6, borderRadius: 2, background: LANE_COLOR[k] }} />{l}</span>
               ))}
-              {narrow || board ? null : <span style={{ display: 'flex', alignItems: 'center', gap: 5, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}><span style={{ width: 2, height: 10, borderRadius: 1, background: 'var(--text-1)' }} />Commit</span>}
+              {narrow || !lanes ? null : <span style={{ display: 'flex', alignItems: 'center', gap: 5, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}><span style={{ width: 2, height: 10, borderRadius: 1, background: 'var(--text-1)' }} />Commit</span>}
+              {lanes ? <span role="group" aria-label="Timeline range" title="How far back the timeline reaches"><SegmentedControl size="sm" value={range.id} onChange={pickRange} options={LANE_RANGES.map((r) => ({ value: r.id, label: r.label }))} /></span> : null}
               {experience.board ? <SegmentedControl size="sm" value={layout} onChange={pickLayout} options={[{ value: 'list', label: 'List', icon: 'list' }, { value: 'board', label: 'Board', icon: 'kanban' }]} /> : null}
             </div>
             {board ? <Board sessions={app.sessions.filter(visible)} only={filter} /> : <>
             {narrow ? null : <div style={{ display: 'grid', gridTemplateColumns: col.template, gap: 12, alignItems: 'end', padding: '6px 12px', borderTop: '1px solid var(--border)', font: '500 12px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>
               <span />{col.cell(1, 'Session')}{col.cell(2, 'Now')}
-              {col.cell(3, axis.map(([m, l]) => <span key={l} style={{ position: 'absolute', left: lanePct(m), transform: 'translateX(-50%)', font: '400 12px/1.5 var(--font-mono)', textTransform: 'none', letterSpacing: 0, color: l === 'now' ? 'var(--text-1)' : 'var(--text-3)' }}>{l}</span>), { height: 11 })}
-              {col.cell(4, 'Context')}{col.cell(5, 'Tokens', { textAlign: 'right' })}{sub ? null : col.cell(6, 'Cost', { textAlign: 'right' })}<span style={{ textAlign: 'right' }}>Changes</span>
+              {col.cell(3, 'Context')}{col.cell(4, 'Tokens', { textAlign: 'right' })}{sub ? null : col.cell(5, 'Cost', { textAlign: 'right' })}<span style={{ textAlign: 'right' }}>Changes</span>
             </div>}
+            {lanes ? <div style={{ display: 'grid', gridTemplateColumns: narrow ? 'minmax(0,1fr)' : 'auto minmax(0,1fr)', gap: 12, alignItems: 'center', padding: '4px 12px', borderTop: '1px solid var(--border)' }}>
+              {narrow ? null : <span style={{ font: '500 12px/1.5 var(--font-sans)', letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-3)' }}>Timeline · last {range.hours ? (range.hours >= 48 ? range.hours / 24 + ' days' : range.hours + ' hours') : '2 hours'}</span>}
+              <LaneAxis key={range.id} now={now} range={range} narrow={narrow} />
+            </div> : null}
             {groups.map(({ repo: r, sessions }) => (
               <div key={r.id}>
                 <div style={{ display: 'flex', alignItems: 'center', flexWrap: narrow ? 'wrap' : undefined, gap: 10, minHeight: 34, padding: '0 8px 0 12px', borderTop: '1px solid var(--border)', background: 'var(--bg-raised)' }}>
@@ -334,7 +371,7 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
                   {isFreeGroup(r) ? null : <Button size="sm" variant="ghost" icon="git-commit" onClick={() => go({ screen: 'repo', id: r.id })}>History</Button>}
                   {isFreeGroup(r) && !app.settings.freeAgents ? null : <Button size="sm" variant="ghost" icon="plus" onClick={() => setUI({ newSession: { repoId: r.id } })}>{isFreeGroup(r) ? 'New free agent' : 'New session'}</Button>}
                 </div>
-                {sessions.filter(visible).map((s) => <SessionRow key={s.id} s={s} now={now} tpl={col.template} sub={sub} narrow={narrow} />)}
+                {sessions.filter(visible).map((s) => <SessionRow key={s.id + range.id} s={s} now={now} tpl={col.template} sub={sub} narrow={narrow} range={lanes ? range : undefined} />)}
                 {extShown(r.id).map((x) => <ExternalRow key={x.id} x={x} repoId={r.id} tpl={col.template} sub={sub} narrow={narrow} />)}
                 {extFor(r.id).length > extShown(r.id).length ? <div {...keyboardClick} onClick={() => go({ screen: 'repo', id: r.id, tab: 'external' })} className="helm-row-hover" style={{ padding: '8px 12px', borderTop: '1px solid var(--border-subtle)', font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)', cursor: 'pointer' }}>{extFor(r.id).length - extShown(r.id).length} more external sessions</div> : null}
               </div>

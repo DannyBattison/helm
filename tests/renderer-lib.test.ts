@@ -89,3 +89,33 @@ describe('lane', () => {
     expect(laneAxis(NOW).at(-1)).toEqual([104, 'now']);
   });
 });
+
+describe('timeline ranges', () => {
+  const MIN = 60000;
+  const S = (o: any) => ({ timeline: [], commits: [], ...o }) as any;
+  it('defaults to the original two hour window', async () => {
+    const { laneRange, laneSpan } = await import('../src/renderer/src/lib');
+    expect(laneRange('nope').id).toBe('2h');
+    expect(laneSpan(laneRange('2h'))).toEqual({ span: 110, nowAt: 104 });
+  });
+  it('places a day of activity on a 24 hour range, with now six minutes from the right edge', async () => {
+    const { laneRange, laneSpan, laneData, laneAxis } = await import('../src/renderer/src/lib');
+    const r = laneRange('24h');
+    expect(laneSpan(r)).toEqual({ span: 24 * 60 + 6, nowAt: 24 * 60 });
+    const now = new Date(2026, 9, 21, 12, 10).getTime();
+    const { segs, marks } = laneData(S({ timeline: [{ t: now - 10 * 60 * MIN, status: 'working' }, { t: now - 9 * 60 * MIN, status: 'idle' }], commits: [{ at: now - 9.5 * 60 * MIN }, { at: now - 30 * 60 * MIN }] }), now, r);
+    expect(segs).toEqual([[14 * 60, 15 * 60, 'working']]);
+    expect(marks).toEqual([14.5 * 60]);
+    const ax = laneAxis(now, r);
+    expect(ax.at(-1)).toEqual([24 * 60, 'now']);
+    expect(ax.slice(0, 2).map((a) => a[1])).toEqual(['16:00', '20:00']);
+  });
+  it('labels the longer ranges with days', async () => {
+    const { laneRange, laneAxis } = await import('../src/renderer/src/lib');
+    const now = new Date(2026, 9, 21, 12, 10).getTime();
+    const week = laneAxis(now, laneRange('7d'));
+    expect(week).toHaveLength(8);
+    expect(week[0][1]).toMatch(/^[A-Z][a-z]{2} \d+$/);
+    expect(laneAxis(now, laneRange('3d')).every(([, l]) => /^(\w{3}( \d+:\d\d)?|now)$/.test(l))).toBe(true);
+  });
+});
