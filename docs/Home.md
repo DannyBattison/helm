@@ -1,6 +1,6 @@
 # helm wiki
 
-helm lets you run coding agents (Claude Code and Codex) on your GitHub projects and keep an eye on all of them from one window. It runs as a desktop app, in your browser, and as a phone app.
+helm lets you run coding agents (Claude Code, Codex and Qwen Code) on your GitHub projects and keep an eye on all of them from one window. It runs as a desktop app, in your browser, and as a phone app.
 
 Website and downloads: [takethehelm.dev](https://takethehelm.dev)
 

@@ -25,7 +25,7 @@ Any of these:
 **Task.** What the agent should do. Be specific about the outcome, and mention files or checks that matter. Paste images or drop files in, or use the paperclip. Images go into the message; other files are given to this agent only.
 
 **Model, permissions and budget.**
-- The model list shows every ready agent (Claude Code and Codex) and its models. You can set effort too.
+- The model list shows every ready agent (Claude Code, Codex and Qwen Code) and its models. You can set effort too.
 - **Permissions** controls what the agent may do without asking: **Ask before commands**, **Allow edits, ask for commands**, **Plan only** or **Allow everything**. See [Safety and limits](Safety-and-Limits.md#permission-modes).
 - **Budget** is the most a session may spend before it pauses, when you pay per token. With a subscription, this field is hidden and plan usage limits in [Settings](Settings.md#usage) apply.
 

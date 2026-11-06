@@ -6,7 +6,7 @@
 [![Release date](https://img.shields.io/github/release-date/DannyBattison/helm?label=released)](https://github.com/DannyBattison/helm/releases/latest)
 [![Buy me a coffee](https://img.shields.io/badge/buy%20me%20a%20coffee-%E2%98%95-yellow)](https://buymeacoffee.com/dannybattison)
 
-Supervise many coding-agent sessions (Claude Code, and Codex) across many GitHub repositories, from one window. Available as a desktop app, in your browser, and as a phone app.
+Supervise many coding-agent sessions (Claude Code, Codex, and local Qwen models) across many GitHub repositories, from one window. Available as a desktop app, in your browser, and as a phone app.
 
 **Website and downloads: [takethehelm.dev](https://takethehelm.dev)**
 
@@ -15,7 +15,7 @@ Supervise many coding-agent sessions (Claude Code, and Codex) across many GitHub
 ## Features
 
 - **Isolated sessions.** Each session works in its own git worktree on an `agent/<name>` branch. Your checkout is never touched. helm pushes the branch after every commit (you can turn that off).
-- **Claude and Codex.** Pick the agent per session. A session can also have extra read-only agents that give a second opinion, while one owner makes the changes.
+- **Claude, Codex and local models.** Pick the agent per session, including Qwen Code running a free model on your own machine ([docs](docs/Local-Models.md)). A session can also have extra read-only agents that give a second opinion, while one owner makes the changes.
 - **One place for everything.** Approve commands, answer questions, and watch plan usage or cost budgets across all agents. Sessions show as a list or a kanban board.
 - **Inbox.** Everything waiting on you, cleared from the keyboard or from the tray menu.
 - **Review.** Diffs with hunk-level accept/ask/reject, a read-only review by an agent, and a forecast of which sessions would conflict. Open pull requests, see their checks, and merge (or queue a merge for when checks pass).
@@ -80,7 +80,7 @@ npm run hosted:build # browser version
 npm run mobile:sync  # phone app (see mobile/README.md)
 ```
 
-Needs Node 22+, git, and a Claude login (or `ANTHROPIC_API_KEY`); Codex needs the `codex` CLI. Layout: `src/core` (the app's logic, no Electron), `src/shared` (code used by every front end), `src/renderer` (React UI, shared), `desktop/` (Electron), `hosted/` (browser version and Docker image), `mobile/` (Capacitor phone app). Releases are built by the `release` GitHub workflow. Decisions are logged one file each in [decisions/](decisions/).
+Needs Node 22+, git, and a Claude login (or `ANTHROPIC_API_KEY`); Codex needs the `codex` CLI; local models need Qwen Code and Ollama (helm can install both). Layout: `src/core` (the app's logic, no Electron), `src/shared` (code used by every front end), `src/renderer` (React UI, shared), `desktop/` (Electron), `hosted/` (browser version and Docker image), `mobile/` (Capacitor phone app). Releases are built by the `release` GitHub workflow. Decisions are logged one file each in [decisions/](decisions/).
 
 ## Support
 
