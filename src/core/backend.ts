@@ -140,6 +140,8 @@ export interface AgentBackend {
   /** Re-reads what changes while helm runs (the model list, say). */
   refresh?(): Promise<void>;
   readonly capabilities: AgentCapabilities;
+  /** Why it cannot be used yet beyond being installed and signed in, or null when it can. */
+  setupNeeded?(): string | null;
   /** The version of the agent's command-line tool, from `path` when given. Null when it is not there. */
   version(path?: string): Promise<string | null>;
   start(opts: AgentStartOptions): AgentHandle;
@@ -169,9 +171,10 @@ export class BackendRegistry {
     return Promise.all(this.list.map(async (b) => {
       const login = logins[b.id];
       const version = await b.version().catch(() => null);
-      const configured = (!b.auth || !!login?.loggedIn || (!!b.bundled && !!login?.error)) && (!!b.bundled || version !== null);
+      const setup = b.setupNeeded?.() ?? undefined;
+      const configured = (!b.auth || !!login?.loggedIn || (!!b.bundled && !!login?.error)) && (!!b.bundled || version !== null) && !setup;
       const enabled = !enabledIds || enabledIds.includes(b.id);
-      return { id: b.id, label: b.label, shortName: b.shortName, models: b.models, capabilities: b.capabilities, version, installed: !!b.bundled || version !== null, canSignIn: !!b.auth, login, configured, enabled, ready: configured && enabled };
+      return { id: b.id, label: b.label, shortName: b.shortName, models: b.models, capabilities: b.capabilities, version, installed: !!b.bundled || version !== null, setup, canSignIn: !!b.auth, login, configured, enabled, ready: configured && enabled };
     }));
   }
 }

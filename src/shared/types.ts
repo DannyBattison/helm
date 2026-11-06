@@ -77,6 +77,21 @@ export interface AgentCapabilities {
   planUsage: boolean;
 }
 
+/** A model downloaded to this computer. */
+export interface LocalModel { name: string; sizeGb: number }
+export interface RecommendedModel { name: string; label: string; sizeGb: number; minRamGb: number; note: string; fits?: boolean }
+/** The program serving local models, and what it has. */
+export interface LocalRuntime {
+  state: 'missing' | 'stopped' | 'running';
+  url: string;
+  ramGb: number;
+  context: number;
+  models: LocalModel[];
+  recommended: RecommendedModel[];
+  /** Downloads in progress, or failed. */
+  pulls: { name: string; status: string; percent: number; error?: string }[];
+}
+
 /** An agent backend as the interface sees it. */
 export interface BackendInfo {
   id: string;
@@ -95,6 +110,8 @@ export interface BackendInfo {
   login?: AgentLogin;
   /** Signed in (or has no account) and installed. */
   configured: boolean;
+  /** Why it cannot be used yet, for an agent that needs more than a sign-in (a model downloaded, say). */
+  setup?: string;
   /** Turned on in Settings → Agents. */
   enabled: boolean;
   /** Can start sessions now: configured and turned on. */
@@ -472,6 +489,12 @@ export interface Settings {
   claudePath: string;
   /** Path to the Codex executable; empty finds `codex` on the PATH. */
   codexPath: string;
+  /** Path to the Qwen Code executable; empty finds `qwen` on the PATH. */
+  qwenPath: string;
+  /** Where the local model server is; empty for Ollama on this computer. */
+  ollamaUrl: string;
+  /** Context window, in tokens, local models are given. */
+  qwenContext: number;
   /** Agents turned on, by id. At least one is always on. A turned-off agent is left out of every model list and cannot start new sessions. */
   enabledAgents: string[];
   defaultBackend: string;
@@ -1344,6 +1367,13 @@ export interface HelmApi {
   agentLogout(backend: string): Promise<AgentLogin>;
   /** Checks again who each agent is signed in as. */
   refreshAgentLogins(): Promise<void>;
+  /** The local model server (Ollama) and what it holds. */
+  localRuntime(): Promise<LocalRuntime>;
+  localRuntimeStart(): Promise<LocalRuntime>;
+  /** Starts downloading a model; progress shows in `localRuntime().pulls`. */
+  localModelPull(name: string): Promise<void>;
+  localModelDismiss(name: string): Promise<void>;
+  localModelRemove(name: string): Promise<LocalRuntime>;
 
   termOpen(sessionId: string | null, cols: number, rows: number): Promise<string>;
   termWrite(id: string, data: string): Promise<void>;

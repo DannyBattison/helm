@@ -9,6 +9,7 @@ import { BackendRegistry } from './backend';
 import { defaultAgent, normalizeEnabled } from '../shared/agents';
 import { ClaudeBackend } from './claudeBackend';
 import { CodexBackend } from './codexBackend';
+import { QwenBackend } from './qwenBackend';
 import * as G from './git';
 import * as GH from './github';
 import { Companion } from './companion';
@@ -200,8 +201,10 @@ const registry = new BackendRegistry([
     sdk: () => store.data.settings.claudePath || host.sdkClaudePath(),
     cli: () => store.data.settings.claudePath || host.cliClaudePath()
   }),
-  new CodexBackend({ cli: () => store.data.settings.codexPath || undefined })
+  new CodexBackend({ cli: () => store.data.settings.codexPath || undefined }),
+  new QwenBackend({ cli: () => store.data.settings.qwenPath || undefined, url: () => store.data.settings.ollamaUrl || undefined, context: () => store.data.settings.qwenContext })
 ]);
+const qwen = registry.all().find((b) => b.id === 'qwen') as QwenBackend;
 const sessions = new SessionManager(store, {
   emitState,
   emitTranscript: (sessionId, index, event) => { send('transcript', { sessionId, index, event }); companion.onTranscript(sessionId, index, event); },
@@ -386,7 +389,7 @@ export const api: HelmApi = {
       const def = defaultAgent(st.defaultBackend, st.enabledAgents, known);
       if (def !== st.defaultBackend) { st.defaultBackend = def; st.defaultModel = registry.get(def).models[0]?.id ?? st.defaultModel; }
     }
-    if ('claudePath' in patch || 'codexPath' in patch || 'enabledAgents' in patch) await refreshBackends();
+    if ('claudePath' in patch || 'codexPath' in patch || 'qwenPath' in patch || 'ollamaUrl' in patch || 'enabledAgents' in patch) await refreshBackends();
     store.save();
     emitState();
   },
@@ -433,6 +436,11 @@ export const api: HelmApi = {
     return l;
   },
   async refreshAgentLogins() { await refreshBackends(); },
+  async localRuntime() { const r = await qwen.runtime(); await refreshBackends(); return r; },
+  async localRuntimeStart() { await qwen.startRuntime(); await refreshBackends(); return qwen.runtime(); },
+  async localModelPull(name) { qwen.pull(String(name)); },
+  async localModelDismiss(name) { qwen.dismissPull(String(name)); },
+  async localModelRemove(name) { const r = await qwen.removeModel(String(name)).then(() => qwen.runtime()); await refreshBackends(); return r; },
 
   async signOut() {
     GH.cancelDeviceFlow();
