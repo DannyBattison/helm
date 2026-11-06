@@ -3,7 +3,7 @@
 This page takes you from nothing to a finished change in about ten minutes.
 
 > **In short**
-> - Install helm, sign in to GitHub, and sign in to an agent (Claude Code or Codex).
+> - Install helm, sign in to GitHub, and sign in to an agent (Claude Code or Codex), or set up a [local model](Local-Models.md).
 > - Add a repository, describe a task, and an agent does it on its own branch.
 > - You review the result and open a pull request when you are happy. Your own files are never touched along the way.
 
@@ -16,6 +16,7 @@ Prefer a browser? See [Hosted version](Hosted-Version.md). On a phone? See [Phon
 You also need at least one agent signed in:
 - **Claude Code** with a Claude subscription or an Anthropic API key, or
 - **Codex** (needs the `codex` command-line tool installed) with a ChatGPT plan or an OpenAI API key.
+- **Qwen Code** with a free local model, no account needed. See [Local models](Local-Models.md).
 
 ## 2. Sign in
 

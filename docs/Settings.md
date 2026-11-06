@@ -17,6 +17,9 @@ Anthropic's agent. Sign in with a Claude subscription or an API key, and choose 
 ### Codex
 OpenAI's agent. Sign in with a ChatGPT plan or an OpenAI API key. Needs the `codex` command-line tool. Notes on how permission modes, memory and subagents map to Codex are shown on this page. Codex reports tokens but no dollar cost, and has no Remote Control.
 
+### Qwen Code (local)
+Runs a free model on your own computer. Install Qwen Code and Ollama, download a model and choose the server address and context size here. No sign-in or cost. See [Local models](Local-Models.md).
+
 ## Agents
 
 Settings that apply to every agent.

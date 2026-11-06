@@ -6,7 +6,7 @@ Plain-English meanings for words you will meet in helm.
 
 **Activity**: a log of everything helm and its agents do. See [Activity](Activity.md).
 
-**Agent**: the AI doing a job. helm supports Claude Code and Codex. See [Core concepts](Core-Concepts.md#agent).
+**Agent**: the AI doing a job. helm supports Claude Code, Codex and Qwen Code (local models). See [Core concepts](Core-Concepts.md#agent).
 
 **Approval**: a yes/no question from an agent about running a command. See [Inbox](Inbox.md).
 

@@ -19,7 +19,7 @@ Session names are unique across all repositories. You can rename a session at an
 
 ## Agent
 
-The AI doing the work. helm supports **Claude Code** and **Codex**. You choose the agent and model per session when you [start one](Starting-a-Session.md). A session can also include extra read-only agents for a second opinion: see [Extra agents and subagents](Extra-Agents-and-Subagents.md). Agents can be turned on and off under **Settings, then Agents**.
+The AI doing the work. helm supports **Claude Code**, **Codex** and **Qwen Code** (local models, see [Local models](Local-Models.md)). You choose the agent and model per session when you [start one](Starting-a-Session.md). A session can also include extra read-only agents for a second opinion: see [Extra agents and subagents](Extra-Agents-and-Subagents.md). Agents can be turned on and off under **Settings, then Agents**.
 
 ## Worktree and branch
 

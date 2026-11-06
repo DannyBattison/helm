@@ -11,7 +11,7 @@ import { run } from './util';
  * Qwen Code (`qwen`) run against a model on this computer, through the Agent Client Protocol: JSON-RPC 2.0 as one JSON object per
  * line on stdio. The model is served by Ollama (or anything with an OpenAI-compatible API); nothing leaves the machine and nothing
  * is metered, so there is no sign-in, no plan and no cost. One `qwen` process per session.
- * Written from the protocol's documentation and tested against a stand-in; see spike/qwen/README.md for what a real run has to confirm.
+ * Written from the protocol's documentation and tested against a stand-in.
  */
 
 type Json = any;
