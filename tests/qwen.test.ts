@@ -136,11 +136,13 @@ describe('Qwen Code through a stand-in ACP agent', () => {
     const text = (first.find((e) => e.t === 'assistant' && e.blocks.length) as any).blocks[0].text as string;
     expect(text).toContain(`qwen3-coder:30b-helm32k ${url}/v1 ollama`);
     expect(text).toContain('led');
-    // Web tools are offered directly, through a settings file of helm's own.
+    // Tools are offered directly, through a settings file of helm's own.
     const file = text.split(' ').pop()!;
     expect(file).toBe(join(data, 'qwen-settings.json'));
     expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual(QWEN_SETTINGS);
-    expect(QWEN_SETTINGS.tools.visible).toContain('web_fetch');
+    // The wrapper a small model gets wrong is not offered, and the tools it needs are not excluded.
+    expect(QWEN_SETTINGS.tools.exclude).toEqual(expect.arrayContaining(['tool_call', 'tool_search']));
+    for (const need of ['web_fetch', 'run_shell_command', 'read_file', 'write_file', 'edit', 'glob', 'grep_search']) expect(QWEN_SETTINGS.tools.exclude).not.toContain(need);
     // It chose the OpenAI-compatible method and the stand-in saw the mode set.
     expect(text).toContain('authenticate');
     expect(text).toContain('session/set_mode');

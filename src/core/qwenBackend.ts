@@ -28,11 +28,17 @@ export interface QwenPaths {
 }
 
 /**
- * Qwen Code keeps some tools "on demand": the model has to find one with `tool_search` and call it through a `tool_call` wrapper.
- * Small models cannot do that (they call the wrapper with nothing), so web access is offered directly. This goes in a settings file
- * of helm's own, handed over with an environment variable, so the user's own Qwen settings are left alone.
+ * Qwen Code keeps some tools "on demand": the model has to find one with `tool_search` and call it through a `tool_call` wrapper,
+ * and small models call the wrapper with nothing. Taking those two away makes it offer its tools directly. It then offers all thirty
+ * or so, most of them for things helm does itself (helpers, worktrees, scheduling) or that a small model only gets lost in, so those
+ * are taken away too and what is left is files, search, the shell and web fetch. This goes in a settings file of helm's own, handed
+ * over with an environment variable, so the user's own Qwen settings are left alone.
  */
-export const QWEN_SETTINGS = { tools: { visible: ['web_fetch', 'web_search', 'todo_write'] } };
+export const QWEN_SETTINGS = {
+  tools: {
+    exclude: ['tool_call', 'tool_search', 'agent', 'skill', 'enter_plan_mode', 'exit_plan_mode', 'enter_worktree', 'exit_worktree', 'get_goal', 'update_goal', 'list_agents', 'send_message', 'task_stop', 'record_artifact', 'report_findings', 'notebook_edit', 'cron_create', 'cron_delete', 'cron_list', 'loop_wakeup', 'monitor', 'autofix_pr', 'read_mcp_resource', 'lsp', 'memory']
+  }
+};
 async function settingsFile(dir: string | undefined): Promise<string | undefined> {
   if (!dir) return undefined;
   const f = join(dir, 'qwen-settings.json');
