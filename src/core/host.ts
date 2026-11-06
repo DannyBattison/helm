@@ -18,6 +18,8 @@ export interface Host {
   sdkClaudePath(): string | undefined;
   /** A Claude Code binary for running `claude agents --json`; falls back to `claude` on PATH. */
   cliClaudePath(): string | undefined;
+  /** npm's `npm-cli.js`, for installing agent tools. Only the desktop app ships one. */
+  npmCli?(): string | undefined;
   setBadge?(count: number): void;
   setTheme?(theme: ThemePref): void;
   /** A desktop notification. The host decides whether the user is already looking. */

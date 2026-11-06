@@ -133,6 +133,7 @@ describe('a Codex session', () => {
     const th = await debug(b, 'lastStart');
     expect(th).toMatchObject({ model: 'gpt-a', cwd: '/w', approvalPolicy: 'untrusted', sandbox: 'workspace-write', developerInstructions: 'be nice' });
     expect(th.config).toEqual({
+      features: { default_mode_request_user_input: true },
       shell_environment_policy: { inherit: 'all', set: { GIT_AUTHOR_NAME: 'Codex' } },
       mcp_servers: { gh: { url: 'https://x', http_headers: { a: 'b' } }, fs: { command: 'node', args: ['s.js'], env: { K: 'v' } } },
       agents: { max_concurrent_threads_per_session: 1 }

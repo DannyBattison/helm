@@ -17,6 +17,7 @@ import { toast, useApp, useMoney } from '../store';
 import { comboFromEvent, comboKeys, comboProblem, normalizeCombo, SHORTCUT_ACTIONS, shortcutConflict, shortcutOf } from '@shared/shortcuts';
 import { qrSvg } from '@shared/qr';
 import { AgentSignInDialog } from './AgentSignIn';
+import { LocalModels } from './LocalModels';
 import { Avatar, Badge, Button, Checkbox, Dialog, IconButton, Input, Kbd, Meter, SegmentedControl, Select, Switch, TreeItem, Grip, useColumns, useNarrow, usePaneWidth } from '../ui';
 
 const errText = (e: any) => String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '');
@@ -556,9 +557,17 @@ function AgentAccount({ b, heading = true }: { b: import('@shared/types').Backen
   const st = app.settings;
   const [signing, setSigning] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
+  const [installing, setInstalling] = React.useState(false);
+  const canInstall = !window.helmBridge.hosted && (b.id === 'codex' || b.id === 'qwen') && (!b.installed || b.managed);
+  const install = async () => {
+    setInstalling(true);
+    try { const v = await api.agentInstall(b.id); toast({ tone: 'ready', title: `${b.label} ${b.managed ? 'updated' : 'installed'}`, description: v ? `Version ${v}.` : undefined }); }
+    catch (e: any) { toast({ tone: 'error', title: `Could not install ${b.label}`, description: String(e?.message || e) }); }
+    finally { setInstalling(false); }
+  };
   const l = b.login;
   const fromEnv = !!l?.loggedIn && /key|token/.test(l.method);
-  const pathKey = b.id === 'claude' ? 'claudePath' : b.id === 'codex' ? 'codexPath' : '';
+  const pathKey = b.id === 'claude' ? 'claudePath' : b.id === 'codex' ? 'codexPath' : b.id === 'qwen' ? 'qwenPath' : '';
   const who = l?.loggedIn
     ? fromEnv ? `Using the ${l.method} set in this machine's environment.` : `Signed in${l.method === 'chatgpt' ? ' with ChatGPT' : ' with your subscription'}${l.email ? ` as ${l.email}` : ''}${l.plan ? ` (${l.plan})` : ''}.`
     : l?.error ? `Not signed in. ${l.error}` : 'Not signed in. This agent cannot be used until you sign in.';
@@ -569,6 +578,7 @@ function AgentAccount({ b, heading = true }: { b: import('@shared/types').Backen
         <SettingRow title="Command-line tool" desc={(st as any)[pathKey] ? 'Custom path' : b.id === 'claude' ? 'Uses the Claude Code bundled with helm unless a path is set.' : `Uses \`${b.id}\` from the PATH unless a path is set.`}>
           <Field value={(st as any)[pathKey]} onCommit={(v: string) => set({ [pathKey]: v.trim() } as any)} placeholder={`Path to ${b.id} (optional)`} style={{ width: 260 }} />
           {b.version ? <Badge tone="ready" dot>{b.version}</Badge> : b.installed ? <Badge>bundled</Badge> : <Badge tone="error">not found</Badge>}
+          {canInstall ? <Button size="sm" variant="secondary" loading={installing} onClick={install}>{b.installed ? 'Update' : 'Install'}</Button> : null}
         </SettingRow>
       ) : null}
       {b.canSignIn ? (
@@ -606,7 +616,7 @@ export function Settings({ section }: { section?: string }) {
   const subCols = useColumns('subagent-repos', [{ w: 1, min: 160, flex: true }, { w: 170, min: 110, fixed: true }]);
   const pctOptions = [{ value: '0', label: 'Off' }, { value: '50', label: '50%' }, { value: '70', label: '70%' }, { value: '80', label: '80%' }, { value: '90', label: '90%' }];
   const subLimits = (extra: number[]) => [...new Set([0, 1, 2, 3, 4, 6, 8, 12, ...extra])].sort((a, b) => a - b).map((n) => ({ value: String(n), label: n === 0 ? 'Off' : String(n) }));
-  const nav = [['github', 'GitHub', 'github-logo', 1], ['claude', 'Claude Code', 'sparkle', 1], ['codex', 'Codex', 'terminal-window', 1], ['agents', 'Agents', 'robot'], ['automations', 'Automated agents', 'clock-clockwise', 1], ['mcp', 'MCP servers', 'plugs-connected', 1], ['worktrees', 'Worktrees', 'tree-structure', 1], ['budgets', 'Usage', 'coins'], ['defaults', 'Repositories', 'book-bookmark'], ...app.repos.map((r) => ['repo:' + r.id, r.hidden ? r.id + ' (hidden)' : r.id, r.hidden ? 'eye-slash' : 'git-branch', 1]), ['notifications', 'Notifications', 'bell'], ['appearance', 'Appearance', 'paint-brush'], ['shortcuts', 'Keyboard shortcuts', 'keyboard', 1], ['custom-shortcuts', 'Custom shortcuts', 'lightning', 1], ['transfer', 'Import and export', 'arrows-left-right'], ['sync', 'Sync', 'arrows-clockwise'], ...(hosted ? [] : [['phone', 'Mobile app', 'device-mobile'], ['companion', 'Companion', 'broadcast', 1]]), ['about', 'About and support', 'info']] as [string, string, string, number?][];
+  const nav = [['github', 'GitHub', 'github-logo', 1], ['claude', 'Claude Code', 'sparkle', 1], ['codex', 'Codex', 'terminal-window', 1], ['qwen', 'Qwen Code (local)', 'cpu', 1], ['agents', 'Agents', 'robot'], ['automations', 'Automated agents', 'clock-clockwise', 1], ['mcp', 'MCP servers', 'plugs-connected', 1], ['worktrees', 'Worktrees', 'tree-structure', 1], ['budgets', 'Usage', 'coins'], ['defaults', 'Repositories', 'book-bookmark'], ...app.repos.map((r) => ['repo:' + r.id, r.hidden ? r.id + ' (hidden)' : r.id, r.hidden ? 'eye-slash' : 'git-branch', 1]), ['notifications', 'Notifications', 'bell'], ['appearance', 'Appearance', 'paint-brush'], ['shortcuts', 'Keyboard shortcuts', 'keyboard', 1], ['custom-shortcuts', 'Custom shortcuts', 'lightning', 1], ['transfer', 'Import and export', 'arrows-left-right'], ['sync', 'Sync', 'arrows-clockwise'], ...(hosted ? [] : [['phone', 'Mobile app', 'device-mobile'], ['companion', 'Companion', 'broadcast', 1]]), ['about', 'About and support', 'info']] as [string, string, string, number?][];
   const basic = ['github', 'claude', 'codex', 'budgets', 'defaults', 'notifications', 'appearance', 'about'];
   const advanced = ['automations', 'mcp', 'sync', 'companion', 'custom-shortcuts'];
   const keywords: Record<string, string> = {
@@ -618,7 +628,7 @@ export function Settings({ section }: { section?: string }) {
     worktrees: 'work folders branches cleanup git',
     about: 'help support diagnostics log version updates',
     mcp: 'servers tools integrations', transfer: 'import export backup restore', sync: 'devices pairing',
-    github: 'accounts login sign in authentication', claude: 'accounts login sign in authentication', codex: 'accounts login sign in authentication',
+    github: 'accounts login sign in authentication', claude: 'accounts login sign in authentication', codex: 'accounts login sign in authentication', qwen: 'local free unlimited ollama models offline qwen download',
   };
   const q = search.trim().toLowerCase();
   const visibleNav = nav.filter(([k, label]) => q ? `${label} ${keywords[k] || ''}`.toLowerCase().includes(q) : allSettings || experience.advanced || k === sec || (experience.simple ? basic.includes(k) || k.startsWith('repo:') : !advanced.includes(k)));
@@ -626,7 +636,7 @@ export function Settings({ section }: { section?: string }) {
   // Accounts and Shortcuts are nodes of their own with nothing on them: clicking one opens its first page, and the caret folds its pages away.
   const repoKeys = app.repos.map((r) => 'repo:' + r.id);
   const groups: Record<string, [string, string, string]> = { github: ['accounts', 'Accounts', 'user-circle'], shortcuts: ['shortcuts', 'Shortcuts', 'keyboard'] };
-  const groupOf: Record<string, string> = { ...Object.fromEntries(repoKeys.map((k) => [k, 'repos'])), github: 'accounts', claude: 'accounts', codex: 'accounts', shortcuts: 'shortcuts', 'custom-shortcuts': 'shortcuts' };
+  const groupOf: Record<string, string> = { ...Object.fromEntries(repoKeys.map((k) => [k, 'repos'])), github: 'accounts', claude: 'accounts', codex: 'accounts', qwen: 'accounts', shortcuts: 'shortcuts', 'custom-shortcuts': 'shortcuts' };
   const [folded, setFolded] = React.useState<string[]>([]);
   const toggleFold = (g: string) => setFolded((f) => (f.includes(g) ? f.filter((x) => x !== g) : [...f, g]));
   const [navW, startNav, resetNav] = usePaneWidth('settings-nav', 200, 160, 420);
@@ -688,8 +698,8 @@ export function Settings({ section }: { section?: string }) {
                 <SettingRow key={b.id} title={b.label}
                   desc={b.configured
                     ? (on ? 'On. Its models are offered when you start a session.' : 'Off. It is left out of the model lists and cannot start new sessions; sessions it already has still work.')
-                    : <>{!b.installed ? 'Not installed on this machine.' : 'Not signed in.'} It cannot be used until it is set up, under <a href="#" onClick={(e) => { e.preventDefault(); setSec(b.id); }} style={{ color: 'var(--accent-text, var(--accent))' }}>Accounts → {b.label}</a>.</>}>
-                  {b.configured ? <Badge tone="ready" dot>ready</Badge> : <Button size="sm" variant="secondary" onClick={() => setSec(b.id)}>{!b.installed ? 'Set up' : 'Sign in'}</Button>}
+                    : <>{b.setup ? b.setup : !b.installed ? 'Not installed on this machine.' : 'Not signed in.'} It cannot be used until it is set up, under <a href="#" onClick={(e) => { e.preventDefault(); setSec(b.id); }} style={{ color: 'var(--accent-text, var(--accent))' }}>Accounts → {b.label}</a>.</>}>
+                  {b.configured ? <Badge tone="ready" dot>ready</Badge> : <Button size="sm" variant="secondary" onClick={() => setSec(b.id)}>{!b.installed || b.setup ? 'Set up' : 'Sign in'}</Button>}
                   <span title={last ? 'At least one agent has to stay on.' : undefined}>
                     <Switch checked={on} disabled={last} onChange={(v: boolean) => set({ enabledAgents: v ? [...(st.enabledAgents || []), b.id] : (st.enabledAgents || []).filter((x) => x !== b.id) })} />
                   </span>
@@ -861,6 +871,13 @@ export function Settings({ section }: { section?: string }) {
             <SettingRow title="Memory" desc="Codex reads AGENTS.md in the repository and in ~/.codex, and keeps its own notes in ~/.codex/memories. They are in the repository's Memory tab, under Codex, and Remember on a message adds to AGENTS.md." />
             <SettingRow title="Subagents" desc="Codex starts its own helpers. The per-session limit under Agents is passed to Codex as its cap on concurrent threads (the session itself counts as one). The repository-wide limit is not applied to Codex." />
             <SettingRow title="Not available with Codex" desc="Remote Control (Claude Code only) and a dollar cost for each session: Codex reports tokens but no cost." />
+          </>; })() : null}
+          {sec === 'qwen' ? (() => { const b = app.backends.find((x) => x.id === 'qwen'); if (!b) return null; return <>
+            <H sub="Qwen Code running a model on this computer through Ollama. Free and unlimited: nothing is sent anywhere and nothing is metered. It is weaker than Claude or Codex, and how well it works depends on the model and your hardware.">Qwen Code (local)</H>
+            <AgentAccount b={b} heading={false} />
+            <LocalModels b={b} row={SettingRow} field={Field} />
+            <SettingRow title="Permission modes" desc="Passed to Qwen Code as its own modes: ask before commands is its default, allow edits is auto-edit, plan only is plan, and allow everything is yolo. Every approval it asks for still comes to helm." />
+            <SettingRow title="Not available with Qwen Code" desc="Subagents, effort levels, cost and plan meters, forking a session, and reading its past conversations back (a session's history is kept by helm). Instructions are sent as the start of the first message, and MCP servers are passed along." />
           </>; })() : null}
           {sec === 'automations' ? <AutomationsSection /> : null}
           {sec === 'mcp' ? <><H sub="Tools and data sources Claude can use in every repository. Add one to a single repository from its MCP tab.">MCP servers</H><McpServers repoId={null} servers={st.mcpServers || []} /></> : null}

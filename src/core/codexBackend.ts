@@ -34,6 +34,21 @@ export function findCodex(configured?: string): string {
   return name;
 }
 const isScript = (exe: string) => /\.[cm]?js$/i.test(exe);
+
+/**
+ * The real `codex` binary behind npm's launcher script. The launcher starts it with an inherited console, and an app with no console
+ * of its own (helm on Windows) gets a terminal window for it, which comes back each time it is closed. Running the binary directly,
+ * with its window hidden, avoids that. Anything else is returned as it was.
+ */
+export function resolveCodexExe(exe: string): string {
+  const m = /^(.*)[\\/]@openai[\\/]codex[\\/]bin[\\/]codex\.js$/i.exec(exe);
+  if (!m) return exe;
+  const arch = process.arch === 'arm64' ? 'aarch64' : 'x86_64';
+  const t = { win32: [`codex-win32-${process.arch === 'arm64' ? 'arm64' : 'x64'}`, `${arch}-pc-windows-msvc`], darwin: [`codex-darwin-${process.arch === 'arm64' ? 'arm64' : 'x64'}`, `${arch}-apple-darwin`], linux: [`codex-linux-${process.arch === 'arm64' ? 'arm64' : 'x64'}`, `${arch}-unknown-linux-musl`] }[process.platform as string];
+  if (!t) return exe;
+  const native = join(m[1], '@openai', t[0], 'vendor', t[1], 'bin', process.platform === 'win32' ? 'codex.exe' : 'codex');
+  return existsSync(native) ? native : exe;
+}
 type Notice ={ method: string; params: Json };
 
 /** The server process and a request/response layer over it. */
@@ -53,11 +68,11 @@ export class CodexServer {
   onRequest(fn: (method: string, params: Json) => Promise<Json>) { this.requestHandler = fn; }
 
   private start(): Promise<void> {
-    const exe = findCodex(this.paths.cli());
+    const exe = resolveCodexExe(findCodex(this.paths.cli()));
     // A script (the test stand-in) runs under node; a shell would hand it to whatever app owns the extension.
     const p = isScript(exe)
-      ? spawn(process.execPath, [exe, 'app-server'], { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } })
-      : spawn(exe, ['app-server'], { stdio: ['pipe', 'pipe', 'pipe'], env: process.env, shell: process.platform === 'win32' });
+      ? spawn(process.execPath, [exe, 'app-server'], { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, windowsHide: true })
+      : spawn(exe, ['app-server'], { stdio: ['pipe', 'pipe', 'pipe'], env: process.env, shell: process.platform === 'win32' && /\.(cmd|bat)$/i.test(exe), windowsHide: true });
     this.proc = p;
     p.stdout.on('data', (d) => {
       this.buf += d;
@@ -272,6 +287,7 @@ export class CodexBackend implements AgentBackend {
   readonly label = 'Codex';
   readonly shortName = 'Codex';
   readonly identity = { name: 'Codex', email: 'noreply@openai.com' };
+  readonly askTool = 'request_user_input';
   models: ModelInfo[] = [];
   readonly capabilities: AgentCapabilities = { subagents: true, planMode: true, effort: true, fork: true, cost: false, planUsage: true };
   private server: CodexServer;
@@ -322,7 +338,7 @@ export class CodexBackend implements AgentBackend {
 
   async version(path?: string): Promise<string | null> {
     try {
-      const exe = findCodex(path || this.paths.cli());
+      const exe = resolveCodexExe(findCodex(path || this.paths.cli()));
       const out = isScript(exe) ? await run(process.execPath, [exe, '--version'], { timeout: 8000, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } }) : await run(exe, ['--version'], { timeout: 8000 });
       return out.trim().split(/\s+/).pop() || null;
     } catch { return null; }
@@ -526,6 +542,8 @@ class CodexHandle {
         model: this.model, cwd: this.o.cwd, approvalPolicy: approvalFor(this.mode), sandbox: this.mode === 'all' ? 'danger-full-access' : this.mode === 'plan' ? 'read-only' : 'workspace-write',
         developerInstructions: this.o.systemAppend,
         config: {
+          // Codex offers its question tool only in plan mode unless this is on; without it a question comes out as a plain message.
+          features: { default_mode_request_user_input: true },
           ...(this.o.env && Object.keys(this.o.env).length ? { shell_environment_policy: { inherit: 'all', set: this.o.env } } : {}),
           ...(this.o.mcpServers && Object.keys(this.o.mcpServers).length ? { mcp_servers: codexMcp(this.o.mcpServers) } : {}),
           // Codex counts threads, the session's own included, so N helpers is N + 1 (0 leaves only the session itself).

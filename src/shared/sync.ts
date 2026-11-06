@@ -22,7 +22,7 @@ export const defaultSyncWhat = (): SyncWhat => Object.fromEntries(SYNC_CATEGORIE
 export const snapshotRef = (sessionId: string) => `refs/helm/sync/${sessionId}`;
 /** Settings that describe this machine or hold something private, and so never travel. */
 export const LOCAL_SETTINGS = new Set([
-  'claudePath', 'codexPath', 'worktreeRoot', 'freeRoot', 'cloneRoot', 'terminalShell', 'terminalShellCustom', 'companionEnabled', 'companionUrl', 'companionControl',
+  'claudePath', 'codexPath', 'qwenPath', 'ollamaUrl', 'qwenContext', 'worktreeRoot', 'freeRoot', 'cloneRoot', 'terminalShell', 'terminalShellCustom', 'companionEnabled', 'companionUrl', 'companionControl',
   'p2pEnabled', 'p2pPort', 'p2pStun', 'p2pAddress', 'p2pPortMap', 'tray', 'autoUpdate', 'syncEnabled', 'syncWhat', 'startAtLogin', 'startMinimised', 'keepAwake',
   'openIn', 'uiScale', 'agentEnv', 'outbound'
 ]);

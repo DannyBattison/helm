@@ -18,6 +18,7 @@
 - [Starting a session](Starting-a-Session.md)
 - [Session conversation](Session-Conversation.md)
 - [Free agents](Free-Agents.md)
+- [Local models](Local-Models.md)
 - [Extra agents and subagents](Extra-Agents-and-Subagents.md)
 - [Artifacts](Artifacts.md)
 - [Automations](Automations.md)

@@ -66,6 +66,7 @@
     "highlight.js": "^11.12.0",
     "jsqr": "^1.4.0",
     "monaco-editor": "^0.57.0",
+    "npm": "^12.2.2",
     "qrcode-generator": "^2.0.4",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
@@ -87,7 +88,8 @@
     ],
     "asarUnpack": [
       "node_modules/@anthropic-ai/**",
-      "node_modules/@homebridge/**"
+      "node_modules/@homebridge/**",
+      "node_modules/npm/**"
     ],
     "win": {
       "icon": "desktop/build/icon.png",

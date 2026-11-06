@@ -1,0 +1,3 @@
+## 2026-11-06 · Free-model support targets hosted free tiers first, local models second
+The goal is letting people use helm without a subscription. One generic ACP agent with a configurable OpenAI-compatible endpoint covers hosted free tiers, a free-tier agent CLI and local Qwen alike, so build that once and ship presets. Try hosted free models first because they need no hardware; local Ollama is the privacy and offline option. Free-tier limits and terms were not verified; see `spike/qwen/README.md`.
+Why: user clarified the end goal. Refines `2026-11-06-qwen-for-local-llms-is-feasible-through-qwen-code-and-acp`.

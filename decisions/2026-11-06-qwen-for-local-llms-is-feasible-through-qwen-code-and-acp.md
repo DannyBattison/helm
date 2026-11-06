@@ -1,0 +1,3 @@
+## 2026-11-06 · Qwen on local LLMs is feasible through Qwen Code over ACP
+Run the `qwen` CLI (Qwen Code) against a local OpenAI-compatible server such as Ollama, and drive it through ACP with the generic `AcpBackend` already proposed for other agents. `spike/qwen/README.md` has the route, the settings it needs, the risks and a live-run gate. Nothing is registered and no code was added: neither Qwen Code nor Ollama is installed here, and whether its ACP mode honours the endpoint settings is unverified.
+Why: user asked for a proof of concept for Qwen on locally run models. Extends `2026-10-26-acp-is-viable-for-a-second-backend`; build the backend only after the live run passes.

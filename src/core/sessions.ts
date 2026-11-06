@@ -602,7 +602,8 @@ export class SessionManager {
     const art = `To hand the user a file (a generated image, chart, report, export), write it to ${artifacts} (not into the worktree), then link it in your reply as [label](artifact:file.ext), using a plain file name without spaces. For an image use ![description](artifact:file.png) and helm shows it in the chat; any other file becomes a download button. These files are temporary and are deleted with the session.`;
     // Claude has a dedicated question tool and helm limits its subagents; another agent is simply told to ask, and manages its own helpers.
     const be = this.backendOf(s);
-    const ask = be.id === 'claude' ? 'ask with the AskUserQuestion tool' : 'ask the user';
+    const ask = be.askTool ? `ask with the ${be.askTool} tool` : 'ask the user';
+    const askRule = be.askTool ? ` Use that tool for every question or choice you put to the user, including when they ask you to quiz or poll them ("ask me a question"): give it options where there are any, and never write a question or lettered options as a plain message.` : '';
     const subs = be.capabilities.subagents;
     if (s.free) {
       return [
@@ -610,7 +611,7 @@ export class SessionManager {
         s.free.managed
           ? 'It is a folder made for this task alone. git is set up in it so the user can see what you changed; you may commit, but you do not have to. There is no remote, so do not push or open pull requests.'
           : 'It is one of the user\'s own folders, and you are working in it directly with nothing to undo your changes, so be careful with anything destructive. Do not push or open pull requests unless asked.',
-        `Stay in this directory unless the user asks you to work elsewhere. If you need a decision from the user, ${ask} instead of guessing.`,
+        `Stay in this directory unless the user asks you to work elsewhere. If you need a decision from the user, ${ask} instead of guessing.${askRule}`,
         art,
         subs ? `Subagents: at most ${this.sessionLimit(s)} may run at once in this session. Start independent work in parallel only within that limit. ${HAND_BACK}` : ''
       ].filter(Boolean).join('\n');
@@ -628,7 +629,7 @@ export class SessionManager {
       st.autoPush && !s.free
         ? `Do not push and do not open pull requests. helm pushes your branch to GitHub ${st.pushWhen === 'ready' ? 'when you finish' : 'after each commit'}, and the user opens the pull request from helm.`
         : 'Do not push and do not open pull requests; the user does that from helm after reviewing your changes.',
-      `If you need a decision from the user, ${ask} instead of guessing.`,
+      `If you need a decision from the user, ${ask} instead of guessing.${askRule}`,
       art,
       subs ? `Subagents: at most ${this.sessionLimit(s)} may run at once in this session and ${this.repoLimit(s)} across the repository. Start independent work in parallel only within those limits. ${HAND_BACK}` : '',
       st.runTests ? 'Before you finish, run the project\'s tests (from package.json, go.mod, Makefile or equivalent) when they exist, and state the result.' : '',
