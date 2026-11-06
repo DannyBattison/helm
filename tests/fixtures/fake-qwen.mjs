@@ -18,11 +18,13 @@ async function prompt(id, p) {
     update(sid, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Hello ' } });
     update(sid, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'there.' } });
     update(sid, { sessionUpdate: 'usage_update', used: 1234, size: 32768 });
+    update(sid, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: '' }, _meta: { usage: { inputTokens: 1234, outputTokens: 12, cachedReadTokens: 234, thoughtTokens: 3 } } });
   } else if (text.includes('show env')) {
-    update(sid, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: `${process.env.OPENAI_MODEL} ${process.env.OPENAI_BASE_URL} ${process.env.OPENAI_API_KEY} ${JSON.stringify(calls)} ${text.includes('be nice') ? 'led' : 'bare'}` } });
+    update(sid, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: `${process.env.OPENAI_MODEL} ${process.env.OPENAI_BASE_URL} ${process.env.OPENAI_API_KEY} ${JSON.stringify(calls)} ${text.includes('be nice') ? 'led' : 'bare'} ${process.env.QWEN_CODE_SYSTEM_SETTINGS_PATH || 'nosettings'}` } });
   } else if (text.includes('run ls')) {
-    update(sid, { sessionUpdate: 'tool_call', toolCallId: 't1', title: 'ls -l', kind: 'execute', status: 'pending', rawInput: { command: 'ls -l' } });
-    const r = await ask('session/request_permission', { sessionId: sid, toolCall: { toolCallId: 't1', title: 'ls -l', kind: 'execute', rawInput: { command: 'ls -l' } }, options: [{ optionId: 'always', name: 'Always', kind: 'allow_always' }, { optionId: 'yes', name: 'Yes', kind: 'allow_once' }, { optionId: 'no', name: 'No', kind: 'reject_once' }] });
+    // As the real one does: announced with no arguments, which arrive in an update.
+    update(sid, { sessionUpdate: 'tool_call', toolCallId: 't1', title: 'Shell', kind: 'execute', status: 'pending', rawInput: {}, content: [], locations: [], _meta: { toolName: 'run_shell_command' } });
+    const r = await ask('session/request_permission', { sessionId: sid, toolCall: { toolCallId: 't1', title: 'Shell: ls -l', kind: 'execute', rawInput: { command: 'ls -l' } }, options: [{ optionId: 'always', name: 'Always', kind: 'allow_always' }, { optionId: 'yes', name: 'Yes', kind: 'allow_once' }, { optionId: 'no', name: 'No', kind: 'reject_once' }] });
     const o = r.outcome;
     if (o.outcome === 'selected' && o.optionId === 'yes') {
       update(sid, { sessionUpdate: 'tool_call_update', toolCallId: 't1', status: 'completed', content: [{ type: 'content', content: { type: 'text', text: 'a.txt' } }] });
@@ -31,6 +33,13 @@ async function prompt(id, p) {
       update(sid, { sessionUpdate: 'tool_call_update', toolCallId: 't1', status: 'failed', content: [] });
       update(sid, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: o.outcome === 'cancelled' ? 'Cancelled.' : 'Declined.' } });
     }
+  } else if (text.includes('bridge fail')) {
+    update(sid, { sessionUpdate: 'tool_call', toolCallId: 'b1', title: 'ToolCall', kind: 'other', status: 'pending', rawInput: {}, _meta: { toolName: 'tool_call' } });
+    update(sid, { sessionUpdate: 'tool_call_update', toolCallId: 'b1', status: 'failed', content: [{ type: 'content', content: { type: 'text', text: "[tool_call bridge refused] params must have required property 'name'" } }] });
+  } else if (text.includes('bridge ok')) {
+    update(sid, { sessionUpdate: 'tool_call', toolCallId: 'b2', title: 'ToolCall', kind: 'other', status: 'pending', rawInput: {}, _meta: { toolName: 'tool_call' } });
+    update(sid, { sessionUpdate: 'tool_call_update', toolCallId: 'b2', status: 'in_progress', rawInput: { name: 'web_fetch', arguments: { url: 'https://example.com', prompt: 'logo' } } });
+    update(sid, { sessionUpdate: 'tool_call_update', toolCallId: 'b2', status: 'completed', content: [{ type: 'content', content: { type: 'text', text: 'page' } }] });
   } else if (text.includes('slow')) {
     for (let i = 0; i < 100 && !cancelled.has(sid); i++) await sleep(20);
     return send({ id, result: { stopReason: 'cancelled' } });

@@ -204,7 +204,7 @@ const registry = new BackendRegistry([
     cli: () => store.data.settings.claudePath || host.cliClaudePath()
   }),
   new CodexBackend({ cli: () => store.data.settings.codexPath || undefined }),
-  new QwenBackend({ cli: () => store.data.settings.qwenPath || undefined, url: () => store.data.settings.ollamaUrl || undefined, context: () => store.data.settings.qwenContext })
+  new QwenBackend({ dataDir: () => host.dataDir, cli: () => store.data.settings.qwenPath || undefined, url: () => store.data.settings.ollamaUrl || undefined, context: () => store.data.settings.qwenContext })
 ]);
 const qwen = registry.all().find((b) => b.id === 'qwen') as QwenBackend;
 const installing = new Set<string>();

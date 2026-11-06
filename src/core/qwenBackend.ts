@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { homedir, totalmem } from 'node:os';
 import { join } from 'node:path';
 import type { AgentBackend, AgentBlock, AgentCapabilities, AgentEvent, AgentHandle, AgentStartOptions, ReviewOutcome, ReviewRequest, ToolDecision } from './backend';
@@ -22,6 +23,20 @@ export interface QwenPaths {
   url(): string | undefined;
   /** Context window to give models, in tokens. */
   context(): number;
+  /** Where helm keeps its files, for a settings file of its own for Qwen Code. */
+  dataDir?(): string | undefined;
+}
+
+/**
+ * Qwen Code keeps some tools "on demand": the model has to find one with `tool_search` and call it through a `tool_call` wrapper.
+ * Small models cannot do that (they call the wrapper with nothing), so web access is offered directly. This goes in a settings file
+ * of helm's own, handed over with an environment variable, so the user's own Qwen settings are left alone.
+ */
+export const QWEN_SETTINGS = { tools: { visible: ['web_fetch', 'web_search', 'todo_write'] } };
+async function settingsFile(dir: string | undefined): Promise<string | undefined> {
+  if (!dir) return undefined;
+  const f = join(dir, 'qwen-settings.json');
+  try { await mkdir(dir, { recursive: true }); await writeFile(f, JSON.stringify(QWEN_SETTINGS, null, 2)); return f; } catch { return undefined; }
 }
 
 export const DEFAULT_OLLAMA = 'http://localhost:11434';
@@ -148,22 +163,34 @@ export function acpMcp(servers: Record<string, Json>): Json[] {
 
 const textOf = (content: Json[] | undefined): string => (content || []).map((c) => (c?.type === 'content' && c.content?.type === 'text' ? c.content.text : c?.type === 'diff' ? `${c.path}` : '')).filter(Boolean).join('\n');
 
+/** Qwen Code's tools by name, where the kind ACP gives is too coarse. */
+const BY_NAME: Record<string, string> = { web_fetch: 'WebFetch', web_search: 'WebSearch', todo_write: 'TodoWrite', glob: 'Glob', grep_search: 'Grep' };
+
 /** A tool call as Claude Code's vocabulary names it, which is what the rest of helm understands. */
 export function toolUseOf(call: Json): { name: string; input: Record<string, any> } {
   const raw: Json = call.rawInput || {};
+  const own: string | undefined = call._meta?.toolName;
+  // The wrapper for on-demand tools names the real one in its arguments.
+  if (own === 'tool_call' && typeof raw.name === 'string') return toolUseOf({ ...call, _meta: { ...call._meta, toolName: raw.name }, rawInput: raw.arguments ?? raw.params ?? {}, kind: undefined, title: raw.name });
   const loc: string | undefined = call.locations?.[0]?.path ?? raw.file_path ?? raw.path ?? raw.absolute_path;
   const diff = (call.content || []).find((c: Json) => c?.type === 'diff');
+  if (own && BY_NAME[own]) {
+    if (own === 'web_fetch') return { name: 'WebFetch', input: { url: raw.url ?? '', prompt: raw.prompt ?? '' } };
+    if (own === 'web_search') return { name: 'WebSearch', input: { query: raw.query ?? '' } };
+    if (own === 'todo_write') return { name: 'TodoWrite', input: { todos: raw.todos ?? [] } };
+    return { name: BY_NAME[own], input: { pattern: raw.pattern ?? raw.query ?? '', ...(loc ? { path: loc } : {}) } };
+  }
   switch (call.kind) {
-    case 'execute': return { name: 'Bash', input: { command: raw.command ?? call.title ?? '' } };
+    case 'execute': return { name: 'Bash', input: { command: raw.command ?? '' } };
     case 'edit':
       if (diff) return diff.oldText == null || diff.oldText === '' ? { name: 'Write', input: { file_path: diff.path, content: diff.newText ?? '' } } : { name: 'Edit', input: { file_path: diff.path, old_string: diff.oldText, new_string: diff.newText ?? '' } };
       return { name: raw.content != null ? 'Write' : 'Edit', input: { file_path: loc ?? '', ...(raw.content != null ? { content: raw.content } : { old_string: raw.old_string ?? '', new_string: raw.new_string ?? '' }) } };
     case 'delete': return { name: 'Bash', input: { command: `rm ${loc ?? ''}` } };
     case 'move': return { name: 'Bash', input: { command: `mv ${raw.source ?? loc ?? ''} ${raw.destination ?? ''}`.trim() } };
     case 'read': return { name: 'Read', input: { file_path: loc ?? '' } };
-    case 'search': return { name: raw.glob || /glob/i.test(call.title || '') ? 'Glob' : 'Grep', input: { pattern: raw.pattern ?? raw.query ?? raw.glob ?? call.title ?? '', ...(loc ? { path: loc } : {}) } };
-    case 'fetch': return { name: 'WebFetch', input: { url: raw.url ?? call.title ?? '' } };
-    default: return { name: String(call.title || 'Tool'), input: raw };
+    case 'search': return { name: raw.glob || /glob/i.test(call.title || '') ? 'Glob' : 'Grep', input: { pattern: raw.pattern ?? raw.query ?? raw.glob ?? '', ...(loc ? { path: loc } : {}) } };
+    case 'fetch': return { name: 'WebFetch', input: { url: raw.url ?? '', prompt: raw.prompt ?? '' } };
+    default: return { name: String(call.title || own || 'Tool'), input: raw };
   }
 }
 
@@ -338,7 +365,6 @@ class QwenHandle {
   private pumping = false;
   private turn = false;
   private text = '';
-  private usage: { used: number; size: number } | null = null;
   private loadSession = false;
 
   constructor(private paths: QwenPaths, private o: AgentStartOptions, private prepare: (model: string) => Promise<string>) {
@@ -388,7 +414,8 @@ class QwenHandle {
     const exe = findExe('qwen', this.paths.cli());
     const url = base(this.paths.url()) + '/v1';
     const args = ['--acp', ...(this.o.extraDirs || []).flatMap((d) => ['--include-directories', d])];
-    const conn = new AcpConnection(exe, args, { ...process.env, ...this.o.env, OPENAI_BASE_URL: url, OPENAI_API_KEY: process.env.OPENAI_API_KEY || 'ollama', OPENAI_MODEL: model }, this.o.cwd);
+    const settings = await settingsFile(this.paths.dataDir?.());
+    const conn = new AcpConnection(exe, args, { ...process.env, ...this.o.env, ...(settings ? { QWEN_CODE_SYSTEM_SETTINGS_PATH: settings } : {}), OPENAI_BASE_URL: url, OPENAI_API_KEY: process.env.OPENAI_API_KEY || 'ollama', OPENAI_MODEL: model }, this.o.cwd);
     this.conn = conn;
     conn.onNotification = (m, p) => this.update(m, p);
     conn.onRequest = (m, p) => this.agentRequest(m, p);
@@ -426,10 +453,8 @@ class QwenHandle {
         const prompt: Json[] = [...m.images.map((i) => ({ type: 'image', mimeType: i.mediaType, data: i.data })), { type: 'text', text: lead + (m.text || 'See the attached image.') }];
         this.turn = true;
         this.text = '';
-        this.usage = null;
         const r = await this.conn!.call('session/prompt', { sessionId: this.sessionId, prompt });
         this.flush();
-        if (this.usage) this.push({ t: 'assistant', parentId: null, blocks: [], usage: { input: this.usage.used, output: 0, cacheWrite: 0, cacheRead: 0, contextWindow: this.usage.size || undefined } });
         this.turn = false;
         const stop = String(r?.stopReason || 'end_turn');
         this.push({ t: 'result', isError: failedStop(stop), text: failedStop(stop) ? `Qwen Code stopped: ${stop.replace(/_/g, ' ')}.` : '' });
@@ -444,38 +469,61 @@ class QwenHandle {
     if (t) this.push({ t: 'assistant', parentId: null, blocks: [{ type: 'text', text: t }] });
   }
 
-  private seen = new Set<string>();
+  /** Tool calls as Qwen has described them so far. It announces a call before it knows the arguments, so the card waits for them. */
+  private calls = new Map<string, Json>();
+  private shownCalls = new Set<string>();
+  private done = new Set<string>();
+  private window = 0;
+
+  private merge(u: Json) {
+    const had = this.calls.get(u.toolCallId) || {};
+    const next = { ...had };
+    for (const k of ['title', 'kind', 'content', 'locations', 'rawInput', '_meta', 'status']) if (u[k] !== undefined && !(k === 'content' && !u[k]?.length)) next[k] = k === '_meta' ? { ...(had._meta || {}), ...u._meta } : u[k];
+    this.calls.set(u.toolCallId, next);
+    return next;
+  }
+
+  private showCall(id: string) {
+    if (this.shownCalls.has(id)) return;
+    this.shownCalls.add(id);
+    this.flush();
+    const t = toolUseOf(this.calls.get(id) || {});
+    this.push({ t: 'assistant', parentId: null, blocks: [{ type: 'tool_use', id, name: t.name, input: t.input }] });
+  }
+
   private update(method: string, p: Json) {
     if (method !== 'session/update' || p?.sessionId !== this.sessionId) return;
     const u = p.update || {};
     switch (u.sessionUpdate) {
-      case 'agent_message_chunk': if (u.content?.type === 'text') this.text += u.content.text; break;
-      case 'tool_call': {
-        this.flush();
-        if (!this.seen.has(u.toolCallId)) {
-          this.seen.add(u.toolCallId);
-          const t = toolUseOf(u);
-          const block: AgentBlock = { type: 'tool_use', id: u.toolCallId, name: t.name, input: t.input };
-          this.push({ t: 'assistant', parentId: null, blocks: [block] });
-        }
-        this.finished(u);
+      case 'agent_message_chunk': {
+        if (u.content?.type === 'text') this.text += u.content.text;
+        // Each model call reports its own tokens as it ends.
+        const t = u._meta?.usage;
+        if (t) this.push({ t: 'assistant', parentId: null, blocks: [], usage: { input: Math.max(0, (t.inputTokens ?? 0) - (t.cachedReadTokens ?? 0)), output: (t.outputTokens ?? 0) + (t.thoughtTokens ?? 0), cacheWrite: 0, cacheRead: t.cachedReadTokens ?? 0, contextWindow: this.window || undefined } });
         break;
       }
-      case 'tool_call_update': this.finished(u); break;
-      case 'usage_update': if (typeof u.used === 'number') this.usage = { used: u.used, size: Number(u.size) || 0 }; break;
+      case 'tool_call':
+      case 'tool_call_update': {
+        const c = this.merge(u);
+        if (u.status === 'completed' || u.status === 'failed') { this.showCall(u.toolCallId); this.finished(u, c); }
+        else if (c.rawInput && Object.keys(c.rawInput).length) this.showCall(u.toolCallId);
+        break;
+      }
+      case 'usage_update': if (Number(u.size)) this.window = Number(u.size); break;
     }
   }
 
-  private done = new Set<string>();
-  private finished(u: Json) {
-    if ((u.status !== 'completed' && u.status !== 'failed') || this.done.has(u.toolCallId)) return;
+  private finished(u: Json, c: Json) {
+    if (this.done.has(u.toolCallId)) return;
     this.done.add(u.toolCallId);
-    this.push({ t: 'tool_results', results: [{ id: u.toolCallId, text: textOf(u.content) || (u.rawOutput != null ? (typeof u.rawOutput === 'string' ? u.rawOutput : JSON.stringify(u.rawOutput)) : ''), isError: u.status === 'failed' }] });
+    const text = textOf(u.content) || (u.rawOutput != null ? (typeof u.rawOutput === 'string' ? u.rawOutput : u.rawOutput.text ?? JSON.stringify(u.rawOutput)) : '');
+    this.push({ t: 'tool_results', results: [{ id: u.toolCallId, text, isError: (u.status ?? c.status) === 'failed' }] });
   }
 
   private async agentRequest(method: string, p: Json): Promise<Json> {
     if (method !== 'session/request_permission') throw Object.assign(new Error('helm does not handle ' + method), { code: -32601 });
-    const call: Json = p.toolCall || {};
+    const call: Json = this.merge(p.toolCall || {});
+    if (p.toolCall?.toolCallId) this.showCall(p.toolCall.toolCallId);
     const t = toolUseOf(call);
     const d: ToolDecision = await this.o.canUseTool(t.name, t.input, { description: call.title });
     const options: Json[] = p.options || [];

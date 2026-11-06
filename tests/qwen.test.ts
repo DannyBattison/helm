@@ -1,9 +1,11 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { resolve } from 'node:path';
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { AgentEvent, ToolDecision } from '../src/core/backend';
-import { acpMcp, localModels, modeFor, pullModel, QwenBackend, runtimeState, toolUseOf, withContext } from '../src/core/qwenBackend';
+import { acpMcp, localModels, modeFor, pullModel, QWEN_SETTINGS, QwenBackend, runtimeState, toolUseOf, withContext } from '../src/core/qwenBackend';
 
 const fake = resolve(__dirname, 'fixtures/fake-qwen.mjs');
 
@@ -34,7 +36,8 @@ beforeAll(async () => {
 });
 afterAll(() => { server.close(); });
 
-const backend = () => new QwenBackend({ cli: () => fake, url: () => url, context: () => 32768 });
+const data = mkdtempSync(join(tmpdir(), 'helm-qwen-'));
+const backend = () => new QwenBackend({ cli: () => fake, url: () => url, context: () => 32768, dataDir: () => data });
 const take = async (it: AsyncIterator<AgentEvent>, until: (e: AgentEvent) => boolean, ms = 6000) => {
   const out: AgentEvent[] = [];
   const t0 = Date.now();
@@ -59,8 +62,12 @@ describe('ACP mapping', () => {
     expect(toolUseOf({ kind: 'edit', content: [{ type: 'diff', path: '/a', oldText: 'x', newText: 'y' }] })).toEqual({ name: 'Edit', input: { file_path: '/a', old_string: 'x', new_string: 'y' } });
     expect(toolUseOf({ kind: 'edit', content: [{ type: 'diff', path: '/a', oldText: null, newText: 'new' }] })).toEqual({ name: 'Write', input: { file_path: '/a', content: 'new' } });
     expect(toolUseOf({ kind: 'search', rawInput: { pattern: 'foo' } }).name).toBe('Grep');
-    expect(toolUseOf({ kind: 'fetch', rawInput: { url: 'u' } })).toEqual({ name: 'WebFetch', input: { url: 'u' } });
+    expect(toolUseOf({ kind: 'fetch', rawInput: { url: 'u' } })).toEqual({ name: 'WebFetch', input: { url: 'u', prompt: '' } });
     expect(toolUseOf({ kind: 'other', title: 'Thing', rawInput: { a: 1 } })).toEqual({ name: 'Thing', input: { a: 1 } });
+    // The wrapper for on-demand tools is shown as the tool it calls.
+    expect(toolUseOf({ kind: 'other', title: 'ToolCall', _meta: { toolName: 'tool_call' }, rawInput: { name: 'web_fetch', arguments: { url: 'u', prompt: 'p' } } })).toEqual({ name: 'WebFetch', input: { url: 'u', prompt: 'p' } });
+    expect(toolUseOf({ kind: 'fetch', _meta: { toolName: 'web_fetch' }, rawInput: { url: 'u' } }).name).toBe('WebFetch');
+    expect(toolUseOf({ kind: 'other', _meta: { toolName: 'todo_write' }, rawInput: { todos: [1] } })).toEqual({ name: 'TodoWrite', input: { todos: [1] } });
   });
   it('names permission modes the way Qwen Code does', () => {
     expect(['ask', 'edits', 'plan', 'all'].map((m) => modeFor(m as any))).toEqual(['default', 'auto-edit', 'plan', 'yolo']);
@@ -115,7 +122,8 @@ describe('Qwen Code through a stand-in ACP agent', () => {
     const ev = await take(h.events[Symbol.asyncIterator](), isResult);
     expect(ev[0]).toMatchObject({ t: 'init', model: 'qwen3-coder:30b' });
     expect(ev.find((e) => e.t === 'assistant' && e.blocks.length)).toMatchObject({ blocks: [{ type: 'text', text: 'Hello there.' }] });
-    expect(ev.find((e) => e.t === 'assistant' && e.usage)).toMatchObject({ usage: { input: 1234, contextWindow: 32768 } });
+    // Each model call reports its own tokens as it goes, with the window from the usage update before it.
+    expect(ev.find((e) => e.t === 'assistant' && e.usage)).toMatchObject({ usage: { input: 1000, output: 15, cacheRead: 234, contextWindow: 32768 } });
     expect(ev.at(-1)).toEqual({ t: 'result', isError: false, text: '' });
     h.close();
   });
@@ -128,6 +136,11 @@ describe('Qwen Code through a stand-in ACP agent', () => {
     const text = (first.find((e) => e.t === 'assistant' && e.blocks.length) as any).blocks[0].text as string;
     expect(text).toContain(`qwen3-coder:30b-helm32k ${url}/v1 ollama`);
     expect(text).toContain('led');
+    // Web tools are offered directly, through a settings file of helm's own.
+    const file = text.split(' ').pop()!;
+    expect(file).toBe(join(data, 'qwen-settings.json'));
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual(QWEN_SETTINGS);
+    expect(QWEN_SETTINGS.tools.visible).toContain('web_fetch');
     // It chose the OpenAI-compatible method and the stand-in saw the mode set.
     expect(text).toContain('authenticate');
     expect(text).toContain('session/set_mode');
@@ -146,6 +159,19 @@ describe('Qwen Code through a stand-in ACP agent', () => {
     expect(ev.find((e) => e.t === 'assistant' && e.blocks[0]?.type === 'tool_use')).toMatchObject({ blocks: [{ id: 't1', name: 'Bash', input: { command: 'ls -l' } }] });
     expect(ev.find((e) => e.t === 'tool_results')).toMatchObject({ results: [{ id: 't1', text: 'a.txt', isError: false }] });
     expect(ev.at(-1)).toMatchObject({ isError: false });
+    h.close();
+  });
+
+  it('waits for a tool\'s arguments before showing it, and shows what the model really called', async () => {
+    const h = backend().start(opts());
+    const it = h.events[Symbol.asyncIterator]();
+    h.send('bridge ok');
+    const ev = await take(it, isResult);
+    const uses = ev.flatMap((e) => (e.t === 'assistant' ? e.blocks : [])).filter((b) => b.type === 'tool_use');
+    expect(uses).toEqual([{ type: 'tool_use', id: 'b2', name: 'WebFetch', input: { url: 'https://example.com', prompt: 'logo' } }]);
+    h.send('bridge fail');
+    const bad = await take(it, isResult);
+    expect(bad.find((e) => e.t === 'tool_results')).toMatchObject({ results: [{ id: 'b1', isError: true, text: expect.stringContaining('bridge refused') }] });
     h.close();
   });
 
