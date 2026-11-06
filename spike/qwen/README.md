@@ -1,6 +1,6 @@
 # Qwen on locally run models
 
-Assessed 2026-11-06. Verdict: feasible, with no new transport. Not run: neither `qwen` nor `ollama` is installed here, so this is documentation-backed, not a live connection.
+Assessed 2026-11-06, and since built as `src/core/qwenBackend.ts` (see `decisions/2026-11-06-qwen-code-runs-local-models-as-a-third-backend.md`). Verdict: feasible, with no new transport. The backend passes tests against a stand-in; the gate below is still open. Not run: neither `qwen` nor `ollama` is installed here, so this is documentation-backed, not a live connection.
 
 ## Route
 
