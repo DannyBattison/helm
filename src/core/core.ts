@@ -10,6 +10,7 @@ import { defaultAgent, normalizeEnabled } from '../shared/agents';
 import { ClaudeBackend } from './claudeBackend';
 import { CodexBackend } from './codexBackend';
 import { QwenBackend } from './qwenBackend';
+import { installNpmTool, installOllama, isManaged, NPM_TOOLS, ollamaCommand } from './installer';
 import * as G from './git';
 import * as GH from './github';
 import { Companion } from './companion';
@@ -141,7 +142,8 @@ async function refreshBackends() {
     // Only once signed in: a model list is no use before that, and asking starts the agent's process.
     if (!b.auth || logins[b.id]?.loggedIn) await b.refresh?.();
   }));
-  const next = await registry.info(logins, store.data.settings.enabledAgents);
+  const st = store.data.settings;
+  const next = (await registry.info(logins, st.enabledAgents)).map((b) => (b.id === 'codex' || b.id === 'qwen' ? { ...b, managed: isManaged(host.dataDir, b.id === 'codex' ? st.codexPath : st.qwenPath) } : b));
   if (JSON.stringify(next) !== JSON.stringify(backends)) { backends = next; emitState(); }
 }
 /** For a sign-in that finishes in the browser with no code to paste back: look until it is done. */
@@ -205,6 +207,7 @@ const registry = new BackendRegistry([
   new QwenBackend({ cli: () => store.data.settings.qwenPath || undefined, url: () => store.data.settings.ollamaUrl || undefined, context: () => store.data.settings.qwenContext })
 ]);
 const qwen = registry.all().find((b) => b.id === 'qwen') as QwenBackend;
+const installing = new Set<string>();
 const sessions = new SessionManager(store, {
   emitState,
   emitTranscript: (sessionId, index, event) => { send('transcript', { sessionId, index, event }); companion.onTranscript(sessionId, index, event); },
@@ -436,6 +439,33 @@ export const api: HelmApi = {
     return l;
   },
   async refreshAgentLogins() { await refreshBackends(); },
+  async agentInstall(backend) {
+    const tool = NPM_TOOLS[String(backend)];
+    const npmCli = host.npmCli?.();
+    if (!tool) throw new Error(`${backend} cannot be installed from here.`);
+    if (!npmCli) throw new Error('Installing agents is only available in the desktop app.');
+    if (installing.has(tool.id)) throw new Error(`${tool.label} is already being installed.`);
+    installing.add(tool.id);
+    try {
+      const entry = await installNpmTool({ dataDir: host.dataDir, npmCli, tool });
+      store.data.settings[tool.id === 'codex' ? 'codexPath' : 'qwenPath'] = entry;
+      store.save();
+      await refreshBackends();
+      return registry.get(tool.id).version();
+    } finally { installing.delete(tool.id); }
+  },
+  async ollamaInstall() {
+    if (!host.npmCli) throw new Error('Installing Ollama is only available in the desktop app.');
+    if (installing.has('ollama')) throw new Error('Ollama is already being installed.');
+    installing.add('ollama');
+    try {
+      await installOllama();
+      // A fresh install may still be starting; the model list fills in on the next look if it is not up yet.
+      await qwen.startRuntime().catch(() => undefined);
+      await refreshBackends();
+    } finally { installing.delete('ollama'); }
+  },
+  async ollamaInstallCommand() { return ollamaCommand(); },
   async localRuntime() { const r = await qwen.runtime(); await refreshBackends(); return r; },
   async localRuntimeStart() { await qwen.startRuntime(); await refreshBackends(); return qwen.runtime(); },
   async localModelPull(name) { qwen.pull(String(name)); },

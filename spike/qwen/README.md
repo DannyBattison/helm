@@ -38,3 +38,7 @@ What "drop in" needs from helm:
 Open question to settle in the live run: which Qwen model sizes are good enough at tool calling on ordinary laptops. That decides whether this is a real alternative or a demo.
 
 Gate: install Ollama and a Qwen coder model, run `qwen` against it normally and in ACP mode, and confirm a tool-calling turn with approval and a cancel.
+
+## Checked against a real Qwen Code (2026-11-06)
+
+Installed `@qwen-code/qwen-code` 0.26.8 with helm's bundled npm and ran its ACP mode through `initialize`, `authenticate` and `session/new` (no model server was available, so no prompt was sent). Confirmed: the flag is `--acp`; the only auth method is `openai`, which reads `OPENAI_API_KEY` (so `OPENAI_BASE_URL` and `OPENAI_MODEL` are the right route); `loadSession` is supported; the mode ids are `plan`, `default`, `auto-edit`, `auto` and `yolo`; images and MCP over stdio, HTTP and SSE are accepted. Still unverified: a prompt turn with real tool calls and approvals, and Ollama's `/api/create` parameters.

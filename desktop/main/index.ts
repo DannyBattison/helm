@@ -30,6 +30,8 @@ const host: Host = {
   // The SDK resolves its bundled binary inside app.asar, where it cannot be executed.
   sdkClaudePath: () => (app.isPackaged && existsSync(bundledClaude()) ? bundledClaude() : undefined),
   cliClaudePath: () => (existsSync(bundledClaude()) ? bundledClaude() : undefined),
+  // Run by Electron's own Node; unpacked from the asar so it can be started as a script.
+  npmCli: () => join(app.isPackaged ? join(process.resourcesPath, 'app.asar.unpacked') : app.getAppPath(), 'node_modules', 'npm', 'bin', 'npm-cli.js'),
   setBadge(count) { try { app.setBadgeCount(count); } catch { /* unsupported */ } },
   setTheme(t) {
     nativeTheme.themeSource = t;

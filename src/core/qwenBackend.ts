@@ -34,14 +34,17 @@ export const RECOMMENDED: RecommendedModel[] = [
   { name: 'qwen3:8b', label: 'Qwen3 8B', sizeGb: 5.2, minRamGb: 8, note: 'For small machines. Expect it to struggle with long tasks.' }
 ];
 
-/** Where an executable is: an app started from a desktop icon does not see the PATH a terminal has. */
+/**
+ * Where an executable is: an app started from a desktop icon does not see the PATH a terminal has, and a program installed since helm
+ * started is not on the PATH helm started with, so look where the usual installers put things as well.
+ */
 export function findExe(name: string, configured?: string): string {
   if (configured) return configured;
   const win = process.platform === 'win32';
-  const file = win ? name + '.cmd' : name;
-  const dirs = [...(process.env.PATH || '').split(win ? ';' : ':'), '/opt/homebrew/bin', '/usr/local/bin', join(homedir(), '.local/bin'), join(homedir(), '.npm-global/bin'), join(homedir(), '.volta/bin'), join(homedir(), '.bun/bin'), win ? join(process.env.APPDATA || '', 'npm') : ''].filter(Boolean);
-  for (const d of dirs) { const f = join(d, file); if (existsSync(f)) return f; }
-  return file;
+  const names = win ? [name + '.exe', name + '.cmd'] : [name];
+  const dirs = [...(process.env.PATH || '').split(win ? ';' : ':'), '/opt/homebrew/bin', '/usr/local/bin', '/Applications/Ollama.app/Contents/Resources', join(homedir(), '.local/bin'), join(homedir(), '.npm-global/bin'), join(homedir(), '.volta/bin'), join(homedir(), '.bun/bin'), win ? join(process.env.APPDATA || '', 'npm') : '', win ? join(process.env.LOCALAPPDATA || '', 'Programs', 'Ollama') : ''].filter(Boolean);
+  for (const d of dirs) for (const n of names) { const f = join(d, n); if (existsSync(f)) return f; }
+  return names[names.length - 1];
 }
 const isScript = (exe: string) => /\.[cm]?js$/i.test(exe);
 const launch = (exe: string, args: string[], env: NodeJS.ProcessEnv, opts: { detached?: boolean; cwd?: string } = {}): ChildProcess =>

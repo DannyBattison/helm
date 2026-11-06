@@ -1,7 +1,7 @@
 import React from 'react';
 import type { BackendInfo, LocalRuntime, Settings as SettingsT } from '@shared/types';
 import { api } from '../api';
-import { Badge, Button, Meter } from '../ui';
+import { Badge, Button, Dialog, Meter } from '../ui';
 import { toast, useApp } from '../store';
 
 const set = (patch: Partial<SettingsT>) => void api.updateSettings(patch);
@@ -12,6 +12,8 @@ export function LocalModels({ b, row: SettingRow, field: Field }: { b: BackendIn
   const st = app.settings;
   const [rt, setRt] = React.useState<LocalRuntime | null>(null);
   const [busy, setBusy] = React.useState('');
+  const [confirm, setConfirm] = React.useState<string | null>(null);
+  const hosted = !!window.helmBridge.hosted;
   const refresh = React.useCallback(() => api.localRuntime().then(setRt).catch(() => undefined), []);
   // Downloads take minutes: look often while one is running, and now and then otherwise.
   const pulling = !!rt?.pulls.some((p) => !p.error);
@@ -27,8 +29,11 @@ export function LocalModels({ b, row: SettingRow, field: Field }: { b: BackendIn
       <SettingRow title="Model server" desc={!rt ? 'Checking…' : rt.state === 'running' ? `Ollama is running at ${rt.url}.` : rt.state === 'stopped' ? 'Ollama is installed but not running.' : 'Ollama was not found. Install it from ollama.com, then come back here. Any server with an OpenAI-compatible API works if you set its address below.'}>
         {rt?.state === 'running' ? <Badge tone="ready" dot>running</Badge> : null}
         {rt?.state === 'stopped' ? <Button size="sm" variant="secondary" loading={busy === 'start'} onClick={() => act('start', () => api.localRuntimeStart())}>Start</Button> : null}
-        {rt?.state === 'missing' ? <Button size="sm" variant="secondary" iconRight="arrow-square-out" onClick={() => api.openExternal('https://ollama.com/download')}>Get Ollama</Button> : null}
+        {rt?.state === 'missing' && !hosted ? <Button size="sm" variant="secondary" loading={busy === 'install'} onClick={() => api.ollamaInstallCommand().then(setConfirm)}>Install Ollama</Button> : null}
+        {rt?.state === 'missing' ? <Button size="sm" variant="ghost" iconRight="arrow-square-out" onClick={() => api.openExternal('https://ollama.com/download')}>ollama.com</Button> : null}
       </SettingRow>
+      <Dialog open={confirm !== null} width={460} title="Install Ollama?" description={<>Helm will download and run Ollama's own installer from ollama.com on this computer:<pre className="selectable" style={{ margin: '8px 0', padding: 8, borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', font: '400 12px/1.5 var(--font-mono)', whiteSpace: 'pre-wrap' }}>{confirm}</pre>It installs for this user on Windows, into Applications on a Mac, and as a system service on Linux, where it needs administrator rights.</>} onClose={() => setConfirm(null)}
+        footer={<><Button variant="ghost" onClick={() => setConfirm(null)}>Cancel</Button><Button variant="primary" onClick={() => { setConfirm(null); void act('install', () => api.ollamaInstall()); }}>Install</Button></>} />
       <SettingRow title="Server address" desc="Leave empty for Ollama on this computer.">
         <Field value={st.ollamaUrl} onCommit={(v: string) => set({ ollamaUrl: v.trim() })} placeholder="http://localhost:11434" style={{ width: 260 }} />
       </SettingRow>

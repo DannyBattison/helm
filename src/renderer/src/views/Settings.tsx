@@ -557,6 +557,14 @@ function AgentAccount({ b, heading = true }: { b: import('@shared/types').Backen
   const st = app.settings;
   const [signing, setSigning] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
+  const [installing, setInstalling] = React.useState(false);
+  const canInstall = !window.helmBridge.hosted && (b.id === 'codex' || b.id === 'qwen') && (!b.installed || b.managed);
+  const install = async () => {
+    setInstalling(true);
+    try { const v = await api.agentInstall(b.id); toast({ tone: 'ready', title: `${b.label} ${b.managed ? 'updated' : 'installed'}`, description: v ? `Version ${v}.` : undefined }); }
+    catch (e: any) { toast({ tone: 'error', title: `Could not install ${b.label}`, description: String(e?.message || e) }); }
+    finally { setInstalling(false); }
+  };
   const l = b.login;
   const fromEnv = !!l?.loggedIn && /key|token/.test(l.method);
   const pathKey = b.id === 'claude' ? 'claudePath' : b.id === 'codex' ? 'codexPath' : b.id === 'qwen' ? 'qwenPath' : '';
@@ -570,6 +578,7 @@ function AgentAccount({ b, heading = true }: { b: import('@shared/types').Backen
         <SettingRow title="Command-line tool" desc={(st as any)[pathKey] ? 'Custom path' : b.id === 'claude' ? 'Uses the Claude Code bundled with helm unless a path is set.' : `Uses \`${b.id}\` from the PATH unless a path is set.`}>
           <Field value={(st as any)[pathKey]} onCommit={(v: string) => set({ [pathKey]: v.trim() } as any)} placeholder={`Path to ${b.id} (optional)`} style={{ width: 260 }} />
           {b.version ? <Badge tone="ready" dot>{b.version}</Badge> : b.installed ? <Badge>bundled</Badge> : <Badge tone="error">not found</Badge>}
+          {canInstall ? <Button size="sm" variant="secondary" loading={installing} onClick={install}>{b.installed ? 'Update' : 'Install'}</Button> : null}
         </SettingRow>
       ) : null}
       {b.canSignIn ? (

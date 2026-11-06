@@ -110,6 +110,8 @@ export interface BackendInfo {
   login?: AgentLogin;
   /** Signed in (or has no account) and installed. */
   configured: boolean;
+  /** Its command-line tool is one helm installed itself, so helm can update it. */
+  managed?: boolean;
   /** Why it cannot be used yet, for an agent that needs more than a sign-in (a model downloaded, say). */
   setup?: string;
   /** Turned on in Settings → Agents. */
@@ -1367,6 +1369,12 @@ export interface HelmApi {
   agentLogout(backend: string): Promise<AgentLogin>;
   /** Checks again who each agent is signed in as. */
   refreshAgentLogins(): Promise<void>;
+  /** Installs an agent's command-line tool (codex or qwen) with helm's own npm, or updates it, and points the setting at it. Resolves to its version. Desktop only. */
+  agentInstall(backend: string): Promise<string | null>;
+  /** Installs Ollama with its own installer. Desktop only; rejects with what to do when it cannot. */
+  ollamaInstall(): Promise<void>;
+  /** The command Ollama's installer runs on this system, to show before it does. */
+  ollamaInstallCommand(): Promise<string>;
   /** The local model server (Ollama) and what it holds. */
   localRuntime(): Promise<LocalRuntime>;
   localRuntimeStart(): Promise<LocalRuntime>;
