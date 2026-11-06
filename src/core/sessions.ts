@@ -1068,8 +1068,10 @@ export class SessionManager {
   async extraAhead(x: ExtraRepo): Promise<number> {
     return +(await G.git(x.worktree, 'rev-list', '--count', `${x.base}..HEAD`).catch(() => '0')).trim() || 0;
   }
-  autoPush(s: Session): Promise<void> {
+  /** Until Claude Code has named the conversation the branch still carries the prompt's name, and a pushed branch can no longer be renamed, so pushes wait for the title (`final`: the turn ended, push anyway). */
+  autoPush(s: Session, final = false): Promise<void> {
     if (s.free || !s.branch || s.worktreeGone) return Promise.resolve();
+    if (!final && !s.branchNamed && s.branch.startsWith(this.cfg(s.repoId).branchPrefix)) return Promise.resolve();
     return this.serialPush(s.id, async () => {
       try {
         await G.git(s.worktree, 'push', '-u', 'origin', s.branch);
@@ -1132,7 +1134,7 @@ export class SessionManager {
     for (const a of s.subagents) if (a.agentId) await this.syncSubagent(s, a);
     await this.reconcileCommits(s);
     await this.refreshStats(s);
-    void this.refreshTitle(s);
+    await this.refreshTitle(s);
     if (rt.budgetPaused) {
       rt.interrupted = false;
       this.touch();
@@ -1172,7 +1174,7 @@ export class SessionManager {
     if (!s.free && (s.files > 0 || s.commits.length > 0)) {
       this.setStatus(s, 'ready', `${s.files} ${s.files === 1 ? 'file' : 'files'} changed · ready for review`);
       const push = this.cfg(s.repoId);
-      if (push.autoPush && push.pushWhen === 'ready' && s.commits.length) void this.autoPush(s);
+      if (push.autoPush && s.commits.length) void this.autoPush(s, true);
       if (this.store.data.settings.autoReview) {
         // Not again for a commit already reviewed.
         void G.git(s.worktree, 'rev-parse', '--short', 'HEAD').then((h) => (s.review && s.review.head === h.trim() && s.review.state !== 'failed' ? undefined : this.review(s.id))).catch(() => undefined);

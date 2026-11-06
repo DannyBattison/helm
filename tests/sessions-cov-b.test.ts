@@ -333,7 +333,7 @@ describe('stuck detection and commits', () => {
     g(repoPath, 'remote', 'add', 'origin', remote);
     store.data.settings.autoPush = true;
     const id = await sm.create(input());
-    const s = sm.get(id)!;
+    const s = sm.get(id)!; s.branchNamed = true;
     writeFileSync(join(s.worktree, 'c.txt'), 'c');
     g(s.worktree, 'add', '.'); g(s.worktree, 'commit', '-q', '-m', 'work');
     q().emit(tool('Bash', { command: 'git commit -m work' }, 'gc'));
@@ -356,7 +356,7 @@ describe('pushing', () => {
     execFileSync('git', ['init', '-q', '--bare', remote]);
     g(repoPath, 'remote', 'add', 'origin', remote);
     const id = await sm.create(input());
-    const s = sm.get(id)!;
+    const s = sm.get(id)!; s.branchNamed = true;
     writeFileSync(join(s.worktree, 'quiet.txt'), 'committed quietly');
     g(s.worktree, 'add', '.'); g(s.worktree, 'commit', '-q', '-m', 'quiet');
     const hash = g(s.worktree, 'rev-parse', '--short', 'HEAD').trim();
@@ -418,7 +418,7 @@ describe('pushing', () => {
 
   it('logs a failed push with the first line of the error', async () => {
     const id = await sm.create(input());
-    const s = sm.get(id)!;
+    const s = sm.get(id)!; s.branchNamed = true;
     await sm.autoPush(s); // no origin remote
     const ev: any = store.data.activity.find((a: any) => a.kind === 'push');
     expect(ev.ok).toBe(false);
@@ -442,7 +442,7 @@ describe('pushing', () => {
     g(ahead.dir, 'add', '.'); g(ahead.dir, 'commit', '-q', '-m', 'more');
     store.data.repos[0].localPath = main.dir;
     const id = await sm.create(input());
-    const s = sm.get(id)!;
+    const s = sm.get(id)!; s.branchNamed = true;
     s.extras = [
       { repoId: 'o/ahead', worktree: ahead.dir, branch: 'main', base: ahead.base } as any,
       { repoId: 'o/still', worktree: still.dir, branch: 'main', base: still.base } as any
@@ -1610,5 +1610,19 @@ describe('shutdown', () => {
     await sm.stop(id);
     expect(await p).toMatchObject({ behavior: 'deny', message: 'Session stopped', interrupt: true });
     expect(s.ask).toBeUndefined();
+  });
+});
+
+describe('pushing waits for the session title', () => {
+  it('holds a push until the branch is named, unless the turn has ended', async () => {
+    const remote = join(root, 'hold' + n + '.git');
+    execFileSync('git', ['init', '-q', '--bare', remote]);
+    g(repoPath, 'remote', 'add', 'origin', remote);
+    const id = await sm.create(input());
+    const s = sm.get(id)!;
+    await sm.autoPush(s);
+    expect(store.data.activity.some((a: any) => a.kind === 'push')).toBe(false);
+    await sm.autoPush(s, true);
+    expect(store.data.activity.some((a: any) => a.kind === 'push' && a.what === `pushed ${s.branch}`)).toBe(true);
   });
 });
