@@ -62,3 +62,24 @@ describe('finding a program installed since helm started', () => {
     } finally { process.env.PATH = was; }
   });
 });
+
+describe('running Codex without a console window', () => {
+  it('runs the binary behind npm\'s launcher directly, and leaves any other path alone', async () => {
+    const { resolveCodexExe } = await import('../src/core/codexBackend');
+    const { mkdirSync } = await import('node:fs');
+    const nm = join(tmp(), 'node_modules');
+    const entry = join(nm, '@openai', 'codex', 'bin', 'codex.js');
+    // Without the platform package the script is kept.
+    expect(resolveCodexExe(entry)).toBe(entry);
+    const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
+    const triple = { win32: 'pc-windows-msvc', darwin: 'apple-darwin', linux: 'unknown-linux-musl' }[process.platform as string];
+    if (!triple) return;
+    const dir = join(nm, '@openai', `codex-${process.platform}-${arch}`, 'vendor', `${process.arch === 'arm64' ? 'aarch64' : 'x86_64'}-${triple}`, 'bin');
+    mkdirSync(dir, { recursive: true });
+    const native = join(dir, process.platform === 'win32' ? 'codex.exe' : 'codex');
+    writeFileSync(native, '');
+    expect(resolveCodexExe(entry)).toBe(native);
+    expect(resolveCodexExe('/usr/bin/codex')).toBe('/usr/bin/codex');
+    expect(resolveCodexExe('C:\\tools\\codex.cmd')).toBe('C:\\tools\\codex.cmd');
+  });
+});

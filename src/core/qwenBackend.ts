@@ -70,7 +70,7 @@ export function findExe(name: string, configured?: string): string {
 const isScript = (exe: string) => /\.[cm]?js$/i.test(exe);
 const launch = (exe: string, args: string[], env: NodeJS.ProcessEnv, opts: { detached?: boolean; cwd?: string } = {}): ChildProcess =>
   isScript(exe)
-    ? spawn(process.execPath, [exe, ...args], { stdio: ['pipe', 'pipe', 'pipe'], env: { ...env, ELECTRON_RUN_AS_NODE: '1' }, ...opts })
+    ? spawn(process.execPath, [exe, ...args], { stdio: ['pipe', 'pipe', 'pipe'], env: { ...env, ELECTRON_RUN_AS_NODE: '1' }, windowsHide: true, ...opts })
     : spawn(exe, args, { stdio: ['pipe', 'pipe', 'pipe'], env, shell: process.platform === 'win32', windowsHide: true, ...opts });
 
 // ---------------------------------------------------------------- the local model server
