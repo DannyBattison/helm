@@ -33,6 +33,11 @@ async function prompt(id, p) {
       update(sid, { sessionUpdate: 'tool_call_update', toolCallId: 't1', status: 'failed', content: [] });
       update(sid, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: o.outcome === 'cancelled' ? 'Cancelled.' : 'Declined.' } });
     }
+  } else if (text.includes('ask me')) {
+    const questions = [{ question: 'Which logo?', header: 'Logo', multiSelect: false, options: [{ label: 'Generic', description: 'g' }, { label: 'Mine', description: 'm' }] }, { question: 'Tags?', header: 'Tags', multiSelect: true, options: [{ label: 'a', description: '' }, { label: 'b', description: '' }] }, { question: 'Skipped?', header: 'Skip', multiSelect: false, options: [] }];
+    update(sid, { sessionUpdate: 'tool_call', toolCallId: 'q1', title: 'AskUserQuestion', kind: 'think', status: 'pending', rawInput: {}, _meta: { toolName: 'ask_user_question' } });
+    const r = await new Promise((resolve) => { const id = nextId++; waiting.set(id, resolve); send({ id, method: 'session/request_permission', params: { sessionId: sid, options: [{ optionId: 'proceed_once', name: 'Submit', kind: 'allow_once' }, { optionId: 'cancel', name: 'Cancel', kind: 'reject_once' }], toolCall: { toolCallId: 'q1', title: 'Ask user 3 questions', kind: 'think', rawInput: { questions }, _meta: { toolName: 'ask_user_question', qwenInteractionKind: 'user_question', qwenQuestions: questions } } } }); });
+    update(sid, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: `answered ${JSON.stringify(r)}` } });
   } else if (text.includes('bridge fail')) {
     update(sid, { sessionUpdate: 'tool_call', toolCallId: 'b1', title: 'ToolCall', kind: 'other', status: 'pending', rawInput: {}, _meta: { toolName: 'tool_call' } });
     update(sid, { sessionUpdate: 'tool_call_update', toolCallId: 'b1', status: 'failed', content: [{ type: 'content', content: { type: 'text', text: "[tool_call bridge refused] params must have required property 'name'" } }] });

@@ -177,6 +177,25 @@ describe('Qwen Code through a stand-in ACP agent', () => {
     h.close();
   });
 
+  it('turns Qwen\'s questions into the question tool and sends the answers back by number', async () => {
+    let asked: any;
+    const h = backend().start(opts((tool, input) => { asked = [tool, input]; return { behavior: 'allow', updatedInput: { answers: { 'Which logo?': 'Mine', 'Tags?': ['a', 'b'] } } } as any; }));
+    const it = h.events[Symbol.asyncIterator]();
+    h.send('ask me');
+    const ev = await take(it, isResult);
+    expect(asked[0]).toBe('AskUserQuestion');
+    expect(asked[1].questions.map((q: any) => q.question)).toEqual(['Which logo?', 'Tags?', 'Skipped?']);
+    expect(ev.find((e) => e.t === 'assistant' && e.blocks[0]?.type === 'tool_use')).toMatchObject({ blocks: [{ id: 'q1', name: 'AskUserQuestion', input: { questions: expect.any(Array) } }] });
+    const said = JSON.stringify(ev);
+    expect(said).toContain('proceed_once');
+    expect(said).toContain('\\"answers\\":{\\"0\\":\\"Mine\\",\\"1\\":\\"a, b\\"}');
+    h.close();
+    const no = backend().start(opts(() => ({ behavior: 'deny', message: 'skip' })));
+    no.send('ask me');
+    expect(JSON.stringify(await take(no.events[Symbol.asyncIterator](), isResult))).toContain('cancelled');
+    no.close();
+  });
+
   it('refuses a command when told to', async () => {
     const h = backend().start(opts(() => ({ behavior: 'deny', message: 'no' })));
     h.send('run ls');

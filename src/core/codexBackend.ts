@@ -287,6 +287,7 @@ export class CodexBackend implements AgentBackend {
   readonly label = 'Codex';
   readonly shortName = 'Codex';
   readonly identity = { name: 'Codex', email: 'noreply@openai.com' };
+  readonly askTool = 'request_user_input';
   models: ModelInfo[] = [];
   readonly capabilities: AgentCapabilities = { subagents: true, planMode: true, effort: true, fork: true, cost: false, planUsage: true };
   private server: CodexServer;
@@ -541,6 +542,8 @@ class CodexHandle {
         model: this.model, cwd: this.o.cwd, approvalPolicy: approvalFor(this.mode), sandbox: this.mode === 'all' ? 'danger-full-access' : this.mode === 'plan' ? 'read-only' : 'workspace-write',
         developerInstructions: this.o.systemAppend,
         config: {
+          // Codex offers its question tool only in plan mode unless this is on; without it a question comes out as a plain message.
+          features: { default_mode_request_user_input: true },
           ...(this.o.env && Object.keys(this.o.env).length ? { shell_environment_policy: { inherit: 'all', set: this.o.env } } : {}),
           ...(this.o.mcpServers && Object.keys(this.o.mcpServers).length ? { mcp_servers: codexMcp(this.o.mcpServers) } : {}),
           // Codex counts threads, the session's own included, so N helpers is N + 1 (0 leaves only the session itself).

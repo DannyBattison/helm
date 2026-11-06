@@ -133,6 +133,8 @@ export interface AgentBackend {
   readonly shortName: string;
   /** Who commits are attributed to when the user chooses "agent only". */
   readonly identity: { name: string; email: string };
+  /** The tool the agent asks the user a question with, named in its instructions. Absent when it has none, and it is just told to ask. */
+  readonly askTool?: string;
   /** Ships with helm, so a missing command-line tool does not make it unavailable. */
   readonly bundled?: boolean;
   /** The models it offers. May change after `refresh`. */

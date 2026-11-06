@@ -180,6 +180,7 @@ export function toolUseOf(call: Json): { name: string; input: Record<string, any
   if (own === 'tool_call' && typeof raw.name === 'string') return toolUseOf({ ...call, _meta: { ...call._meta, toolName: raw.name }, rawInput: raw.arguments ?? raw.params ?? {}, kind: undefined, title: raw.name });
   const loc: string | undefined = call.locations?.[0]?.path ?? raw.file_path ?? raw.path ?? raw.absolute_path;
   const diff = (call.content || []).find((c: Json) => c?.type === 'diff');
+  if (own === 'ask_user_question') return { name: 'AskUserQuestion', input: { questions: raw.questions ?? [] } };
   if (own && BY_NAME[own]) {
     if (own === 'web_fetch') return { name: 'WebFetch', input: { url: raw.url ?? '', prompt: raw.prompt ?? '' } };
     if (own === 'web_search') return { name: 'WebSearch', input: { query: raw.query ?? '' } };
@@ -275,6 +276,7 @@ export class QwenBackend implements AgentBackend {
   readonly label = 'Qwen Code (local)';
   readonly shortName = 'Qwen';
   readonly identity = { name: 'Qwen', email: 'noreply@qwen.ai' };
+  readonly askTool = 'ask_user_question';
   models: ModelInfo[] = [];
   readonly capabilities: AgentCapabilities = { subagents: false, planMode: true, effort: false, fork: false, cost: false, planUsage: false };
   private installed: string | null = null;
@@ -531,6 +533,17 @@ class QwenHandle {
     const call: Json = this.merge(p.toolCall || {});
     if (p.toolCall?.toolCallId) this.showCall(p.toolCall.toolCallId);
     const t = toolUseOf(call);
+    // Qwen asks its questions as a permission request: Submit with the answers by question number, or Cancel.
+    if (call._meta?.qwenInteractionKind === 'user_question' || call._meta?.toolName === 'ask_user_question') {
+      const qs: Json[] = (call.rawInput?.questions ?? call._meta?.qwenQuestions ?? []) as Json[];
+      const d = await this.o.canUseTool('AskUserQuestion', { questions: qs }, { description: call.title });
+      if (d.behavior !== 'allow') return { outcome: { outcome: 'cancelled' } };
+      const given = ((d as Json).updatedInput?.answers || {}) as Record<string, string | string[]>;
+      const answers: Record<string, string> = {};
+      qs.forEach((q, i) => { const a = given[q.question]; if (a != null && String(a) !== '') answers[String(i)] = Array.isArray(a) ? a.join(', ') : String(a); });
+      const submit = (p.options || []).find((o: Json) => o.kind === 'allow_once');
+      return submit ? { outcome: { outcome: 'selected', optionId: submit.optionId }, answers } : { outcome: { outcome: 'cancelled' } };
+    }
     const d: ToolDecision = await this.o.canUseTool(t.name, t.input, { description: call.title });
     const options: Json[] = p.options || [];
     const pick = (...kinds: string[]) => kinds.map((k) => options.find((o) => o.kind === k)).find(Boolean);

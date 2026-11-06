@@ -602,7 +602,7 @@ export class SessionManager {
     const art = `To hand the user a file (a generated image, chart, report, export), write it to ${artifacts} (not into the worktree), then link it in your reply as [label](artifact:file.ext), using a plain file name without spaces. For an image use ![description](artifact:file.png) and helm shows it in the chat; any other file becomes a download button. These files are temporary and are deleted with the session.`;
     // Claude has a dedicated question tool and helm limits its subagents; another agent is simply told to ask, and manages its own helpers.
     const be = this.backendOf(s);
-    const ask = be.id === 'claude' ? 'ask with the AskUserQuestion tool' : 'ask the user';
+    const ask = be.askTool ? `ask with the ${be.askTool} tool` : 'ask the user';
     const subs = be.capabilities.subagents;
     if (s.free) {
       return [
