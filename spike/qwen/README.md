@@ -23,3 +23,16 @@ A generic `AcpBackend` (not yet written) would serve both Qwen and Cursor. Setti
 With Ollama and a tool-capable Qwen model (e.g. a Qwen3-Coder build) pulled: run `qwen` interactively against it, then `qwen` in ACP mode; record the `initialize` response and one text turn, one tool call with approval, and cancel. Capture sanitised fixtures for adapter tests.
 
 Sources: [Qwen Code OpenAI auth](https://qwenlm.github.io/qwen-code-docs/de/cli/openai-auth), [Qwen as an OpenAI endpoint](https://inventivehq.com/knowledge-base/openai/how-to-serve-qwen-coder-as-openai-endpoint).
+
+## Goal: use helm without a subscription (added 2026-11-06)
+
+The aim is free models, not local ones specifically. Local is one source of them, and the weakest for most users (hardware, small models, tool calling). The integration is the same for every source: a generic ACP agent plus an OpenAI-compatible endpoint (base URL, key, model), so the choice is only what the settings default to.
+
+Candidate sources, in the order to try them. Free-tier limits and terms change and were not checked here; verify each before promising anything:
+1. A hosted free tier through an OpenAI-compatible gateway (OpenRouter's free models, which include Qwen coder models, or a provider's free API tier). No hardware; the user supplies a free API key. Expect rate limits and prompts sent to a third party.
+2. A free tier from an agent vendor's own CLI, if it speaks ACP (Gemini CLI is the likely one; Qwen Code descends from it).
+3. Local Qwen via Ollama, for users with a capable GPU or Apple silicon, and for privacy.
+
+Product points: a "free" preset in Settings → Agents that fills in base URL and a model list and links to key sign-up; clear labelling that quality, rate limits and data handling differ from Claude and Codex; and no claim of cost tracking.
+
+Revised gate: before building the backend, run Qwen Code in ACP mode against one hosted free model and one local one, and confirm a tool-calling turn works on the hosted one.
