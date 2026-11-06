@@ -1,0 +1,3 @@
+## 2026-11-06 · Free means local and unlimited; hosted free tiers are dropped
+Support for use without a subscription goes through Qwen Code over ACP against a local OpenAI-compatible server (Ollama first), installed on the user's machine beside Claude and Codex. helm detects the runtime and the `qwen` CLI, lists and offers to pull models, and sets a workable context size. Hosted free tiers such as OpenRouter's are not pursued. `spike/qwen/README.md` has the plan and the live-run gate. Nothing is built or run yet.
+Why: user said hosted free tiers cap at about 50 requests, which is too few for an agent, and wants a drop-in local, unlimited option. Supersedes `2026-11-06-free-model-support-targets-hosted-free-tiers-first`.

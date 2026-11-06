@@ -24,15 +24,17 @@ With Ollama and a tool-capable Qwen model (e.g. a Qwen3-Coder build) pulled: run
 
 Sources: [Qwen Code OpenAI auth](https://qwenlm.github.io/qwen-code-docs/de/cli/openai-auth), [Qwen as an OpenAI endpoint](https://inventivehq.com/knowledge-base/openai/how-to-serve-qwen-coder-as-openai-endpoint).
 
-## Goal: use helm without a subscription (added 2026-11-06)
+## Goal: use helm without a subscription (revised 2026-11-06)
 
-The aim is free models, not local ones specifically. Local is one source of them, and the weakest for most users (hardware, small models, tool calling). The integration is the same for every source: a generic ACP agent plus an OpenAI-compatible endpoint (base URL, key, model), so the choice is only what the settings default to.
+The aim is an unlimited, free agent that is installed locally and sits beside Claude and Codex. Hosted free tiers are out: their request caps (about 50 a day) are too small for agent work. So the route is the one above: Qwen Code over ACP against a local OpenAI-compatible server.
 
-Candidate sources, in the order to try them. Free-tier limits and terms change and were not checked here; verify each before promising anything:
-1. A hosted free tier through an OpenAI-compatible gateway (OpenRouter's free models, which include Qwen coder models, or a provider's free API tier). No hardware; the user supplies a free API key. Expect rate limits and prompts sent to a third party.
-2. A free tier from an agent vendor's own CLI, if it speaks ACP (Gemini CLI is the likely one; Qwen Code descends from it).
-3. Local Qwen via Ollama, for users with a capable GPU or Apple silicon, and for privacy.
+What "drop in" needs from helm:
+- Detect the runtime (`ollama`, falling back to a base URL setting) and the `qwen` CLI, the way `findCodex` finds `codex`.
+- List installed models from `/v1/models` (Ollama also has `/api/tags`), and offer a recommended tool-capable Qwen coder model with a one-click `ollama pull` and a size warning.
+- Start the server if it is not running, and set a usable context size (`num_ctx`); the default silently truncates agent prompts.
+- Show the agent as ready only when both the CLI and a model are present, as sign-in readiness does for the others.
+- Label it plainly: free and unlimited, but quality depends on the model and the hardware, and it is weaker than Claude or Codex at long tasks.
 
-Product points: a "free" preset in Settings → Agents that fills in base URL and a model list and links to key sign-up; clear labelling that quality, rate limits and data handling differ from Claude and Codex; and no claim of cost tracking.
+Open question to settle in the live run: which Qwen model sizes are good enough at tool calling on ordinary laptops. That decides whether this is a real alternative or a demo.
 
-Revised gate: before building the backend, run Qwen Code in ACP mode against one hosted free model and one local one, and confirm a tool-calling turn works on the hosted one.
+Gate: install Ollama and a Qwen coder model, run `qwen` against it normally and in ACP mode, and confirm a tool-calling turn with approval and a cancel.
