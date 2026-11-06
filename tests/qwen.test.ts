@@ -128,7 +128,7 @@ describe('Qwen Code through a stand-in ACP agent', () => {
     h.close();
   });
 
-  it('points qwen at the local server with the model, and leads with the instructions once', async () => {
+  it('points qwen at the local server with the model, and gives the instructions as the system prompt, not in a message', async () => {
     const h = backend().start(opts());
     const it = h.events[Symbol.asyncIterator]();
     h.send('show env');
@@ -148,7 +148,7 @@ describe('Qwen Code through a stand-in ACP agent', () => {
     expect(text).toContain('session/set_mode');
     h.send('show env');
     const again = await take(it, isResult);
-    expect((again.find((e) => e.t === 'assistant' && e.blocks.length) as any).blocks[0].text).toContain('bare');
+    expect((again.find((e) => e.t === 'assistant' && e.blocks.length) as any).blocks[0].text).toContain('led');
     h.close();
   });
 
@@ -250,7 +250,8 @@ describe('Qwen Code through a stand-in ACP agent', () => {
     const ev = await take(h.events[Symbol.asyncIterator](), isResult);
     expect(ev[0]).toMatchObject({ t: 'init', sessionId: 'old-session' });
     expect(JSON.stringify(ev)).toContain('session/load');
-    expect(JSON.stringify(ev)).toContain('bare');
+    // The instructions are kept when a conversation is resumed.
+    expect(JSON.stringify(ev)).toContain('led');
     h.close();
   });
 

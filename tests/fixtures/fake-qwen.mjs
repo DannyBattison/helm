@@ -20,7 +20,7 @@ async function prompt(id, p) {
     update(sid, { sessionUpdate: 'usage_update', used: 1234, size: 32768 });
     update(sid, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: '' }, _meta: { usage: { inputTokens: 1234, outputTokens: 12, cachedReadTokens: 234, thoughtTokens: 3 } } });
   } else if (text.includes('show env')) {
-    update(sid, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: `${process.env.OPENAI_MODEL} ${process.env.OPENAI_BASE_URL} ${process.env.OPENAI_API_KEY} ${JSON.stringify(calls)} ${text.includes('be nice') ? 'led' : 'bare'} ${process.env.QWEN_CODE_SYSTEM_SETTINGS_PATH || 'nosettings'}` } });
+    update(sid, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: `${process.env.OPENAI_MODEL} ${process.env.OPENAI_BASE_URL} ${process.env.OPENAI_API_KEY} ${JSON.stringify(calls)} ${(process.argv[process.argv.indexOf('--append-system-prompt') + 1] || '').includes('be nice') ? 'led' : 'bare'} ${process.env.QWEN_CODE_SYSTEM_SETTINGS_PATH || 'nosettings'}` } });
   } else if (text.includes('run ls')) {
     // As the real one does: announced with no arguments, which arrive in an update.
     update(sid, { sessionUpdate: 'tool_call', toolCallId: 't1', title: 'Shell', kind: 'execute', status: 'pending', rawInput: {}, content: [], locations: [], _meta: { toolName: 'run_shell_command' } });

@@ -365,7 +365,6 @@ class QwenHandle {
   private isClosed = false;
   private conn: AcpConnection | null = null;
   private sessionId: string | null;
-  private fresh: boolean;
   private model: string;
   private mode: PermMode;
   private respawn = false;
@@ -379,7 +378,6 @@ class QwenHandle {
     this.model = o.model;
     this.mode = o.permMode;
     this.sessionId = o.resume ?? null;
-    this.fresh = !o.resume;
     const self = this;
     this.api = {
       get closed() { return self.isClosed; },
@@ -421,7 +419,8 @@ class QwenHandle {
     const model = await this.prepare(this.model);
     const exe = findExe('qwen', this.paths.cli());
     const url = base(this.paths.url()) + '/v1';
-    const args = ['--acp', ...(this.o.extraDirs || []).flatMap((d) => ['--include-directories', d])];
+    // ACP has no field for instructions; Qwen's own flag puts them in the system prompt, where a small model heeds them far more than text in a message.
+    const args = ['--acp', ...(this.o.systemAppend ? ['--append-system-prompt', this.o.systemAppend] : []), ...(this.o.extraDirs || []).flatMap((d) => ['--include-directories', d])];
     const settings = await settingsFile(this.paths.dataDir?.());
     const conn = new AcpConnection(exe, args, { ...process.env, ...this.o.env, ...(settings ? { QWEN_CODE_SYSTEM_SETTINGS_PATH: settings } : {}), OPENAI_BASE_URL: url, OPENAI_API_KEY: process.env.OPENAI_API_KEY || 'ollama', OPENAI_MODEL: model }, this.o.cwd);
     this.conn = conn;
@@ -441,7 +440,6 @@ class QwenHandle {
     else {
       const r = await conn.call('session/new', { cwd: this.o.cwd, mcpServers });
       this.sessionId = r.sessionId;
-      this.fresh = true;
     }
     await conn.call('session/set_mode', { sessionId: this.sessionId, modeId: modeFor(this.mode) }).catch(() => undefined);
     this.push({ t: 'init', sessionId: this.sessionId!, model: this.model, billing: 'api' });
@@ -455,10 +453,7 @@ class QwenHandle {
         const m = this.inbox.shift()!;
         await this.connect();
         if (this.isClosed) return;
-        // ACP has no field for instructions, so a new conversation starts with them in its first message.
-        const lead = this.fresh && this.o.systemAppend ? `${this.o.systemAppend}\n\n---\n\n` : '';
-        this.fresh = false;
-        const prompt: Json[] = [...m.images.map((i) => ({ type: 'image', mimeType: i.mediaType, data: i.data })), { type: 'text', text: lead + (m.text || 'See the attached image.') }];
+        const prompt: Json[] = [...m.images.map((i) => ({ type: 'image', mimeType: i.mediaType, data: i.data })), { type: 'text', text: m.text || 'See the attached image.' }];
         this.turn = true;
         this.text = '';
         const r = await this.conn!.call('session/prompt', { sessionId: this.sessionId, prompt });
