@@ -8,6 +8,7 @@ import { commandSteps } from '@shared/commandSummary';
 import { Cmd, Hl } from '../Hl';
 import { highlightBlock, langFromPath, langFromTag } from '../highlight';
 import { participants } from '@shared/panel';
+import { parseHelmCommand, slashAt, slashMatches, type SlashCommand } from '@shared/slashCommands';
 import { backendIdOf, agentName, panelBackendId, billingOf, can, clock, elapsed, fmtTokens, modelChoices, modelOptions, prettyModel, runningSubagents, STATUS_LABEL, subagentTree, tilde } from '../lib';
 import { go, loadTranscript, setUI, toast, useApp, useMoney, useTranscript, useUI } from '../store';
 import { Avatar, Badge, BranchTag, Button, ContextMenu, CopyBox, menuProps, DiffStat, Grip, IconButton, Lightbox, Meter, Select, StatusDot, Tabs, Tooltip, useNarrow, usePaneWidth } from '../ui';
@@ -462,6 +463,8 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
   const [over, setOver] = React.useState(false);
   const [mention, setMention] = React.useState<{ at: number; q: string } | null>(null);
   const [hi, setHi] = React.useState(0);
+  const [slash, setSlash] = React.useState<string | null>(null);
+  const [scheduleNow, setScheduleNow] = React.useState(0);
   const files = React.useRef<string[] | null>(null);
   const histPos = React.useRef(-1);
   const picker = React.useRef<HTMLInputElement>(null);
@@ -471,7 +474,7 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
   const interruptKey = useApp().settings.interruptKey;
   const setText = (t: string) => { drafts.set(s.id, t); setTextState(t); };
 
-  React.useEffect(() => { setTextState(drafts.get(s.id) || ''); setImages([]); setMention(null); histPos.current = -1; files.current = null; }, [s.id]);
+  React.useEffect(() => { setTextState(drafts.get(s.id) || ''); setImages([]); setMention(null); setSlash(null); histPos.current = -1; files.current = null; }, [s.id]);
   // Grow with the text, up to about nine lines, then scroll.
   React.useLayoutEffect(() => {
     const el = inputRef.current;
@@ -480,9 +483,32 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
     el.style.height = Math.min(el.scrollHeight, 200) + 'px';
   }, [text]);
 
+  // Helm's own slash commands do their thing here and never reach the agent.
+  const runCommand = (cmd: SlashCommand, arg: string) => {
+    switch (cmd.name) {
+      case 'agent': setUI({ addingAgent: s.id }); break;
+      case 'schedule': setScheduleNow((n) => n + 1); break;
+      case 'plan': void guard(api.setSessionPermMode(s.id, 'plan')); toast({ tone: 'neutral', title: 'Plan only' }); break;
+      case 'rename': setUI({ renaming: s.id }); break;
+      case 'checkpoints': setUI({ checkpointsOf: s.id }); break;
+      case 'interrupt': void guard(api.interrupt(s.id)); break;
+      case 'notify': {
+        const v = arg.toLowerCase();
+        if (v !== 'all' && v !== 'attention' && v !== 'off') { toast({ tone: 'error', title: 'Use /notify all, attention or off' }); return; }
+        void guard(api.updateSettings({ notifyRepo: { ...app.settings.notifyRepo, [s.repoId]: v } }));
+        toast({ tone: 'neutral', title: 'Notifications for this repository: ' + (v === 'all' ? 'everything' : v === 'attention' ? 'only things that need you' : 'nothing') });
+        break;
+      }
+    }
+    // /schedule keeps what followed it: that is the prompt to schedule.
+    setText(cmd.name === 'schedule' ? arg : ''); setSlash(null);
+  };
+
   const send = () => {
     const t = text.trim();
     if (!t && !images.length) return;
+    const helmCmd = images.length ? null : parseHelmCommand(t);
+    if (helmCmd) { runCommand(helmCmd.cmd, helmCmd.arg); return; }
     sent.set(s.id, [...(sent.get(s.id) || []), t].slice(-50));
     histPos.current = -1;
     const pics = images.map(({ mediaType, data, name }) => ({ mediaType, data, name }));
@@ -496,6 +522,9 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
 
   // The @word under the caret, if any: it opens the file list.
   const track = (value: string, caret: number) => {
+    const sl = slashAt(value, caret);
+    setSlash(sl);
+    if (sl !== null) { setMention(null); setHi(0); return; }
     const m = /(^|\s)@([^\s@]*)$/.exec(value.slice(0, caret));
     if (!m) { setMention(null); return; }
     setMention({ at: caret - m[2].length - 1, q: m[2] });
@@ -506,6 +535,14 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
   // In a session with several agents the @ list starts with them.
   const people = mention && s.panel ? ['all', ...participants(s.panel)].filter((n) => n.startsWith(mention.q.toLowerCase())) : [];
   const entries = [...people.map((v) => ({ who: true, v })), ...matches.map((v) => ({ who: false, v }))];
+  const commands = slash !== null ? slashMatches(slash, s.backend, backendFor(app, s.backend)?.capabilities, !!s.panel) : [];
+  const pickCommand = (c: SlashCommand) => {
+    setSlash(null);
+    if (c.kind === 'helm' && !c.arg) { runCommand(c, ''); return; }
+    const next = '/' + c.name + ' ';
+    setText(next);
+    requestAnimationFrame(() => { const el = inputRef.current; el?.focus(); el?.setSelectionRange(next.length, next.length); });
+  };
   const pick = (path: string) => {
     if (!mention) return;
     const el = inputRef.current;
@@ -517,6 +554,12 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (slash !== null && commands.length) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setHi((h) => (h + 1) % commands.length); return; }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setHi((h) => (h - 1 + commands.length) % commands.length); return; }
+      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pickCommand(commands[Math.min(hi, commands.length - 1)]); return; }
+    }
+    if (slash !== null && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); e.nativeEvent.stopImmediatePropagation(); setSlash(null); return; }
     if (mention && entries.length) {
       if (e.key === 'ArrowDown') { e.preventDefault(); setHi((h) => (h + 1) % entries.length); return; }
       if (e.key === 'ArrowUp') { e.preventDefault(); setHi((h) => (h - 1 + entries.length) % entries.length); return; }
@@ -539,7 +582,7 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
     }
   };
 
-  const placeholder = s.ask?.type === 'question' ? 'Type your answer' : s.ask ? 'Tell the agent what to do instead, or approve above' : working ? 'Add guidance while it works' + (interruptKey === 'esc' ? ', or press Esc to interrupt' : interruptKey === 'double-esc' ? ', or press Esc twice to interrupt' : '') : 'Reply to ' + (s.customTitle || s.title || s.id) + '. @ mentions ' + (s.panel ? 'an agent or a file' : 'a file') + ', and you can paste or drop images';
+  const placeholder = s.ask?.type === 'question' ? 'Type your answer' : s.ask ? 'Tell the agent what to do instead, or approve above' : working ? 'Add guidance while it works' + (interruptKey === 'esc' ? ', or press Esc to interrupt' : interruptKey === 'double-esc' ? ', or press Esc twice to interrupt' : '') : 'Reply to ' + (s.customTitle || s.title || s.id) + '. / for commands, @ mentions ' + (s.panel ? 'an agent or a file' : 'a file') + ', and you can paste or drop images';
   const ctxWindow = contextWindow(s);
   const ctxLabel = windowLabel(ctxWindow);
   const ctxPct = Math.round((s.ctx / ctxWindow) * 100);
@@ -553,6 +596,20 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
         onDrop={(e) => { if (e.dataTransfer.files.length) { e.preventDefault(); void addImages([...e.dataTransfer.files]); } setOver(false); }}
         style={{ position: 'relative', maxWidth: 820, margin: '0 auto', borderRadius: 'var(--radius-lg)', background: 'var(--bg-input)', transition: 'box-shadow .12s',
           boxShadow: over ? 'var(--ring-focus), inset 0 0 0 1px var(--accent)' : focused ? 'var(--ring-focus), inset 0 0 0 1px var(--accent)' : 'inset 0 0 0 1px var(--border-strong)' }}>
+        {slash !== null && commands.length ? (
+          <div role="listbox" aria-label="Commands" style={{ position: 'absolute', left: 0, right: 0, bottom: 'calc(100% + 6px)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-raised)', boxShadow: 'var(--shadow-popover, 0 8px 24px rgba(0,0,0,.4)), inset 0 0 0 1px var(--border-strong)', padding: 4, zIndex: 20, maxHeight: 260, overflow: 'auto' }}>
+            {commands.map((c, i) => (
+              <div key={c.name} role="option" aria-selected={i === hi} onMouseDown={(e) => { e.preventDefault(); pickCommand(c); }} onMouseEnter={() => setHi(i)}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', background: i === hi ? 'var(--bg-selected, var(--bg-hover))' : undefined }}>
+                <i className={'ph ph-' + c.icon} style={{ fontSize: 13, color: c.kind === 'helm' ? 'var(--accent-text)' : 'var(--text-3)' }} />
+                <span style={{ font: '500 12.5px/1.5 var(--font-mono)', color: 'var(--text-1)' }}>/{c.name}</span>
+                {c.arg ? <span style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)' }}>{c.arg}</span> : null}
+                <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.desc}</span>
+                <span style={{ font: '400 11px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>{c.kind === 'helm' ? 'helm' : agentName(app, s)}</span>
+              </div>
+            ))}
+          </div>
+        ) : null}
         {mention && entries.length ? (
           <div role="listbox" style={{ position: 'absolute', left: 0, right: 0, bottom: 'calc(100% + 6px)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-raised)', boxShadow: 'var(--shadow-popover, 0 8px 24px rgba(0,0,0,.4)), inset 0 0 0 1px var(--border-strong)', padding: 4, zIndex: 20, maxHeight: 260, overflow: 'auto' }}>
             {entries.map(({ who, v: f }, i) => {
@@ -592,10 +649,10 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
           style={{ display: 'block', width: '100%', boxSizing: 'border-box', resize: 'none', border: 'none', outline: 'none', boxShadow: 'none', background: 'transparent', color: 'var(--text-1)', font: '400 13px/1.5 var(--font-sans)', padding: '10px 12px 4px', maxHeight: 200 }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px 6px 8px', flexWrap: 'wrap' }}>
           <input ref={picker} type="file" accept={IMAGE_TYPES.join(',')} multiple hidden onChange={(e) => { void addImages([...(e.target.files || [])]); e.target.value = ''; }} />
-          <details className="helm-composer-tools" data-expanded={experience.advanced} open={experience.advanced ? true : undefined}><summary>More options</summary><div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>          <IconButton icon="at" label="Mention a file" size="sm" onClick={() => { const el = inputRef.current; const c = el ? el.selectionStart : text.length; const pre = text.slice(0, c); const lead = pre && !/\s$/.test(pre) ? ' ' : ''; setText(pre + lead + '@' + text.slice(c)); requestAnimationFrame(() => { el?.focus(); const p = c + lead.length + 1; el?.setSelectionRange(p, p); track(el!.value, p); }); }} />
+          <details className="helm-composer-tools" data-expanded={experience.advanced} open={experience.advanced || scheduleNow > 0 ? true : undefined}><summary>More options</summary><div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>          <IconButton icon="at" label="Mention a file" size="sm" onClick={() => { const el = inputRef.current; const c = el ? el.selectionStart : text.length; const pre = text.slice(0, c); const lead = pre && !/\s$/.test(pre) ? ' ' : ''; setText(pre + lead + '@' + text.slice(c)); requestAnimationFrame(() => { el?.focus(); const p = c + lead.length + 1; el?.setSelectionRange(p, p); track(el!.value, p); }); }} />
           <IconButton icon="paperclip" label="Attach an image" size="sm" onClick={() => picker.current?.click()} />
           <PromptPicker s={s} onInsert={(t) => { const el = inputRef.current; const c = el ? el.selectionStart : text.length; const pre = text.slice(0, c); const lead = pre && !/\s$/.test(pre) ? '\n' : ''; setText(pre + lead + t + text.slice(c)); requestAnimationFrame(() => { el?.focus(); const p = c + lead.length + t.length; el?.setSelectionRange(p, p); }); }} />
-          <SchedulePrompt s={s} text={text} onScheduled={() => setText('')} />
+          <SchedulePrompt s={s} text={text} onScheduled={() => setText('')} trigger={scheduleNow} />
           {s.panel ? null : <IconButton icon="users-three" label="Bring in another agent to discuss this" size="sm" onClick={() => setUI({ addingAgent: s.id })} />}
 </div></details>
           {narrow ? <details className="helm-run-settings"><summary>Run settings</summary><div className="helm-comp-sel" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: 8 }}><Select size="sm" style={{ flexShrink: 0 }} aria-label="Model" value={s.panel ? s.model : `${s.backend}/${s.model}`} onChange={(e: any) => guard(api.setSessionModel(s.id, e.target.value as ModelAlias))} options={s.panel ? modelOptions(app, s.backend) : modelChoices(app)} />{can(app, s, 'effort') ? <Select size="sm" style={{ flexShrink: 0 }} aria-label="Reasoning effort" value={s.effort || 'default'} onChange={(e: any) => guard(api.setSessionEffort(s.id, e.target.value === 'default' ? null : (e.target.value as Effort)))} options={EFFORTS} /> : null}<Select size="sm" style={{ flexShrink: 0 }} aria-label="Command permissions" value={s.permMode} onChange={(e: any) => guard(api.setSessionPermMode(s.id, e.target.value as PermMode))} options={[{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits' }, ...(can(app, s, 'planMode') ? [{ value: 'plan', label: 'Plan only' }] : []), { value: 'all', label: 'Allow everything' }]} /></div></details> : <div className="helm-comp-sel" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '0 4px' }}><Select size="sm" style={{ flexShrink: 0 }} aria-label="Model" value={s.panel ? s.model : `${s.backend}/${s.model}`} onChange={(e: any) => guard(api.setSessionModel(s.id, e.target.value as ModelAlias))} options={s.panel ? modelOptions(app, s.backend) : modelChoices(app)} />{can(app, s, 'effort') ? <Select size="sm" style={{ flexShrink: 0 }} aria-label="Reasoning effort" value={s.effort || 'default'} onChange={(e: any) => guard(api.setSessionEffort(s.id, e.target.value === 'default' ? null : (e.target.value as Effort)))} options={EFFORTS} /> : null}<Select size="sm" style={{ flexShrink: 0 }} aria-label="Command permissions" value={s.permMode} onChange={(e: any) => guard(api.setSessionPermMode(s.id, e.target.value as PermMode))} options={[{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits' }, ...(can(app, s, 'planMode') ? [{ value: 'plan', label: 'Plan only' }] : []), { value: 'all', label: 'Allow everything' }]} /></div>}

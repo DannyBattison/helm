@@ -1,0 +1,3 @@
+## 2026-11-07 · Slash commands in the composer, driven per agent
+
+Typing `/` at the start of a message opens a list like the `@` one. `src/shared/slashCommands.ts` holds the table. Helm's own commands (`/agent`, `/schedule`, `/notify`, `/plan`, `/rename`, `/checkpoints`, `/interrupt`) run in helm and never reach the agent; they are hidden when the agent lacks the capability (`/plan`) or the session already has several agents (`/agent`). An agent's own commands carry a `backends` list and are sent as an ordinary message. Only Claude has any (`/compact`, `/init`): Codex and Qwen get none, since helm cannot confirm they handle slash text, and hidden is better than a command that does nothing. Add to the table when another agent is checked.
