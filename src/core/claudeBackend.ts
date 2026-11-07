@@ -257,7 +257,7 @@ export class ClaudeBackend implements AgentBackend {
         for await (const m of q as AsyncIterable<any>) {
           yield* claudeEvents(m);
           if (m.type === 'system' && m.subtype === 'init') {
-            const list = await q.supportedCommands().catch(() => []);
+            const list = await Promise.resolve().then(() => q.supportedCommands()).catch(() => []);
             const commands = claudeCommands(list);
             if (commands.length) yield { t: 'commands', commands } as AgentEvent;
           }
