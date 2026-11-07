@@ -64,6 +64,9 @@ export interface ModelInfo {
   price: [number, number];
 }
 
+/** One of an agent's own slash commands, as it reports them. `name` has no leading slash. */
+export interface AgentCommand { name: string; desc: string; arg?: string }
+
 /** What a backend can do. The interface hides the controls for what it cannot. */
 export interface AgentCapabilities {
   subagents: boolean;
@@ -348,6 +351,8 @@ export interface Session {
   limitWait?: { key: 'fiveHour' | 'weekly'; resetsAt: number };
   /** Prompts this session sends by itself at a set time, once or repeating. */
   scheduled?: ScheduledPrompt[];
+  /** The slash commands the session's agent says it understands (its own, plus any the user or repository defined). */
+  agentCommands?: AgentCommand[];
   /** The repository's fixtures are being copied into the worktree; the agent starts when this is done. */
   preparing?: { done: number; total: number };
   /**

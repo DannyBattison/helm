@@ -535,7 +535,7 @@ function Composer({ s, inputRef }: { s: S; inputRef: React.RefObject<HTMLTextAre
   // In a session with several agents the @ list starts with them.
   const people = mention && s.panel ? ['all', ...participants(s.panel)].filter((n) => n.startsWith(mention.q.toLowerCase())) : [];
   const entries = [...people.map((v) => ({ who: true, v })), ...matches.map((v) => ({ who: false, v }))];
-  const commands = slash !== null ? slashMatches(slash, s.backend, backendFor(app, s.backend)?.capabilities, !!s.panel) : [];
+  const commands = slash !== null ? slashMatches(slash, s.backend, backendFor(app, s.backend)?.capabilities, !!s.panel, s.agentCommands) : [];
   const pickCommand = (c: SlashCommand) => {
     setSlash(null);
     if (c.kind === 'helm' && !c.arg) { runCommand(c, ''); return; }

@@ -1,9 +1,11 @@
-import type { AgentCapabilities } from './types';
+import type { AgentCapabilities, AgentCommand } from './types';
 
 /**
  * Commands typed at the start of a message with a slash. Two kinds:
  * - `helm` ones are run by helm itself and are never sent to the agent;
- * - `agent` ones belong to one agent's own command set and go to it as an ordinary message.
+ * - `agent` ones belong to one agent's own command set and go to it as an ordinary message. The agent reports them itself
+ *   (Claude Code and Qwen Code do, and that includes commands a user or repository defined), so they are never hard-coded here
+ *   beyond `FALLBACK`, which covers the time before an agent has started.
  */
 export interface SlashCommand {
   name: string;
@@ -12,13 +14,16 @@ export interface SlashCommand {
   kind: 'helm' | 'agent';
   /** Hint for what follows the name, shown in the list. Commands with one wait for it instead of running on pick. */
   arg?: string;
-  /** Agents that understand it (agent commands only). */
-  backends?: string[];
   /** Needs this capability of the session's agent. */
   needs?: keyof AgentCapabilities;
   /** Only in a session with one agent. */
   solo?: boolean;
 }
+
+/** What an agent is known to understand before it has reported its own list. */
+const FALLBACK: Record<string, AgentCommand[]> = {
+  claude: [{ name: 'compact', desc: 'Summarize the conversation to free context', arg: 'what to keep (optional)' }, { name: 'init', desc: 'Write a CLAUDE.md for this repository' }]
+};
 
 export const SLASH_COMMANDS: SlashCommand[] = [
   { name: 'agent', desc: 'Bring in another agent to discuss this', icon: 'users-three', kind: 'helm', solo: true },
@@ -28,21 +33,19 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { name: 'rename', desc: 'Rename this session', icon: 'pencil-simple', kind: 'helm' },
   { name: 'checkpoints', desc: 'See and restore earlier points', icon: 'clock-counter-clockwise', kind: 'helm' },
   { name: 'interrupt', desc: 'Stop what the agent is doing', icon: 'stop', kind: 'helm' },
-  { name: 'compact', desc: 'Summarize the conversation to free context', icon: 'arrows-in-line-vertical', kind: 'agent', backends: ['claude'], arg: 'what to keep (optional)' },
-  { name: 'init', desc: 'Write a CLAUDE.md for this repository', icon: 'file-text', kind: 'agent', backends: ['claude'] },
 ];
 
-/** The commands a session's agent offers whose name starts with what was typed. Helm's own come first. */
-export function slashMatches(q: string, backend: string, caps: Partial<AgentCapabilities> | undefined, panel: boolean): SlashCommand[] {
+/** The commands a session's agent offers whose name starts with what was typed. Helm's own come first and win a clash of names. */
+export function slashMatches(q: string, backend: string, caps: Partial<AgentCapabilities> | undefined, panel: boolean, reported?: AgentCommand[]): SlashCommand[] {
   const needle = q.toLowerCase();
-  return SLASH_COMMANDS
-    .filter((c) => c.name.startsWith(needle))
+  const own = SLASH_COMMANDS
     .filter((c) => !(c.solo && panel))
-    .filter((c) => !c.needs || caps?.[c.needs] !== false)
-    .filter((c) => c.kind === 'helm' || (!panel && !!c.backends?.includes(backend)))
-    .sort((a, b) => (a.kind === b.kind ? 0 : a.kind === 'helm' ? -1 : 1));
+    .filter((c) => !c.needs || caps?.[c.needs] !== false);
+  const theirs: SlashCommand[] = panel ? [] : (reported?.length ? reported : FALLBACK[backend] || [])
+    .filter((c) => !SLASH_COMMANDS.some((o) => o.name === c.name))
+    .map((c) => ({ name: c.name, desc: c.desc, icon: 'terminal', kind: 'agent' as const, ...(c.arg ? { arg: c.arg } : {}) }));
+  return [...own, ...theirs].filter((c) => c.name.startsWith(needle));
 }
-
 /** The `/word` under the caret, when it is the start of the message. */
 export function slashAt(value: string, caret: number): string | null {
   const m = /^\/([\w-]*)$/.exec(value.slice(0, caret));

@@ -1,4 +1,4 @@
-import type { AgentCapabilities, AgentLogin, BackendInfo, Effort, MessageImage, ModelAlias, ModelInfo, PermMode, TranscriptEvent } from '../shared/types';
+import type { AgentCapabilities, AgentCommand, AgentLogin, BackendInfo, Effort, MessageImage, ModelAlias, ModelInfo, PermMode, TranscriptEvent } from '../shared/types';
 
 export type { AgentCapabilities, ModelInfo };
 
@@ -29,6 +29,8 @@ export type AgentEvent =
   | { t: 'subagent_started'; id: string; agentId: string }
   | { t: 'subagent_progress'; id: string; tools?: number; tokens?: number; lastTool?: string }
   | { t: 'subagent_done'; id: string; status: 'completed' | 'failed' | 'stopped'; summary?: string }
+  /** The slash commands the agent understands. Sent when it starts, and again if they change. */
+  | { t: 'commands'; commands: AgentCommand[] }
   | { t: 'plan_usage'; fiveHour?: PlanWindow; weekly?: PlanWindow }
   /** The end of a turn. `costUsd` is the running total for the whole session when the agent reports one. */
   | { t: 'result'; isError: boolean; text: string; costUsd?: number };
