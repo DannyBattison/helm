@@ -157,12 +157,25 @@ function watchLogin(id: string) {
   watching.set(id, timer);
 }
 
+/** HELM_PROFILE_STATE=1 logs what each state push costs in the main process (build, send, serialised size per field) to diagnostics.log. */
+const PROFILE_STATE = !!process.env.HELM_PROFILE_STATE;
+function profileState() {
+  const t0 = performance.now();
+  const state = buildState();
+  const t1 = performance.now();
+  send('state', state);
+  const t2 = performance.now();
+  const sizes = Object.entries(state).map(([k, v]) => [k, JSON.stringify(v)?.length ?? 0] as const).filter(([, n]) => n > 1024).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k}=${(n / 1024).toFixed(1)}KB`).join(' ');
+  diag(`state push: build ${(t1 - t0).toFixed(2)} ms, send+forward ${(t2 - t1).toFixed(2)} ms; ${sizes}`);
+}
+
 let lastBadge = -1;
 export function emitState() {
   if (stateTimer) return;
   stateTimer = setTimeout(() => {
     stateTimer = null;
-    send('state', buildState());
+    if (PROFILE_STATE) profileState();
+    else send('state', buildState());
     companion.changed();
     // The badge is an OS call (on Windows it draws an overlay icon), so only make it when the number changes.
     const need = store.data.sessions.filter((s) => s.status === 'attention').length;
