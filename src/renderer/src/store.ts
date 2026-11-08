@@ -130,19 +130,42 @@ export async function refreshExternals() {
   } finally { externalsBusy = false; }
 }
 
+/** Transcript events waiting for the next frame, per session. A streamed reply sends many; applying each copied the whole transcript. */
+const pendingEvents = new Map<string, { index: number; event: TranscriptEvent }[]>();
+let pendingTimer: ReturnType<typeof setTimeout> | null = null;
+
+function queueTranscriptEvent({ sessionId, index, event }: HelmEvents['transcript']) {
+  const q = pendingEvents.get(sessionId);
+  if (q) q.push({ index, event }); else pendingEvents.set(sessionId, [{ index, event }]);
+  pendingTimer ??= setTimeout(applyTranscriptEvents, 16);
+}
+
+function applyTranscriptEvents() {
+  pendingTimer = null;
+  const batches = [...pendingEvents];
+  pendingEvents.clear();
+  const refetch: string[] = [];
+  setUI((u) => {
+    let transcripts = u.transcripts;
+    for (const [sessionId, events] of batches) {
+      const cur = transcripts[sessionId];
+      if (!cur) continue;
+      let next: TranscriptEvent[] | null = null;
+      for (const { index, event } of events) {
+        // An event past the end would leave holes (undefined) that crash the transcript view: refetch instead.
+        if (!event || index > (next ?? cur).length) { refetch.push(sessionId); next = null; break; }
+        (next ??= cur.slice())[index] = event;
+      }
+      if (next) transcripts = { ...transcripts, [sessionId]: next };
+    }
+    return transcripts === u.transcripts ? {} : { transcripts };
+  });
+  for (const id of refetch) void loadTranscript(id);
+}
+
 export async function init() {
   on('state', (app) => setUI({ app }));
-  on('transcript', ({ sessionId, index, event }) => {
-    setUI((u) => {
-      const cur = u.transcripts[sessionId];
-      if (!cur) return {};
-      // An event past the end would leave holes (undefined) that crash the transcript view: refetch instead.
-      if (!event || index > cur.length) { void loadTranscript(sessionId); return {}; }
-      const next = cur.slice();
-      next[index] = event;
-      return { transcripts: { ...u.transcripts, [sessionId]: next } };
-    });
-  });
+  on('transcript', queueTranscriptEvent);
   on('toast', (t: HelmEvents['toast']) => toast(t));
   on('navigate', (n) => go(n as Route));
   setInterval(() => { if (document.hasFocus()) void refreshExternals(); }, 15000);
