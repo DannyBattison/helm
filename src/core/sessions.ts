@@ -708,6 +708,7 @@ export class SessionManager {
       }
       case 'subagent_progress': return this.onTaskProgress(s, ev);
       case 'subagent_done': return this.onTaskDone(s, rt, ev);
+      case 'commands': s.agentCommands = ev.commands; this.touch(); return;
       case 'plan_usage': return this.onPlanUsage(s, ev);
       case 'assistant': return this.onAssistant(s, rt, ev);
       case 'tool_results': return this.onToolResults(s, rt, ev.results);

@@ -7,7 +7,7 @@ import { ClaudeAuth } from './claudeAuth';
 import { fileExists } from './git';
 import { convertMessages } from './transcript';
 import { run } from './util';
-import type { AgentLogin, Effort, MessageImage, ModelInfo, PermMode } from '../shared/types';
+import type { AgentCommand, AgentLogin, Effort, MessageImage, ModelInfo, PermMode } from '../shared/types';
 
 
 const sdkMode = (m: PermMode) => (m === 'plan' ? 'plan' : m === 'edits' ? 'acceptEdits' : m === 'all' ? 'bypassPermissions' : 'default') as 'plan' | 'acceptEdits' | 'bypassPermissions' | 'default';
@@ -45,6 +45,12 @@ class InputQueue implements AsyncIterable<SDKUserMessage> {
 const REVIEW_TOOLS = ['Read', 'Grep', 'Glob', 'Bash(git diff:*)', 'Bash(git log:*)', 'Bash(git show:*)', 'Bash(git merge-base:*)', 'Bash(git status:*)', 'Bash(git blame:*)', 'Bash(ls:*)', 'Bash(cat:*)', 'Bash(rg:*)', 'Bash(grep:*)'];
 
 const toolText = (c: any): string => (typeof c === 'string' ? c : (c || []).map((x: any) => x.text || '').join('\n'));
+
+/** What Claude Code lists as its slash commands, as helm's list: names without the slash, and without the ones that only make sense in its own terminal. */
+export function claudeCommands(list: { name: string; description?: string; argumentHint?: string }[]): AgentCommand[] {
+  const never = new Set(['clear', 'exit', 'quit', 'login', 'logout', 'resume', 'config', 'terminal-setup']);
+  return list.map((c) => ({ name: c.name.replace(/^\//, ''), desc: c.description || '', ...(c.argumentHint ? { arg: c.argumentHint } : {}) })).filter((c) => c.name && !never.has(c.name));
+}
 
 /** Turns one Claude Agent SDK message into the events helm understands. */
 export function claudeEvents(m: any): AgentEvent[] {
@@ -247,7 +253,16 @@ export class ClaudeBackend implements AgentBackend {
     let closed = false;
     return {
       get closed() { return closed; },
-      events: (async function* () { for await (const m of q as AsyncIterable<any>) yield* claudeEvents(m); })(),
+      events: (async function* () {
+        for await (const m of q as AsyncIterable<any>) {
+          yield* claudeEvents(m);
+          if (m.type === 'system' && m.subtype === 'init') {
+            const list = await Promise.resolve().then(() => q.supportedCommands()).catch(() => []);
+            const commands = claudeCommands(list);
+            if (commands.length) yield { t: 'commands', commands } as AgentEvent;
+          }
+        }
+      })(),
       send: (text, images) => queue.push(text, images),
       interrupt: () => q.interrupt().catch(() => undefined),
       setModel: (model) => q.setModel(model).catch(() => undefined),

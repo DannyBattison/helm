@@ -1,0 +1,3 @@
+## 2026-11-07 · Agents report their own slash commands
+
+Supersedes the hard-coded agent commands in the slash-commands entry. Claude Code (`supportedCommands()` after init) and Qwen Code (`available_commands_update`) say which commands they understand, user-defined and repository-defined ones included, so helm shows that list (`Session.agentCommands`) instead of keeping its own. Helm's commands win a clash of names, and a short fallback (Claude's `/compact`, `/init`) covers the time before the agent has started. Codex reports none, so it shows only helm's. Commands that only work in Claude Code's own terminal (`/clear`, `/login`, …) are dropped.

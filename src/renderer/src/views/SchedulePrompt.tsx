@@ -6,7 +6,7 @@ import { toast } from '../store';
 import { Button, IconButton, Select } from '../ui';
 
 /** The clock beside the paperclip: a small popup that sends the prompt in the box at a chosen time, once or on repeat, and lists what is already scheduled. */
-export function SchedulePrompt({ s, text, onScheduled }: { s: S; text: string; onScheduled(): void }) {
+export function SchedulePrompt({ s, text, onScheduled, trigger = 0 }: { s: S; text: string; onScheduled(): void; /** Changes when something else (the /schedule command) asks for it to open. */ trigger?: number }) {
   const [open, setOpen] = React.useState(false);
   const [when, setWhen] = React.useState('');
   const [repeat, setRepeat] = React.useState<Repeat>('none');
@@ -14,9 +14,10 @@ export function SchedulePrompt({ s, text, onScheduled }: { s: S; text: string; o
   const box = React.useRef<HTMLDivElement>(null);
   const list = s.scheduled || [];
   const toggle = () => {
-    if (!open) { setPrompt(text); setWhen(toLocal(Math.ceil((Date.now() + 3600_000) / 900_000) * 900_000)); }
+    if (!open) { setPrompt(text.replace(/^\/schedule\s*/, '')); setWhen(toLocal(Math.ceil((Date.now() + 3600_000) / 900_000) * 900_000)); }
     setOpen(!open);
   };
+  React.useEffect(() => { if (trigger) { setPrompt(text.replace(/^\/schedule\s*/, '')); setWhen(toLocal(Math.ceil((Date.now() + 3600_000) / 900_000) * 900_000)); setOpen(true); } }, [trigger]);
   React.useEffect(() => {
     if (!open) return;
     const down = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };

@@ -4,7 +4,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { homedir, totalmem } from 'node:os';
 import { join } from 'node:path';
 import type { AgentBackend, AgentBlock, AgentCapabilities, AgentEvent, AgentHandle, AgentStartOptions, ReviewOutcome, ReviewRequest, ToolDecision } from './backend';
-import type { LocalModel, LocalRuntime, MessageImage, ModelInfo, PermMode, RecommendedModel } from '../shared/types';
+import type { AgentCommand, LocalModel, LocalRuntime, MessageImage, ModelInfo, PermMode, RecommendedModel } from '../shared/types';
 import { run } from './util';
 
 /**
@@ -510,6 +510,11 @@ class QwenHandle {
         const c = this.merge(u);
         if (u.status === 'completed' || u.status === 'failed') { this.showCall(u.toolCallId); this.finished(u, c); }
         else if (c.rawInput && Object.keys(c.rawInput).length) this.showCall(u.toolCallId);
+        break;
+      }
+      case 'available_commands_update': {
+        const commands = (Array.isArray(u.availableCommands) ? u.availableCommands : []).map((c: Json) => ({ name: String(c.name || '').replace(/^\//, ''), desc: String(c.description || ''), ...(c.input?.hint ? { arg: String(c.input.hint) } : {}) })).filter((c: AgentCommand) => c.name);
+        if (commands.length) this.push({ t: 'commands', commands });
         break;
       }
       case 'usage_update': if (Number(u.size)) this.window = Number(u.size); break;
