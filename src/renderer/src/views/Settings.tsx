@@ -28,6 +28,13 @@ const set = (patch: Partial<SettingsT>) => void api.updateSettings(patch);
 
 export const PERM_OPTIONS = [{ value: 'ask', label: 'Ask before commands' }, { value: 'edits', label: 'Allow edits, ask for commands' }, { value: 'plan', label: 'Plan only' }, { value: 'all', label: 'Allow everything' }];
 
+/** What this browser keeps for itself (layout, sizes, filters): the `helm-` keys, to travel in an export. */
+function clientPrefs() {
+  const out: Record<string, string> = {};
+  try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k?.startsWith('helm-')) out[k] = localStorage.getItem(k) || ''; } } catch { /* storage unavailable */ }
+  return out;
+}
+
 /** Moving helm to another machine or server: everything but sign-ins and passwords, as one file. */
 function TransferSection() {
   const [busy, setBusy] = React.useState(false);
@@ -38,15 +45,17 @@ function TransferSection() {
     setBusy(true);
     try {
       const r = await api.importData(await f.text());
+      // Layout, sizes and filters live in the browser; they apply from the next page load.
+      for (const [k, v] of Object.entries(r.client || {})) { try { localStorage.setItem(k, v); } catch { /* storage unavailable */ } }
       toast({ tone: 'ready', title: 'Imported', description: `${r.sessions} sessions, ${r.repos} repositories, ${r.files} files` });
     } catch (e) { fail('Could not import')(e); } finally { setBusy(false); if (file.current) file.current.value = ''; }
   };
   return <>
     <H sub="For moving helm to another computer or server.">Import and export</H>
-    <SettingRow title="Export" desc="Saves repositories, sessions, transcripts, usage history, automated agents, settings and uploaded fixtures as one file. Your GitHub and Claude sign-ins and passwords are not included, so you sign in again on the new machine. The file holds your conversations; keep it private.">
-      <Button icon="download-simple" disabled={busy} onClick={() => { setBusy(true); void api.exportData().then((f) => f && toast({ tone: 'ready', title: 'Exported', description: f })).catch(fail('Could not export')).finally(() => setBusy(false)); }}>Export…</Button>
+    <SettingRow title="Export" desc="Saves repositories, sessions, transcripts, usage history, automated agents, settings, uploaded fixtures, files uploaded to sessions and this browser's layout choices as one file. Your GitHub and Claude sign-ins and passwords are not included, so you sign in again on the new machine. The file holds your conversations; keep it private.">
+      <Button icon="download-simple" disabled={busy} onClick={() => { setBusy(true); void api.exportData(clientPrefs()).then((f) => f && toast({ tone: 'ready', title: 'Exported', description: f })).catch(fail('Could not export')).finally(() => setBusy(false)); }}>Export…</Button>
     </SettingRow>
-    <SettingRow title="Import" desc="Adds the contents of an export file to what is here. Anything already here is kept: sessions and repositories with the same name are not overwritten. Paths, shells and update settings stay as they are on this machine. Imported sessions come in stopped; those whose worktree is not on this machine are marked as having none.">
+    <SettingRow title="Import" desc="Adds the contents of an export file to what is here. Anything already here is kept: sessions and repositories with the same name are not overwritten. Paths, shells and update settings stay as they are on this machine. Repositories are cloned again here when first needed. Imported sessions come in stopped; those whose worktree is not on this machine are marked as having none, so their conversations are kept but unmerged or uncommitted work is not: push those branches first.">
       <input ref={file} type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={(e) => void pick(e.target.files?.[0])} />
       <Button icon="upload-simple" disabled={busy} onClick={() => file.current?.click()}>Import…</Button>
     </SettingRow>

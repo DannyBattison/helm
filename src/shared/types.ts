@@ -1434,10 +1434,10 @@ export interface HelmApi {
   installUpdate(): Promise<void>;
   /** Saves a support bundle: versions, settings, session states and the recent log, with private text left out and secrets masked. */
   saveDiagnostics(): Promise<string | null>;
-  /** Saves everything helm knows (not sign-ins or passwords) as one file for moving to another machine. */
-  exportData(): Promise<string | null>;
+  /** Saves everything helm knows (not sign-ins or passwords) as one file for moving to another machine. `client` is what this browser or window keeps for itself, to be put back on import. */
+  exportData(client?: Record<string, string>): Promise<string | null>;
   /** Adds the contents of an export file to what is here, leaving anything already here alone. */
-  importData(text: string): Promise<{ repos: number; sessions: number; files: number }>;
+  importData(text: string): Promise<{ repos: number; sessions: number; files: number; client?: Record<string, string> }>;
   syncStatus(): Promise<import('./sync').SyncStatus>;
   /** The key other instances use to sync with this one. Made the first time it is asked for. */
   syncKey(): Promise<string>;
