@@ -3,6 +3,7 @@ import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 import type { Settings } from '../shared/types';
 import type { Store } from './store';
+import { expandHome } from './util';
 
 /**
  * Moving helm to another machine or server: everything it knows (repositories, sessions, transcripts, usage, settings, uploaded
@@ -16,7 +17,7 @@ export const MACHINE_SETTINGS: (keyof Settings)[] = ['claudePath', 'codexPath', 
 /** State kept as lists of records without an id of their own. */
 const LISTS = ['usage', 'audit', 'daily'] as const;
 /** Folders and files in the data directory that belong in an export. Caches, logs and `*.bin` secrets do not. */
-export const FOLDERS = ['transcripts', 'repo-artifacts'];
+export const FOLDERS = ['transcripts', 'repo-artifacts', 'uploads'];
 export const FILES = ['activity.jsonl', 'activity.old.jsonl'];
 const TEXT = /\.(json|jsonl|md|txt|csv|yml|yaml)$/i;
 
@@ -28,8 +29,18 @@ export interface ExportBundle {
   state: Record<string, unknown>;
   /** Paths relative to the data directory, with forward slashes. */
   files: Record<string, FileEntry>;
+  /** What the browser keeps for itself (layout, sizes, filters), as sent by the page that asked for the export. */
+  client?: Record<string, string>;
 }
-export interface ImportResult { repos: number; sessions: number; files: number }
+export interface ImportResult { repos: number; sessions: number; files: number; client?: Record<string, string> }
+
+/** Browser-side preferences worth carrying: `helm-` keys, but not where the page was last or the crash-loop guard. */
+export function cleanClient(x: unknown): Record<string, string> | undefined {
+  if (!x || typeof x !== 'object') return undefined;
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(x)) if (/^helm-[\w-]+$/.test(k) && !/^helm-(route|start-)/.test(k) && typeof v === 'string' && v.length < 10000) out[k] = v;
+  return Object.keys(out).length ? out : undefined;
+}
 
 export async function walk(root: string, rel: string, out: string[]) {
   for (const e of await readdir(join(root, rel), { withFileTypes: true }).catch(() => [])) {
@@ -65,7 +76,7 @@ export function adopt(s: any, owner?: string) {
   return s;
 }
 
-export async function buildExport(store: Store): Promise<string> {
+export async function buildExport(store: Store, client?: unknown): Promise<string> {
   await store.flushAll();
   const { user: _user, ...state } = store.data;
   const names: string[] = FILES.filter((f) => existsSync(join(store.root, f)));
@@ -75,7 +86,7 @@ export async function buildExport(store: Store): Promise<string> {
     const e = await readEntry(store.root, n);
     if (e) files[n] = e;
   }
-  const bundle: ExportBundle = { format: EXPORT_FORMAT, version: EXPORT_VERSION, exportedAt: Date.now(), state, files };
+  const bundle: ExportBundle = { format: EXPORT_FORMAT, version: EXPORT_VERSION, exportedAt: Date.now(), state, files, client: cleanClient(client) };
   return JSON.stringify(bundle);
 }
 
@@ -111,15 +122,21 @@ export async function applyImport(store: Store, text: string): Promise<ImportRes
   const result: ImportResult = { repos: 0, sessions: 0, files: 0 };
 
   const have = new Set(d.repos.map((r) => r.id));
-  for (const r of Array.isArray(inc.repos) ? inc.repos : []) if (r?.id && !have.has(r.id)) { d.repos.push(r); have.add(r.id); result.repos++; }
+  for (const r of Array.isArray(inc.repos) ? inc.repos : []) {
+    if (!r?.id || have.has(r.id)) continue;
+    // The clone is a folder on the old machine. Keep the path if it happens to be here too; otherwise it goes where this machine keeps clones, and is cloned when first needed.
+    if (typeof r.localPath !== 'string' || !existsSync(r.localPath)) r.localPath = join(expandHome(d.settings.cloneRoot), String(r.owner), String(r.name));
+    d.repos.push(r); have.add(r.id); result.repos++;
+  }
 
   const known = new Set(d.sessions.map((s) => s.id));
+  const fresh: any[] = [];
   for (const s of Array.isArray(inc.sessions) ? inc.sessions : []) {
     if (!s?.id || known.has(s.id)) continue;
     adopt(s);
     // An import is a move: the sessions are this installation's now.
     s.owner = { id: d.instanceId, at: Date.now() };
-    d.sessions.push(s); known.add(s.id); result.sessions++;
+    d.sessions.push(s); fresh.push(s); known.add(s.id); result.sessions++;
   }
 
   const agents = new Set(d.automations.map((a) => a.id));
@@ -145,6 +162,13 @@ export async function applyImport(store: Store, text: string): Promise<ImportRes
     await writeEntry(dest, f);
     result.files++;
   }
+  // Uploaded files now live in this machine's data folder, wherever they were before.
+  for (const s of fresh) {
+    if (!s.uploads) continue;
+    const dir = join(store.root, 'uploads', s.id);
+    if (existsSync(dir) && /^[\w-]+$/.test(s.id)) s.uploads.dir = dir; else delete s.uploads;
+  }
+  result.client = cleanClient(b.client);
   store.forgetTranscripts();
   await store.flush();
   return result;

@@ -1078,7 +1078,7 @@ export const api: HelmApi = {
     });
     return saveFile(`helm-diagnostics-${new Date().toISOString().slice(0, 10)}.md`, text);
   },
-  async exportData() { return saveFile(`helm-export-${new Date().toISOString().slice(0, 10)}.json`, await buildExport(store)); },
+  async exportData(client) { return saveFile(`helm-export-${new Date().toISOString().slice(0, 10)}.json`, await buildExport(store, client)); },
   async importData(text) {
     const r = await applyImport(store, String(text));
     store.log({ kind: 'git', who: me(), human: true, what: `imported ${r.sessions} sessions and ${r.repos} repositories`, repo: '' });
