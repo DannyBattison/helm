@@ -9,7 +9,7 @@ import { Cmd, Hl } from '../Hl';
 import { highlightBlock, langFromPath, langFromTag } from '../highlight';
 import { participants } from '@shared/panel';
 import { parseHelmCommand, slashAt, slashMatches, type SlashCommand } from '@shared/slashCommands';
-import { backendIdOf, agentName, panelBackendId, billingOf, can, clock, elapsed, fmtTokens, modelChoices, modelOptions, prettyModel, runningSubagents, STATUS_LABEL, subagentTree, tilde } from '../lib';
+import { backendFor, backendIdOf, agentName, panelBackendId, billingOf, can, clock, elapsed, fmtTokens, modelChoices, modelOptions, prettyModel, runningSubagents, STATUS_LABEL, subagentTree, tilde } from '../lib';
 import { go, loadTranscript, setUI, toast, useApp, useMoney, useTranscript, useUI } from '../store';
 import { Avatar, Badge, BranchTag, Button, ContextMenu, CopyBox, menuProps, DiffStat, Grip, IconButton, Lightbox, Meter, Select, StatusDot, Tabs, Tooltip, useNarrow, usePaneWidth } from '../ui';
 import { QuestionForm } from './QuestionForm';
