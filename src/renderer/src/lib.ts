@@ -129,12 +129,18 @@ export function laneData(s: Session, now = Date.now(), range: LaneRange = LANE_R
   const segs: [number, number, Status][] = [];
   s.timeline.forEach((e, i) => {
     if (e.status === 'idle' || e.status === 'error') return;
-    const end = i + 1 < s.timeline.length ? s.timeline[i + 1].t : s.endedAt ?? now;
+    const end = i + 1 < s.timeline.length ? s.timeline[i + 1].t : s.endedAt ?? s.archivedAt ?? now;
     const a = Math.max(0, toMin(e.t)), b = Math.min(nowAt, toMin(end));
     if (b > a) segs.push([a, Math.max(b, a + 0.6), e.status]);
   });
   const marks = s.commits.map((c) => toMin(c.at)).filter((m) => m >= 0 && m <= nowAt);
   return { segs, marks };
+}
+
+/** Whether an archived session has anything to draw in the window: its last segment ends no earlier than the window's start. */
+export function archivedInRange(s: Session, now = Date.now(), range: LaneRange = LANE_RANGES[0]): boolean {
+  if (!s.archivedAt) return false;
+  return laneData(s, now, range).segs.length > 0;
 }
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
