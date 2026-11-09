@@ -10,6 +10,9 @@ import { CURRENCIES, rateFor } from '@shared/money';
 import { BUNDLED_FONTS, fontStack, SYSTEM_DEFAULT, systemFonts, systemUiFonts, uiStack, UI_BUNDLED_FONTS, dataStack } from '../fonts';
 import { ACCENT_SWATCHES, SCHEMES, STATUS_KEYS, STATUS_LABEL, isHex, schemeVars } from '@shared/schemes';
 import { McpServers } from './McpServers';
+import { settingsIndex } from '../settingsIndex';
+import settingsSource from './Settings.tsx?raw';
+import repoSettingsSource from './RepoSettings.tsx?raw';
 import { RepoSettingsPane } from './RepoSettings';
 import { AutomationsSection } from './Automations';
 import { EFFORT_OPTIONS, VariantEditor } from './Review';
@@ -631,7 +634,9 @@ export function Settings({ section }: { section?: string }) {
     github: 'accounts login sign in authentication', claude: 'accounts login sign in authentication', codex: 'accounts login sign in authentication', qwen: 'local free unlimited ollama models offline qwen download',
   };
   const q = search.trim().toLowerCase();
-  const visibleNav = nav.filter(([k, label]) => q ? `${label} ${keywords[k] || ''}`.toLowerCase().includes(q) : allSettings || experience.advanced || k === sec || (experience.simple ? basic.includes(k) || k.startsWith('repo:') : !advanced.includes(k)));
+  // Every word of every setting row counts, not only the page names.
+  const index = React.useMemo(() => settingsIndex(settingsSource, repoSettingsSource), []);
+  const visibleNav = nav.filter(([k, label]) => q ? `${label} ${keywords[k] || ''} ${k.startsWith('repo:') ? index.repo : index[k] || ''}`.toLowerCase().includes(q) : allSettings || experience.advanced || k === sec || (experience.simple ? basic.includes(k) || k.startsWith('repo:') : !advanced.includes(k)));
   React.useEffect(() => { if (section) setSec(section === 'account' ? 'github' : section); }, [section]);
   // Accounts and Shortcuts are nodes of their own with nothing on them: clicking one opens its first page, and the caret folds its pages away.
   const repoKeys = app.repos.map((r) => 'repo:' + r.id);
@@ -945,7 +950,6 @@ export function Settings({ section }: { section?: string }) {
               <Switch checked={st.tutorial} onChange={(v: boolean) => set({ tutorial: v })} />
               <Button size="sm" icon="arrow-counter-clockwise" onClick={() => set({ tutorial: true, tutorialSeen: [] })}>Show tips again</Button>
             </SettingRow>
-            <SettingRow title="Show organisation in the sidebar" desc="Writes repositories as acme/storefront rather than just storefront. Turn off to save width."><Switch checked={st.showOwner} onChange={(v: boolean) => set({ showOwner: v })} /></SettingRow>
             <FontRow title="Interface font" desc="Labels, titles and prose throughout helm." value={st.uiFont} onChange={(v: string) => set({ uiFont: v })} bundled={UI_BUNDLED_FONTS} system={[SYSTEM_DEFAULT, ...uiSystem]} stack={uiStack} />
             <FontRow title="Data font" desc="Monospaced text in the interface: paths, branches, hashes, counts and costs." value={st.dataFont} onChange={(v: string) => set({ dataFont: v })} bundled={BUNDLED_FONTS} system={monoSystem} stack={dataStack} />
             <TerminalShellRow st={st} set={set} />

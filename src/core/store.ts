@@ -89,7 +89,6 @@ export const defaultSettings = (): Settings => ({
   shortcuts: {},
   customShortcuts: [],
   interruptKey: 'esc',
-  showOwner: true,
   freeAgents: true,
   tutorial: true,
   tutorialSeen: [],
