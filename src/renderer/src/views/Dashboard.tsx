@@ -6,7 +6,7 @@ import { usePush } from './push';
 import { sessionTitle, type ActivityEvent, type ExternalSession, type Session } from '@shared/types';
 import { contextWindow } from '@shared/reports';
 import { api, platform } from '../api';
-import { STATUS_LABEL, visibleRepos, backendIdOf, planBackends, isFreeGroup, whereLabel, ago, clock, fmtTokens, lifetimeTokens, laneAxis, laneData, laneRange, laneSpan, LANE_RANGES, type LaneRange, livePlan, repoOf, reposWithSessions, runningSubagents, sessionTokens, totals, untilReset } from '../lib';
+import { STATUS_LABEL, visibleRepos, backendIdOf, planBackends, isFreeGroup, whereLabel, ago, clock, fmtTokens, lifetimeTokens, laneAxis, laneData, archivedInRange, laneRange, laneSpan, LANE_RANGES, type LaneRange, livePlan, repoOf, reposWithSessions, runningSubagents, sessionTokens, totals, untilReset } from '../lib';
 import { Cmd } from '../Hl';
 import { go, setUI, useApp, useMoney, toast, useUI } from '../store';
 import { Avatar, Button, DiffStat, Hint, Meter, SegmentedControl, Stat, StatusDot, Select, useColumns, useNarrow } from '../ui';
@@ -266,13 +266,14 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
     ...(sub ? [] : [{ w: 56, min: 44 }]), { w: 104, min: 80, fixed: true }
   ]);
   const narrow = phone || experience.simple || available < col.minWidth;
-  const visible = (s: Session) => (filter === 'archived' ? !!s.archivedAt : !s.archivedAt && filter !== 'external' && (filter === 'all' || s.status === filter));
-  const extVisible = (x: ExternalSession) => (filter === 'archived' ? x.archived : !x.archived && (filter === 'all' || filter === 'external' || (filter === 'working' && x.active)));
-  const extFor = (id: string) => (externals[id] || []).filter(extVisible);
-  const extShown = (id: string) => extFor(id).filter((x, i) => filter === 'external' || x.active || i < 5);
   const board = experience.board && layout === 'board' && filter !== 'external' && filter !== 'archived';
   const range = laneRange(rangeId);
   const lanes = !experience.simple && !board && filter !== 'external';
+  // With timelines on, "All" also lists archived sessions that were active in the window, or it would be nearly empty.
+  const visible = (s: Session) => (filter === 'archived' ? !!s.archivedAt : s.archivedAt ? lanes && filter === 'all' && archivedInRange(s, now, range) : filter !== 'external' && (filter === 'all' || s.status === filter));
+  const extVisible = (x: ExternalSession) => (filter === 'archived' ? x.archived : !x.archived && (filter === 'all' || filter === 'external' || (filter === 'working' && x.active)));
+  const extFor = (id: string) => (externals[id] || []).filter(extVisible);
+  const extShown = (id: string) => extFor(id).filter((x, i) => filter === 'external' || x.active || i < 5);
   const asks = app.sessions.filter((s) => s.ask).sort((a, b) => a.ask!.at - b.ask!.at);
   const cell: React.CSSProperties = { padding: narrow ? 12 : '14px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'center', borderLeft: '1px solid var(--border-subtle)' };
   const groups = reposWithSessions(app, true, true).filter(({ repo: r, sessions }) => sessions.some(visible) || extFor(r.id).length > 0);
