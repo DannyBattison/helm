@@ -1,0 +1,3 @@
+## 2026-11-09 · Ship the bundled npm as a resource folder, not inside app.asar
+One-click installs of Codex and Qwen Code failed on Windows with a Node "Cannot find module" error from npm-cli.js: the packaged npm (asarUnpack of node_modules/npm) was missing files, most likely its bundled nested node_modules. npm is now excluded from the asar and copied whole with `extraResources` to `resources/npm`, and `npmCli` points there when packaged.
+Why: a user's Windows install could not install any agent; copying the folder untouched avoids electron-builder's dependency filtering. Not verified on Windows from here.
