@@ -236,7 +236,8 @@ export class Companion {
 
   snapshot(): CompanionSnapshot {
     const d = this.store.data;
-    const repoName = (id: string) => d.repos.find((r) => r.id === id)?.name || id;
+    const names = new Map(d.repos.map((r) => [r.id, r.name]));
+    const repoName = (id: string) => names.get(id) || id;
     const sess = (s: Session) => ({
       id: s.id, title: s.customTitle || s.title || '', repoId: s.repoId, repoName: repoName(s.repoId), status: s.status, step: cap(s.step || '', 160), branch: s.branch, base: s.base,
       model: s.model, permMode: s.permMode, startedAt: s.startedAt, endedAt: s.endedAt, lastAccess: s.lastAccess,

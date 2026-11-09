@@ -325,11 +325,18 @@ export class Store {
     if (!quiet) this.onLocalChange?.();
   }
 
-  async flush() {
-    if (this.stamp()) this.onLocalChange?.();
-    const file = join(this.dir, 'helm.json');
-    await writeFile(file + '.tmp', JSON.stringify(this.data));
-    await rename(file + '.tmp', file);
+  private flushing: Promise<void> = Promise.resolve();
+  /** Writes helm.json. Runs one at a time: two writers sharing the temporary file would corrupt each other's output. */
+  flush(): Promise<void> {
+    const run = async () => {
+      if (this.stamp()) this.onLocalChange?.();
+      const file = join(this.dir, 'helm.json');
+      await writeFile(file + '.tmp', JSON.stringify(this.data));
+      await rename(file + '.tmp', file);
+    };
+    const next = this.flushing.then(run, run);
+    this.flushing = next.catch(() => undefined);
+    return next;
   }
 
   async transcript(id: string): Promise<TranscriptEvent[]> {
