@@ -12,12 +12,18 @@ export function mcpProblem(s: McpServer, others: string[] = []): string {
   try { const u = new URL(s.url.trim()); return /^https?:$/.test(u.protocol) ? '' : 'The address must start with http:// or https://.'; } catch { return 'That is not a valid address.'; }
 }
 
+/** Arguments are one per line, but a lone line like `-y -p pkg bin` is almost certainly several typed together, which `npx` would take as one unknown option. */
+export function splitArgs(args: string[] = []): string[] {
+  const a = args.map((x) => x.trim()).filter(Boolean);
+  return a.length === 1 && a[0].startsWith('-') && /\s/.test(a[0]) ? a[0].split(/\s+/) : a;
+}
+
 /** Cleans what the renderer sent: trims, drops empty arguments and variables, and keeps only the fields of the server's type. */
 export function cleanMcp(s: McpServer): McpServer {
   const pairs = (m: Record<string, string> | undefined) => Object.fromEntries(Object.entries(m || {}).map(([k, v]) => [k.trim(), String(v)] as const).filter(([k]) => k));
   const base = { name: s.name.trim(), type: s.type, ...(s.disabled ? { disabled: true } : {}) };
   return s.type === 'stdio'
-    ? { ...base, command: s.command.trim(), args: (s.args || []).map((a) => a.trim()).filter(Boolean), env: pairs(s.env), url: '', headers: {} }
+    ? { ...base, command: s.command.trim(), args: splitArgs(s.args), env: pairs(s.env), url: '', headers: {} }
     : { ...base, command: '', args: [], env: {}, url: s.url.trim(), headers: pairs(s.headers) };
 }
 
@@ -29,7 +35,7 @@ export function mcpConfig(global: McpServer[] = [], repo: McpServer[] = []): Rec
   for (const s of byName.values()) {
     if (s.disabled) continue;
     out[s.name] = s.type === 'stdio'
-      ? { type: 'stdio', command: s.command, args: s.args, ...(Object.keys(s.env).length ? { env: s.env } : {}) }
+      ? { type: 'stdio', command: s.command, args: splitArgs(s.args), ...(Object.keys(s.env).length ? { env: s.env } : {}) }
       : { type: s.type, url: s.url, ...(Object.keys(s.headers).length ? { headers: s.headers } : {}) };
   }
   return out;

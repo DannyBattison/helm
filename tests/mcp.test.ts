@@ -19,6 +19,11 @@ describe('mcp servers', () => {
     const c = cleanMcp(stdio(' a ', { args: [' x ', ''], env: { ' K ': 'v', '': 'z' }, url: 'junk' }));
     expect(c).toMatchObject({ name: 'a', args: ['x'], env: { K: 'v' }, url: '', headers: {} });
   });
+  it('splits arguments typed on one line, also for servers saved that way', () => {
+    expect(cleanMcp(stdio('a', { args: ['-y -p @x/y y-mcp'] })).args).toEqual(['-y', '-p', '@x/y', 'y-mcp']);
+    expect(mcpConfig([stdio('a', { args: ['-y -p @x/y y-mcp'] })]).a.args).toEqual(['-y', '-p', '@x/y', 'y-mcp']);
+    expect(cleanMcp(stdio('a', { args: ['-y', 'a b'] })).args).toEqual(['-y', 'a b']);
+  });
   it('merges global and repository servers, the repository winning, and skips disabled', () => {
     const cfg = mcpConfig([stdio('a'), http('b'), stdio('off', { disabled: true })], [http('a'), stdio('c', { env: { T: '1' } })]);
     expect(Object.keys(cfg).sort()).toEqual(['a', 'b', 'c']);
