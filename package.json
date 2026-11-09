@@ -84,12 +84,12 @@
     "files": [
       "desktop/out/**",
       "desktop/build/icon.png",
-      "package.json"
+      "package.json",
+      "!node_modules/npm/**"
     ],
     "asarUnpack": [
       "node_modules/@anthropic-ai/**",
-      "node_modules/@homebridge/**",
-      "node_modules/npm/**"
+      "node_modules/@homebridge/**"
     ],
     "win": {
       "icon": "desktop/build/icon.png",
@@ -131,6 +131,10 @@
     },
     "npmRebuild": false,
     "extraResources": [
+      {
+        "from": "node_modules/npm",
+        "to": "npm"
+      },
       {
         "from": "desktop/build/icon.png",
         "to": "build/icon.png"
