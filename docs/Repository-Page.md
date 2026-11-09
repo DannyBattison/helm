@@ -6,7 +6,9 @@ Click a repository in the sidebar to open its page. It is the home for everythin
 > - Tabs: **History**, **Code**, **Outside sessions**, **Memory**, **MCP servers**, **Fixtures**, **Branches & worktrees**, **Issues**, **Actions**, **Settings** and **Pull requests**.
 > - The header has **New session**, fetch from GitHub, and push buttons.
 
-Right-click a repository in the sidebar for a menu: **New session**, the tabs above, **Fetch from GitHub**, **Open on GitHub**, open in your editor or file manager, copy its path or URL, and **Remove from helm**.
+Right-click a repository in the sidebar for a menu: **New session**, the tabs above, **Fetch from GitHub**, **Open on GitHub**, open in your editor or file manager, copy its path or URL, **Rename repository** and **Remove from helm**.
+
+**Rename repository** renames it on GitHub, then on this computer: the origin remote, the clone's folder and the folder holding its session worktrees. Sessions keep their branches and history. It is refused while an agent is running or waiting on you in that repository, because its folder would move under it; you need admin rights on the repository.
 
 ## History
 

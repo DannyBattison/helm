@@ -3,6 +3,7 @@ import React from 'react';
 import { MAX_UPLOAD_FILES, MAX_UPLOAD_TOTAL, type BaseOption, type GhRepo, type MergeMethod, type ModelAlias, type PermMode, type PullRequest, type RepoRemoveInfo, type SessionDeleteInfo } from '@shared/types';
 import { api, platform } from '../api';
 import glyph from '../assets/helm-glyph-violet.svg';
+import { validRepoName } from '@shared/repoName';
 import { agentName, billingOf, defaultChoice, modelChoices, repoSettings, visibleRepos, splitChoice, tilde } from '../lib';
 import { getUI, go, haltAll, resumeAll, setUI, toast, useApp, useMoney } from '../store';
 import { Badge, Button, Checkbox, Dialog, IconButton, Input, Kbd, SegmentedControl, Select, Tabs, useNarrow } from '../ui';
@@ -611,6 +612,51 @@ export function DeleteSession({ id, onClose }: { id: string; onClose(): void }) 
         {info && branch && info.unpushed > 0 ? warn(`${info.unpushed} ${info.unpushed === 1 ? 'commit' : 'commits'} on this branch ${info.pushed ? 'are not on GitHub' : 'exist nowhere else'}, and will be lost.`) : null}
         {info && !branch && info.unpushed > 0 ? <span style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-3)' }}>Keeping the branch keeps its {info.unpushed} {info.unpushed === 1 ? 'commit' : 'commits'}.</span> : null}
       </div>
+    </Dialog>
+  );
+}
+
+// ------------------------------------------------------------------ rename repository
+export function RenameRepo({ id, onClose }: { id: string; onClose(): void }) {
+  const app = useApp();
+  const repo = app.repos.find((r) => r.id === id);
+  const [name, setName] = React.useState(repo?.name ?? '');
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState('');
+  if (!repo) return null;
+  const live = app.sessions.filter((s) => !s.archivedAt && (s.repoId === id || s.extras?.some((e) => e.repoId === id)) && (s.status === 'working' || s.status === 'attention'));
+  const next = name.trim();
+  const problem = next === repo.name ? '' : validRepoName(next) ?? '';
+  const run = async () => {
+    setBusy(true); setErr('');
+    try {
+      const r = await api.renameRepo(id, next);
+      const route = getUI().route;
+      if (route.screen === 'repo' && route.id === id) go({ ...route, id: r.id });
+      else if (route.screen === 'external' && route.repoId === id) go({ ...route, repoId: r.id });
+      if (r.warnings.length) toast({ tone: 'error', title: `Renamed to ${r.id}, but not everything followed`, description: r.warnings.join('\n') });
+      else toast({ tone: 'ready', title: 'Repository renamed', description: r.id });
+      onClose();
+    } catch (e) { setErr(errText(e)); } finally { setBusy(false); }
+  };
+  return (
+    <Dialog width={480} title={`Rename ${repo.id}`} description="Renames it on GitHub, then the folder and worktrees on this computer." onClose={onClose}
+      footer={<>
+        <span style={{ flex: 1, font: '400 12px/1.5 var(--font-sans)', color: 'var(--status-error-text)' }}>{err || problem}</span>
+        <Button variant="ghost" onClick={onClose}>Cancel</Button>
+        <Button variant="primary" icon="pencil-simple" loading={busy} disabled={live.length > 0 || !next || next === repo.name || !!problem} onClick={run}>Rename</Button>
+      </>}>
+      {live.length ? (
+        <span style={{ display: 'flex', gap: 8, alignItems: 'flex-start', font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--status-attention-text)' }}>
+          <i className="ph-fill ph-warning-circle" style={{ fontSize: 14, marginTop: 2, flex: 'none' }} />
+          {live.length === 1 ? 'An agent is' : `${live.length} agents are`} running here ({live.slice(0, 3).map((s) => s.id).join(', ')}{live.length > 3 ? '…' : ''}). Their folders would move under them, so wait for {live.length === 1 ? 'it' : 'them'} to finish, or stop {live.length === 1 ? 'it' : 'them'}, first.
+        </span>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <Input autoFocus mono value={name} placeholder={repo.name} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)} onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' && next && next !== repo.name && !problem && !busy) void run(); }} />
+          <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>You need admin rights on the repository. GitHub redirects the old name, but anyone who cloned it should update their remote. Sessions keep their branches.</span>
+        </div>
+      )}
     </Dialog>
   );
 }

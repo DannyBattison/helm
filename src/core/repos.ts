@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { basename, join, normalize } from 'node:path';
 import type { BaseOption, FileChange, HistoryCommit, Repo, Session, WorktreeInfo } from '../shared/types';
 import * as G from './git';
@@ -75,6 +75,14 @@ export class RepoService {
     if (i >= 0) { this.repos.splice(i, 1); this.store.tombstone('repo', id); }
     this.store.save();
     this.changed();
+  }
+
+  /** Forgets the cached history of a repository whose id changed; it is read again under the new one. */
+  async renamedCache(from: string, to: string) {
+    this.histMem.delete(from);
+    this.filesMem.clear();
+    if (this.histDir) await rm(join(this.histDir, from.replace('/', '__') + '.json'), { force: true }).catch(() => undefined);
+    this.histMem.delete(to);
   }
 
   async fetch(id: string) {

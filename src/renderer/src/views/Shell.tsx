@@ -131,7 +131,8 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
       { label: 'Show in file manager', icon: 'folder-open', onClick: () => { api.openFolder(r.localPath).catch(fail('Could not open the folder')); } },
       { label: 'Copy path', icon: 'copy', onClick: () => void api.copyText(r.localPath) },
       { label: 'Copy GitHub URL', icon: 'link', onClick: () => void api.copyText(`https://github.com/${r.id}`) },
-      { label: 'Remove from helm…', icon: 'trash', danger: true, separator: true, onClick: () => setUI({ removingRepo: r.id }) }
+      { label: 'Rename repository…', icon: 'pencil-simple', separator: true, onClick: () => setUI({ renamingRepo: r.id }) },
+      { label: 'Remove from helm…', icon: 'trash', danger: true, onClick: () => setUI({ removingRepo: r.id }) }
     ] });
   };
   // Reordering: repositories among themselves, and sessions within their repository. Subagents are never dragged on their own.
