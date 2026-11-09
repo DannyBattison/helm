@@ -619,8 +619,6 @@ export interface Settings {
   shortcuts: Record<string, string>;
   /** Shortcuts you made yourself: each opens a prefilled new session dialog or goes to a page (see `shared/shortcuts.ts`). */
   customShortcuts: CustomShortcut[];
-  /** Show the organisation or user before each repository name in the left tree (`acme/` storefront). */
-  showOwner: boolean;
   /** Tutorial mode: bubbles that point out useful areas until each is dismissed. */
   tutorial: boolean;
   /** Ids of the tutorial bubbles already dismissed. */

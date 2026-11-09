@@ -187,15 +187,20 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
         {!experience.advanced ? <TreeItem icon="list" label={allNav ? 'Use reduced navigation' : 'Show all navigation'} onClick={() => setAllNav(!allNav)} /> : null}
         <SectionLabel action={<><IconButton icon="archive" label={showArchived ? 'Hide archived sessions' : 'Show archived sessions'} size="sm" active={showArchived} onClick={toggleArchived} /><Hint id="add-repo" side="right" title="Add a repository" text="Start here: pick a GitHub repository for agents to work in."><IconButton icon="plus" label="Add repository" size="sm" onClick={() => setUI({ adding: true })} /></Hint></>}>Repositories</SectionLabel>
         {visibleRepos(app).length === 0 ? <div style={{ padding: '4px 10px 6px', font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>No repositories yet. Use + to add one from GitHub.</div> : null}
-        {reposWithSessions(app, showArchived).map(({ repo: r, sessions }) => {
+        {(() => {
+        // With repositories from more than one organisation, each organisation is a level of its own above its repositories.
+        const entries = reposWithSessions(app, showArchived);
+        const owners = [...new Set(entries.filter((e) => !isFreeGroup(e.repo)).map((e) => e.repo.owner))];
+        const grouped = owners.length > 1;
+        const renderRepo = ({ repo: r, sessions }: (typeof entries)[number], g: number) => {
           const live = sessions.filter((s) => !s.archivedAt).length;
           const empty = live === 0 && !extList(r.id).length;
           const open = closed[r.id] === undefined ? !empty : !closed[r.id];
           return (
             <div key={r.id} {...target('repo', r.id)} style={line(r.id)}>
               <div {...(isFreeGroup(r) ? {} : dnd('repo', r.id))} {...(isFreeGroup(r) ? {} : menuProps((e) => repoMenu(e, r)))}>
-              <TreeItem icon={isFreeGroup(r) ? 'robot' : 'book-bookmark'} expandable expanded={open} onToggle={() => setClosed({ ...closed, [r.id]: open })}
-                label={isFreeGroup(r) ? <span title="Agents that are not tied to a repository">Free agents</span> : <span>{app.settings.showOwner ? <span style={{ color: 'var(--text-3)' }}>{r.owner}/</span> : null}{r.name}</span>}
+              <TreeItem depth={g} icon={isFreeGroup(r) ? 'robot' : 'book-bookmark'} expandable expanded={open} onToggle={() => setClosed({ ...closed, [r.id]: open })}
+                label={isFreeGroup(r) ? <span title="Agents that are not tied to a repository">Free agents</span> : <span>{r.name}</span>}
                 selected={!isFreeGroup(r) && route.screen === 'repo' && route.id === r.id} meta={live || null}
                 trailing={isFreeGroup(r) ? (app.settings.freeAgents ? <IconButton icon="plus" label="New free agent" size="sm" onClick={(e: any) => { e.stopPropagation(); setUI({ newSession: { repoId: '@free' } }); }} /> : null) : lifetimeTokens(app.lifetime[r.id]) ? <span title={`${lifetimeTokens(app.lifetime[r.id]).toLocaleString()} tokens used in ${r.name} over its lifetime, including deleted sessions`} style={{ font: '400 12px/1.5 var(--font-mono)', color: 'var(--text-3)', flex: 'none', marginLeft: 6 }}>{fmtTokens(lifetimeTokens(app.lifetime[r.id]))}</span> : null}
                 onClick={() => { if (isFreeGroup(r) || (route.screen === 'repo' && route.id === r.id)) setClosed({ ...closed, [r.id]: open }); else go({ screen: 'repo', id: r.id }); }} />
@@ -209,7 +214,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
                 return (
                   <div key={s.id} {...target('session', s.id, r.id)} style={line(s.id)}>
                     <div {...dnd('session', s.id, r.id)} {...menuProps((e) => sessionMenu(e, s))}>
-                    <TreeItem depth={1} status={s.status} label={sessionTitle(s)} expandable={tree.length > 0 || hiddenSubs > 0} expanded={subsOpen} onToggle={() => setSubsClosed({ ...subsClosed, [s.id]: subsOpen })} style={s.archivedAt ? { opacity: 0.6 } : undefined} trailing={s.archivedAt ? <i className="ph ph-archive" title="Archived" style={{ fontSize: 12, color: 'var(--text-3)' }} /> : s.queuedMerge ? <i className="ph ph-git-merge" title={s.queuedMerge.error ? 'Queued merge failed: ' + s.queuedMerge.error : 'Merge queued: waits for its checks'} style={{ fontSize: 12, color: s.queuedMerge.error ? 'var(--status-error-text)' : 'var(--accent-text)' }} /> : s.stuck ? <i className="ph ph-warning" title={'Looks stuck: ' + s.stuck} style={{ fontSize: 12, color: 'var(--status-attention-text)' }} /> : null}
+                    <TreeItem depth={1 + g} status={s.status} label={sessionTitle(s)} expandable={tree.length > 0 || hiddenSubs > 0} expanded={subsOpen} onToggle={() => setSubsClosed({ ...subsClosed, [s.id]: subsOpen })} style={s.archivedAt ? { opacity: 0.6 } : undefined} trailing={s.archivedAt ? <i className="ph ph-archive" title="Archived" style={{ fontSize: 12, color: 'var(--text-3)' }} /> : s.queuedMerge ? <i className="ph ph-git-merge" title={s.queuedMerge.error ? 'Queued merge failed: ' + s.queuedMerge.error : 'Merge queued: waits for its checks'} style={{ fontSize: 12, color: s.queuedMerge.error ? 'var(--status-error-text)' : 'var(--accent-text)' }} /> : s.stuck ? <i className="ph ph-warning" title={'Looks stuck: ' + s.stuck} style={{ fontSize: 12, color: 'var(--status-attention-text)' }} /> : null}
                       meta={running ? <span style={{ color: 'var(--status-working-text)', display: 'inline-flex', alignItems: 'center', gap: 3 }}><i className="ph ph-tree-structure" style={{ fontSize: 11 }} />{running}</span> : elapsed(s.startedAt, s.endedAt)}
                       selected={route.screen === 'session' && route.id === s.id && !route.sub}
                       onClick={() => {
@@ -219,13 +224,13 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
                       }} />
                     </div>
                     {subsOpen ? tree.map(({ a, depth }) => (
-                      <TreeItem key={a.id} depth={2 + depth} status={subStatus(a.status)} label={a.description} meta={a.tools + ' tools'}
+                      <TreeItem key={a.id} depth={2 + g + depth} status={subStatus(a.status)} label={a.description} meta={a.tools + ' tools'}
                         selected={route.screen === 'session' && route.id === s.id && route.sub === a.id}
                         onClick={() => go({ screen: 'session', id: s.id, tab: 'conversation', sub: a.id })} />
                     )) : null}
                     {subsOpen && hiddenSubs ? (
                       <div {...keyboardClick} onClick={() => setSubsShown({ ...subsShown, [s.id]: !showHidden })} className="helm-row-hover" title="Subagents that handed back without changing any files are tidied away"
-                        style={{ padding: '3px 8px 3px 62px', font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)', cursor: 'pointer', borderRadius: 4 }}>{showHidden ? 'Hide handed-back subagents' : `${hiddenSubs} handed back`}</div>
+                        style={{ padding: `3px 8px 3px ${62 + g * 14}px`, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)', cursor: 'pointer', borderRadius: 4 }}>{showHidden ? 'Hide handed-back subagents' : `${hiddenSubs} handed back`}</div>
                     ) : null}
                   </div>
                 );
@@ -236,20 +241,36 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
                 const shown = all.filter((x, i) => x.active || i < 4);
                 return <>
                   {shown.map((x) => (
-                    <div key={x.id} {...menuProps((e) => externalMenu(e, r.id, x))} style={x.archived ? { opacity: 0.6 } : undefined}><TreeItem depth={1} status={x.active ? 'working' : 'idle'}
+                    <div key={x.id} {...menuProps((e) => externalMenu(e, r.id, x))} style={x.archived ? { opacity: 0.6 } : undefined}><TreeItem depth={1 + g} status={x.active ? 'working' : 'idle'}
                       label={<span style={{ fontStyle: 'italic' }} title={`${x.title}\nStarted outside helm. Read-only.`}>{x.title}</span>}
                       meta={x.active ? 'live' : ago(x.lastModified)}
                       trailing={<i className="ph ph-eye" title="Read-only: started outside helm" style={{ fontSize: 12, color: 'var(--text-3)' }} />}
                       selected={route.screen === 'external' && route.id === x.id}
                       onClick={() => go({ screen: 'external', repoId: r.id, id: x.id })} /></div>
                   ))}
-                  {all.length > shown.length ? <div {...keyboardClick} onClick={() => go({ screen: 'repo', id: r.id, tab: 'external' })} className="helm-row-hover" style={{ padding: '4px 8px 6px 40px', font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)', cursor: 'pointer', borderRadius: 4 }}>{all.length - shown.length} more external</div> : null}
+                  {all.length > shown.length ? <div {...keyboardClick} onClick={() => go({ screen: 'repo', id: r.id, tab: 'external' })} className="helm-row-hover" style={{ padding: `4px 8px 6px ${40 + g * 14}px`, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)', cursor: 'pointer', borderRadius: 4 }}>{all.length - shown.length} more external</div> : null}
                 </>;
               })() : null}
-              {open && sessions.length === 0 && !extList(r.id).length ? <div style={{ padding: '4px 0 6px 42px', font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>No sessions</div> : null}
+              {open && sessions.length === 0 && !extList(r.id).length ? <div style={{ padding: `4px 0 6px ${42 + g * 14}px`, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>No sessions</div> : null}
             </div>
           );
-        })}
+        };
+        if (!grouped) return entries.map((e) => renderRepo(e, 0));
+        return <>
+          {entries.filter((e) => isFreeGroup(e.repo)).map((e) => renderRepo(e, 0))}
+          {owners.map((o) => {
+            const key = 'owner:' + o;
+            const open = !closed[key];
+            const mine = entries.filter((e) => !isFreeGroup(e.repo) && e.repo.owner === o);
+            return (
+              <div key={key}>
+                <TreeItem icon="buildings" label={o} expandable expanded={open} onToggle={() => setClosed({ ...closed, [key]: open })} onClick={() => setClosed({ ...closed, [key]: open })} meta={mine.reduce((n, e) => n + e.sessions.filter((s) => !s.archivedAt).length, 0) || null} />
+                {open ? mine.map((e) => renderRepo(e, 1)) : null}
+              </div>
+            );
+          })}
+        </>;
+        })()}
       </div>
       <div style={{ flex: 'none', padding: '10px 12px', borderTop: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: 10 }}>
         <PlanMeters />
