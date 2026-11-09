@@ -259,6 +259,12 @@ export async function repoInfo(slug: string): Promise<{ private: boolean; lang: 
   return { private: x.private, lang: x.language, defaultBranch: x.default_branch };
 }
 
+/** Renames a repository on GitHub (the token must have admin rights on it). Returns the new `owner/name`. */
+export async function renameRepo(slug: string, name: string): Promise<string> {
+  const x = await gh(`/repos/${slug}`, { method: 'PATCH', body: JSON.stringify({ name }), headers: { 'Content-Type': 'application/json' } });
+  return x.full_name;
+}
+
 export async function createPull(slug: string, input: { head: string; base: string; title: string; body: string; draft: boolean }): Promise<string> {
   const x = await gh(`/repos/${slug}/pulls`, { method: 'POST', body: JSON.stringify(input), headers: { 'Content-Type': 'application/json' } });
   return x.html_url;

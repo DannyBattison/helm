@@ -1211,6 +1211,8 @@ export interface HelmApi {
   repoRemoveInfo(id: string): Promise<RepoRemoveInfo>;
   /** Stops tracking the repository; with `deleteLocal` also deletes its clone (and any worktrees of it) from disk. GitHub is never touched. */
   removeRepo(id: string, opts?: { deleteLocal?: boolean; keepArchived?: boolean }): Promise<void>;
+  /** Renames the repository on GitHub, then its origin URL, clone folder and session worktrees here. Refused while an agent is running in it. `warnings` lists local steps that failed after GitHub had changed. */
+  renameRepo(id: string, name: string): Promise<{ id: string; warnings: string[] }>;
   setRepoCap(id: string, cap: number): Promise<void>;
   chooseFolder(): Promise<string | null>;
   fetchRepo(id: string): Promise<void>;

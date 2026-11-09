@@ -139,6 +139,8 @@ export class SessionManager {
   private billingOf(backend: string): 'subscription' | 'api' { return backend === 'claude' ? this.store.data.settings.billing : this.billings[backend] ?? 'subscription'; }
   setBilling(backend: string, b: 'subscription' | 'api') { this.billings[backend] = b; }
   get = (id: string) => this.sessions.find((s) => s.id === id);
+  /** Sessions in or touching a repository (as the main one or an extra) whose agent is running or waiting on you. */
+  liveIn = (repoId: string) => this.sessions.filter((s) => !s.archivedAt && (s.repoId === repoId || s.extras?.some((e) => e.repoId === repoId)) && (this.rt.has(s.id) || s.status === 'working' || s.status === 'attention'));
   /** The session's repository. A free agent gets a stand-in whose folder is its own, so git commands there run in its folder. */
   repoOf = (s: Session) => (s.free ? freeRepo(s.worktree) : this.store.data.repos.find((r) => r.id === s.repoId)!);
   private touch() {

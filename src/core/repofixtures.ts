@@ -18,6 +18,13 @@ const PARTIAL_META = '.partial-meta';
 const SHARED_META = '.shared.json';
 const folder = (repoId: string) => join(root, repoId.replace(/[^\w.-]/g, '_'));
 
+/** Moves a repository's uploaded files to where its new id looks for them. */
+export async function renameRepoFixtures(from: string, to: string): Promise<void> {
+  const a = folder(from), b = folder(to);
+  if (a === b || !(await G.fileExists(a)) || (await G.fileExists(b))) return;
+  await rename(a, b);
+}
+
 /** A file name is a single path segment: nothing that can leave the folder. */
 export function validName(name: string): boolean {
   return !!name && name === name.trim() && name !== '.' && name !== '..' && !/[\\/\0]/.test(name) && name.length <= 200 && name !== '.git' && name !== PARTIAL && name !== PARTIAL_META && name !== SHARED_META;

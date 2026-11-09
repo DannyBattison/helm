@@ -56,6 +56,7 @@ export interface UI {
   remembering: { repoId: string; text: string; agent?: string } | null;
   /** The repository whose remove dialog is open. */
   removingRepo: string | null;
+  renamingRepo: string | null;
   /** Show archived sessions in the left tree. Off by default. */
   showArchived: boolean;
   palette: boolean;
@@ -78,7 +79,7 @@ function loadRoute(): Route {
   } catch { return { screen: 'overview' }; }
 }
 
-let ui: UI = { app: null, uploads: [], uploadsOpen: false, route: loadRoute(), transcripts: {}, externals: {}, toasts: [], adding: false, broadcasting: false, newSession: null, deleting: null, mergingPr: null, renaming: null, checkpointsOf: null, restoring: null, forking: null, replying: null, addingAgent: null, continuing: null, remembering: null, removingRepo: null, showArchived: (() => { try { return localStorage.getItem('helm-show-archived') === '1'; } catch { return false; } })(), palette: false, drawer: false, term: false };
+let ui: UI = { app: null, uploads: [], uploadsOpen: false, route: loadRoute(), transcripts: {}, externals: {}, toasts: [], adding: false, broadcasting: false, newSession: null, deleting: null, mergingPr: null, renaming: null, checkpointsOf: null, restoring: null, forking: null, replying: null, addingAgent: null, continuing: null, remembering: null, removingRepo: null, renamingRepo: null, showArchived: (() => { try { return localStorage.getItem('helm-show-archived') === '1'; } catch { return false; } })(), palette: false, drawer: false, term: false };
 const listeners = new Set<() => void>();
 
 export function setUI(patch: Partial<UI> | ((u: UI) => Partial<UI>)) {

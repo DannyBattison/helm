@@ -19,6 +19,7 @@ import { P2P } from './p2p/service';
 import { installLogging, logFile, logLine, recentLog } from './log';
 import { cleanHeavy, dirSize, reclaimableBytes } from './disk';
 import { readArtifact } from './artifacts';
+import { renameRepository } from './renameRepo';
 import { addRepoFixture, addRepoFixtureChunk, repoFixtureProgress, listRepoFixtureFolder, listRepoFixtures, removeRepoFixture, setRepoFixtureDir, setRepoFixtureShared, unzipRepoFixture } from './repofixtures';
 import { cpuTimes, cpuUse, HISTORY_LIMIT, parseLimit, type CpuTimes, type SystemPoint } from '../shared/system';
 import { nextAfter, validateScheduled } from '../shared/scheduled';
@@ -526,6 +527,11 @@ export const api: HelmApi = {
       store.log({ kind: 'git', who: me(), human: true, what: 'deleted the local clone', repo: r.name, detail: r.localPath });
     }
     await repos.remove(id);
+  },
+  async renameRepo(id, name) {
+    const r = await renameRepository({ store, repos, live: (rid) => sessions.liveIn(rid), who: me }, id, name);
+    emitState();
+    return r;
   },
   async setRepoCap(id, cap) { repos.must(id).cap = cap; store.save(); emitState(); },
   async chooseFolder() {
