@@ -15,10 +15,72 @@ class FakeConn implements Conn {
 
 const flush = () => vi.advanceTimersByTimeAsync(0);
 
-beforeEach(() => vi.useFakeTimers());
-afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+// Bridges have no teardown, so take back the page-level listeners they add, or one test's bridge answers another's events.
+const added: [EventTarget, string, EventListener][] = [];
+beforeEach(() => {
+  vi.useFakeTimers();
+  for (const t of [document, window]) {
+    const orig = t.addEventListener.bind(t);
+    vi.spyOn(t, 'addEventListener').mockImplementation(((type: string, fn: EventListener, o?: any) => { added.push([t, type, fn]); orig(type, fn, o); }) as any);
+  }
+});
+afterEach(() => { for (const [t, type, fn] of added.splice(0)) t.removeEventListener(type, fn); vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('connection bridge', () => {
+  describe('on reactivation', () => {
+    const show = () => document.dispatchEvent(new Event('visibilitychange'));
+
+    it('reconnects at once instead of waiting out the retry delay', async () => {
+      const a = new FakeConn(), b2 = new FakeConn();
+      const queue = [a, b2];
+      const connect = vi.fn(async () => queue.shift()!);
+      const b = createConnectionBridge(connect);
+      await b.ready;
+      a.closed();                 // dropped: next attempt is 500 ms away
+      show();
+      await flush();
+      expect(connect).toHaveBeenCalledTimes(2);
+      expect(b2.sent.map((m) => m.name)).toEqual(['getState']);
+    });
+
+    it('does not open a second connection while one is being made', async () => {
+      const a = new FakeConn();
+      let go: (c: Conn) => void = () => undefined;
+      const connect = vi.fn(() => new Promise<Conn>((r) => { go = r; }));
+      createConnectionBridge(connect);
+      show(); window.dispatchEvent(new Event('online'));
+      expect(connect).toHaveBeenCalledTimes(1);
+      go(a);
+    });
+
+    it('keeps a connection that answers the probe', async () => {
+      const a = new FakeConn();
+      const connect = vi.fn(async () => a);
+      const b = createConnectionBridge(connect);
+      await b.ready;
+      window.dispatchEvent(new Event('pageshow'));
+      expect(a.sent).toEqual([{ t: 'call', id: 1, name: 'getState', args: [] }]);
+      a.msg({ t: 'result', id: 1, ok: true, value: {} });
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(a.close).not.toHaveBeenCalled();
+      expect(connect).toHaveBeenCalledTimes(1);
+    });
+
+    it('drops a connection that does not answer the probe and reconnects', async () => {
+      const a = new FakeConn(), b2 = new FakeConn();
+      const queue = [a, b2];
+      const connect = vi.fn(async () => queue.shift()!);
+      const b = createConnectionBridge(connect);
+      await b.ready;
+      show();
+      await vi.advanceTimersByTimeAsync(3100);
+      expect(a.close).toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(600);
+      expect(connect).toHaveBeenCalledTimes(2);
+      expect(b2.sent.map((m) => m.name)).toEqual(['getState']);
+    });
+  });
+
   it('queues calls made before a connection and flushes them on connect', async () => {
     const conn = new FakeConn();
     let go: (c: Conn) => void = () => undefined;
