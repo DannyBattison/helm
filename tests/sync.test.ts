@@ -164,6 +164,8 @@ describe('syncing two instances', () => {
     server.store.data.settings.theme = 'light';
     server.store.data.settings.cloneRoot = '/srv/clones';
     server.store.data.settings.agentEnv = 'SECRET=1';
+    server.store.data.settings.githubClientId = 'Iv-server-app';
+    client.store.data.settings.githubClientId = 'Iv-my-app';
     server.store.data.settings.mcpServers = [{ name: 'm', type: 'stdio', command: 'x', args: [], env: { KEY: 'srv' }, url: '', headers: { A: 'srv' } }];
     server.store.data.settingsAt = 100;
     client.store.data.settings.cloneRoot = '/me/clones';
@@ -175,6 +177,7 @@ describe('syncing two instances', () => {
     expect(st.theme).toBe('light');
     expect(st.cloneRoot).toBe('/me/clones');
     expect(st.agentEnv).not.toContain('SECRET');
+    expect(st.githubClientId).toBe('Iv-my-app');
     expect(st.mcpServers[0]).toMatchObject({ command: 'x', env: { KEY: 'mine' }, headers: {} });
     // A later choice here goes the other way.
     client.store.data.settings.theme = 'dark';

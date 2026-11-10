@@ -24,7 +24,7 @@ export const snapshotRef = (sessionId: string) => `refs/helm/sync/${sessionId}`;
 export const LOCAL_SETTINGS = new Set([
   'claudePath', 'codexPath', 'qwenPath', 'ollamaUrl', 'qwenContext', 'worktreeRoot', 'freeRoot', 'cloneRoot', 'terminalShell', 'terminalShellCustom', 'companionEnabled', 'companionUrl', 'companionControl',
   'p2pEnabled', 'p2pPort', 'p2pStun', 'p2pAddress', 'p2pPortMap', 'tray', 'autoUpdate', 'syncEnabled', 'syncWhat', 'startAtLogin', 'startMinimised', 'keepAwake',
-  'openIn', 'uiScale', 'agentEnv', 'outbound'
+  'openIn', 'uiScale', 'agentEnv', 'outbound', 'githubClientId'
 ]);
 /** The settings that travel: everything but `LOCAL_SETTINGS`, and MCP servers without their environment and headers (which can hold keys). */
 export function syncableSettings(st: Record<string, any>): Record<string, any> {
