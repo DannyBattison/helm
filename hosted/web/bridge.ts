@@ -52,9 +52,26 @@ export function createConnectionBridge(connect: () => Promise<Conn>, extra: Reco
   const emit = (channel: string, payload: unknown) => listeners.get(channel)?.forEach((cb) => cb(payload));
   const post = (m: ClientMessage) => (conn ? conn.send(m) : queued.push(m));
 
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let connecting = false;
+  const later = () => { clearTimeout(timer); timer = setTimeout(() => void open(true), retry); retry = Math.min(retry * 2, 10_000); };
+
+  function drop(c: Conn) {
+    if (conn !== c) return;
+    conn = null;
+    for (const p of pending.values()) p.reject(new Error('Connection to the server was lost'));
+    pending.clear();
+    try { c.close(); } catch { /* already gone */ }
+    later();
+  }
+
   async function open(reconnect: boolean) {
+    if (connecting || conn) return;
+    connecting = true;
     let c: Conn;
-    try { c = await connect(); } catch { setTimeout(() => void open(true), retry); retry = Math.min(retry * 2, 10_000); return; }
+    try { c = await connect(); } catch { connecting = false; later(); return; }
+    connecting = false;
+    clearTimeout(timer);
     conn = c;
     retry = 500;
     c.onMessage((m: any) => {
@@ -67,14 +84,7 @@ export function createConnectionBridge(connect: () => Promise<Conn>, extra: Reco
         else emit(m.channel, m.payload);
       }
     });
-    c.onClose(() => {
-      if (conn !== c) return;
-      conn = null;
-      for (const p of pending.values()) p.reject(new Error('Connection to the server was lost'));
-      pending.clear();
-      setTimeout(() => void open(true), retry);
-      retry = Math.min(retry * 2, 10_000);
-    });
+    c.onClose(() => drop(c));
     firstReady();
     for (const q of queued) c.send(q);
     queued = [];
@@ -83,6 +93,21 @@ export function createConnectionBridge(connect: () => Promise<Conn>, extra: Reco
     if (reconnect) void bridge.invoke('getState').then((s) => emit('state', s), () => undefined);
   }
   void open(false);
+
+  /** Coming back to the app: a backgrounded page's socket is often dead without having said so, and its retry timer was throttled. */
+  function resume() {
+    if (!conn) { retry = 500; void open(true); return; }
+    const c = conn;
+    const id = nextId++;
+    const dead = setTimeout(() => { if (pending.delete(id)) drop(c); }, 3000);
+    pending.set(id, { resolve: () => clearTimeout(dead), reject: () => clearTimeout(dead) });
+    c.send({ t: 'call', id, name: 'getState', args: [] });
+  }
+  if (typeof document !== 'undefined' && typeof window !== 'undefined') {
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') resume(); });
+    window.addEventListener('pageshow', resume);
+    window.addEventListener('online', resume);
+  }
 
   const bridge: WebBridge = {
     ready,
