@@ -6,6 +6,7 @@ import { fmtMoney } from '../shared/money';
 import { auditText } from '../shared/redact';
 import { queueBlock, queueOrder } from '../shared/queue';
 import { stuckReason } from '../shared/stuck';
+import { PR_SCHEMA, parsePr, prPrompt } from '../shared/prText';
 import { REVIEW_SCHEMA, parseReview, reviewPrompt } from '../shared/selfreview';
 import { commandSummary } from '../shared/commandSummary';
 import { handleFor, memberOf, mentionsIn, panelDigest, panelInstructions, participants, replyLimit } from '../shared/panel';
@@ -553,6 +554,22 @@ export class SessionManager {
       : { at: Date.now(), state: 'failed', head, summary: failure || 'The reviewer did not return a usable answer.', findings: [], cost };
     this.activity(s, 'ready', parsed ? `reviewed: ${parsed.findings.filter((f) => f.severity === 'blocker').length} blockers, ${parsed.findings.length} findings` : 'review failed');
     this.touch();
+  }
+
+  /** Has the agent write a pull request title and description from a worktree's changes. */
+  async writePr(id: string, extraRepoId?: string): Promise<{ title: string; body: string }> {
+    const s = this.get(id);
+    if (!s) throw new Error('Session not found');
+    const x = extraRepoId ? s.extras?.find((e) => e.repoId === extraRepoId) : undefined;
+    if (extraRepoId && !x) throw new Error('This session has no worktree in ' + extraRepoId);
+    const cwd = x ? x.worktree : s.worktree, base = x ? x.base : s.base;
+    const sum = await G.changes(cwd, base);
+    const ctx = { task: s.task, base: base.replace(/^origin\//, ''), commits: sum.commits };
+    const { structured, text, cost, failure } = await this.backendOf(s).review({ cwd, model: this.reviewModelOf(s), prompt: prPrompt(ctx), schema: PR_SCHEMA });
+    if (cost) { this.store.addUsage(s.repoId, cost, 0); this.store.addDaily(s.repoId, s.model, { cost }); }
+    const out = failure ? null : parsePr(structured, text);
+    if (!out) throw new Error(failure || 'The agent did not return a usable title.');
+    return out;
   }
 
   setReviewed(id: string, ids: string[], reviewed: boolean) {

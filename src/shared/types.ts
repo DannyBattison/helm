@@ -669,6 +669,12 @@ export interface Settings {
   commitTrailer: boolean;
   /** Open pull requests as drafts unless chosen otherwise. */
   prDraft: boolean;
+  /** Let the agent write each new pull request's title and description from its changes. Uses tokens; otherwise the templates below fill them. */
+  prAi: boolean;
+  /** Template for a pull request title; `{{commit}}`, `{{branch}}` and the other variables of shared/prText. Empty is the default. */
+  prTitleTemplate: string;
+  /** Template for a pull request description. Empty is the default. */
+  prBodyTemplate: string;
   /** Put the message text in desktop notifications; off shows only the session. */
   notifyPreview: boolean;
   /** Start helm when you sign in to the computer. */
@@ -1329,6 +1335,8 @@ export interface HelmApi {
   /** Both sides of an image change as data URLs, or null when the file isn't an image. */
   imageVersions(sessionId: string, path: string): Promise<{ old: string | null; new: string | null } | null>;
   createPr(input: CreatePrInput): Promise<{ url: string | null }>;
+  /** Has the session's agent write a pull request title and description from its changes. Costs tokens. */
+  writePr(sessionId: string, extraRepoId?: string): Promise<{ title: string; body: string }>;
   /** Merges an open pull request on GitHub, optionally deleting its branch there. The session (if helm started it) is settled straight away. */
   mergePr(repoId: string, number: number, opts: { method: MergeMethod; deleteBranch: boolean }): Promise<void>;
   /** Merges a session's pull request once its checks have passed, instead of now. The session stays in the sidebar until it is merged. */

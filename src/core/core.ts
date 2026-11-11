@@ -804,6 +804,7 @@ export const api: HelmApi = {
     emitState();
     return { url };
   },
+  async writePr(id, extraRepoId) { return sessions.writePr(id, extraRepoId); },
   async mergePr(repoId, number, opts) {
     const pr = (await GH.listPulls(repoId)).find((p) => p.number === number);
     if (!pr) throw new Error(`Pull request #${number} was not found.`);
@@ -1282,14 +1283,17 @@ async function pushTargets(repoId?: string): Promise<import('../shared/types').P
 // ------------------------------------------------------------------ pull request description upkeep
 const prSynced = new Map<string, string>();
 /** Keeps the helm-written summary in a session's open pull request in step with its branch, so commits pushed later show up in the description. A description the user rewrote (no helm block) is left alone. */
-async function syncPr(s: { id: string; repoId: string; worktree: string; base: string; task: string; source?: { kind: string; number: number }; prUrl?: string; mergedAt?: number; worktreeGone?: boolean }) {
+async function syncPr(s: { id: string; repoId: string; worktree: string; branch: string; base: string; task: string; source?: { kind: string; number: number }; prUrl?: string; mergedAt?: number; worktreeGone?: boolean }) {
   const n = pullNumber(s.prUrl);
   if (!n || s.mergedAt || s.worktreeGone) return;
   try {
     const sum = await G.changes(s.worktree, s.base);
     const sig = sum.commits.map((c) => c.hash).join(',');
     if (prSynced.get(s.id) === sig) return;
-    const summary = prSummary({ task: s.task, commits: sum.commits, issue: s.source?.kind === 'issue' ? s.source.number : undefined, files: sum.files.length, add: sum.files.reduce((a, f) => a + f.add, 0), del: sum.files.reduce((a, f) => a + f.del, 0) });
+    const set = effectiveSettings(store.data.settings, store.data.repos.find((r) => r.id === s.repoId));
+    // An agent-written description is not rewritten on every push: that would spend tokens each time.
+    if (set.prAi) { prSynced.set(s.id, sig); return; }
+    const summary = prSummary({ task: s.task, commits: sum.commits, branch: s.branch, base: s.base.replace(/^origin\//, ''), issue: s.source?.kind === 'issue' ? s.source.number : undefined, files: sum.files.length, add: sum.files.reduce((a, f) => a + f.add, 0), del: sum.files.reduce((a, f) => a + f.del, 0) }, set);
     const body = await GH.getPullBody(s.repoId, n);
     const next = replaceSummary(body, summary);
     if (next !== null && next !== body) await GH.updatePullBody(s.repoId, n, next);
