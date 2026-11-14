@@ -6,7 +6,7 @@ export const REPO_SETTING_KEYS = [
   'defaultBackend', 'defaultModel', 'defaultEffort', 'permMode', 'sessionBudget', 'defaultInstructions', 'messageTemplates', 'promptTemplates', 'runTests',
   'branchPrefix', 'fetchBeforeSession', 'copyFiles',
   'autoPush', 'pushWhen', 'commitStyle', 'commitTrailer', 'commitAuthor',
-  'deliver', 'prDraft', 'openPrAfterCreate', 'mergeMethod', 'autoMerge', 'afterMerge', 'removeAfterMerge', 'deleteBranchAfterMerge'
+  'deliver', 'prDraft', 'prAi', 'prTitleTemplate', 'prBodyTemplate', 'openPrAfterCreate', 'mergeMethod', 'autoMerge', 'afterMerge', 'removeAfterMerge', 'deleteBranchAfterMerge'
 ] as const;
 
 export type RepoSettingKey = (typeof REPO_SETTING_KEYS)[number];

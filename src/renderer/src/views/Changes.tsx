@@ -6,7 +6,7 @@ import { blockers } from '@shared/selfreview';
 import { api, platform } from '../api';
 import { Hl } from '../Hl';
 import { langFromPath } from '../highlight';
-import { prBody, prSummary, prTitle } from '@shared/prText';
+import { prBody, prSummary, prTitleFrom } from '@shared/prText';
 import { CHECK_RE, agentName, relTime, repoSettings } from '../lib';
 import { go, setUI, toast, useApp, useTranscript } from '../store';
 import { Avatar, Badge, BranchTag, Button, Checkbox, DiffStat, Grip, IconButton, Input, SegmentedControl, Select, usePaneWidth } from '../ui';
@@ -18,6 +18,12 @@ const errText = (e: any) => String(e?.message || e).replace(/^Error invoking rem
 
 /** Review comments live outside the component so they survive switching tabs. */
 const pending = new Map<string, ReviewComment[]>();
+/** Agent-written pull request text by session and commits, so reopening the tab does not spend tokens again. */
+const written = new Map<string, { title: string; body: string }>();
+
+/** What the pull request templates are filled from. */
+const prContext = (s: Session, sum: ChangesSummary, base: string, branch = s.branch, issue = s.source?.kind === 'issue' ? s.source.number : undefined) =>
+  ({ task: s.task, commits: sum.commits, branch, base, issue, files: sum.files.length, add: sum.files.reduce((n, f) => n + f.add, 0), del: sum.files.reduce((n, f) => n + f.del, 0) });
 
 type Row = [string, number | null, number | null, string];
 
@@ -154,18 +160,25 @@ function ReviewPanel({ s, onOpen }: { s: Session; onOpen(file: string): void }) 
 function ExtraRepoPr({ s, x }: { s: Session; x: ExtraRepo }) {
   const app = useApp();
   const [sum, setSum] = React.useState<ChangesSummary | null>(null);
-  const [title, setTitle] = React.useState(prTitle(s.task));
-  const [draft, setDraft] = React.useState(repoSettings(app, x.repoId).prDraft);
+  const cfg = repoSettings(app, x.repoId);
+  const [title, setTitle] = React.useState('');
+  const [draft, setDraft] = React.useState(cfg.prDraft);
   const [busy, setBusy] = React.useState(false);
   const base = x.base.replace(/^origin\//, '');
   React.useEffect(() => { api.extraChanges(s.id, x.repoId).then(setSum).catch(() => setSum(null)); }, [s.id, x.repoId, s.commits.length, s.pushedAt, x.prUrl]);
   const files = sum?.files.length || 0;
+  const titled = React.useRef(false);
+  React.useEffect(() => { if (sum && !titled.current) setTitle(prTitleFrom(cfg, prContext(s, sum, base, x.branch, undefined))); }, [sum, cfg.prTitleTemplate]);
   const create = async () => {
     if (!sum) return;
     setBusy(true);
     try {
-      const body = prBody(prSummary({ task: s.task, commits: sum.commits, files, add: sum.files.reduce((n, f) => n + f.add, 0), del: sum.files.reduce((n, f) => n + f.del, 0) }), s.id);
-      const r = await api.createPr({ sessionId: s.id, extraRepoId: x.repoId, base, title, body, draft, removeAfterMerge: false, deleteBranchAfterMerge: false, files: sum.files.map((f) => f.path), message: title });
+      let body = prBody(prSummary(prContext(s, sum, base, x.branch, undefined), cfg), s.id), name = title;
+      if (cfg.prAi && sum.commits.length) {
+        const w = await api.writePr(s.id, x.repoId).catch(() => null);
+        if (w) { body = prBody(w.body, s.id); if (!titled.current) name = w.title; }
+      }
+      const r = await api.createPr({ sessionId: s.id, extraRepoId: x.repoId, base, title: name, body, draft, removeAfterMerge: false, deleteBranchAfterMerge: false, files: sum.files.map((f) => f.path), message: name });
       toast({ tone: 'ready', title: 'Pull request opened', description: r.url || undefined });
       if (r.url && repoSettings(app, x.repoId).openPrAfterCreate) void api.openExternal(r.url);
     } catch (e) { toast({ tone: 'error', title: 'That did not work', description: errText(e) }); } finally { setBusy(false); }
@@ -180,7 +193,7 @@ function ExtraRepoPr({ s, x }: { s: Session; x: ExtraRepo }) {
       {x.prUrl
         ? <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--text-2)' }}>Pull request open. <a href="#" onClick={(e) => { e.preventDefault(); void api.openExternal(x.prUrl!); }}>View on GitHub</a></div>
         : <>
-          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" />
+          <Input value={title} onChange={(e) => { titled.current = true; setTitle(e.target.value); }} placeholder="Title" />
           <Checkbox checked={draft} onChange={setDraft} label="Open as draft" />
           <Button variant="secondary" icon="git-pull-request" fullWidth loading={busy} disabled={!title.trim() || busy || !app.user || !sum || (!sum.commits.length && !files)} onClick={create}>Create pull request into {base}</Button>
         </>}
@@ -215,8 +228,12 @@ function ChangesView({ s }: { s: Session }) {
   const [composing, setComposing] = React.useState<number | null>(null);
   const [branches, setBranches] = React.useState<string[]>([]);
   const [base, setBase] = React.useState(s.base.replace(/^origin\//, ''));
-  const [title, setTitle] = React.useState(prTitle(s.task));
+  const cfg = repoSettings(app, s.repoId);
+  const [title, setTitle] = React.useState('');
   const [body, setBody] = React.useState('');
+  const [writing, setWriting] = React.useState(false);
+  const [rewrite, setRewrite] = React.useState(0);
+  const titleEdited = React.useRef(false);
   const [draft, setDraft] = React.useState(repoSettings(app, s.repoId).prDraft);
   const [rm, setRm] = React.useState(s.removeAfterMerge);
   const [delBranch, setDelBranch] = React.useState(s.deleteBranchAfterMerge ?? s.removeAfterMerge);
@@ -286,11 +303,24 @@ function ChangesView({ s }: { s: Session }) {
     return () => { dead = true; };
   }, [sel, collapsed, sig, s.id]);
 
-  // Suggested PR text. Stops updating once the user types in it.
+  // Suggested PR text, from the templates or written by the agent. Each part stops updating once the user types in it.
   React.useEffect(() => {
-    if (!sum || bodyEdited.current) return;
-    setBody(prBody(prSummary({ task: s.task, commits: sum.commits, issue: s.source?.kind === 'issue' ? s.source.number : undefined, files: sum.files.length, add: sum.files.reduce((n, f) => n + f.add, 0), del: sum.files.reduce((n, f) => n + f.del, 0) }), s.id));
-  }, [sum, s.id]);
+    if (!sum) return;
+    const ctx = prContext(s, sum, base);
+    const fill = (w: { title: string; body: string }) => { if (!titleEdited.current) setTitle(w.title); if (!bodyEdited.current) setBody(w.body); };
+    const local = { title: prTitleFrom(cfg, ctx), body: prBody(prSummary(ctx, cfg), s.id) };
+    if (!cfg.prAi || !sum.commits.length || deliver !== 'pr' || openPr) return fill(local);
+    const key = s.id + ':' + sum.commits.map((c) => c.hash).join(',');
+    const known = written.get(key);
+    if (known) return fill(known);
+    fill(local);
+    let dead = false;
+    setWriting(true);
+    api.writePr(s.id).then((w) => { const out = { title: w.title, body: prBody(w.body, s.id) }; written.set(key, out); if (!dead) fill(out); })
+      .catch((e) => !dead && toast({ tone: 'error', title: 'The agent could not write the pull request', description: errText(e) }))
+      .finally(() => !dead && setWriting(false));
+    return () => { dead = true; setWriting(false); };
+  }, [sum, s.id, base, cfg.prAi, cfg.prTitleTemplate, cfg.prBodyTemplate, deliver, openPr, rewrite]);
 
   const checks = transcript.filter((e) => e.k === 'bash' && e.done && CHECK_RE.test(e.cmd)) as Extract<(typeof transcript)[number], { k: 'bash' }>[];
   const checked = (sum?.files || []).filter((f) => !unchecked.has(f.path));
@@ -478,7 +508,8 @@ function ChangesView({ s }: { s: Session }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>
               <Select size="sm" icon="git-branch" mono value={base} onChange={(e) => setBase(e.target.value)} options={[...new Set([base, ...branches])]} /><i className="ph ph-arrow-left" style={{ fontSize: 12 }} /><BranchTag name={s.branch} />
             </div>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={deliver === 'pr' && !openPr ? 'Title' : 'Commit message for uncommitted files'} />
+            <Input value={title} onChange={(e) => { titleEdited.current = true; setTitle(e.target.value); }} placeholder={deliver === 'pr' && !openPr ? 'Title' : 'Commit message for uncommitted files'} />
+            {cfg.prAi && deliver === 'pr' && !openPr ? <Button size="sm" variant="ghost" icon="sparkle" loading={writing} style={{ alignSelf: 'flex-start' }} onClick={() => { titleEdited.current = false; bodyEdited.current = false; for (const k of [...written.keys()]) if (k.startsWith(s.id + ':')) written.delete(k); setRewrite((n) => n + 1); }}>{writing ? 'Writing title and description…' : 'Write again with the agent'}</Button> : null}
             {deliver === 'merge' ? <div style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>No pull request and no review: the branch is brought up to date with <b>{base}</b> (merging it in if needed), then pushed onto <b>{base}</b> on GitHub. If <b>{base}</b> is protected, GitHub refuses it.</div> : null}
             {deliver === 'pr' && !openPr ? <textarea rows={8} value={body} onChange={(e) => { bodyEdited.current = true; setBody(e.target.value); }}
               style={{ resize: 'vertical', border: 'none', outline: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border)', color: 'var(--text-1)', font: '400 12px/1.55 var(--font-mono)', padding: '8px 10px' }} /> : null}

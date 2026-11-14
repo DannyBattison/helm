@@ -1,4 +1,5 @@
 import React from 'react';
+import { PR_BODY_TEMPLATE, PR_TITLE_TEMPLATE, PR_VARS } from '@shared/prText';
 import { useExperience } from '../experience';
 import { ControlLabel } from '../ui/ControlLabel';
 import type { CustomShortcut, GotoTarget, ModelAlias, NewSessionPreset, PermMode, Settings as SettingsT } from '@shared/types';
@@ -796,6 +797,19 @@ export function Settings({ section }: { section?: string }) {
             </SettingRow>
             <SettingRow title="Open new pull requests in the browser" desc="Opens the pull request on GitHub as soon as helm creates it."><Switch checked={st.openPrAfterCreate} onChange={(v: boolean) => set({ openPrAfterCreate: v })} /></SettingRow>
             <SettingRow title="Open pull requests as drafts" desc="New pull requests start as drafts. You can still choose when opening one."><Switch checked={st.prDraft} onChange={(v: boolean) => set({ prDraft: v })} /></SettingRow>
+            <SettingRow title="Let the agent write the pull request" desc="Has the agent write a succinct title and a summary of the changes when you open a pull request. Uses tokens. Off fills them from the template below.">
+              <Switch checked={st.prAi} onChange={(v: boolean) => set({ prAi: v })} />
+            </SettingRow>
+            {st.prAi ? null : <>
+              <SettingRow title="Pull request title template" desc={<>Variables: {PR_VARS.map((v, i) => <React.Fragment key={v.name}>{i ? ', ' : ''}<code title={v.desc}>{'{{' + v.name + '}}'}</code></React.Fragment>)}. Hover one for what it holds.</>}>
+                <input className="selectable" value={st.prTitleTemplate} spellCheck={false} placeholder={PR_TITLE_TEMPLATE} onChange={(e) => set({ prTitleTemplate: e.target.value })}
+                  style={{ width: 280, border: 'none', outline: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border)', color: 'var(--text-1)', font: '400 12px/1.55 var(--font-mono)', padding: '6px 10px', boxSizing: 'border-box' }} />
+              </SettingRow>
+              <SettingRow title="Pull request description template" desc="Same variables. A line holding only an empty variable is dropped. helm refreshes this part while the pull request is open, so later commits show up.">
+                <textarea className="selectable" value={st.prBodyTemplate} rows={5} spellCheck={false} placeholder={PR_BODY_TEMPLATE} onChange={(e) => set({ prBodyTemplate: e.target.value })}
+                  style={{ width: 280, resize: 'vertical', border: 'none', outline: 'none', borderRadius: 'var(--radius-md)', background: 'var(--bg-input)', boxShadow: 'inset 0 0 0 1px var(--border)', color: 'var(--text-1)', font: '400 12px/1.55 var(--font-mono)', padding: '8px 10px', boxSizing: 'border-box' }} />
+              </SettingRow>
+            </>}
             <SettingRow title="When its work is merged" desc="What happens to the session once its pull request is merged or it is merged directly. Archiving keeps the conversation and numbers in the Archive; the worktree is removed separately, below.">
               <Select value={st.afterMerge} onChange={(e: any) => set({ afterMerge: e.target.value })} options={[{ value: 'archive', label: 'Archive it' }, { value: 'delete', label: 'Delete it' }, { value: 'keep', label: 'Leave it' }]} />
             </SettingRow>
