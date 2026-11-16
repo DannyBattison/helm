@@ -320,6 +320,7 @@ function TranscriptItemView({ m, s, index, onDeny }: { m: TranscriptEvent; s: S;
         <div className="selectable" style={{ font: '400 13px/1.55 var(--font-sans)', color: 'var(--text-1)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.text}</div>
         {hover && s && !m.from && !s.worktreeGone && index != null ? (
           <div style={{ position: 'absolute', top: 6, right: 8, display: 'flex', gap: 2, background: 'var(--bg-overlay)', borderRadius: 'var(--radius-sm)', boxShadow: 'var(--shadow-popover)', padding: 2 }}>
+            <Button size="sm" variant="ghost" icon="copy" onClick={() => { void navigator.clipboard?.writeText(m.text); toast({ tone: 'neutral', title: 'Message copied' }); }}>Copy</Button>
             {m.cp && !(s.free && !s.free.managed) ? <Button size="sm" variant="ghost" icon="clock-counter-clockwise" onClick={() => setUI({ restoring: { sessionId: s.id, n: m.cp!, label: 'Before: ' + m.text } })}>Restore</Button> : null}
             {s.free ? null : <Button size="sm" variant="ghost" icon="bookmark-simple" title={`Add this to ${(s.backend || 'claude') === 'codex' ? 'AGENTS.md' : 'CLAUDE.md'} so later sessions know it`} onClick={() => setUI({ remembering: { repoId: s.repoId, text: m.text, agent: s.backend || 'claude' } })}>Remember</Button>}
             {s.agentSessionId && can(app, s, 'fork') && !s.free ? <Button size="sm" variant="ghost" icon="git-fork" onClick={() => setUI({ forking: { sessionId: s.id, index, text: m.text } })}>Fork</Button> : null}
