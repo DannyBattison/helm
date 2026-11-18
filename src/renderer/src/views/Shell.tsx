@@ -117,19 +117,14 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
   const repoMenu = (e: PressPoint, r: (typeof app.repos)[number]) => {
     e.preventDefault();
     e.stopPropagation();
-    const editor = app.settings.openIn;
     const fail = (title: string) => (err: any) => toast({ tone: 'error', title, description: String(err?.message || err).replace(/^Error invoking remote method '\w+': Error: /, '') });
     setMenu({ x: e.clientX, y: e.clientY, items: [
       { label: 'New session', icon: 'plus', onClick: () => setUI({ newSession: { repoId: r.id } }) },
       { label: 'History', icon: 'git-commit', separator: true, onClick: () => go({ screen: 'repo', id: r.id, tab: 'history' }) },
       { label: 'Code', icon: 'code', onClick: () => go({ screen: 'repo', id: r.id, tab: 'code' }) },
-      { label: 'Branches & worktrees', icon: 'tree-structure', onClick: () => go({ screen: 'repo', id: r.id, tab: 'worktrees' }) },
-      { label: 'Pull requests', icon: 'git-pull-request', onClick: () => go({ screen: 'repo', id: r.id, tab: 'prs' }) },
+      { label: 'Actions', icon: 'lightning', onClick: () => go({ screen: 'repo', id: r.id, tab: 'actions' }) },
       { label: 'Fetch from GitHub', icon: 'arrows-clockwise', separator: true, onClick: () => { api.fetchRepo(r.id).then(() => toast({ tone: 'ready', title: 'Fetched', description: r.id })).catch(fail('Fetch failed')); } },
       { label: 'Open on GitHub', icon: 'github-logo', onClick: () => void api.openExternal(`https://github.com/${r.id}`) },
-      { label: editor === 'helm' ? 'Open code in helm' : `Open in ${editor}`, icon: 'arrow-square-out', separator: true, onClick: () => { api.openRepoInEditor(r.id).catch(fail('Could not open the editor')); } },
-      { label: 'Show in file manager', icon: 'folder-open', onClick: () => { api.openFolder(r.localPath).catch(fail('Could not open the folder')); } },
-      { label: 'Copy path', icon: 'copy', onClick: () => void api.copyText(r.localPath) },
       { label: 'Copy GitHub URL', icon: 'link', onClick: () => void api.copyText(`https://github.com/${r.id}`) },
       { label: 'Rename repository…', icon: 'pencil-simple', separator: true, onClick: () => setUI({ renamingRepo: r.id }) },
       { label: 'Remove from helm…', icon: 'trash', danger: true, onClick: () => setUI({ removingRepo: r.id }) }
