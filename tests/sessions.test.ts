@@ -349,6 +349,21 @@ describe('the agent talking', () => {
     await sm.refreshSubagent(id, 'zzz');
   });
 
+  it('stays working while a background command runs and resumes when it ends', async () => {
+    const id = await sm.create(input());
+    const s = sm.get(id)!;
+    await until(() => !!q());
+    q().emit(tool('Bash', { command: 'sleep 600', description: 'Long job', run_in_background: true }, 'bg1'));
+    q().emit(result('bg1', 'started'));
+    q().emit(done());
+    await until(() => s.step === 'Waiting for background command: Long job');
+    expect(s.status).toBe('working');
+    q().emit({ type: 'system', subtype: 'task_notification', tool_use_id: 'bg1', status: 'completed', summary: 'ok' });
+    q().emit(done());
+    await until(() => s.status !== 'working');
+    expect(s.step).not.toMatch(/background/);
+  });
+
   it('limits how many subagents run at once', async () => {
     store.data.settings.maxSubagentsSession = 1;
     const id = await sm.create(input());

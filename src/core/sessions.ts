@@ -1948,6 +1948,8 @@ export class SessionManager {
     if (s?.panel) await this.callOffRounds(id);
     if (!rt || !s) return;
     rt.interrupted = true;
+    // The user stopped the agent: it is no longer waiting on a command it started in the background.
+    rt.bgCommands.clear();
     await rt.agent.interrupt();
   }
 
