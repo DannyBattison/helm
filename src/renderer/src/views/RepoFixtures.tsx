@@ -1,10 +1,10 @@
 import { keyboardClick } from '../ui/keyboard';
 import React from 'react';
 import type { RepoFixture } from '@shared/types';
-import { api } from '../api';
+import { api, on } from '../api';
 import { relTime } from '../lib';
 import { getUI, toast, uploadDone, uploadProgress, uploadStart, useUI } from '../store';
-import { Button } from '../ui';
+import { Button, Meter } from '../ui';
 import { percent } from '../uploads';
 
 const errText = (e: any) => String(e?.message || e).replace(/^Error invoking remote method '\w+': Error: /, '');
@@ -72,9 +72,16 @@ export function RepoFixtures({ repoId }: { repoId: string }) {
   const sending = active.length ? active.map((x) => `${x.name} ${percent(x)}%`).join(', ') : '';
   const [over, setOver] = React.useState(false);
   const [busy, setBusy] = React.useState('');
+  const [unzipping, setUnzipping] = React.useState<Record<string, number>>({});
+  React.useEffect(() => on('fixtureProgress', (p) => {
+    if (p.repoId !== repoId) return;
+    setUnzipping((u) => ({ ...u, [p.name]: p.total ? p.done / p.total : 0 }));
+  }), [repoId]);
   const unzip = async (name: string) => {
     setBusy('unzip:' + name);
+    setUnzipping((u) => ({ ...u, [name]: 0 }));
     try { await api.unzipRepoFixture(repoId, name); } catch (e) { toast({ tone: 'error', title: 'Could not unzip ' + name, description: errText(e) }); }
+    setUnzipping(({ [name]: _gone, ...rest }) => rest);
     setBusy('');
     load();
   };
@@ -113,7 +120,8 @@ export function RepoFixtures({ repoId }: { repoId: string }) {
         {files == null ? null : files.length === 0 ? <div style={{ font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>No fixtures yet.</div> : files.map((f) => (
           <FixtureRow key={f.name} f={f} path={f.name} depth={0}
             actions={<>
-              {!f.dir && /\.zip$/i.test(f.name) ? <Button size="sm" disabled={busy.slice(busy.indexOf(':') + 1) === f.name && !!busy} onClick={() => void unzip(f.name)}>{busy === 'unzip:' + f.name ? 'Unzipping…' : 'Unzip'}</Button> : null}
+              {busy === 'unzip:' + f.name ? <Meter tone="accent" value={unzipping[f.name] ?? 0} max={1} style={{ width: 90 }} /> : null}
+              {!f.dir && /\.zip$/i.test(f.name) ? <Button size="sm" disabled={busy.slice(busy.indexOf(':') + 1) === f.name && !!busy} onClick={() => void unzip(f.name)}>{busy === 'unzip:' + f.name ? `Unzipping ${Math.round((unzipping[f.name] ?? 0) * 100)}%` : 'Unzip'}</Button> : null}
               <Button size="sm" variant={f.shared ? 'secondary' : undefined} icon={busy === 'share:' + f.name ? 'circle-notch' : f.shared ? 'link' : undefined} disabled={busy.slice(busy.indexOf(':') + 1) === f.name && !!busy}
                 title={f.shared ? 'Linked into worktrees, read-only. Click to copy instead.' : 'Link into worktrees read-only instead of copying: instant and uses no extra disk.'}
                 onClick={() => void work('share:' + f.name, api.setRepoFixtureShared(repoId, f.name, !f.shared), 'Could not change ' + f.name)}>

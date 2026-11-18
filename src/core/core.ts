@@ -630,7 +630,7 @@ export const api: HelmApi = {
     return removeRepoFixture(rid, name, [...new Set(wts)]);
   },
   listRepoFixtureFolder: (id, path) => listRepoFixtureFolder(repos.must(id).id, path),
-  unzipRepoFixture: (id, name) => unzipRepoFixture(repos.must(id).id, name),
+  unzipRepoFixture: (id, name) => { const repoId = repos.must(id).id; return unzipRepoFixture(repoId, name, (done, total) => send('fixtureProgress', { repoId, name, done, total })); },
   setRepoFixtureShared: (id, name, shared) => setRepoFixtureShared(repos.must(id).id, name, shared),
   async saveAutomation(a) { return automations.save(a); },
   async deleteAutomation(id) { automations.remove(id); },

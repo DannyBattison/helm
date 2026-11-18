@@ -48,6 +48,9 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
 }));
 
 import { SessionManager } from '../src/core/sessions';
+import { createNow, settleCreates } from './settled';
+
+settleCreates();
 import { Store } from '../src/core/store';
 import { FREE_ID, type NewSessionInput } from '../src/shared/types';
 
@@ -158,6 +161,17 @@ describe('starting a session', () => {
     expect(sm.get(id2)!.free).toEqual({ managed: false });
     expect(q().options.systemPrompt.append).toContain('one of the user');
     await expect(sm.create(input({ repoId: FREE_ID, task: 'Nowhere', folder: join(root, 'missing') }))).rejects.toThrow(/does not exist/);
+  });
+
+  it('returns at once, while the worktree is still being made, and says so', async () => {
+    const id = await createNow(sm, input({ task: 'Slow checkout' }));
+    const s = sm.get(id)!;
+    expect(existsSync(s.worktree)).toBe(false);
+    expect(s.status).toBe('working');
+    expect(s.step).toBe('Preparing worktree');
+    await sm.ready(id);
+    expect(existsSync(s.worktree)).toBe(true);
+    expect(s.step).not.toBe('Preparing worktree');
   });
 
   it('queues when too many sessions run, and starts the queued one when a slot frees', async () => {

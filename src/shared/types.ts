@@ -1511,6 +1511,8 @@ export interface HelmEvents {
   toast: { tone: 'ready' | 'attention' | 'error' | 'neutral'; title: string; description?: string; sessionId?: string; tab?: string };
   termData: { id: string; data: string };
   termExit: { id: string };
+  /** How far unpacking a zip fixture has got, in bytes of the zip. */
+  fixtureProgress: { repoId: string; name: string; done: number; total: number };
   /** A file for the user to keep. The hosted server sends it to the browser, which downloads it. */
   download: { name: string; text: string };
   /** A desktop notification for a browser to show, when the host has no desktop of its own. */

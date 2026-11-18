@@ -1,0 +1,3 @@
+## 2026-11-18 · Tolerate a failing post-checkout hook when creating a worktree
+
+`git worktree add` exits non-zero when the repository's post-checkout hook fails, even though the checkout finished (supervive-custom-server's Unreal `GitDependencies.sh` hook is missing on the host). helm treated that as a failed create: no session was registered, but the worktree existed, so a later transcript there showed up as an "outside session". `addWorktree` now checks that the worktree is on the new branch and, if so, logs a warning and carries on. It also passes `--quiet` so git's progress output no longer fills the error text.

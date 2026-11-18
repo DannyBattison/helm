@@ -93,7 +93,7 @@ const isSymlinkMode = (attrs: number) => ((attrs >>> 16) & 0o170000) === 0o12000
  * Unpacks `<name>.zip` into a folder `<name>` beside it, keeping the zip's own folder structure. Entries that would land outside the
  * folder, links, and macOS resource folders are skipped. Returns the folder's name. The zip itself is kept.
  */
-export async function unzipRepoFixture(repoId: string, name: string): Promise<string> {
+export async function unzipRepoFixture(repoId: string, name: string, progress?: (done: number, total: number) => void): Promise<string> {
   if (!root || !validName(name)) throw new Error('That file name is not allowed.');
   if (!/\.zip$/i.test(name) || name.length <= 4) throw new Error('Only .zip files can be unpacked.');
   const out = name.slice(0, -4);
@@ -103,6 +103,16 @@ export async function unzipRepoFixture(repoId: string, name: string): Promise<st
   const tmp = join(folder(repoId), PARTIAL, out + '.unzip');
   await rm(tmp, { recursive: true, force: true });
   await mkdir(tmp, { recursive: true });
+  // Progress is counted in compressed bytes: the zip's size is known up front, and each entry says how much of it is its own.
+  const total = Math.max(1, (await stat(join(folder(repoId), name))).size);
+  let finished = 0, lastReport = 0;
+  const report = (inEntry = 0, force = false) => {
+    const now = Date.now();
+    if (!force && now - lastReport < 150) return;
+    lastReport = now;
+    progress?.(Math.min(total, finished + inEntry), total);
+  };
+  report(0, true);
   try {
     await new Promise<void>((done, fail) => {
       yauzl.open(join(folder(repoId), name), { lazyEntries: true, autoClose: true }, (err, zip) => {
@@ -113,17 +123,22 @@ export async function unzipRepoFixture(repoId: string, name: string): Promise<st
           const rel = entry.fileName.replace(/\\/g, '/');
           const target = resolve(tmp, rel);
           const skip = !rel || rel.startsWith('__MACOSX/') || isSymlinkMode(entry.externalFileAttributes) || (target !== tmp && !target.startsWith(tmp + sep));
-          if (skip) return zip.readEntry();
-          if (rel.endsWith('/')) return void mkdir(target, { recursive: true }).then(() => zip.readEntry(), fail);
+          const next = () => { finished += entry.compressedSize; report(); zip.readEntry(); };
+          if (skip) return next();
+          if (rel.endsWith('/')) return void mkdir(target, { recursive: true }).then(next, fail);
           mkdir(dirname(target), { recursive: true }).then(() => zip.openReadStream(entry, (e, stream) => {
             if (e || !stream) return fail(e || new Error('Could not read ' + rel));
-            pipeline(stream, createWriteStream(target)).then(() => zip.readEntry(), fail);
+            let written = 0;
+            stream.on('data', (d: Buffer) => { written += d.length; report(entry.uncompressedSize ? entry.compressedSize * Math.min(1, written / entry.uncompressedSize) : 0); });
+            pipeline(stream, createWriteStream(target)).then(next, fail);
           }), fail);
         });
         zip.readEntry();
       });
     });
     await rename(tmp, dest);
+    report(0, true);
+    progress?.(total, total);
   } catch (e) {
     await rm(tmp, { recursive: true, force: true });
     throw e;
