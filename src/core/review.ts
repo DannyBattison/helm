@@ -1,4 +1,4 @@
-import { rm, writeFile } from 'node:fs/promises';
+import { rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { forecastable, overlap, parseMergeTree, type Conflict } from '../shared/forecast';
@@ -16,15 +16,27 @@ const refPrefix = (id: string) => `refs/helm/${id}/`;
 
 /** A commit holding the worktree as it is now (uncommitted and untracked files included), parented on HEAD. Moves no branch and stages nothing. */
 export async function snapshotCommit(wt: string, label: string): Promise<string> {
-  const index = join(tmpdir(), `helm-index-${uid()}`);
+  // A private index kept per worktree remembers each file's size and mtime, so `add -A` only re-reads what changed since the last snapshot
+  // instead of hashing the whole worktree. Which commit it was built from does not matter: `add -A` makes it match the files on disk.
+  const kept = join((await git(wt, 'rev-parse', '--absolute-git-dir')).trim(), 'helm-index');
+  try {
+    return await snapshotWith(wt, label, kept, false);
+  } catch {
+    // A concurrent snapshot holds the lock, or the kept index is damaged: start from a throwaway one.
+    await rm(kept, { force: true }).catch(() => undefined);
+    return snapshotWith(wt, label, join(tmpdir(), `helm-index-${uid()}`), true);
+  }
+}
+
+async function snapshotWith(wt: string, label: string, index: string, throwaway: boolean): Promise<string> {
   const env = { ...process.env, ...HELM_IDENT, GIT_INDEX_FILE: index };
   try {
-    await run('git', ['read-tree', 'HEAD'], { cwd: wt, env });
-    await run('git', ['add', '-A'], { cwd: wt, env, timeout: 60_000 });
+    if (throwaway || !(await stat(index).catch(() => null))) await run('git', ['read-tree', 'HEAD'], { cwd: wt, env });
+    await run('git', ['add', '-A'], { cwd: wt, env, timeout: 600_000 });
     const tree = (await run('git', ['write-tree'], { cwd: wt, env })).trim();
     return (await run('git', ['commit-tree', tree, '-p', 'HEAD', '-m', label], { cwd: wt, env })).trim();
   } finally {
-    await rm(index, { force: true }).catch(() => undefined);
+    if (throwaway) await rm(index, { force: true }).catch(() => undefined);
   }
 }
 

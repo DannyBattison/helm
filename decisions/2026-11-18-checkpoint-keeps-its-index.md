@@ -1,0 +1,3 @@
+## 2026-11-18 · Checkpoints reuse a per-worktree index
+
+Taking a checkpoint built a fresh temporary index every time (`read-tree HEAD` + `add -A`), so git had no stat cache and re-hashed every file of the worktree before each message: minutes in a very large repo. The snapshot now keeps a private index in the worktree's git dir (`helm-index`). Git skips files whose size and mtime are unchanged, so only the first checkpoint is slow and later ones cost about as much as `git status`. The tree written is identical either way, because `add -A` makes the index match the disk. If the kept index is locked or damaged, it falls back to the old throwaway index. The `add -A` timeout was raised from 60s to 10 min so a huge first snapshot is not cut off.
