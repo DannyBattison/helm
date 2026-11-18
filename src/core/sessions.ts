@@ -71,6 +71,8 @@ interface Runtime {
   subEvent: Map<string, { tkey: string; idx: number }>;
   /** Subagents the limit hook let start, so a parallel batch is counted one by one. */
   admitted: Set<string>;
+  /** Commands the agent started in the background (tool call id to what it ran), which it is waiting on and which wake it when they end. */
+  bgCommands: Map<string, string>;
   /** In a session with several agents: the owner's text this turn, where its last piece sits in the transcript, and who is waiting for the turn to end. */
   turnText: string[];
   lastText: number;
@@ -663,7 +665,7 @@ export class SessionManager {
     // A worktree made before a file was uploaded gets it when the agent next starts. Files already there are left as the agent has them.
     if (!s.free) await supplyRepoFixtures(s.repoId, s.worktree, false);
     for (const x of s.extras || []) await supplyRepoFixtures(x.repoId, x.worktree, false);
-    const rt: Runtime = { agent: null as any, asks: new Map(), turnCost: 0, baseCost: s.cost, startCost: s.cost, interrupted: false, budgetPaused: false, lastEventAt: Date.now(), toolStart: new Map(), fails: new Map(), lastTools: new Map(), subEvent: new Map(), admitted: new Set(), turnText: [], lastText: -1, turnWaiters: turn?.done ? [turn.done] : [], reply: turn?.reply };
+    const rt: Runtime = { agent: null as any, asks: new Map(), turnCost: 0, baseCost: s.cost, startCost: s.cost, interrupted: false, budgetPaused: false, lastEventAt: Date.now(), toolStart: new Map(), fails: new Map(), lastTools: new Map(), subEvent: new Map(), admitted: new Set(), bgCommands: new Map(), turnText: [], lastText: -1, turnWaiters: turn?.done ? [turn.done] : [], reply: turn?.reply };
     rt.agent = this.backendOf(s).start({
       cwd: s.worktree, model: s.model, effort: s.effort, permMode: s.permMode,
       systemAppend: this.systemAppend(s, artifacts),
@@ -871,6 +873,8 @@ export class SessionManager {
   convertMessages(msgs: any[], wt: string, withUser = false): TranscriptEvent[] { return convertMessages(msgs, wt, withUser); }
 
   private async onTaskDone(s: Session, rt: Runtime, m: Extract<AgentEvent, { t: 'subagent_done' }>) {
+    // A background command ended: Claude Code wakes the agent with its output.
+    if (rt.bgCommands.delete(m.id)) this.resumeWorking(s, 'Continuing with the result of a background command');
     const a = s.subagents.find((x) => x.id === m.id);
     if (!a || a.status !== 'working') return;
     if (m.summary) a.summary = trunc(String(m.summary).trim(), 600);
@@ -895,6 +899,7 @@ export class SessionManager {
     if (name === 'Agent' || name === 'Task') return this.startSubagent(s, rt, b, tkey, sub);
     if (COMMAND_TOOLS.has(name)) {
       const cmd = String(input.command || '');
+      if (input.run_in_background && !sub) rt.bgCommands.set(b.id, trunc(String(input.description || cmd).replace(/\s+/g, ' '), 60));
       const gitKind = /(^|&&|;|\|\|)\s*git\s+(?:-C\s+\S+\s+)?push\b/.test(cmd) ? 'push' : /(^|&&|;|\|\|)\s*git\s+(?:-C\s+\S+\s+)?(fetch|pull|merge|rebase|checkout|switch|branch|reset|stash|tag|clone|worktree|cherry-pick|revert)\b/.test(cmd) ? 'git' : 'bash';
       this.activity(s, gitKind, (sub ? `${sub.description}: ` : '') + 'ran ' + trunc(cmd.replace(/\s+/g, ' '), 110), { detail: cmd });
       const idx = await this.push(tkey, { k: 'bash', id: b.id, cmd, summary: commandSummary(cmd, input.description), out: '', ok: true, meta: '', done: false });
@@ -1189,6 +1194,12 @@ export class SessionManager {
     const waiting = s.subagents.filter((a) => a.status === 'working' && a.background);
     if (waiting.length) {
       this.setStatus(s, 'working', `Waiting for ${waiting.length === 1 ? 'subagent: ' + waiting[0].description : waiting.length + ' subagents'}`);
+      return;
+    }
+    // A command started in the background is still running: the agent said it would carry on when it ends.
+    const bg = [...(this.rt.get(s.id)?.bgCommands.values() ?? [])];
+    if (bg.length) {
+      this.setStatus(s, 'working', `Waiting for ${bg.length === 1 ? 'background command: ' + bg[0] : bg.length + ' background commands'}`);
       return;
     }
     // A free agent has nothing to review or merge: it is simply done.
