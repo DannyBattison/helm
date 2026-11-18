@@ -126,6 +126,9 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
       { label: 'Fetch from GitHub', icon: 'arrows-clockwise', separator: true, onClick: () => { api.fetchRepo(r.id).then(() => toast({ tone: 'ready', title: 'Fetched', description: r.id })).catch(fail('Fetch failed')); } },
       { label: 'Open on GitHub', icon: 'github-logo', onClick: () => void api.openExternal(`https://github.com/${r.id}`) },
       { label: 'Copy GitHub URL', icon: 'link', onClick: () => void api.copyText(`https://github.com/${r.id}`) },
+      ...(window.helmBridge.hosted ? [] : [
+        { label: 'Reveal in file manager', icon: 'folder-open', separator: true, onClick: () => { api.openFolder(r.localPath).catch(fail('Could not open the folder')); } },
+        { label: 'Copy path', icon: 'copy', onClick: () => void api.copyText(r.localPath) }]),
       { label: 'Rename repository…', icon: 'pencil-simple', separator: true, onClick: () => setUI({ renamingRepo: r.id }) },
       { label: 'Remove from helm…', icon: 'trash', danger: true, onClick: () => setUI({ removingRepo: r.id }) }
     ] });
