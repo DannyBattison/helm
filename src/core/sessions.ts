@@ -1917,11 +1917,15 @@ export class SessionManager {
     s.lastAccess = Date.now();
     s.archivedAt = undefined;
     s.archivedAuto = undefined;
-    const cp = await this.checkpoint(s, 'Before: ' + text);
     // In a panel, who the message is for: those picked as the recipient, and anyone @mentioned in it. No one picked means everyone.
     const names = s.panel ? participants(s.panel) : [];
     const to = s.panel ? [...new Set([...(opts.to || []).filter((n) => names.includes(n)), ...mentionsIn(text, names)])] : [];
-    const at = await this.push(id, { k: 'user', t: Date.now(), text, images: images.length ? images : undefined, cp, ...(to.length ? { to } : {}), ...(s.panel && opts.re ? { re: opts.re } : {}) });
+    // The message shows at once; saving the worktree can take a while in a large one, so its checkpoint is attached when it is done.
+    const sent: TranscriptEvent = { k: 'user', t: Date.now(), text, images: images.length ? images : undefined, ...(to.length ? { to } : {}), ...(s.panel && opts.re ? { re: opts.re } : {}) };
+    const at = await this.push(id, sent);
+    if (!s.ask && !s.panel) this.setStatus(s, 'working', 'Saving your files before the agent acts');
+    const cp = await this.checkpoint(s, 'Before: ' + text);
+    if (cp !== undefined) await this.patch(id, at, { ...sent, cp });
     if (s.ask && rt) {
       // Replying while it waits counts as answering a question, or as a denial with an explanation.
       const w = [...rt.asks.values()][0];

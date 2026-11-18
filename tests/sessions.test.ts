@@ -528,6 +528,19 @@ describe('budgets and plan limits', () => {
 });
 
 describe('controls', () => {
+  it('shows a sent message before its checkpoint is saved', async () => {
+    const id = await sm.create(input());
+    const s = sm.get(id)!;
+    const seen: string[] = [];
+    const orig = (sm as any).checkpoint.bind(sm);
+    (sm as any).checkpoint = async (...a: any[]) => {
+      seen.push(`${((await (sm as any).store.transcript(id)) as any[]).some((e) => e.k === 'user' && e.text === 'later')}:${s.status}`);
+      return orig(...a);
+    };
+    await sm.send(id, 'later');
+    expect(seen).toEqual(['true:working']);
+  });
+
   it('sends a message to a running agent, or restarts a stopped one', async () => {
     const id = await sm.create(input());
     const s = sm.get(id)!;
