@@ -193,7 +193,7 @@ export function App() {
     body = <Session key={route.id} id={route.id} tab={route.tab || 'conversation'} sub={route.sub} file={route.file} line={route.line} msg={route.msg} setTab={(t) => go({ screen: 'session', id: route.id, tab: t })} themeKey={theme} />;
   } else if (route.screen === 'external') {
     const x = getUI().externals[route.repoId]?.find((e) => e.id === route.id);
-    crumbs = [{ label: route.repoId, icon: 'book-bookmark', onClick: () => go({ screen: 'repo', id: route.repoId, tab: 'external' }) }, { label: x?.title || 'Claude Code session', icon: 'eye' }];
+    crumbs = [{ label: route.repoId, icon: 'book-bookmark', onClick: () => go({ screen: 'repo', id: route.repoId, tab: 'history' }) }, { label: x?.title || 'Claude Code session', icon: 'eye' }];
     body = <ExternalSessionView key={route.id} repoId={route.repoId} id={route.id} />;
   } else if (route.screen === 'repo') {
     crumbs = [{ label: route.id, icon: 'book-bookmark' }];

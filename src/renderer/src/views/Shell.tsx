@@ -117,20 +117,18 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
   const repoMenu = (e: PressPoint, r: (typeof app.repos)[number]) => {
     e.preventDefault();
     e.stopPropagation();
-    const editor = app.settings.openIn;
     const fail = (title: string) => (err: any) => toast({ tone: 'error', title, description: String(err?.message || err).replace(/^Error invoking remote method '\w+': Error: /, '') });
     setMenu({ x: e.clientX, y: e.clientY, items: [
       { label: 'New session', icon: 'plus', onClick: () => setUI({ newSession: { repoId: r.id } }) },
       { label: 'History', icon: 'git-commit', separator: true, onClick: () => go({ screen: 'repo', id: r.id, tab: 'history' }) },
       { label: 'Code', icon: 'code', onClick: () => go({ screen: 'repo', id: r.id, tab: 'code' }) },
-      { label: 'Branches & worktrees', icon: 'tree-structure', onClick: () => go({ screen: 'repo', id: r.id, tab: 'worktrees' }) },
-      { label: 'Pull requests', icon: 'git-pull-request', onClick: () => go({ screen: 'repo', id: r.id, tab: 'prs' }) },
+      { label: 'Actions', icon: 'lightning', onClick: () => go({ screen: 'repo', id: r.id, tab: 'actions' }) },
       { label: 'Fetch from GitHub', icon: 'arrows-clockwise', separator: true, onClick: () => { api.fetchRepo(r.id).then(() => toast({ tone: 'ready', title: 'Fetched', description: r.id })).catch(fail('Fetch failed')); } },
       { label: 'Open on GitHub', icon: 'github-logo', onClick: () => void api.openExternal(`https://github.com/${r.id}`) },
-      { label: editor === 'helm' ? 'Open code in helm' : `Open in ${editor}`, icon: 'arrow-square-out', separator: true, onClick: () => { api.openRepoInEditor(r.id).catch(fail('Could not open the editor')); } },
-      { label: 'Show in file manager', icon: 'folder-open', onClick: () => { api.openFolder(r.localPath).catch(fail('Could not open the folder')); } },
-      { label: 'Copy path', icon: 'copy', onClick: () => void api.copyText(r.localPath) },
       { label: 'Copy GitHub URL', icon: 'link', onClick: () => void api.copyText(`https://github.com/${r.id}`) },
+      ...(window.helmBridge.hosted ? [] : [
+        { label: 'Reveal in file manager', icon: 'folder-open', separator: true, onClick: () => { api.openFolder(r.localPath).catch(fail('Could not open the folder')); } },
+        { label: 'Copy path', icon: 'copy', onClick: () => void api.copyText(r.localPath) }]),
       { label: 'Rename repository…', icon: 'pencil-simple', separator: true, onClick: () => setUI({ renamingRepo: r.id }) },
       { label: 'Remove from helm…', icon: 'trash', danger: true, onClick: () => setUI({ removingRepo: r.id }) }
     ] });
@@ -249,7 +247,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
                       selected={route.screen === 'external' && route.id === x.id}
                       onClick={() => go({ screen: 'external', repoId: r.id, id: x.id })} /></div>
                   ))}
-                  {all.length > shown.length ? <div {...keyboardClick} onClick={() => go({ screen: 'repo', id: r.id, tab: 'external' })} className="helm-row-hover" style={{ padding: `4px 8px 6px ${40 + g * 14}px`, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)', cursor: 'pointer', borderRadius: 4 }}>{all.length - shown.length} more external</div> : null}
+                  {all.length > shown.length ? <div {...keyboardClick} onClick={() => go({ screen: 'repo', id: r.id, tab: 'history' })} className="helm-row-hover" style={{ padding: `4px 8px 6px ${40 + g * 14}px`, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)', cursor: 'pointer', borderRadius: 4 }}>{all.length - shown.length} more external</div> : null}
                 </>;
               })() : null}
               {open && sessions.length === 0 && !extList(r.id).length ? <div style={{ padding: `4px 0 6px ${42 + g * 14}px`, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>No sessions</div> : null}

@@ -374,7 +374,7 @@ export function Dashboard({ filter: initial }: { filter?: string }) {
                 </div>
                 {sessions.filter(visible).map((s) => <SessionRow key={s.id + range.id} s={s} now={now} tpl={col.template} sub={sub} narrow={narrow} range={lanes ? range : undefined} />)}
                 {extShown(r.id).map((x) => <ExternalRow key={x.id} x={x} repoId={r.id} tpl={col.template} sub={sub} narrow={narrow} />)}
-                {extFor(r.id).length > extShown(r.id).length ? <div {...keyboardClick} onClick={() => go({ screen: 'repo', id: r.id, tab: 'external' })} className="helm-row-hover" style={{ padding: '8px 12px', borderTop: '1px solid var(--border-subtle)', font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)', cursor: 'pointer' }}>{extFor(r.id).length - extShown(r.id).length} more external sessions</div> : null}
+                {extFor(r.id).length > extShown(r.id).length ? <div {...keyboardClick} onClick={() => go({ screen: 'repo', id: r.id, tab: 'history' })} className="helm-row-hover" style={{ padding: '8px 12px', borderTop: '1px solid var(--border-subtle)', font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)', cursor: 'pointer' }}>{extFor(r.id).length - extShown(r.id).length} more external sessions</div> : null}
               </div>
             ))}
             </>}
