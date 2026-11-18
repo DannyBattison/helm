@@ -243,28 +243,8 @@ export class SessionManager {
     } else {
       branch = st.branchPrefix + id;
       wt = join(expandHome(st.worktreeRoot), repo!.name, id);
-      // A repository that arrived by sync has no clone on this machine yet.
-      if (!(await G.fileExists(repo!.localPath))) await G.clone(`https://github.com/${repo!.id}.git`, repo!.localPath);
-      if (st.fetchBeforeSession) await G.git(repo!.localPath, 'fetch', 'origin', '--prune').catch(() => undefined);
-      // `main` means the local branch, `origin/main` the one on GitHub. A bare name that only exists on GitHub falls back to it.
-      const isLocal = !input.base.startsWith('origin/') && (await G.gitOk(repo!.localPath, 'rev-parse', '--verify', '--quiet', 'refs/heads/' + input.base));
-      remoteBase = input.base.startsWith('origin/') || isLocal ? input.base : (await G.gitOk(repo!.localPath, 'rev-parse', '--verify', 'origin/' + input.base)) ? 'origin/' + input.base : input.base;
-      await G.addWorktree(repo!.localPath, wt, branch, extra.seed ? await checkpointParent(repo!.localPath, extra.seed) : remoteBase);
-      if (extra.seed) await seedFromCheckpoint(wt, extra.seed);
-      await this.copyUntracked(repo!.localPath, wt, st.copyFiles);
-      try {
-        for (const rid of new Set(input.extraRepos || [])) {
-          if (rid === repo!.id) continue;
-          const er = this.store.data.repos.find((r) => r.id === rid);
-          if (!er) throw new Error('Repository not found: ' + rid);
-          extras.push(await this.addExtra(er, id, branch));
-        }
-        agentSessionId = await extra.conversation?.(wt);
-      } catch (e) {
-        await G.removeWorktree(repo!.localPath, wt, branch);
-        for (const x of extras) await G.removeWorktree(this.store.data.repos.find((r) => r.id === x.repoId)!.localPath, x.worktree, x.branch);
-        throw e;
-      }
+      remoteBase = input.base;
+      for (const rid of new Set(input.extraRepos || [])) if (rid !== repo!.id && !this.store.data.repos.find((r) => r.id === rid)) throw new Error('Repository not found: ' + rid);
     }
 
     const now = Date.now();
@@ -287,15 +267,74 @@ export class SessionManager {
     this.sessions.push(s);
     this.activity(s, 'start', blocked ? `queued: ${blocked.toLowerCase()}` : free ? `started in ${wt}` : `started on ${branch}`);
     const pics = input.images?.length ? input.images : undefined;
-    await this.push(id, { k: 'user', t: now, text: input.task, images: pics, cp: await this.checkpoint(s, 'Start: ' + input.task) });
+    const userAt = await this.push(id, { k: 'user', t: now, text: input.task, images: pics, cp: free ? await this.checkpoint(s, 'Start: ' + input.task) : undefined });
     if (blocked && pics) this.queuedImages.set(id, pics);
-    // Big fixtures take a while to copy: that goes on in the background, so the session exists (and its transcript opens) at once.
-    const prep = free ? undefined : await this.prepareFixtures(s, !!blocked);
+    if (!free) {
+      // Checking out a big repository takes minutes: that goes on in the background, so the session exists (and its transcript opens) at once.
+      if (!blocked) s.step = 'Preparing worktree';
+      const setup = this.setUp(s, repo!, input, extra, userAt, !!blocked);
+      this.settingUp.set(id, setup);
+      void setup.finally(() => this.settingUp.delete(id));
+      this.touch();
+      if (!blocked) {
+        const go = this.kickoff(s, input.task, pics, 0).catch((e) => this.setStatus(s, 'error', trunc(String(e?.message || e), 120)));
+        this.starting.set(id, go);
+        void go.finally(() => this.starting.delete(id));
+      }
+      return id;
+    }
     if (blocked) { this.touch(); return id; }
     this.touch();
-    if (prep) void this.kickoff(s, input.task, pics, 0).catch((e) => this.setStatus(s, 'error', trunc(String(e?.message || e), 120)));
-    else await this.kickoff(s, input.task, pics, 0);
+    await this.kickoff(s, input.task, pics, 0);
     return id;
+  }
+
+  /** Resolves once a new session's worktree has been made and its agent started (or that has failed). `create` itself returns before that. */
+  ready = async (id: string) => { await this.settingUp.get(id); await this.starting.get(id); };
+  private starting = new Map<string, Promise<void>>();
+
+  /** Sessions whose worktree is still being made. The agent does not start until its entry settles. */
+  private settingUp = new Map<string, Promise<void>>();
+  private setupFailed = new Set<string>();
+
+  /** Makes a new session's worktree (and those of its other repositories), then takes its first checkpoint and starts copying fixtures. A failure ends the session with the reason. */
+  private async setUp(s: Session, repo: Repo, input: NewSessionInput, extra: CreateExtra, userAt: number, queued: boolean) {
+    const extras: ExtraRepo[] = [];
+    try {
+      // A repository that arrived by sync has no clone on this machine yet.
+      if (!(await G.fileExists(repo.localPath))) await G.clone(`https://github.com/${repo.id}.git`, repo.localPath);
+      if (this.cfg(repo.id).fetchBeforeSession) await G.git(repo.localPath, 'fetch', 'origin', '--prune').catch(() => undefined);
+      // `main` means the local branch, `origin/main` the one on GitHub. A bare name that only exists on GitHub falls back to it.
+      const isLocal = !input.base.startsWith('origin/') && (await G.gitOk(repo.localPath, 'rev-parse', '--verify', '--quiet', 'refs/heads/' + input.base));
+      s.base = input.base.startsWith('origin/') || isLocal ? input.base : (await G.gitOk(repo.localPath, 'rev-parse', '--verify', 'origin/' + input.base)) ? 'origin/' + input.base : input.base;
+      await G.addWorktree(repo.localPath, s.worktree, s.branch, extra.seed ? await checkpointParent(repo.localPath, extra.seed) : s.base);
+      if (extra.seed) await seedFromCheckpoint(s.worktree, extra.seed);
+      await this.copyUntracked(repo.localPath, s.worktree, this.cfg(repo.id).copyFiles);
+      for (const rid of new Set(input.extraRepos || [])) {
+        if (rid === repo.id) continue;
+        extras.push(await this.addExtra(this.store.data.repos.find((r) => r.id === rid)!, s.id, s.branch));
+      }
+      s.extras = extras.length ? extras : undefined;
+      s.agentSessionId = await extra.conversation?.(s.worktree);
+      const n = await this.checkpoint(s, 'Start: ' + input.task);
+      const t = await this.store.transcript(s.id);
+      const ev = t[userAt];
+      if (n && ev?.k === 'user') await this.patch(s.id, userAt, { ...ev, cp: n });
+      await this.prepareFixtures(s, queued);
+      if (s.step === 'Preparing worktree') s.step = 'Starting';
+      this.touch();
+    } catch (e: any) {
+      await G.removeWorktree(repo.localPath, s.worktree, s.branch);
+      for (const x of extras) await G.removeWorktree(this.store.data.repos.find((r) => r.id === x.repoId)!.localPath, x.worktree, x.branch);
+      this.setupFailed.add(s.id);
+      s.queued = undefined;
+      s.error = String(e?.message || e);
+      logLine('error', `session ${s.id}: could not make the worktree: ${e?.stack || s.error}`);
+      await this.push(s.id, { k: 'note', tone: 'error', text: 'Could not prepare the worktree: ' + s.error });
+      this.setStatus(s, 'error', trunc(s.error, 120));
+      this.activity(s, 'error', 'worktree failed: ' + trunc(s.error, 80));
+      this.hooks.notify('failed', `${s.id} failed`, trunc(s.error, 120), s.id);
+    }
   }
 
   /** Sessions whose repository fixtures are still being copied in. The agent does not start until its entry settles. */
@@ -349,7 +388,7 @@ export class SessionManager {
 
   // ---------------------------------------------------------------- queue
   /** Sessions with an agent at work. A session waiting on you does not use a slot. */
-  private runningCount() { return this.sessions.filter((s) => s.status === 'working' && this.rt.has(s.id)).length; }
+  private runningCount() { return this.sessions.filter((s) => s.status === 'working' && (this.rt.has(s.id) || this.settingUp.has(s.id))).length; }
   private pumping = false;
   /** Images attached to a task that is still waiting in the queue. Kept in memory only. */
   private queuedImages = new Map<string, MessageImage[]>();
@@ -388,6 +427,8 @@ export class SessionManager {
 
   /** Begins the session's first turn: its agent alone, or all the agents of a panel answering the task. */
   private async kickoff(s: Session, task: string, images: MessageImage[] | undefined, at: number) {
+    await this.settingUp.get(s.id);
+    if (this.setupFailed.has(s.id)) return;
     if (s.panel) void this.queueRound(s, { at, text: task, images: images || [], to: [] });
     else await this.start(s, task, images);
   }
@@ -479,7 +520,15 @@ export class SessionManager {
     const conversation = s.agentSessionId && upTo !== null
       ? (wt: string) => this.conversationsOf(s).fork({ sourceId: s.agentSessionId!, sourceDir: s.worktree, destDir: wt, upToMessageId: upTo ?? undefined, title: `Fork of ${sessionTitle(s)}` })
       : undefined;
-    return this.create({ repoId: s.repoId, base: seed || s.worktreeGone ? s.base : s.branch, task: task.trim(), backend: s.backend, model: s.model, budget: s.budget, permMode: s.permMode }, { seed, conversation, parentId: s.id, effort: s.effort });
+    const nid = await this.create({ repoId: s.repoId, base: seed || s.worktreeGone ? s.base : s.branch, task: task.trim(), backend: s.backend, model: s.model, budget: s.budget, permMode: s.permMode }, { seed, conversation, parentId: s.id, effort: s.effort });;
+    // Copying the conversation can fail: that is this call's error, not a session left behind in an error state.
+    await this.settingUp.get(nid);
+    if (this.setupFailed.has(nid)) {
+      const why = this.get(nid)?.error || 'The fork could not be made.';
+      await this.remove(nid, { worktree: false, branch: false }).catch(() => undefined);
+      throw new Error(why);
+    }
+    return nid;
   }
 
   async continueExternal(repoId: string, externalId: string, task: string): Promise<string> {
@@ -660,6 +709,8 @@ export class SessionManager {
 
   private async start(s: Session, first?: string, firstImages: MessageImage[] = [], turn?: { reply?: ReplyRef; done?: (r: { text: string; index: number }) => void }) {
     const settings = this.store.data.settings;
+    await this.settingUp.get(s.id);
+    if (this.setupFailed.has(s.id)) return;
     await this.preparing.get(s.id);
     const artifacts = await ensureArtifactDir(s.id);
     // A worktree made before a file was uploaded gets it when the agent next starts. Files already there are left as the agent has them.

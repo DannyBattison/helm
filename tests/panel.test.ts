@@ -6,6 +6,9 @@ import { handleFor, mentionsIn, panelDigest, participants, replyLimit } from '..
 import { readOnlyDecision } from '../src/core/advisor';
 import { BackendRegistry, type AgentBackend, type AgentEvent, type AgentStartOptions } from '../src/core/backend';
 import { SessionManager } from '../src/core/sessions';
+import { settleCreates } from './settled';
+
+settleCreates();
 import { Store } from '../src/core/store';
 import { FREE_ID, type Panel, type TranscriptEvent } from '../src/shared/types';
 

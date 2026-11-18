@@ -48,6 +48,9 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
 }));
 
 import { SessionManager } from '../src/core/sessions';
+import { settleCreates } from './settled';
+
+settleCreates();
 import { claudeProjectDir } from '../src/core/claudeBackend';
 import { Store } from '../src/core/store';
 import { FREE_ID, type NewSessionInput } from '../src/shared/types';
@@ -141,7 +144,8 @@ describe('create, further paths', () => {
 
   it('removes the extra worktrees already made when a later step fails', async () => {
     mkRepo('other');
-    await expect(sm.create(input({ extraRepos: ['o/other'] }), { conversation: async () => { throw new Error('copy failed'); } })).rejects.toThrow('copy failed');
+    const id = await sm.create(input({ extraRepos: ['o/other'] }), { conversation: async () => { throw new Error('copy failed'); } });
+    expect(sm.get(id)).toMatchObject({ status: 'error', error: 'copy failed' });
     expect(existsSync(join(store.data.settings.worktreeRoot, 'other', 'fix-the-thing'))).toBe(false);
     expect(existsSync(join(store.data.settings.worktreeRoot, 'r', 'fix-the-thing'))).toBe(false);
   });

@@ -48,6 +48,9 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
 }));
 
 import { SessionManager } from '../src/core/sessions';
+import { settleCreates } from './settled';
+
+settleCreates();
 import { claudeProjectDir } from '../src/core/claudeBackend';
 import { Store } from '../src/core/store';
 import { FREE_ID, type NewSessionInput } from '../src/shared/types';

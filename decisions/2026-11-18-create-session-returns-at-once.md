@@ -1,0 +1,3 @@
+## 2026-11-18 · Creating a session returns at once; the worktree is made in the background
+
+Making a worktree (clone, fetch, checkout, copying files, the first checkpoint) took minutes on a very large repository, so the New session dialog hung and could time out. `create` now validates, registers the session and returns; `setUp` does the rest in the background while the session shows "Preparing worktree" in the transcript, and the agent starts when it finishes (`kickoff` and `start` wait for it). Sessions being set up count as running for the queue. If setup fails, the worktrees made so far are removed and the session ends in an error with the reason in its transcript, instead of `create` throwing. `fork` waits for setup so its errors still surface as its own.
