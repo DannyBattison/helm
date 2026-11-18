@@ -34,7 +34,7 @@ FROM node:22-bookworm-slim
 #   DOCUMENTS  poppler-utils (pdftotext, pdftoppm), LibreOffice headless, pandoc
 #   MEDIA      ffmpeg, imagemagick, tesseract-ocr
 #   BROWSING   Playwright and Chromium (the heaviest; needs CORE, which it turns on)
-# Always there, whatever you pick: node and npm, bash and coreutils, git, openssh-client, ca-certificates, curl, procps, tini, gh, and ripgrep
+# Always there, whatever you pick: node and npm, bash and coreutils, git (with git-lfs), openssh-client, ca-certificates, curl, procps, tini, gh, and ripgrep
 # (Claude Code's search tools use it). The default is the slim set; the published `-full` image is INCLUDE=ALL. For example:
 #   docker build -f hosted/Dockerfile --build-arg 'INCLUDE=CORE|SEARCH|DOCUMENTS' -t helm-hosted .
 ARG INCLUDE="CORE|SEARCH|NETWORK|EDITING|BROWSING"
@@ -48,7 +48,7 @@ RUN set -eu; \
     for c in $(printf '%s' "$inc" | tr '|' ' '); do \
         case "$c" in CORE|SEARCH|NETWORK|EDITING|DOCUMENTS|MEDIA|BROWSING) ;; *) echo "unknown INCLUDE category: $c" >&2; exit 1 ;; esac; \
     done; \
-    pkgs="git openssh-client ca-certificates curl procps ripgrep tini"; \
+    pkgs="git git-lfs openssh-client ca-certificates curl procps ripgrep tini"; \
     if has CORE; then pkgs="$pkgs python3 python3-pip python3-venv zip unzip less tree file"; fi; \
     if has SEARCH; then pkgs="$pkgs fd-find jq"; fi; \
     if has NETWORK; then pkgs="$pkgs wget dnsutils iputils-ping"; fi; \
@@ -72,6 +72,7 @@ RUN set -eu; \
         chmod -R a+rX /opt/ms-playwright; \
     fi; \
     if has CORE; then chown -R helm:helm /opt/venv; fi; \
+    git lfs install --system; \
     rm -rf /var/lib/apt/lists/*
 # gh: the GitHub CLI, for agents and the terminal (`gh pr create`, `gh api`). helm writes its sign-in to gh's config, and the entrypoint makes
 # `gh auth git-credential` git's credential helper for github.com, so `git fetch` on a private repository works too.
