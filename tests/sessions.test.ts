@@ -349,6 +349,21 @@ describe('the agent talking', () => {
     await sm.refreshSubagent(id, 'zzz');
   });
 
+  it('stays working while a background command runs and resumes when it ends', async () => {
+    const id = await sm.create(input());
+    const s = sm.get(id)!;
+    await until(() => !!q());
+    q().emit(tool('Bash', { command: 'sleep 600', description: 'Long job', run_in_background: true }, 'bg1'));
+    q().emit(result('bg1', 'started'));
+    q().emit(done());
+    await until(() => s.step === 'Waiting for background command: Long job');
+    expect(s.status).toBe('working');
+    q().emit({ type: 'system', subtype: 'task_notification', tool_use_id: 'bg1', status: 'completed', summary: 'ok' });
+    q().emit(done());
+    await until(() => s.status !== 'working');
+    expect(s.step).not.toMatch(/background/);
+  });
+
   it('limits how many subagents run at once', async () => {
     store.data.settings.maxSubagentsSession = 1;
     const id = await sm.create(input());
@@ -513,6 +528,19 @@ describe('budgets and plan limits', () => {
 });
 
 describe('controls', () => {
+  it('shows a sent message before its checkpoint is saved', async () => {
+    const id = await sm.create(input());
+    const s = sm.get(id)!;
+    const seen: string[] = [];
+    const orig = (sm as any).checkpoint.bind(sm);
+    (sm as any).checkpoint = async (...a: any[]) => {
+      seen.push(`${((await (sm as any).store.transcript(id)) as any[]).some((e) => e.k === 'user' && e.text === 'later')}:${s.status}`);
+      return orig(...a);
+    };
+    await sm.send(id, 'later');
+    expect(seen).toEqual(['true:working']);
+  });
+
   it('sends a message to a running agent, or restarts a stopped one', async () => {
     const id = await sm.create(input());
     const s = sm.get(id)!;
