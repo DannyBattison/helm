@@ -27,7 +27,7 @@ To build it yourself instead: `cd hosted && cp .env.example .env && docker compo
 
 ### What is in the image
 
-Always: Node and npm, bash and coreutils, git, gh, ssh, curl, ripgrep, tini as PID 1, a non-root user, `LANG=C.UTF-8` and `PYTHONUNBUFFERED=1`. The rest is picked by categories, with the `INCLUDE` build argument (separated by `|`, any case, or `ALL`):
+Always: Node and npm, bash and coreutils, git (with git-lfs), gh, ssh, curl, ripgrep, tini as PID 1, a non-root user, `LANG=C.UTF-8` and `PYTHONUNBUFFERED=1`. The rest is picked by categories, with the `INCLUDE` build argument (separated by `|`, any case, or `ALL`):
 
 | Category | Adds |
 | --- | --- |
