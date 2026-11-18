@@ -61,7 +61,15 @@ export async function userIdentity(path?: string): Promise<{ name: string | null
 
 export async function addWorktree(repoPath: string, wt: string, branch: string, base: string) {
   await mkdir(dirname(wt), { recursive: true });
-  await git(repoPath, 'worktree', 'add', wt, '-b', branch, base);
+  try {
+    await git(repoPath, 'worktree', 'add', '--quiet', wt, '-b', branch, base);
+  } catch (e) {
+    // A failing post-checkout hook (a repository's own setup script that is missing here, say) makes git exit non-zero after the
+    // checkout is complete. If the worktree is there on the new branch, the hook is the repository's problem, not a failed session.
+    const onBranch = (await git(wt, 'rev-parse', '--abbrev-ref', 'HEAD').catch(() => '')).trim() === branch;
+    if (!onBranch) throw e;
+    console.warn(`git worktree add ${wt}: a hook failed, but the worktree was created: ${String((e as Error).message).split('\n').slice(-3).join(' ').trim()}`);
+  }
 }
 
 export async function removeWorktree(repoPath: string, wt: string, branch?: string) {

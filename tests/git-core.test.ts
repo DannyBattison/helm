@@ -45,6 +45,17 @@ describe('repository helpers', () => {
     expect((await userIdentity(repo)).name === null || typeof (await userIdentity(repo)).name === 'string').toBe(true);
   });
 
+  it('keeps a worktree whose post-checkout hook fails', async () => {
+    const hook = join(repo, '.git', 'hooks', 'post-checkout');
+    mkdirSync(join(repo, '.git', 'hooks'), { recursive: true });
+    writeFileSync(hook, '#!/bin/sh\necho missing-script: not found >&2\nexit 127\n', { mode: 0o755 });
+    const wt = join(root, 'wt-hook');
+    await addWorktree(repo, wt, 'agent/hooked', 'main');
+    expect(g(wt, 'rev-parse', '--abbrev-ref', 'HEAD').trim()).toBe('agent/hooked');
+    await removeWorktree(repo, wt, 'agent/hooked');
+    rmSync(hook);
+  });
+
   it('summarises changes, diffs files, searches and lists', async () => {
     const wt = join(root, 'wt');
     await addWorktree(repo, wt, 'agent/x', 'main');
