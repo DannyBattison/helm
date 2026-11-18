@@ -1,5 +1,5 @@
 import { mkdir, readdir, readFile, rm, stat } from 'node:fs/promises';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import type { ChangesSummary, DiffHunk, FileChange } from '../shared/types';
 import { run } from './util';
@@ -59,15 +59,34 @@ export async function userIdentity(path?: string): Promise<{ name: string | null
   return { name: await get('user.name'), email: await get('user.email') };
 }
 
-export async function addWorktree(repoPath: string, wt: string, branch: string, base: string) {
+/** Runs git and reports the percentage in its progress lines (stderr) as they come. Rejects with git's own output, like `git()`. */
+function gitWithProgress(cwd: string, args: string[], onPercent: (pct: number) => void): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn('git', ['-c', 'core.quotepath=off', ...signingConfig(signing).flatMap((c) => ['-c', c]), ...args], { cwd, env: env(), windowsHide: true });
+    let err = '', last = -1;
+    child.stderr.on('data', (d: Buffer) => {
+      const text = d.toString();
+      err = (err + text).slice(-8000);
+      const m = [...text.matchAll(/(\d+)%/g)].pop();
+      if (m && +m[1] !== last) onPercent((last = +m[1]));
+    });
+    child.on('error', (e) => reject(new Error((e as any).code === 'ENOENT' ? 'git was not found. Install it, or make sure it is on your PATH, then restart helm.' : e.message)));
+    child.on('close', (code) => code === 0 ? resolve() : reject(new Error(err.replace(/^.*\d+% \(\d+\/\d+\).*[\r\n]*/gm, '').trim() || `git exited with ${code}`)));
+  });
+}
+
+export async function addWorktree(repoPath: string, wt: string, branch: string, base: string, onPercent?: (pct: number) => void) {
   await mkdir(dirname(wt), { recursive: true });
   try {
-    await git(repoPath, 'worktree', 'add', '--quiet', wt, '-b', branch, base);
+    // `worktree add` cannot report progress off a terminal on every git, but `checkout --progress` can: make the worktree empty, then fill it.
+    await git(repoPath, 'worktree', 'add', '--no-checkout', wt, '-b', branch, base);
+    await gitWithProgress(wt, ['checkout', '--progress', '-f'], onPercent ?? (() => undefined));
   } catch (e) {
     // A failing post-checkout hook (a repository's own setup script that is missing here, say) makes git exit non-zero after the
     // checkout is complete. If the worktree is there on the new branch, the hook is the repository's problem, not a failed session.
     const onBranch = (await git(wt, 'rev-parse', '--abbrev-ref', 'HEAD').catch(() => '')).trim() === branch;
-    if (!onBranch) throw e;
+    const filled = onBranch && (await git(wt, 'ls-files', '-d').catch(() => 'x')).trim() === '';
+    if (!filled) throw e;
     console.warn(`git worktree add ${wt}: a hook failed, but the worktree was created: ${String((e as Error).message).split('\n').slice(-3).join(' ').trim()}`);
   }
 }

@@ -271,7 +271,7 @@ export class SessionManager {
     if (blocked && pics) this.queuedImages.set(id, pics);
     if (!free) {
       // Checking out a big repository takes minutes: that goes on in the background, so the session exists (and its transcript opens) at once.
-      if (!blocked) s.step = 'Preparing worktree';
+      if (!blocked) { s.step = 'Preparing worktree'; s.preparing = { done: 0, total: 100 }; }
       const setup = this.setUp(s, repo!, input, extra, userAt, !!blocked);
       this.settingUp.set(id, setup);
       void setup.finally(() => this.settingUp.delete(id));
@@ -307,7 +307,13 @@ export class SessionManager {
       // `main` means the local branch, `origin/main` the one on GitHub. A bare name that only exists on GitHub falls back to it.
       const isLocal = !input.base.startsWith('origin/') && (await G.gitOk(repo.localPath, 'rev-parse', '--verify', '--quiet', 'refs/heads/' + input.base));
       s.base = input.base.startsWith('origin/') || isLocal ? input.base : (await G.gitOk(repo.localPath, 'rev-parse', '--verify', 'origin/' + input.base)) ? 'origin/' + input.base : input.base;
-      await G.addWorktree(repo.localPath, s.worktree, s.branch, extra.seed ? await checkpointParent(repo.localPath, extra.seed) : s.base);
+      let lastEmit = 0;
+      await G.addWorktree(repo.localPath, s.worktree, s.branch, extra.seed ? await checkpointParent(repo.localPath, extra.seed) : s.base, (pct) => {
+        s.preparing = { done: pct, total: 100 };
+        const at = Date.now();
+        if (at - lastEmit > 250) { lastEmit = at; this.hooks.emitState(); }
+      });
+      s.preparing = undefined;
       if (extra.seed) await seedFromCheckpoint(s.worktree, extra.seed);
       await this.copyUntracked(repo.localPath, s.worktree, this.cfg(repo.id).copyFiles);
       for (const rid of new Set(input.extraRepos || [])) {
@@ -324,6 +330,7 @@ export class SessionManager {
       if (s.step === 'Preparing worktree') s.step = 'Starting';
       this.touch();
     } catch (e: any) {
+      s.preparing = undefined;
       await G.removeWorktree(repo.localPath, s.worktree, s.branch);
       for (const x of extras) await G.removeWorktree(this.store.data.repos.find((r) => r.id === x.repoId)!.localPath, x.worktree, x.branch);
       this.setupFailed.add(s.id);

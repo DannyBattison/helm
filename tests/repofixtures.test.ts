@@ -85,7 +85,12 @@ z.write('${join(src, 'top.txt')}', 'top.txt')
 z.writestr('__MACOSX/junk', 'x')
 z.close()`]);
     await addRepoFixture(repo, 'my-zip.zip', readFileSync(join(src, 'my-zip.zip')).toString('base64'));
-    expect(await unzipRepoFixture(repo, 'my-zip.zip')).toBe('my-zip');
+    const seen: [number, number][] = [];
+    expect(await unzipRepoFixture(repo, 'my-zip.zip', (done, total) => seen.push([done, total]))).toBe('my-zip');
+    expect(seen.length).toBeGreaterThan(1);
+    expect(seen[0][0]).toBe(0);
+    expect(seen.at(-1)![0]).toBe(seen.at(-1)![1]);
+    expect(seen.every(([d, t]) => d >= 0 && d <= t)).toBe(true);
     const list = await listRepoFixtures(repo);
     const dir = list.find((f) => f.name === 'my-zip')!;
     expect(dir.dir).toBe(true);
