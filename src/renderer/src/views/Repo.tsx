@@ -329,7 +329,7 @@ export function ExternalSessionView({ repoId, id }: { repoId: string; id: string
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <div style={{ flex: 'none', padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 8, borderBottom: '1px solid var(--border)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-          <Button size="sm" variant="ghost" icon="arrow-left" onClick={() => go({ screen: 'repo', id: repoId, tab: 'external' })}>All sessions</Button>
+          <Button size="sm" variant="ghost" icon="arrow-left" onClick={() => go({ screen: 'repo', id: repoId, tab: 'history' })}>All sessions</Button>
           <i className="ph ph-eye" title="Read-only" style={{ fontSize: 16, color: 'var(--text-3)' }} />
           <span style={{ font: '600 15px/1.5 var(--font-sans)', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{known?.title || 'Claude Code session'}</span>
           {known?.branch ? <BranchTag name={known.branch} /> : null}
@@ -362,7 +362,7 @@ export function ExternalSessionView({ repoId, id }: { repoId: string; id: string
 }
 
 /** Claude Code sessions for this repository that helm did not start: the VS Code extension, the CLI, anything that writes to ~/.claude. */
-function ExternalSessions({ repo, onCount }: { repo: R; onCount(n: number): void }) {
+function ExternalSessions({ repo }: { repo: R }) {
   const app = useApp();
   const shared = useUI((u) => u.externals[repo.id]);
   const [list, setList] = React.useState<ExternalSession[] | null>(shared ?? null);
@@ -374,10 +374,10 @@ function ExternalSessions({ repo, onCount }: { repo: R; onCount(n: number): void
   React.useEffect(() => { load(); const t = setInterval(load, 10000); return () => clearInterval(t); }, [load]);
   const visibleList = (list || []).filter((x) => !x.archived);
   const hiddenCount = (list || []).length - visibleList.length;
-  React.useEffect(() => onCount(visibleList.length), [list]);
   const open = (x: ExternalSession) => go({ screen: 'external', repoId: repo.id, id: x.id });
+  if (list && !err && list.length === 0) return null;
   return (
-    <div style={{ flex: 1, overflow: 'auto', padding: '0 20px 12px' }}>
+    <div style={{ flex: 'none', maxHeight: 260, overflow: 'auto', padding: '0 20px 12px', borderBottom: '1px solid var(--border)' }}>
       <div style={{ minWidth: col.minWidth + 32 }}>
       <div style={{ padding: '12px 0 4px', font: '400 12.5px/1.5 var(--font-sans)', color: 'var(--text-3)', maxWidth: 760 }}>
         Sessions of your agents (Claude Code, Codex) for this repository that helm did not start, for example from an editor extension or the command line. They are found by project folder in each agent's own history, are read-only here, and also appear in the list on the left.{hiddenCount ? <> {hiddenCount} {hiddenCount === 1 ? 'is' : 'are'} archived: <a href="#" onClick={(e) => { e.preventDefault(); go({ screen: 'archive' }); }}>see the Archive</a>.</> : null}
@@ -387,7 +387,7 @@ function ExternalSessions({ repo, onCount }: { repo: R; onCount(n: number): void
       </div>
       {list == null ? <SkeletonRows n={5} template={col.template} widths={[null, 70, 50, 40, 30]} height={44} lead /> : null}
       {err ? <div style={{ font: '400 12px/1.45 var(--font-sans)', color: 'var(--status-error-text)', padding: '8px 0' }}>{err}</div> : null}
-      {list && !err && visibleList.length === 0 ? <div style={{ font: '400 13px/1.5 var(--font-sans)', color: 'var(--text-3)', padding: '8px 0' }}>No sessions from outside helm for this repository.</div> : null}
+      {list && !err && visibleList.length === 0 ? <div style={{ font: '400 13px/1.5 var(--font-sans)', color: 'var(--text-3)', padding: '8px 0' }}>All sessions from outside helm for this repository are archived.</div> : null}
       {visibleList.map((x) => (
         <div {...keyboardClick} key={x.id} onClick={() => open(x)} className="helm-row-hover" style={{ display: 'grid', gridTemplateColumns: col.template, gap: 12, alignItems: 'center', minHeight: 44, borderTop: '1px solid var(--border-subtle)', cursor: 'pointer' }}>
           <StatusDot status={x.active ? 'working' : 'idle'} />
@@ -434,7 +434,7 @@ function RepoCode({ repo, themeKey, open }: { repo: R; themeKey: 'dark' | 'light
 export function Repo({ id, themeKey, tab: firstTab, hash, file, line }: { id: string; themeKey: 'dark' | 'light'; tab?: string; hash?: string; file?: string; line?: number }) {
   const app = useApp();
   const repo = app.repos.find((r) => r.id === id);
-  const [tab, setTab] = React.useState(firstTab || 'history');
+  const [tab, setTab] = React.useState(firstTab === 'external' ? 'history' : firstTab === 'mcp' ? 'settings' : firstTab || 'history');
   const [sel, setSel] = React.useState(0);
   const listRef = React.useRef<HTMLDivElement>(null);
   const jumped = React.useRef(false);
@@ -448,7 +448,6 @@ export function Repo({ id, themeKey, tab: firstTab, hash, file, line }: { id: st
   const [fetched, setFetched] = React.useState<number | null>(null);
   const [prErr, setPrErr] = React.useState('');
   const narrow = useNarrow();
-  const [extCount, setExtCount] = React.useState<number | undefined>(undefined);
   const sessSig = app.sessions.filter((s) => s.repoId === id).map((s) => s.id + s.status).join();
   const maxLane = (history || []).reduce((m, c) => Math.max(m, c.lane), 0);
   const gutter = Math.max(78, LANE_X(maxLane) + 26);
@@ -513,20 +512,19 @@ export function Repo({ id, themeKey, tab: firstTab, hash, file, line }: { id: st
         </div>
         <Tabs value={tab} onChange={setTab} style={{ borderBottom: 'none', padding: 0 }} tabs={[
           { value: 'history', label: 'History', icon: 'git-commit' },
-          { value: 'code', label: 'Code', icon: 'code' },
-          { value: 'external', label: 'Outside sessions', icon: 'chats-circle', count: extCount },
           { value: 'memory', label: 'Memory', icon: 'brain' },
-          { value: 'mcp', label: 'MCP servers', icon: 'plugs-connected', count: repo.mcpServers?.length || undefined },
           { value: 'fixtures', label: 'Fixtures', icon: 'paperclip' },
+          { value: 'code', label: 'Code', icon: 'code' },
+          { value: 'prs', label: 'Pull requests', icon: 'git-pull-request', count: prs?.filter((p) => p.state === 'open').length },
           { value: 'worktrees', label: 'Branches & worktrees', icon: 'tree-structure', count: wts?.length },
           { value: 'issues', label: 'Issues', icon: 'circle-dashed' },
           { value: 'actions', label: 'Actions', icon: 'lightning' },
-          { value: 'settings', label: 'Settings', icon: 'sliders-horizontal', count: Object.keys(repo.settings || {}).length || undefined },
-          { value: 'prs', label: 'Pull requests', icon: 'git-pull-request', count: prs?.filter((p) => p.state === 'open').length }]} />
+          { value: 'settings', label: 'Settings', icon: 'sliders-horizontal', count: Object.keys(repo.settings || {}).length || undefined }]} />
       </div>
       {tab === 'history' ? (
         <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
           <div style={{ flex: 1, minWidth: 0, overflowX: 'auto', display: 'flex', flexDirection: 'column' }}>
+            <ExternalSessions repo={repo} />
             <div style={{ flex: 1, minHeight: 0, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
             <div className="helm-hide-phone" style={{ display: 'grid', gridTemplateColumns: col.template, gap: 12, alignItems: 'center', height: 30, flex: 'none', padding: '0 16px 0 0', borderBottom: '1px solid var(--border)', ...head }}>
               <span />{col.cell(1, 'Message')}{col.cell(2, 'Author')}{col.cell(3, 'Commit')}<span style={{ textAlign: 'right' }}>When</span>
@@ -545,12 +543,10 @@ export function Repo({ id, themeKey, tab: firstTab, hash, file, line }: { id: st
         </div>
       ) : tab === 'code' ? <RepoCode repo={repo} themeKey={themeKey} open={file ? { path: file, line } : undefined} />
         : tab === 'memory' ? <RepoMemory repo={repo} />
-        : tab === 'mcp' ? <div style={{ flex: 1, overflow: 'auto', padding: 16 }}><McpServers repoId={repo.id} servers={repo.mcpServers || []} inherited={app.settings.mcpServers || []} /></div>
         : tab === 'fixtures' ? <RepoFixtures repoId={repo.id} />
         : tab === 'issues' ? <Issues repoId={repo.id} />
-        : tab === 'settings' ? <div style={{ flex: 1, overflow: 'auto', padding: '8px 24px 32px' }}><div style={{ maxWidth: 720 }}><RepoSettingsPane repoId={repo.id} /></div></div>
+        : tab === 'settings' ? <div style={{ flex: 1, overflow: 'auto', padding: '8px 24px 32px' }}><div style={{ maxWidth: 720 }}><RepoSettingsPane repoId={repo.id} /><div style={{ font: '600 14px/1.5 var(--font-sans)', margin: '28px 0 12px' }}>MCP servers</div><McpServers repoId={repo.id} servers={repo.mcpServers || []} inherited={app.settings.mcpServers || []} /></div></div>
         : tab === 'actions' ? <Actions repoId={repo.id} />
-        : tab === 'external' ? <ExternalSessions repo={repo} onCount={setExtCount} />
         : tab === 'worktrees' ? <div style={{ flex: 1, overflow: 'auto' }}><Worktrees repo={repo} list={wts} reload={loadWts} /></div>
         : <PullRequests prs={prs} err={prErr} repoId={repo.id} />}
       {diff && commit && files?.length ? <CommitDiff repo={repo} commit={commit} files={files} start={diff.path} onClose={() => setDiff(null)} /> : null}

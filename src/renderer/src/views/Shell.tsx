@@ -249,7 +249,7 @@ export function Sidebar({ drawer = false }: { drawer?: boolean }) {
                       selected={route.screen === 'external' && route.id === x.id}
                       onClick={() => go({ screen: 'external', repoId: r.id, id: x.id })} /></div>
                   ))}
-                  {all.length > shown.length ? <div {...keyboardClick} onClick={() => go({ screen: 'repo', id: r.id, tab: 'external' })} className="helm-row-hover" style={{ padding: `4px 8px 6px ${40 + g * 14}px`, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)', cursor: 'pointer', borderRadius: 4 }}>{all.length - shown.length} more external</div> : null}
+                  {all.length > shown.length ? <div {...keyboardClick} onClick={() => go({ screen: 'repo', id: r.id, tab: 'history' })} className="helm-row-hover" style={{ padding: `4px 8px 6px ${40 + g * 14}px`, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)', cursor: 'pointer', borderRadius: 4 }}>{all.length - shown.length} more external</div> : null}
                 </>;
               })() : null}
               {open && sessions.length === 0 && !extList(r.id).length ? <div style={{ padding: `4px 0 6px ${42 + g * 14}px`, font: '400 12px/1.5 var(--font-sans)', color: 'var(--text-3)' }}>No sessions</div> : null}

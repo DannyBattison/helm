@@ -335,7 +335,7 @@ const GOTO_PAGES: { value: GotoTarget['page']; label: string }[] = [
   { value: 'overview', label: 'Overview' }, { value: 'needsYou', label: 'Needs you' }, { value: 'inbox', label: 'Inbox' }, { value: 'activity', label: 'Activity' },
   { value: 'archive', label: 'Archive' }, { value: 'reports', label: 'Reports' }, { value: 'settings', label: 'Settings' }, { value: 'repo', label: 'A repository' }
 ];
-const REPO_TABS = [{ value: '', label: 'Its usual tab' }, { value: 'history', label: 'History' }, { value: 'code', label: 'Code' }, { value: 'external', label: 'Outside sessions' }, { value: 'memory', label: 'Memory' }, { value: 'mcp', label: 'MCP servers' }, { value: 'worktrees', label: 'Branches & worktrees' }, { value: 'issues', label: 'Issues' }, { value: 'actions', label: 'Actions' }, { value: 'settings', label: 'Settings' }, { value: 'prs', label: 'Pull requests' }];
+const REPO_TABS = [{ value: '', label: 'Its usual tab' }, { value: 'history', label: 'History' }, { value: 'memory', label: 'Memory' }, { value: 'fixtures', label: 'Fixtures' }, { value: 'code', label: 'Code' }, { value: 'prs', label: 'Pull requests' }, { value: 'worktrees', label: 'Branches & worktrees' }, { value: 'issues', label: 'Issues' }, { value: 'actions', label: 'Actions' }, { value: 'settings', label: 'Settings' }];
 
 function LabeledField({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -908,7 +908,7 @@ export function Settings({ section }: { section?: string }) {
             <SettingRow title="Not available with Qwen Code" desc="Subagents, effort levels, cost and plan meters, forking a session, and reading its past conversations back (a session's history is kept by helm). Instructions are sent as the start of the first message, and MCP servers are passed along." />
           </>; })() : null}
           {sec === 'automations' ? <AutomationsSection /> : null}
-          {sec === 'mcp' ? <><H sub="Tools and data sources Claude can use in every repository. Add one to a single repository from its MCP tab.">MCP servers</H><McpServers repoId={null} servers={st.mcpServers || []} /></> : null}
+          {sec === 'mcp' ? <><H sub="Tools and data sources Claude can use in every repository. Add one to a single repository from its Settings tab.">MCP servers</H><McpServers repoId={null} servers={st.mcpServers || []} /></> : null}
           {sec === 'phone' ? <PhoneSection st={{ ...st, githubUser: app.user?.login }} set={set} state={app.p2p} /> : null}
           {sec === 'companion' ? <CompanionSection st={st} set={set} state={app.companion} /> : null}
           {sec === 'notifications' ? <>
