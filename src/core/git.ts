@@ -123,8 +123,16 @@ async function lineCount(file: string): Promise<number> {
 export async function changes(wt: string, base: string): Promise<ChangesSummary> {
   const mb = await mergeBase(wt, base).catch(() => base);
   const files: FileChange[] = [];
-  const num = await git(wt, 'diff', '--numstat', '-M', mb);
-  const names = await git(wt, 'diff', '--name-status', '-M', mb);
+  // Each command scans the worktree; run them side by side (status first so its index refresh is shared) rather than one after another.
+  const dirtyP = git(wt, 'status', '--porcelain').then((o) => o.split('\n').filter(Boolean).length);
+  await dirtyP.catch(() => undefined);
+  const [num, names, untrackedPaths, logOut, dirty] = await Promise.all([
+    git(wt, 'diff', '--numstat', '-M', mb),
+    git(wt, 'diff', '--name-status', '-M', mb),
+    untracked(wt),
+    git(wt, 'log', '--format=%h%x09%s', `${mb}..HEAD`),
+    dirtyP,
+  ]);
   const status = new Map<string, string>();
   for (const l of names.split('\n').filter(Boolean)) {
     const parts = l.split('\t');
@@ -139,12 +147,12 @@ export async function changes(wt: string, base: string): Promise<ChangesSummary>
     const binary = a === '-';
     files.push({ path, add: binary ? 0 : +a, del: binary ? 0 : +d, status: (status.get(path) as any) || 'M', generated: isGenerated(path), binary });
   }
-  for (const p of await untracked(wt)) files.push({ path: p, add: await lineCount(join(wt, p)), del: 0, status: 'A', generated: isGenerated(p) });
-  const log = (await git(wt, 'log', '--format=%h%x09%s', `${mb}..HEAD`)).split('\n').filter(Boolean).map((l) => {
+  const counts = await Promise.all(untrackedPaths.map((p) => lineCount(join(wt, p))));
+  untrackedPaths.forEach((p, i) => files.push({ path: p, add: counts[i], del: 0, status: 'A', generated: isGenerated(p) }));
+  const log = logOut.split('\n').filter(Boolean).map((l) => {
     const [hash, ...m] = l.split('\t');
     return { hash, msg: m.join('\t') };
   });
-  const dirty = (await git(wt, 'status', '--porcelain')).split('\n').filter(Boolean).length;
   return { files, base: mb, commits: log, dirty };
 }
 
