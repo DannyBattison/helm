@@ -1,6 +1,6 @@
-import { mkdir, readdir, readFile, rm, stat } from 'node:fs/promises';
+import { lstat, mkdir, readdir, readFile, readlink, rm, stat } from 'node:fs/promises';
 import { execFile, spawn } from 'node:child_process';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { ChangesSummary, DiffHunk, FileChange } from '../shared/types';
 import { run } from './util';
 
@@ -106,8 +106,31 @@ export async function mergeBase(wt: string, base: string): Promise<string> {
 const GENERATED = [/(^|\/)package-lock\.json$/, /(^|\/)pnpm-lock\.yaml$/, /(^|\/)yarn\.lock$/, /(^|\/)go\.sum$/, /(^|\/)Cargo\.lock$/, /\.min\.(js|css)$/, /(^|\/)openapi\.ya?ml$/, /\.snap$/];
 export const isGenerated = (p: string) => GENERATED.some((r) => r.test(p));
 
-async function untracked(wt: string): Promise<string[]> {
-  return (await git(wt, 'ls-files', '--others', '--exclude-standard')).split('\n').filter(Boolean);
+/** The untracked paths among `git status -z` entries, minus symlinks pointing outside the worktree: a setup script linking shared dependencies in is environment, not the session's work. */
+async function untrackedFrom(wt: string, all: string[]): Promise<{ paths: string[]; hidden: number }> {
+  const external = await Promise.all(all.map(async (p) => {
+    try {
+      const full = join(wt, p);
+      if (!(await lstat(full)).isSymbolicLink()) return false;
+      const rel = relative(wt, resolve(join(full, '..'), await readlink(full)));
+      return rel === '..' || rel.startsWith('..' + sep) || isAbsolute(rel);
+    } catch { return false; }
+  }));
+  return { paths: all.filter((_, i) => !external[i]), hidden: external.filter(Boolean).length };
+}
+
+/** One scan of the worktree for both the uncommitted count and the untracked files. */
+async function statusScan(wt: string): Promise<{ dirty: number; untracked: string[] }> {
+  const parts = (await git(wt, 'status', '--porcelain', '-z', '-uall')).split('\0').filter(Boolean);
+  let dirty = 0;
+  const untracked: string[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    const code = parts[i].slice(0, 2);
+    dirty++;
+    if (code === '??') untracked.push(parts[i].slice(3));
+    else if (code[0] === 'R' || code[0] === 'C' || code[1] === 'R' || code[1] === 'C') i++; // the rename's old path follows as its own entry
+  }
+  return { dirty, untracked };
 }
 
 async function lineCount(file: string): Promise<number> {
@@ -124,15 +147,16 @@ export async function changes(wt: string, base: string): Promise<ChangesSummary>
   const mb = await mergeBase(wt, base).catch(() => base);
   const files: FileChange[] = [];
   // Each command scans the worktree; run them side by side (status first so its index refresh is shared) rather than one after another.
-  const dirtyP = git(wt, 'status', '--porcelain').then((o) => o.split('\n').filter(Boolean).length);
-  await dirtyP.catch(() => undefined);
-  const [num, names, untrackedPaths, logOut, dirty] = await Promise.all([
+  const scanP = statusScan(wt);
+  await scanP.catch(() => undefined);
+  const [num, names, scan, logOut] = await Promise.all([
     git(wt, 'diff', '--numstat', '-M', mb),
     git(wt, 'diff', '--name-status', '-M', mb),
-    untracked(wt),
+    scanP,
     git(wt, 'log', '--format=%h%x09%s', `${mb}..HEAD`),
-    dirtyP,
   ]);
+  const { paths: untrackedPaths, hidden } = await untrackedFrom(wt, scan.untracked);
+  const dirtyAll = scan.dirty;
   const status = new Map<string, string>();
   for (const l of names.split('\n').filter(Boolean)) {
     const parts = l.split('\t');
@@ -153,7 +177,7 @@ export async function changes(wt: string, base: string): Promise<ChangesSummary>
     const [hash, ...m] = l.split('\t');
     return { hash, msg: m.join('\t') };
   });
-  return { files, base: mb, commits: log, dirty };
+  return { files, base: mb, commits: log, dirty: Math.max(0, dirtyAll - hidden) };
 }
 
 export function parseDiff(text: string): DiffHunk[] {

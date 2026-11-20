@@ -1,0 +1,3 @@
+## 2026-11-20 · A deeper margin above the transcript did not reduce scroll jumps
+
+The 1800px margin recorded in `2026-11-20-transcript-measures-further-above.md` was measured in headless Chromium with iPhone touch emulation over 400 variable-height messages: downward corrections while scrolling up were about the same at 600px, 1800px and 6000px (roughly 500 to 2000px of unwanted movement over 60 swipes, noisy between runs). A larger fixed `defaultItemHeight` made it about seven times worse, and `skipAnimationFrameInResizeObserver` changed nothing. The margin is back at 600px; the stable props stay. The corrections seen were small (150 to 260px), not a jump to the bottom, so the reported jump probably comes from something specific to the real transcript content.

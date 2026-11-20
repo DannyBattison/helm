@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -83,6 +83,15 @@ describe('repository helpers', () => {
     expect(by['package-lock.json'].generated).toBe(true);
     expect(c.commits.map((x) => x.msg)).toEqual(['edit a']);
     expect(c.dirty).toBeGreaterThan(0);
+
+    // A symlink to somewhere outside the worktree (a setup script linking shared dependencies in) is not the session's work.
+    const before = c.dirty;
+    symlinkSync(root, join(wt, 'ext-link'));
+    symlinkSync('a.txt', join(wt, 'inner-link'));
+    const l = await changes(wt, 'main');
+    expect(l.files.map((f) => f.path)).not.toContain('ext-link');
+    expect(l.files.map((f) => f.path)).toContain('inner-link');
+    expect(l.dirty).toBe(before + 1);
 
     const hunks = await fileDiff(wt, 'main', 'a.txt');
     expect(hunks[0].lines.some((l) => l[0] === '+' && l[3] === 'TWO')).toBe(true);

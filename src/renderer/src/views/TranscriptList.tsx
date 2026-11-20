@@ -5,6 +5,8 @@ import type { TranscriptEvent } from '@shared/types';
 const column: React.CSSProperties = { maxWidth: 820, margin: '0 auto', padding: '0 20px' };
 const Header = ({ context }: any) => <div style={{ ...column, paddingTop: 20, paddingBottom: context.header ? 14 : 0 }}>{context.header}</div>;
 const Footer = ({ context }: any) => <div style={{ ...column, paddingBottom: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>{context.footer}</div>;
+// Module-level so Virtuoso is handed the same object on every render.
+const components = { Header, Footer };
 
 /**
  * A conversation as a virtual list: only the messages near the viewport exist in the DOM, however long the session is.
@@ -42,6 +44,8 @@ export function TranscriptList({ items, firstIndex = 0, renderItem, header, foot
     cleanup.current = () => { node.removeEventListener('wheel', onWheel); node.removeEventListener('touchstart', onStart); node.removeEventListener('touchmove', onMove); node.removeEventListener('scroll', onScroll); };
   }, []);
   React.useEffect(() => () => cleanup.current?.(), []);
+  // Only the first render's value matters to Virtuoso, and a fresh object each render is a change it has to look at.
+  const initial = React.useMemo(() => (focusIndex != null ? { index: focusIndex, align: 'center' as const } : { index: 'LAST' as const, align: 'end' as const }), []);
   const [lit, setLit] = React.useState<number | undefined>(focusIndex);
   React.useEffect(() => {
     if (focusIndex == null || !items.length) { setLit(undefined); return; }
@@ -58,7 +62,7 @@ export function TranscriptList({ items, firstIndex = 0, renderItem, header, foot
       style={{ height: '100%' }}
       data={items}
       firstItemIndex={firstIndex}
-      initialTopMostItemIndex={focusIndex != null ? { index: focusIndex, align: 'center' } : { index: 'LAST', align: 'end' }}
+      initialTopMostItemIndex={initial}
       scrollerRef={scroller}
       followOutput={(atBottom) => (atBottom && follow.current ? 'auto' : false)}
       atBottomStateChange={(atBottom) => { if (atBottom) follow.current = true; }}
@@ -66,7 +70,7 @@ export function TranscriptList({ items, firstIndex = 0, renderItem, header, foot
       increaseViewportBy={{ top: 600, bottom: 600 }}
       startReached={onStartReached}
       context={{ header, footer }}
-      components={{ Header, Footer }}
+      components={components}
       computeItemKey={(index) => index}
       itemContent={(index, m) => <div style={{ ...column, paddingBottom: 14 }}><div style={{ borderRadius: 'var(--radius-md)', transition: 'background var(--dur-slow)', background: index === lit ? 'var(--status-working-bg)' : 'transparent' }}>{renderItem(m, index)}</div></div>}
     />

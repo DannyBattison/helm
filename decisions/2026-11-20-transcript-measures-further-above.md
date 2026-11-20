@@ -1,0 +1,3 @@
+## 2026-11-20 · The transcript list pre-measures a deeper margin above the viewport
+
+Scrolling up a transcript on a phone jumped mid-drag. The list is virtual, so items above the viewport have estimated heights until they are rendered; when a measured height differs, the list corrects its scroll position under the finger. The margin rendered above the viewport went from 600px to 1800px so most of those corrections happen off screen, and the list's props are now stable objects instead of new ones each render. Not verified on a device (no browser in the dev environment); if it still jumps, the next step is a fixed or better-estimated item height.
