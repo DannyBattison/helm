@@ -1,0 +1,3 @@
+## 2026-11-20 · The changes tab hides untracked symlinks that point outside the worktree
+
+A repository's worktree setup script can link shared dependencies into a fresh worktree (supervive-custom-server linked 19 `*.xcodeproj` directories to a copy under `~/UnrealEngine`). They are untracked, so the changes tab listed them as added files before the agent had done anything. `changes()` now leaves out untracked symlinks whose target resolves outside the worktree and does not count them in `dirty`. Symlinks that stay inside the worktree are still listed, and tracked or committed symlinks are unaffected.

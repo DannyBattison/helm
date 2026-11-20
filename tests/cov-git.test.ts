@@ -98,7 +98,7 @@ describe('git changes and diffs', () => {
     writeFileSync(join(wt, 'empty.txt'), '');
     writeFileSync(join(wt, 'nonl.txt'), 'a\nb');
     writeFileSync(join(wt, 'package-lock.json'), '{}\n');
-    symlinkSync(join(root, 'does-not-exist'), join(wt, 'dangling'));
+    symlinkSync('does-not-exist', join(wt, 'dangling'));
     const c = await changes(wt, 'trunk');
     const by = Object.fromEntries(c.files.map((f) => [f.path, f]));
     expect(by['sub/moved.txt']).toMatchObject({ add: 1, del: 0, status: 'R' });
