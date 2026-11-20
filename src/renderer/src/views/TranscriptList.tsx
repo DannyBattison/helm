@@ -67,9 +67,7 @@ export function TranscriptList({ items, firstIndex = 0, renderItem, header, foot
       followOutput={(atBottom) => (atBottom && follow.current ? 'auto' : false)}
       atBottomStateChange={(atBottom) => { if (atBottom) follow.current = true; }}
       atBottomThreshold={40}
-      // Items above the viewport are measured before you reach them: an estimate that turns out wrong makes the list correct its position
-      // while a finger is still dragging, which on a phone reads as a jump. A deeper margin above means most corrections happen off screen.
-      increaseViewportBy={{ top: 1800, bottom: 600 }}
+      increaseViewportBy={{ top: 600, bottom: 600 }}
       startReached={onStartReached}
       context={{ header, footer }}
       components={components}
