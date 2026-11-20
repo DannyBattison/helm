@@ -258,10 +258,11 @@ function ChangesView({ s }: { s: Session }) {
 
   React.useEffect(() => {
     let dead = false;
-    Promise.all([api.changes(s.id), api.changedFiles(s.id)]).then(([c, d]) => {
+    // The change list is what the tab waits for; which files are dirty only decorates it, so it follows separately.
+    api.changedFiles(s.id).then((d) => { if (!dead) setDirtySet(new Set(d.map((x) => x.path))); }).catch(() => undefined);
+    api.changes(s.id).then((c) => {
       if (dead) return;
       setSum(c);
-      setDirtySet(new Set(d.map((x) => x.path)));
       setSel((cur) => (cur && c.files.some((f) => f.path === cur) ? cur : c.files.find((f) => !f.generated)?.path || c.files[0]?.path || null));
     }).catch((e) => toast({ tone: 'error', title: 'Could not read changes', description: errText(e) }));
     return () => { dead = true; };
@@ -351,7 +352,7 @@ function ChangesView({ s }: { s: Session }) {
   const allIds = Object.values(fileHunks).flat();
   const totalHunks = allIds.length, doneHunks = allIds.filter((h) => accepted.has(h)).length;
   const openBlockers = blockers(s.review);
-  const totalAdd = sum?.files.reduce((a, f) => a + f.add, 0) || 0, totalDel = sum?.files.reduce((a, f) => a + f.del, 0) || 0;
+  const totalAdd = sum ? sum.files.reduce((a, f) => a + f.add, 0) : s.add, totalDel = sum ? sum.files.reduce((a, f) => a + f.del, 0) : s.del;
 
   const renderThreads = (n: number | null) => <>
     {lineComments(n).map((c, i) => <Thread key={i} c={c} onRemove={() => setC(comments.filter((x) => x !== c))} />)}
@@ -374,7 +375,7 @@ function ChangesView({ s }: { s: Session }) {
         <Grip onMouseDown={lgrip} onDoubleClick={lreset} />
         <div style={{ height: 34, flex: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px' }}>
           <Checkbox checked={allOn} onChange={(on) => setUnchecked(on ? new Set() : new Set((sum?.files || []).filter((f) => pickable(f.path)).map((f) => f.path)))} />
-          <span style={{ flex: 1, font: '500 12px/1.5 var(--font-sans)' }} title="Hunks accepted, of all hunks in the change">{sum?.files.length ?? 0} files{totalHunks ? <span style={{ font: '400 12px/1.5 var(--font-mono)', color: doneHunks === totalHunks ? 'var(--status-ready-text)' : 'var(--text-3)', marginLeft: 8, whiteSpace: 'nowrap' }}>✓ {doneHunks}/{totalHunks}</span> : null}</span>
+          <span style={{ flex: 1, font: '500 12px/1.5 var(--font-sans)' }} title="Hunks accepted, of all hunks in the change">{sum ? sum.files.length : s.files} files{totalHunks ? <span style={{ font: '400 12px/1.5 var(--font-mono)', color: doneHunks === totalHunks ? 'var(--status-ready-text)' : 'var(--text-3)', marginLeft: 8, whiteSpace: 'nowrap' }}>✓ {doneHunks}/{totalHunks}</span> : null}</span>
           <DiffStat additions={totalAdd} deletions={totalDel} blocks={false} />
         </div>
         <div style={{ height: 30, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, padding: '0 12px' }}>

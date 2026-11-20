@@ -1190,14 +1190,16 @@ export class SessionManager {
 
   async refreshStats(s: Session) {
     if (s.worktreeGone || (s.free && !s.free.managed)) return;
-    try {
-      const c = await G.changes(s.worktree, s.base);
-      s.add = c.files.reduce((a, f) => a + f.add, 0);
-      s.del = c.files.reduce((a, f) => a + f.del, 0);
-      s.files = c.files.length;
-      s.filesTouched = Object.fromEntries(c.files.map((f) => [f.path, { add: f.add, del: f.del }]));
-      this.touch();
-    } catch { /* worktree removed */ }
+    try { this.applyStats(s, await G.changes(s.worktree, s.base)); } catch { /* worktree removed */ }
+  }
+
+  /** Update a session's change counts from a summary that was just computed, so a caller that has one need not scan the worktree again. */
+  applyStats(s: Session, c: { files: { path: string; add: number; del: number }[] }) {
+    s.add = c.files.reduce((a, f) => a + f.add, 0);
+    s.del = c.files.reduce((a, f) => a + f.del, 0);
+    s.files = c.files.length;
+    s.filesTouched = Object.fromEntries(c.files.map((f) => [f.path, { add: f.add, del: f.del }]));
+    this.touch();
   }
 
   private async onResult(s: Session, rt: Runtime, m: Extract<AgentEvent, { t: 'result' }>) {

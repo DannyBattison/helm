@@ -1,0 +1,3 @@
+## 2026-11-20 · The changes tab scans the worktree once and shows known totals while it loads
+
+On a very large repository the changes tab showed "0 files, +0 −0" for a long time. Opening it ran the worktree scan twice at once (the tab's own `changes()` and a background stats refresh), and `changes()` itself ran `git status` and `git ls-files --others` as separate scans. `changes()` now takes the uncommitted count and the untracked files from one `git status -z -uall`, the tab's result also updates the session's stats instead of a second scan, the dirty-file decoration no longer holds up the list, and the header shows the session's last known file count and totals until the list arrives. `dirty` now counts files inside untracked folders individually.
